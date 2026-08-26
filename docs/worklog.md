@@ -21285,3 +21285,48 @@ Stage Summary:
 - ALL macro_expand code files now < 1500 LOC ✅
 - TD-LOC-MACRO-EXPAND: 🟡 Partial → ✅ Complete
 - 3798 tests, 0 failures, zero regression
+
+---
+Task ID: stage18.250
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.250 — TD-LOC-DRIVER complete: Extract compile_inner from driver/mod.rs (1729 → 768 + 982). v0.491.0 → v0.492.0.
+
+Work Log:
+- Baseline: v0.491.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: TD-LOC-DRIVER 🟡 Partial — mod.rs 1729 LOC > 1500 threshold
+
+- Implementation:
+  1. Extracted `compile_inner` function (966 LOC) to `src/driver/compile_inner.rs`
+  2. Updated `src/driver/mod.rs` (768 LOC): kept struct definitions, public API, helper functions
+  3. Made `compile_inner` pub(crate) for cross-module access
+  4. Cleaned unused imports in both files (types moved with compile_inner)
+  5. Fixed trailing doc comments in compile_inner.rs
+
+- Per §13.4 J2 (单一职责): compile_inner owns the compilation pipeline
+- Per §1.0 原則 6 (通解>特解): one extraction pattern
+- Per §1.0 原則 5 (去除兼容思维): stale doc comments removed
+
+- File sizes after split:
+  → driver/mod.rs: 768 LOC ✅ < 1500 (was 1729)
+  → compile_inner.rs: 982 LOC ✅ < 1500
+  → driver_validations.rs: 936 LOC ✅
+  → driver_scan.rs: 618 LOC ✅
+  → driver_object_safety.rs: 164 LOC ✅
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated: TD-LOC-DRIVER ✅ COMPLETE — ALL files < 1500
+
+- 版本: v0.492.0 (bump — driver split complete)
+
+Stage Summary:
+- Stage 18.250 PASSED — TD-LOC-DRIVER COMPLETE
+- driver/mod.rs 1729 LOC → mod.rs(768) + compile_inner.rs(982)
+- ALL driver code files now < 1500 LOC ✅
+- TD-LOC-DRIVER: 🟡 Partial → ✅ Complete
+- 3798 tests, 0 failures, zero regression
+- ALL LOC TDs now resolved: TD-LOC-MIR-LOWER-MOD ✅, TD-LOC-MIR-LOWER-EXPR ✅, TD-LOC-DRIVER ✅, TD-LOC-MACRO-EXPAND ✅
