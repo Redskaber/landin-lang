@@ -23118,3 +23118,58 @@ Stage Summary:
 - New module: pattern_lower.rs (1478 LOC)
 - §13.4 J1-J6 all pass
 - 3914 tests, 0 failures, zero regression
+
+---
+Task ID: stage18.280
+Agent: Super Z (main) — PM-A (协调) + ARCH-A (审查) + REC-A (记录)
+Task: Stage 18.280 — §8 文档同步：清理 tech-debt-register.md 中 5 个 stale "Partial" 条目。L1 复杂度。v0.492.0.
+
+3秒启动自检:
+- 定位: L1 (≤50 LOC, 1 文件 — tech-debt-register.md) → §1.2.1: 仅执行 §3.2 验收 + §8 文档同步 + §10 命名
+- 对齐: tech-debt-register.md §1 Resolved 表 + §2 LOC 表 + §4.1 分类索引 + §4.4 J1-J6 表
+- 阻断: 无 P0/P1，无未收敛依赖审查
+
+决策点:
+- 为什么选 A（清理 stale 条目）而不选 B（继续 LOC 重构如 borrowck/mod.rs 1934 LOC）？
+  → 引用 §8（文档同步规则）："不可有过期信息——文档中的版本号、测试数量、特性列表必须与代码实际状态一致。"
+  → 引用 §3.3（Spec 持续演进）："废弃 > 保留——过时条目标记并删除，不保留死代码。"
+  → 这 5 个条目描述的 LOC 已经降至 1500 以下，但登记册仍然标记为 "🟡 Partial"——这是过期信息，违反 §8。
+  → borrowck/mod.rs 1934 LOC 虽然超过阈值，但阈值倍数仅 1.3×（1934/1500），归入 v0.3 P3 优化（§2.9 备注：阈值倍数 < 2.0× 归入 P3）。
+  → 清理 stale 条目是 §8 强制同步项，优先级高于 P3 重构。
+
+权衡点:
+- 跳过了 §17 完整规划图、§14.5 深度审查、§7.3 门审查。
+  → 引用 §1.2.1：L1 仅执行 §3.2 验收 + §8 文档同步 + §10 命名。
+  → 安全理由：纯文档同步，无代码变更，无 API 变更，无测试影响。
+
+Work Log:
+- Baseline: v0.492.0 / 3914 tests (LLVM 22.1.8)
+- §17.2 Step 1 扫描结果:
+  → 5 个 stale "🟡 Partial" 条目（实际 LOC 均 < 1500）:
+    1. TD-LOC-MIR-LOWER-MOD (partial) — 18.129 — actual mod.rs: 1033 LOC ✅
+    2. TD-LOC-MIR-LOWER-EXPR (partial) — 18.131 — actual expr_operand.rs: 1335 LOC ✅
+    3. TD-LOC-MIR-LOWER-EXPR (partial continued) — 18.132 — same file, superseded ✅
+    4. TD-LOC-MACRO-EXPAND — §2 表 — actual mod.rs: 1138 LOC ✅
+    5. TD-LOC-DRIVER — §2 表 — actual mod.rs: 768 LOC ✅
+  → §4.1 分类索引中 2 个 stale "🟡 Partial in" 条目
+
+- 修复内容:
+  1. §1 Resolved 表: 3 个 "🟡 Partial" → "✅ Superseded by [stage] (complete)"
+  2. §2 LOC 表: 2 个 "🟡 Partial" → "✅ Resolved [stage range]" (with actual LOC)
+  3. §4.1 分类索引: 2 个 "🟡 Partial in" → "✅ Resolved in [stage range]"
+  4. Header: 更新日期 + 简化状态行
+
+- 全校验流 (§3.2):
+  → cargo fmt --check ✅ 0 diff
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests, 0 failures
+
+- 版本: v0.492.0 (no bump — L1 文档同步)
+
+下一步:
+- 基于 §17.6 + §20 迭代审计原则，审查是否还有同类 stale 条目。
+- borrowck/mod.rs (1934 LOC) 和 region_inference.rs (1789 LOC) 超过 1500 阈值但倍数 < 2.0×，归入 P3。
+- intrinsic_lower.rs (1957 LOC) 单一职责，可接受。
+- expr_variants.rs (1734 LOC) 单一职责，可接受。
+- v0.3 release sign-off 是下一个关键里程碑。

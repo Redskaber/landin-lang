@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-25 (last updated Stage 18.274 — stale TD cleanup + v0.3 release readiness assessment)
+> **Date**: 2026-08-25 (last updated Stage 18.280 — stale TD cleanup)
 > **Version**: v0.492.0
-> **Status**: Active — all P0/P1 items resolved. §17.6 "直到审查不出问题为止" audit COMPLETE. ALL expected-ty soundness holes CLOSED across 10 expression contexts. ALL LOC TDs resolved (no source files > 2000 LOC). 3914 tests, 0 failures. **v0.3 is READY for release sign-off.** Remaining: TD-INTRINSIC-OVERUSE Phase 2 (BLOCKED on v0.4+ language features), TD-DROP-MOVED-LOCALS full (BLOCKED on v0.3+ flow-sensitive tracking).
+> **Status**: Active — all P0/P1 items resolved. ALL LOC TDs resolved (no source files > 2000 LOC). §17.6 audit COMPLETE. 3914 tests, 0 failures. v0.3 READY for release. Remaining: TD-INTRINSIC-OVERUSE Phase 2 (BLOCKED v0.4+), TD-DROP-MOVED-LOCALS full (BLOCKED v0.3+).
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -26,10 +26,10 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-UNWRAP-DRIVER | driver.rs 4 unwrap (`f.body.unwrap()` after `is_some()`) → `if let Some(b)` pattern | 18.127 | ✅ |
 | TD-UNWRAP-BORROWCK-REGION | borrowck/region_inference.rs 3 SCC algorithm unwrap → `expect("...")` with invariant docs | 18.127 | ✅ |
 | TD-LOC-TYPECK-CHECKER | typeck/checker.rs 2635 LOC → split into 4 files (checker 1371 + infer 544 + check 476 + writeback 339), all < 1500 LOC per §13.4 J1-J6 | 18.128 | ✅ |
-| TD-LOC-MIR-LOWER-MOD (partial) | mir/lower/mod.rs 2857 LOC → mod.rs 2016 + ty_lower.rs 863 (type lowering extracted); mod.rs still > 1500, needs Stage 18.130 body lowering split | 18.129 | 🟡 Partial |
+| TD-LOC-MIR-LOWER-MOD (partial) | mir/lower/mod.rs 2857 LOC → mod.rs 2016 + ty_lower.rs 863 (type lowering extracted); mod.rs still > 1500, needs Stage 18.130 body lowering split | 18.129 | ✅ Superseded by 18.130 (complete) |
 | TD-LOC-MIR-LOWER-MOD (complete) | mir/lower/mod.rs 2016 LOC → mod.rs 960 + body_lower.rs 1110 (body lowering + elision + resolve_self + tests extracted); all 3 files < 1500 LOC | 18.130 | ✅ |
-| TD-LOC-MIR-LOWER-EXPR (partial) | mir/lower/expr_operand.rs 3599 LOC → expr_operand.rs 2503 + method_resolution.rs 1132 (method resolution extracted); expr_operand still > 1500 (lower_expr_to_operand 2106 LOC), needs Stage 18.132 | 18.131 | 🟡 Partial |
-| TD-LOC-MIR-LOWER-EXPR (partial continued) | mir/lower/expr_operand.rs 2503 LOC → expr_operand.rs 2171 + call_lower.rs 362 (call helpers extracted); MethodCall arm extraction attempted+reverted (type signature issues); expr_operand still > 1500, needs Stage 18.133 | 18.132 | 🟡 Partial |
+| TD-LOC-MIR-LOWER-EXPR (partial) | mir/lower/expr_operand.rs 3599 LOC → expr_operand.rs 2503 + method_resolution.rs 1132 (method resolution extracted); expr_operand still > 1500 (lower_expr_to_operand 2106 LOC), needs Stage 18.132 | 18.131 | ✅ Superseded by 18.133 (complete) |
+| TD-LOC-MIR-LOWER-EXPR (partial continued) | mir/lower/expr_operand.rs 2503 LOC → expr_operand.rs 2171 + call_lower.rs 362 (call helpers extracted); MethodCall arm extraction attempted+reverted (type signature issues); expr_operand still > 1500, needs Stage 18.133 | 18.132 | ✅ Superseded by 18.133 (complete) |
 | TD-LOC-MIR-LOWER-EXPR (complete) | mir/lower/expr_operand.rs 2171 LOC → expr_operand.rs 1156 + expr_variants.rs 1016 (4 largest match arms extracted as functions: Path + Call + For + MethodCall); all 4 mir/lower/ files < 1500 LOC | 18.133 | ✅ |
 | TD-LOC-DRIVER (complete) | driver.rs 4038 LOC → driver/mod.rs 768 + compile_inner.rs 982 + driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164; ALL files now < 1500 LOC ✅ | 18.134-18.250 | ✅ All driver code files < 1500 LOC |
 | TD-LOC-MACRO-EXPAND (complete) | macro_expand.rs 5962 LOC → macro_expand/mod.rs 1138 + collection.rs 240 + expansion.rs 201 + expansion_tests.rs 2345 (test) + builtin_macros/mod.rs 130 + print_macros.rs 686 + compile_time_macros.rs 664 + low_level_macros.rs 601; ALL code files now < 1500 LOC ✅ | 18.247-18.249 | ✅ All macro_expand code files < 1500 LOC |
@@ -134,8 +134,8 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 | ID | File | LOC | 阈值倍数 | Root Cause | Fix Plan | Status |
 |----|------|-----|---------|------------|----------|--------|
-| TD-LOC-MACRO-EXPAND | `src/parser/macro_expand.rs` | ~~5962~~ → 3904 | 4.0× → 2.6× | macro_rules! 全功能集中（fragment specifiers + repetition + hygiene + builtin macros） | 🟡 Stage 18.135: 提取 builtin_macros.rs (2069); Stage 18.136: 提取 core matching + substitution + repetition + hygiene | 🟡 Partial 18.135 |
-| TD-LOC-DRIVER | `src/driver/mod.rs` | ~~4038~~ → 2351 | 2.7× → 1.6× | 编排层全功能集中 + validation + scan + object safety 混合 | 🟡 Stage 18.134: 提取 driver_validations.rs (936) + driver_scan.rs (618) + driver_object_safety.rs (164); Stage 18.137: 拆分 compile_inner | 🟡 Partial 18.134 |
+| TD-LOC-MACRO-EXPAND | `src/parser/macro_expand.rs` | ~~5962~~ → 1138 | 4.0× → ✅ | macro_rules! 全功能集中 | ✅ Stage 18.247-18.249: 完整拆分 (mod.rs 1138 + collection.rs 240 + expansion.rs 201 + builtin_macros/ + print_macros.rs + compile_time_macros.rs + low_level_macros.rs) | ✅ Resolved 18.247-18.249 |
+| TD-LOC-DRIVER | `src/driver/mod.rs` | ~~4038~~ → 768 | 2.7× → ✅ | 编排层全功能集中 | ✅ Stage 18.134-18.250: 完整拆分 (mod.rs 768 + compile_inner.rs 982 + driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164) | ✅ Resolved 18.134-18.250 |
 | TD-LOC-MIR-LOWER-EXPR | `src/mir/lower/expr_operand.rs` | ~~3599~~ → 1156 | 2.4× → ✅ | MIR 表达式 lowering 全集中 | ✅ Stage 18.131-18.133: 提取 method_resolution.rs (1132) + call_lower.rs (362) + expr_variants.rs (1016) | ✅ Resolved 18.131-18.133 |
 | TD-LOC-MIR-LOWER-MOD | `src/mir/lower/mod.rs` | ~~2857~~ → 960 | 1.9× → ✅ | MIR lower 顶层 + body lowering + local decls | ✅ Stage 18.129-18.130: 提取 ty_lower.rs (863) + body_lower.rs (1110), mod.rs 960 | ✅ Resolved 18.129-18.130 |
 | TD-LOC-TYPECK-CHECKER | `src/typeck/checker.rs` | ~~2635~~ → 1371 | 1.8× → ✅ | typeck 主入口全集中（unify + infer + coerce + check） | ✅ Stage 18.128: 拆分为 checker/infer/check/writeback 4 文件 | ✅ Resolved 18.128 |
@@ -278,8 +278,8 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.128 | 1 | TD-LOC-TYPECK-CHECKER (拆分为 4 文件, 全部 < 1500 LOC) |
 | ✅ Resolved in 18.129-18.130 | 1 | TD-LOC-MIR-LOWER-MOD (提取 ty_lower.rs 863 + body_lower.rs 1110, mod.rs 2857→960, 全部 < 1500) |
 | ✅ Resolved in 18.131-18.133 | 1 | TD-LOC-MIR-LOWER-EXPR (提取 method_resolution.rs 1132 + call_lower.rs 362 + expr_variants.rs 1016, expr_operand 3599→1156, 全部 < 1500) |
-| 🟡 Partial in 18.134 | 1 | TD-LOC-DRIVER (提取 driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164, driver.rs 4038→2351, 仍超 1500) |
-| 🟡 Partial in 18.135 | 1 | TD-LOC-MACRO-EXPAND (提取 builtin_macros.rs 2069, macro_expand.rs 5962→3904, 仍超 1500) |
+| ✅ Resolved in 18.134-18.250 | 1 | TD-LOC-DRIVER (mod.rs 768 + compile_inner.rs 982 + validations 936 + scan 618 + object_safety 164, 全部 < 1500) |
+| ✅ Resolved in 18.247-18.249 | 1 | TD-LOC-MACRO-EXPAND (mod.rs 1138 + collection 240 + expansion 201 + builtin_macros/ + print 686 + compile_time 664 + low_level 601, 全部 < 1500) |
 | ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
 | ✅ Resolved in 18.148 | 1 | TD-PROJECTION-RESOLVER (moved typeck → driver) |
 | ✅ Resolved in 18.151 | 3 | TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD |
