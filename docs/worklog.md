@@ -21066,3 +21066,128 @@ Stage Summary:
 - All Box tests updated (removed manual dealloc)
 - 3798 tests, 0 failures, zero regression
 - Next: v0.3 continued — TD-TUPLE-CTOR-TYPECK (needs expected-type propagation)
+
+---
+Task ID: stage18.245
+Agent: Super Z (main) — Stage Committee (ARCH-A + QA-A + REV-A + PM-A + ALG-C + SKL-A)
+Task: Stage 18.245 — v0.3 Phase 3 Deep Review (§14.5 D1-D8) + TD Status Audit. v0.488.0 (no bump — deep review + TD audit).
+
+Work Log:
+- Baseline: v0.488.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: §14.5 触发条件 #1 (大阶段最末轮) — v0.3 Phase 1-2 partial work complete
+- 审查范围: Stage 18.241-18.244 (4 stages)
+
+- D1-D8 八维度审查:
+  → D1 架构: ✅ — TD-BOX-AUTO-DROP resolved, str method MVP, move tracking extended
+  → D2 技术债: ✅ — TD-BOX-AUTO-DROP resolved, TD-DROP-MOVED-LOCALS partial, TD-VEC-GET-TYPE-INFERENCE updated to resolved
+  → D3 测试: ✅ — 3798 tests, 0 failures
+  → D4 就绪度: ✅ — remaining TDs blocked by architecture changes (documented)
+  → D5 设计: ✅ — all deferred TDs have documented root cause + plan
+  → D6 性能: ✅ — ~9.2s
+  → D7 文档: ✅ — 4 task-reviews + 1 deep-review
+  → D8 路径覆盖: ✅ — Box auto-drop, str method resolution, pointer arithmetic, move tracking
+
+- Tech debt register updates:
+  → TD-VEC-GET-TYPE-INFERENCE: ✅ Resolved (was stale "🟡 Active" — actually resolved in Stage 18.208)
+  → TD-DROP-MOVED-LOCALS: 🟡 Partial (Stage 18.243 extended move tracking; full flow-sensitive deferred)
+  → TD-BOX-AUTO-DROP: ✅ Resolved (Stage 18.244)
+
+- 委员会投票: 5/5 GO
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- 版本: v0.488.0 (no bump — deep review + TD audit)
+
+Stage Summary:
+- Stage 18.245 PASSED — v0.3 Phase 3 Deep Review + TD Status Audit
+- D1-D8: all ✅, 5/5 GO
+- v0.3 progress: 3 TDs resolved (TD-BOX-AUTO-DROP, TD-METHOD-RESOLVE-STRICT, TD-INTRINSIC-OVERUSE Phase 1)
+- 2 TDs partial (TD-DROP-MOVED-LOCALS, TD-INTRINSIC-OVERUSE Phase 2 deferred)
+- 1 TD stale updated (TD-VEC-GET-TYPE-INFERENCE: 🟡→✅)
+- Remaining: TD-TUPLE-CTOR-TYPECK (needs expected-type propagation, ~500 LOC)
+- 3798 tests, 0 failures, zero regression
+
+---
+Task ID: stage18.246
+Agent: Super Z (main) — ARCH-A + REV-A + QA-A
+Task: Stage 18.246 — Tech debt register cleanup: update stale TD entries. v0.488.0 (no bump — documentation cleanup).
+
+Work Log:
+- Baseline: v0.488.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: §8 文档同步 — tech-debt-register had multiple stale entries
+
+- Stale entries found and updated:
+  1. TD-VEC-MVP: 🟡 Active → ✅ Resolved (was resolved in Stage 18.195+ but never updated)
+  2. TD-STRING-INTRINSICS (line 97): 🟡 Active → ✅ Resolved (was resolved in Stage 18.185+)
+  3. TD-BOX-AUTO-DROP (line 101, early entry): 🟡 Active → ✅ Resolved (renamed to "TD-BOX-AUTO-DROP (early)")
+  4. TD-TUPLE-CTOR-TYPECK (line 102): 🟡 Active v0.2 P2 → 🟡 Deferred v0.3+ (updated with Stage 18.233 audit root cause)
+  5. TD-LOC-DRIVER: Updated with current file size (1729 LOC, was "2351")
+  6. TD-LOC-MACRO-EXPAND: Updated with current file size (3904 LOC, was "5962→3904")
+
+- Per §8 (文档同步): tech-debt-register must reflect actual code state.
+- Per §1.0 原則 5 (去除兼容思维): stale entries cleaned up.
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- 版本: v0.488.0 (no bump — documentation cleanup only)
+
+Stage Summary:
+- Stage 18.246 PASSED — Tech debt register cleanup
+- 6 stale TD entries updated to reflect actual state
+- 3798 tests, 0 failures, zero regression
+- Tech-debt-register now accurately reflects current project state
+
+---
+Task ID: stage18.247
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.247 — TD-LOC-MACRO-EXPAND: Split macro_expand/mod.rs (3904 → 1138 + 241 + 2529). v0.488.0 → v0.489.0.
+
+Work Log:
+- Baseline: v0.488.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: TD-LOC-MACRO-EXPAND 🟡 Partial — mod.rs 3904 LOC > 1500 threshold
+- §17.8 task review: mod.rs extractable into collection + expansion sub-modules
+
+- Implementation:
+  1. Extracted `collection.rs` (241 LOC): collect_macro_defs, collect_macro_defs_with_errors,
+     parse_macro_rules_body, collect_delimited, skip_to_matching_rbrace
+  2. Extracted `expansion.rs` (2529 LOC): expand_macro_calls, expand_macro_calls_with_errors,
+     expand_macros, expand_macros_with_errors, tokens_eq + all macro_expand tests
+  3. Updated mod.rs (1138 LOC): core types + expand_macro + matching + substitution + hygiene + BUILTIN_MACRO_NAMES
+  4. Made private types pub(super): Captures, RepetitionKind, RepetitionSep, CaptureValue
+  5. Made collect_delimited pub(super) for cross-module access
+  6. Updated imports: `pub use` for re-exports, removed stale `use super::builtin_macros`
+
+- Per §13.4 J2 (单一职责): each sub-module owns one responsibility
+- Per §1.0 原則 5 (去除兼容思维): stale import removed
+- Per §1.0 原則 6 (通解>特解): one pattern for module extraction
+
+- File sizes after split:
+  → mod.rs: 1138 LOC (was 3904) ✅ < 1500
+  → collection.rs: 241 LOC ✅ < 1500
+  → expansion.rs: 2529 LOC 🟡 still > 1500 (needs further split in future stage)
+  → builtin_macros.rs: 2069 LOC 🟡 still > 1500 (unchanged from Stage 18.135)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated: TD-LOC-MACRO-EXPAND mod.rs now < 1500 ✅
+
+- 版本: v0.489.0 (bump — module split)
+
+Stage Summary:
+- Stage 18.247 PASSED — TD-LOC-MACRO-EXPAND partial fix: mod.rs 3904→1138
+- 2 sub-modules extracted: collection.rs (241 LOC) + expansion.rs (2529 LOC)
+- mod.rs now < 1500 LOC threshold ✅
+- expansion.rs still > 1500 (needs further split in future stage)
+- 3798 tests, 0 failures, zero regression
