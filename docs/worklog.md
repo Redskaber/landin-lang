@@ -20931,3 +20931,94 @@ Stage Summary:
 - 4 new tests, 3798 total, 0 failures
 - MVP: full `impl str` syntax deferred to v0.4+ (§17.6 record)
 - Next: v0.3 Phase 1 Task 2 — Fat pointer construction syntax
+
+---
+Task ID: stage18.242
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A + DEV-A + QA-A
+Task: Stage 18.242 — Fat pointer construction + move tracking audit. v0.486.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.486.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.240 v0.3 transition plan → Phase 1 Task 2 audit
+
+- Dependency audit (per user directive "依赖与基础设施完整能力审查"):
+  → L2 (Fat pointer construction): DEFERRED to v0.4+ — requires parser + HIR + typeck
+    changes (~200 LOC), low ROI (only benefits String::as_str)
+  → L3 (Expected-type propagation): DEFERRED to v0.3+ — requires threading
+    expected_ty through all lower_expr_* functions (~500 LOC), large architecture change
+  → L4 (Move tracking): FEASIBLE NOW — infrastructure exists (collect_moved_locals)
+    but needs extension to cover TerminatorKind::Call + StatementKind::Store moves
+
+- L4 gap analysis:
+  → collect_moved_locals (drop_elaboration.rs:74) scans StatementKind::Assign rvalues
+    for Operand::Move — this works for basic moves
+  → Gap 1: TerminatorKind::Call args not scanned — moved locals in function call args
+    are not tracked → potential double-drop
+  → Gap 2: StatementKind::Store val not scanned — moved locals in Store operations
+    are not tracked
+  → Gap 3: Rvalue::Load/GEP not fully scanning operands for moves
+  → Extension estimate: ~50-100 LOC in collect_moved_locals
+
+- Decision: Proceed with L4 (move tracking extension) as Stage 18.243
+  → L2/L3 deferred (blocked by large architecture changes)
+  → L4 is feasible with localized changes to existing infrastructure
+
+- Documentation: docs/develop/v0/stage-18/stage-18.242-task-review.md
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- 版本: v0.486.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.242 COMPLETED — Fat pointer + move tracking audit
+- L2 (fat ptr construction): DEFERRED to v0.4+ (low ROI, complex parser change)
+- L3 (expected-type propagation): DEFERRED to v0.3+ (large architecture change)
+- L4 (move tracking): FEASIBLE NOW — existing infrastructure, needs extension
+- Next: Stage 18.243 — Extend collect_moved_locals for terminator + Store moves
+
+---
+Task ID: stage18.243
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.243 — Extend collect_moved_locals for terminator + Store + Load/GEP moves. v0.486.0 → v0.487.0.
+
+Work Log:
+- Baseline: v0.486.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.242 audit found L4 (move tracking) feasible — extend existing infrastructure
+
+- Implementation (1 file: src/mir/drop_elaboration.rs):
+  1. Extended `collect_moved_locals` to scan:
+     - StatementKind::Store { val, .. } — scans val for Operand::Move
+     - TerminatorKind::Call { args, .. } — scans args for Operand::Move
+     - TerminatorKind::Drop { place, .. } — tracks the dropped place
+  2. Added `collect_moved_locals_from_terminator` — scans terminator for moves
+  3. Added `collect_moved_locals_from_operand` — shared helper (DRY, §10)
+  4. Fixed `collect_moved_locals_from_rvalue`:
+     - Rvalue::Load(ptr_op, _) — now scans ptr_op for Move (was stub)
+     - Rvalue::GetElementPtr { base, indices, .. } — now scans base + indices (was stub)
+     - All other arms now use the shared `collect_moved_locals_from_operand`
+
+- Per §1.0 原則 4 (报错>静默): previously, Store/terminator/Load/GEP moves were
+  silently ignored, causing potential double-drops.
+- Per §1.0 原則 6 (通解>特解): one scan path for all statement kinds + terminator.
+- Per §10 (DRY): single `collect_moved_locals_from_operand` shared by all callers.
+- Per §17.6 (同类型整体修复): same pattern as Assign moves — one fix for all.
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- 版本: v0.487.0 (bump — move tracking extension)
+
+Stage Summary:
+- Stage 18.243 PASSED — Extend collect_moved_locals for all move sources
+- 3 new gaps fixed: Store moves, terminator Call moves, Load/GEP operand moves
+- Shared `collect_moved_locals_from_operand` eliminates duplication (§10 DRY)
+- 3798 tests, 0 failures, zero regression
+- Partially resolves TD-DROP-MOVED-LOCALS (flow-insensitive, may over-approximate)
+- Next: TD-BOX-AUTO-DROP (now unblocked — Box can auto-dealloc via drop glue)

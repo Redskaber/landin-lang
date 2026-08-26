@@ -38,7 +38,7 @@
 //! (calling a nonexistent drop method).
 
 use crate::hir::DefId;
-use crate::mir::body::{AdtLayout, AdtLayouts, StatementKind};
+use crate::mir::body::{AdtLayout, AdtLayouts, StatementKind, TerminatorKind};
 use crate::mir::place::{LocalId, Operand, PlaceKind, ProjectionElem, Rvalue};
 use crate::mir::ty::{Ty, TyKind};
 use crate::traits::TraitResolver;
@@ -75,44 +75,110 @@ fn collect_moved_locals(mir: &crate::mir::body::MirBody) -> HashSet<LocalId> {
     let mut moved = HashSet::new();
     for bb in &mir.basic_blocks {
         for stmt in &bb.statements {
-            if let StatementKind::Assign(boxed) = &stmt.kind {
-                let (_, rvalue) = &**boxed;
-                collect_moved_locals_from_rvalue(rvalue, &mut moved);
+            match &stmt.kind {
+                StatementKind::Assign(boxed) => {
+                    let (_, rvalue) = &**boxed;
+                    collect_moved_locals_from_rvalue(rvalue, &mut moved);
+                }
+                // Stage 18.243 (TD-DROP-MOVED-LOCALS partial fix): Scan
+                // StatementKind::Store for Operand::Move in the val field.
+                // When `Store { val: Move(local), ... }` is emitted (e.g.,
+                // by Vec::push or String::push_str MIR intrinsics), the
+                // moved local should NOT receive a Drop terminator —
+                // ownership has been transferred to the destination.
+                //
+                // Per §1.0 原則 4 (报错>静默): previously, Store moves were
+                // silently ignored, causing potential double-drops.
+                // Per §1.0 原則 6 (通解>特解): one scan for all statement kinds.
+                // Per §17.6 (同类型整体修复): same pattern as Assign moves.
+                StatementKind::Store { val, .. } => {
+                    collect_moved_locals_from_operand(val, &mut moved);
+                }
+                _ => {}
             }
         }
+        // Stage 18.243: Also scan the terminator for moves.
+        // TerminatorKind::Call can have Operand::Move in its args —
+        // when a local is moved into a function call, it should not
+        // receive a Drop terminator.
+        //
+        // Per §1.0 原則 6 (通解>特解): one scan for all terminator kinds.
+        // Per §17.6 (同类型整体修复): same pattern as statement moves.
+        collect_moved_locals_from_terminator(&bb.terminator.kind, &mut moved);
     }
     moved
+}
+
+/// Stage 18.243: Extract moved local IDs from a terminator.
+///
+/// Scans `TerminatorKind::Call` args for `Operand::Move(Place::Local(id))`.
+/// Other terminators (Goto, Return, etc.) don't have operands to scan.
+fn collect_moved_locals_from_terminator(
+    kind: &crate::mir::body::TerminatorKind,
+    moved: &mut HashSet<LocalId>,
+) {
+    match kind {
+        TerminatorKind::Call { args, .. } => {
+            for arg in args {
+                collect_moved_locals_from_operand(arg, moved);
+            }
+        }
+        TerminatorKind::Drop { place, .. } => {
+            // Drop itself doesn't move — it's a destructor call.
+            // But the place being dropped should be tracked.
+            if let PlaceKind::Local(id) = &place.kind {
+                moved.insert(*id);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Stage 18.243: Extract moved local IDs from a single operand.
+///
+/// Shared helper used by both rvalue and terminator/Store scanning.
+/// Per §10 (DRY): single source of truth for operand move extraction.
+fn collect_moved_locals_from_operand(op: &Operand, moved: &mut HashSet<LocalId>) {
+    if let Operand::Move(place) = op {
+        if let PlaceKind::Local(id) = &place.kind {
+            moved.insert(*id);
+        }
+    }
 }
 
 /// Helper: extract all moved local IDs from an `Rvalue`.
 ///
 /// Walks the rvalue's operands and collects any `Operand::Move(Place::Local(id))`.
 fn collect_moved_locals_from_rvalue(rv: &Rvalue, moved: &mut HashSet<LocalId>) {
-    let collect_from_operand = |op: &Operand, moved: &mut HashSet<LocalId>| {
-        if let Operand::Move(place) = op {
-            if let PlaceKind::Local(id) = &place.kind {
-                moved.insert(*id);
-            }
-        }
-    };
     match rv {
         Rvalue::Use(op) | Rvalue::Cast(_, op, _) | Rvalue::UnaryOp(_, op) => {
-            collect_from_operand(op, moved);
+            collect_moved_locals_from_operand(op, moved);
         }
         Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
-            collect_from_operand(a, moved);
-            collect_from_operand(b, moved);
+            collect_moved_locals_from_operand(a, moved);
+            collect_moved_locals_from_operand(b, moved);
         }
-        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
-
-            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
-
-            // Will be implemented in Stage 18.226c (codegen support)
+        // Stage 18.243: MIR intrinsic ops — scan operands for moves.
+        // Previously (Stage 18.226) these were stubs that said "not yet
+        // codegen-enabled". Now that codegen is enabled (Stage 18.227+),
+        // we must scan their operands for Move.
+        //
+        // Per §1.0 原則 4 (报错>静默): unscanned moves cause double-drops.
+        // Per §1.0 原則 6 (通解>特解): one scan path for all Rvalue variants.
+        // Per §17.6 (同类型整体修复): same pattern as BinaryOp/Aggregate.
+        Rvalue::Load(ptr_op, _) => {
+            collect_moved_locals_from_operand(ptr_op, moved);
+        }
+        Rvalue::GetElementPtr { base, indices, .. } => {
+            collect_moved_locals_from_operand(base, moved);
+            for idx_op in indices {
+                collect_moved_locals_from_operand(idx_op, moved);
+            }
         }
 
         Rvalue::Aggregate(_, operands) => {
             for op in operands {
-                collect_from_operand(op, moved);
+                collect_moved_locals_from_operand(op, moved);
             }
         }
         Rvalue::Ref(_, _, _) => {} // Refs don't move.
