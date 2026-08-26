@@ -308,7 +308,50 @@ pub(super) fn lower_call_expr(
         .iter()
         .enumerate()
         .map(|(i, a)| {
-            let arg_expected_ty = callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i));
+            // Stage 18.264 (TD-BOX-NEW-EXPECTED-TY): For Box::new(x),
+            // expected_ty from outer context is `Box<T>` but the arg
+            // expects `T`. Extract T from the outer expected Box<T>.
+            //
+            // Per §17.6 (缺陷纳入 — same class as TD-TUPLE-CTOR-CALL-ARG):
+            // when one expected-ty propagation bug is found, audit all
+            // similar paths. Box::new intrinsic uses the same pattern
+            // as fn call args — needs expected_ty from outer context.
+            // Per §1.0 原則 6 (通解 > 特解): one Box-specific extraction
+            // path for all Box::new args, not a per-type special case.
+            let arg_expected_ty = if i == 0 {
+                // Check if this is a Box::new intrinsic call.
+                let is_box_new = if let HirExprKind::Path(path) = &func.kind {
+                    if path.segments.len() == 2 {
+                        let type_name = cx.interner.resolve(&path.segments[0].ident.name);
+                        let method_name = cx.interner.resolve(&path.segments[1].ident.name);
+                        type_name == "Box" && method_name == "new" && args.len() == 1
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if is_box_new {
+                    // Extract T from `Box<T>` (the outer expected_ty).
+                    if let Some(expected) = expected_ty {
+                        if let TyKind::Adt(_, substs) = &expected.kind {
+                            if !substs.is_empty() {
+                                Some(&substs[0])
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i))
+                }
+            } else {
+                callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i))
+            };
             lower_expr_to_operand(cx, a, arg_expected_ty)
         })
         .collect();

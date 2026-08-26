@@ -957,10 +957,56 @@ pub(crate) fn lower_expr_to_operand(
 
         // Struct literal: `Foo { x: 1, y: 2 }` → Aggregate(Adt, operands)
         HirExprKind::Struct { path, fields, .. } => {
-            // Lower each field value
+            // Stage 18.264 (TD-STRUCT-LITERAL-FIELD-EXPECTED-TY): resolve
+            // the struct's field_tys BEFORE lowering field value
+            // expressions, so we can thread expected_ty into each field's
+            // lower_expr_to_operand. This closes the soundness hole where
+            // `Outer { f: Holder(true) }` (with `f: Holder<i32>`) silently
+            // accepted type mismatches.
+            //
+            // Per §17.6 (缺陷纳入 — same class as TD-TUPLE-CTOR-CALL-ARG):
+            // when one expected-ty propagation bug is found, audit all
+            // similar paths. Struct literal field values use the same
+            // pattern as fn call args — both need expected_ty from a
+            // pre-computed type context.
+            // Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path
+            // for all field value lowering, not a per-type special case.
+            // Per §2 原則 9 (正确 > 妥协): proper expected-ty propagation
+            // at lower time, not relying on typeck back-propagation.
+            let pre_field_tys: Option<Vec<Ty>> = if let Res::Def(def_id, DefKind::Struct) = path.res
+            {
+                let substs = lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
+                let field_tys = if substs.is_empty() {
+                    field_resolution::resolve_adt_field_tys(cx, def_id)
+                } else {
+                    field_resolution::resolve_adt_field_tys_with_substs(cx, def_id, &substs)
+                };
+                Some(field_tys)
+            } else if let Res::Def(def_id, DefKind::Enum) = path.res {
+                if path.segments.len() >= 2 {
+                    let variant_name = super::method_resolution::variant_name_from_path(path);
+                    if let Some((_, field_tys)) = resolve_enum_variant(cx, def_id, variant_name) {
+                        Some(field_tys)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            // Lower each field value, threading expected_ty from the
+            // pre-resolved field_tys (if available).
             let field_locals: Vec<LocalId> = fields
                 .iter()
-                .filter_map(|f| f.expr.as_ref().map(|e| lower_expr_to_operand(cx, e, None)))
+                .enumerate()
+                .filter_map(|(i, f)| {
+                    f.expr.as_ref().map(|e| {
+                        let field_expected_ty = pre_field_tys.as_ref().and_then(|tys| tys.get(i));
+                        lower_expr_to_operand(cx, e, field_expected_ty)
+                    })
+                })
                 .collect();
             // Stage 15.64: Choose Copy or Move based on the field value's type.
             // For Copy types (primitives, refs, etc.), use Copy (source remains

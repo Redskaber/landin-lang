@@ -607,6 +607,14 @@ mod stage18_260_phase2d_2f_gap_analysis_tests;
 #[path = "v0/stage18/plan/stage18_262_phase2e_regression_tests.rs"]
 mod stage18_262_phase2e_regression_tests;
 
+// === Stage 18.264: Holistic soundness audit (per §17.6 — similar bugs hide together) ===
+#[path = "v0/stage18/plan/stage18_264_holistic_soundness_audit_tests.rs"]
+mod stage18_264_holistic_soundness_audit_tests;
+
+// === Stage 18.264: Struct literal field + Box::new expected-ty regression tests ===
+#[path = "v0/stage18/plan/stage18_264_struct_literal_and_box_new_regression_tests.rs"]
+mod stage18_264_struct_literal_and_box_new_regression_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
