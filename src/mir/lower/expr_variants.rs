@@ -1168,24 +1168,71 @@ pub(super) fn lower_method_call_expr(
 
     if let Some(call) = matched_call {
         if !can_static_dispatch {
-            let dest_ty = cx.fresh_infer_ty(expr.span);
-            let dest = cx.mir.new_local(dest_ty, None, expr.span);
-            let cont = cx.new_block();
-            let mut terminator = build_dyn_trait_call_terminator(
-                cx,
-                &call,
-                recv_local,
-                &arg_locals,
-                dest,
-                expr.span,
-            );
-            // Set the target before terminating — the helper
-            // leaves it as None per design.
-            if let TerminatorKind::Call { target, .. } = &mut terminator.kind {
-                *target = Some(cont);
-            }
-            cx.terminate_and_goto(terminator, cont);
-            return dest;
+            // Stage 18.297 (typeck gap fix): Before using dyn Trait dispatch,
+            // verify the receiver type matches the type in the dyn_trait_plan.
+            // If the receiver is i32 but the plan entry is for bool (because
+            // `impl T for bool` exists but not `impl T for i32`), the dyn
+            // Trait path would produce wrong code (type mismatch crash).
+            //
+            // Per §2 原則 4 (报错>静默): report "no method found" instead of
+            // silently generating wrong dyn Trait call.
+            // Per §12 (最优>最小): root cause fix — check type match at the
+            // dispatch decision point, not at codegen.
+            let recv_ty = cx.mir.local(recv_local).ty.clone();
+            let recv_type_name: String = match &recv_ty.kind {
+                crate::mir::ty::TyKind::Adt(def_id, _) => cx
+                    .hir
+                    .and_then(|hir| {
+                        hir.find_owner(*def_id).and_then(|owner| match owner {
+                            crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => {
+                                Some(cx.interner.resolve(&s.ident.name).to_string())
+                            }
+                            crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => {
+                                Some(cx.interner.resolve(&e.ident.name).to_string())
+                            }
+                            _ => None,
+                        })
+                    })
+                    .unwrap_or_default(),
+                _ => {
+                    // Stage 18.297: For Infer types (e.g., unsuffixed float
+                    // literal 3.14 → Infer(FloatVar)), name_of_primitive_ty
+                    // returns None → recv_type_name = "".
+                    // Per §2 原則 4 (报错>静默): empty recv_type_name means we
+                    // can't verify the type match. For Infer types, fall through
+                    // to error path (don't use dyn Trait dispatch) — typeck
+                    // post-defaulting will handle it.
+                    super::method_resolution::name_of_primitive_ty(&recv_ty)
+                        .unwrap_or("")
+                        .to_string()
+                }
+            };
+            // Check if the receiver type matches the dyn_trait_plan's type_name.
+            // If not, the trait is not implemented for this type — fall through
+            // to the "no method found" error path below.
+            // Stage 18.297: Empty recv_type_name (e.g. Infer type) also falls
+            // through to error path — don't use dyn Trait dispatch for unknown
+            // types.
+            if !recv_type_name.is_empty() && recv_type_name == call.type_name {
+                let dest_ty = cx.fresh_infer_ty(expr.span);
+                let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                let cont = cx.new_block();
+                let mut terminator = build_dyn_trait_call_terminator(
+                    cx,
+                    &call,
+                    recv_local,
+                    &arg_locals,
+                    dest,
+                    expr.span,
+                );
+                // Set the target before terminating — the helper
+                // leaves it as None per design.
+                if let TerminatorKind::Call { target, .. } = &mut terminator.kind {
+                    *target = Some(cont);
+                }
+                cx.terminate_and_goto(terminator, cont);
+                return dest;
+            } // end type matches → dyn Trait dispatch
         } // end if !can_static_dispatch
           // If can_static_dispatch, fall through to the static dispatch path below
     }

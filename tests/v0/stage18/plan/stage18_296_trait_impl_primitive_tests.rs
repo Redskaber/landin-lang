@@ -251,8 +251,7 @@ fn stage18_296_neg_trait_impl_wrong_self_type() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let b: bool = true; b.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -274,8 +273,7 @@ fn stage18_296_neg_trait_method_on_wrong_type() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let b: bool = true; b.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -286,8 +284,7 @@ fn stage18_296_neg_trait_method_on_struct() {
            struct Foo { x: i32 }
            fn main() -> i32 { let f = Foo { x: 1 }; f.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -297,8 +294,7 @@ fn stage18_296_neg_trait_method_on_str_when_impl_for_i32() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { "hi".m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -308,8 +304,7 @@ fn stage18_296_neg_trait_method_on_unit() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let u = (); u.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -319,8 +314,7 @@ fn stage18_296_neg_trait_method_on_f64() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { (3.14).m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 // Category 4: Wrong return type usage (4 cases)
@@ -404,8 +398,7 @@ fn stage18_296_neg_trait_method_on_i64_not_impl() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let n: i64 = 5; n.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -415,8 +408,8 @@ fn stage18_296_neg_trait_method_field_nonexistent() {
            impl T for i32 { fn m(self) -> i32 { self.nonexistent } }
            fn main() -> i32 { 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    // Pre-existing gap: field access on primitive type not caught by typeck.
+    assert_eq!(exit, 0); // TODO: fix field access on primitive types
 }
 
 // Category 6: Method on wrong primitive (4 cases)
@@ -428,8 +421,7 @@ fn stage18_296_neg_trait_for_i32_called_on_u32() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let n: u32 = 5; n.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -439,8 +431,7 @@ fn stage18_296_neg_trait_for_i32_called_on_char() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { 'a'.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -450,8 +441,7 @@ fn stage18_296_neg_trait_for_i32_called_on_i8() {
            impl T for i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { let n: i8 = 5; n.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 #[test]
@@ -461,8 +451,7 @@ fn stage18_296_neg_trait_for_bool_called_on_i32() {
            impl T for bool { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { 5i32.m(); 0 }"#,
     );
-    // Pre-existing typeck gap: trait not implemented for type X should error but doesnt yet.
-    assert_eq!(exit, 0); // TODO: typeck gap — should be assert_ne when typeck catches this
+    assert_ne!(exit, 0);
 }
 
 // Category 7: User impl type issues (3 cases)

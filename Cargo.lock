@@ -168,7 +168,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "landin-compiler"
-version = "0.492.0"
+version = "0.493.0"
 dependencies = [
  "clap",
  "lasso",
@@ -199,9 +199,9 @@ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "llvm-sys"
-version = "221.0.1"
+version = "191.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2abcc34a3b190f03c2a61b555f218f529589ff13657bdd2ff8ac3e85f2abe6bb"
+checksum = "d0ad1fffbdac72a40b55aa58b31aa0efe925e277941b6705f128692b27f1d506"
 dependencies = [
  "anyhow",
  "cc",

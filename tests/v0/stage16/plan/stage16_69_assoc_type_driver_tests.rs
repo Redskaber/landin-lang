@@ -21,7 +21,7 @@ fn stage16_69_trait_with_assoc_type_compiles() {
 /// Stage 16.69 test 2: Impl with associated type compiles.
 #[test]
 fn stage16_69_impl_with_assoc_type_compiles() {
-    let src = "trait Container { type Item; fn get(&self) -> i32; } struct MyBox; impl Container for MyWrapper { type Item = i32; fn get(&self) -> i32 { 42 } } fn main() -> i32 { let b = MyBox; b.get() }";
+    let src = "trait Container { type Item; fn get(&self) -> i32; } struct MyBox; impl Container for MyBox { type Item = i32; fn get(&self) -> i32 { 42 } } fn main() -> i32 { let b = MyBox; b.get() }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
