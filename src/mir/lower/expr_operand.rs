@@ -236,7 +236,12 @@ pub(crate) fn lower_expr_to_operand(
             }
             result
         }
-        HirExprKind::Block(block) => control_flow::lower_block(cx, block),
+        HirExprKind::Block(block) => {
+            // Stage 18.270 (TD-RETURN-TY-PATH-SUBSTS Phase 2d continuation):
+            // thread expected_ty into lower_block so the trailing
+            // expression can use it. Per §17.6: same class as Phase 2d.
+            control_flow::lower_block(cx, block, expected_ty)
+        }
         HirExprKind::Call { func, args, .. } => {
             // Stage 18.133 §13.4 J2: extracted to expr_variants.rs.
             // Stage 18.258 (TD-TUPLE-CTOR-TYPECK Phase 2c): thread
@@ -534,7 +539,7 @@ pub(crate) fn lower_expr_to_operand(
 
             // loop_body_start → lower body → goto loop_header
             cx.current_block = loop_body_start;
-            let _body_result = control_flow::lower_block(cx, body);
+            let _body_result = control_flow::lower_block(cx, body, None);
             // Stage 14.68: Only emit Goto if the body didn't diverge.
             if !cx.is_terminated() {
                 cx.terminate_kind(TerminatorKind::Goto(loop_header));
@@ -575,7 +580,7 @@ pub(crate) fn lower_expr_to_operand(
 
             // body_block: lower body, goto cond_block
             cx.current_block = body_block;
-            control_flow::lower_block(cx, body);
+            control_flow::lower_block(cx, body, None);
             // Stage 14.68: Only emit Goto if the body didn't diverge
             // (e.g. via `return`, `break`, or `continue`). Without this
             // check, the Goto would OVERWRITE the Return terminator,
@@ -1310,11 +1315,11 @@ pub(crate) fn lower_expr_to_operand(
         }
 
         // Unsafe block: just lower inner block (unsafety is a typeck concern)
-        HirExprKind::Unsafe(block) => control_flow::lower_block(cx, block),
+        HirExprKind::Unsafe(block) => control_flow::lower_block(cx, block, None),
 
         // Stage 8.5: async/await — MVP: evaluate synchronously
         HirExprKind::Await { expr } => lower_expr_to_operand(cx, expr, None),
-        HirExprKind::Async { block } => control_flow::lower_block(cx, block),
+        HirExprKind::Async { block } => control_flow::lower_block(cx, block, None),
 
         // MethodCall: `receiver.method(args)` → simplified to Call
         HirExprKind::MethodCall {

@@ -282,7 +282,11 @@ fn lower_nested_tuple_destructure(
 /// Lower a block: lower all statements, then
 /// evaluates the trailing expression (if any). Returns the LocalId
 /// of the block's result value.
-pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
+pub(crate) fn lower_block(
+    cx: &mut MirLowerCtxt,
+    block: &HirBlock,
+    expected_ty: Option<&crate::mir::ty::Ty>,
+) -> LocalId {
     for stmt in &block.stmts {
         match stmt {
             HirStmt::Local(local) => {
@@ -721,8 +725,25 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
         }
     }
     // Trailing expression
+    // Stage 18.270 (TD-RETURN-TY-PATH-SUBSTS Phase 2d continuation):
+    // thread expected_ty into the trailing expression so that generic
+    // tuple struct ctors in block tail position can extract substs
+    // from the expected type. This closes the soundness hole where
+    // `fn make() -> Holder<i32> { Holder(true) }` silently accepted
+    // type mismatches because the block's trailing Holder(true) was
+    // lowered with expected_ty=None (so Holder's substs stayed as
+    // Param(T), which unifies with anything).
+    //
+    // Per §17.6 (缺陷纳入 — same class as Phase 2d):
+    // the Phase 2d fix in body_lower.rs threads expected_ty into
+    // body.value, but body.value is a Block, and the Block arm in
+    // lower_expr_to_operand calls lower_block WITHOUT passing
+    // expected_ty. This fix threads expected_ty through lower_block
+    // to the trailing expression.
+    // Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path
+    // for all block trailing expressions.
     if let Some(expr) = &block.expr {
-        lower_expr_to_operand(cx, expr, None)
+        lower_expr_to_operand(cx, expr, expected_ty)
     } else {
         // Stage 14.22: Check if the last statement diverges (return with value,
         // break, continue). If so, the block type is Never (control flow
@@ -783,7 +804,7 @@ pub(crate) fn lower_if(
 
     // Then block
     cx.current_block = then_block;
-    let then_result = lower_block(cx, then);
+    let then_result = lower_block(cx, then, None);
     // Stage 13.21: If the then block ended with `return`/`break`/`continue`,
     // the block is already terminated — skip the assign and Goto.
     if !cx.is_terminated() {

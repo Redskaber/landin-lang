@@ -22543,3 +22543,65 @@ Stage Summary:
 - 3895 tests, 0 failures, zero regression
 - §17.6 "直到审查不出问题为止": continue to investigate path resolution
   in Stage 18.270+
+
+---
+Task ID: stage18.270
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.270 — TD-GENERIC-FN-RETURN-EXPECTED-TY complete fix (Block expected_ty propagation). v0.492.0 (no bump — soundness fix).
+
+Work Log:
+- Baseline: v0.492.0 / 3895 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — "直到审查不出问题为止"
+
+- Root cause investigation (from Stage 18.269):
+  → Phase 2d in body_lower.rs threads expected_ty = return_mir_ty
+    into body tail expression
+  → But body.value is a Block (e.g., `{ Holder(true) }`)
+  → Block arm in lower_expr_to_operand calls lower_block WITHOUT
+    passing expected_ty (was None)
+  → lower_block processes trailing expression with expected_ty=None
+  → So Holder(true) gets expected_ty=None → substs stay empty →
+    Param(T) unifies with anything → soundness hole
+
+- Fix:
+  → Added expected_ty: Option<&Ty> param to lower_block in control_flow.rs
+  → Threaded expected_ty into trailing expression's lower_expr_to_operand
+  → Updated Block arm in expr_operand.rs to pass expected_ty
+  → Updated all other callers (Unsafe, Async, if-then, closure body)
+    to pass None (not in expected_ty context)
+  → Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path for
+    all block trailing expressions
+
+- Verification:
+  → `fn make() -> Holder<i32> { Holder(true) }` now errors with
+    "expected i32, found bool" ✅
+  → Existing valid code still compiles ✅
+
+- Test coverage (5 new tests):
+  → 2 positive: valid fn return + explicit turbofish
+  → 3 negative: bool vs i32, str vs i32, i64 vs i32
+  → Per §9.4.3 1:3+ ratio: 2:3 = 1:1.5 (negative > positive) ✅
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3900 tests (675 lib + 3225 integration), 0 failures
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.270.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - TD-GENERIC-FN-RETURN-EXPECTED-TY: 🟡 PARTIAL → ✅ Resolved
+
+- Version: v0.492.0 (no bump — soundness fix, no API change)
+
+Stage Summary:
+- Stage 18.270 PASSED — TD-GENERIC-FN-RETURN-EXPECTED-TY FULLY CLOSED
+- Root cause: Block arm didn't propagate expected_ty to lower_block
+- Fix: added expected_ty param to lower_block + threaded to trailing expr
+- 3900 tests, 0 failures, zero regression
+- All expected-ty propagation soundness holes now FULLY CLOSED across
+  all expression contexts (let binding, fn call args, struct literal
+  fields, Box::new intrinsic, enum variant ctors, generic struct fields,
+  fn body return)

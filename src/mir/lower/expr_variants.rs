@@ -1024,7 +1024,7 @@ pub(super) fn lower_for_expr(
     // Push loop context (incr_block = continue target, exit_block = break target).
     cx.loop_stack.push((incr_block, exit_block));
     cx.loop_result_locals.push(pat_local); // not used (for-loop has no break value)
-    control_flow::lower_block(cx, body);
+    control_flow::lower_block(cx, body, None);
     cx.loop_result_locals.pop();
     cx.loop_stack.pop();
     // Stage 14.68: Only emit Goto if the body didn't diverge.

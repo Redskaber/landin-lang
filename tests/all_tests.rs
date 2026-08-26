@@ -631,6 +631,10 @@ mod stage18_267_enum_variant_ctor_regression_tests;
 #[path = "v0/stage18/plan/stage18_268_audit_round3_tests.rs"]
 mod stage18_268_audit_round3_tests;
 
+// === Stage 18.270: TD-GENERIC-FN-RETURN-EXPECTED-TY Phase 2d complete fix ===
+#[path = "v0/stage18/plan/stage18_270_fn_return_expected_ty_regression_tests.rs"]
+mod stage18_270_fn_return_expected_ty_regression_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
