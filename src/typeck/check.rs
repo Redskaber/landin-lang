@@ -311,7 +311,14 @@ impl TypeChecker {
                             ));
                         } else {
                             for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
+                                // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg
+                                // order — declared sig input is "expected",
+                                // actual call arg is "found". Previously
+                                // `unify(arg_ty, input_ty)` produced
+                                // "expected <actual>, found <declared>".
+                                // Per §2 原則 3 (显式 > 隐式): error messages
+                                // must match user's mental model.
+                                if let Err(mut e) = self.unify.unify(input_ty, arg_ty, term.span) {
                                     // Stage 15.81: use term.span for unify errors
                                     // (was: Span::DUMMY from mismatch()).
                                     if term.span != Span::DUMMY {
@@ -321,7 +328,9 @@ impl TypeChecker {
                                 }
                             }
                         }
-                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
+                        // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
+                        // sig.output is "expected", dest_ty is "found".
+                        if let Err(mut e) = self.unify.unify(&sig.output, &dest_ty, term.span) {
                             // Stage 15.81: use term.span for unify errors.
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
@@ -337,7 +346,10 @@ impl TypeChecker {
                 if let TyKind::FnPtr(sig) = &func_ty.kind {
                     // Unify each arg with the corresponding input
                     for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                        if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
+                        // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
+                        // declared sig input is "expected", actual call arg
+                        // is "found".
+                        if let Err(mut e) = self.unify.unify(input_ty, arg_ty, term.span) {
                             // Stage 15.81: use term.span for unify errors.
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
@@ -346,7 +358,9 @@ impl TypeChecker {
                         }
                     }
                     // Unify destination with output
-                    if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
+                    // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
+                    // sig.output is "expected", dest_ty is "found".
+                    if let Err(mut e) = self.unify.unify(&sig.output, &dest_ty, term.span) {
                         // Stage 15.81: use term.span for unify errors.
                         if term.span != Span::DUMMY {
                             e.span = term.span;
@@ -389,7 +403,10 @@ impl TypeChecker {
                             ));
                         } else {
                             for (arg_ty, input_ty) in arg_tys.iter().zip(sig_params.iter()) {
-                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
+                                // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg
+                                // order — declared sig input is "expected",
+                                // actual call arg is "found".
+                                if let Err(mut e) = self.unify.unify(input_ty, arg_ty, term.span) {
                                     if term.span != Span::DUMMY {
                                         e.span = term.span;
                                     }
@@ -397,7 +414,9 @@ impl TypeChecker {
                                 }
                             }
                         }
-                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
+                        // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
+                        // sig.output is "expected", dest_ty is "found".
+                        if let Err(mut e) = self.unify.unify(&sig.output, &dest_ty, term.span) {
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
                             }
@@ -442,7 +461,10 @@ impl TypeChecker {
                     .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
                 if requires_bool {
                     let bool_ty = Ty::from_kind(TyKind::Bool);
-                    if let Err(mut e) = self.unify.unify(&discr_ty, &bool_ty, term.span) {
+                    // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
+                    // bool_ty is "expected" (the if-condition requires bool),
+                    // discr_ty is "found" (actual discriminant type).
+                    if let Err(mut e) = self.unify.unify(&bool_ty, &discr_ty, term.span) {
                         // Stage 15.81: override the dummy span with the
                         // actual discriminant span (was: Span::DUMMY).
                         if discr_span != Span::DUMMY {

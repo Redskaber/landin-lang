@@ -21732,3 +21732,75 @@ Stage Summary:
 - §13.4 J1-J6 audit: all 6 judgments still pass post-implementation
 - Phases 2d-2f (return expr + method call + tests cleanup) deferred as
   optional improvements — current fix already closes the soundness hole
+
+---
+Task ID: stage18.259
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.259 — TD-UNIFY-ARG-ORDER batch fix. Swap unify arg order in 5 sites in typeck/check.rs (Call arg/return for FnDef, FnPtr, Closure + Switch discr). v0.492.0 (no bump — error message direction fix only).
+
+Work Log:
+- Baseline: v0.492.0 / 3819 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — same-class unify arg order bug, batched fix per Stage 18.255 action plan
+
+- §17.1 Step 1 Scan:
+  → 设计意图: 03-type-system.md §3.4 + 16-diagnostics.md §2 — declared type is "expected"
+  → 能力边界: 5 sites in typeck/check.rs had swapped direction
+  → 同类型错误: TD-TUPLE-CTOR-TYPECK Phase 1 fixed 2 sites in typeck/infer.rs (Stage 18.255)
+  → 校准基线: L1 (≤50 LOC, 1 file) — pure mechanical swap
+
+- §13.4 J1-J6 audit:
+  → J1 Architecture: ✅ aligns with 03-type-system.md §3.4 + 16-diagnostics.md §2
+  → J2 Single responsibility: ✅ only changes which arg is "expected" vs "found"
+  → J3 One-way flow: ✅ no new data flow — just arg order swap
+  → J4 Compile-concept completeness: ✅ all Call + Switch sites use consistent direction
+  → J5 Stage division: ✅ only touches typeck/check.rs (one file)
+  → J6 Reasonable size: ✅ ~20 LOC change (5 unify calls + comments)
+
+- Soundness impact analysis:
+  → Unify table is symmetric for all Infer↔concrete cases (both orders bind identically)
+  → FnDef↔FnPtr case uses `unify_fndef_with_fnptr` helper — symmetric in a/b
+  → Per §1.0 原則 9 (正确 > 妥协): verified no behavior change, only error message direction
+  → All 3819 prior tests still pass — zero regression
+
+- Implementation:
+  → typeck/check.rs:314 (FnDef call arg): unify(arg_ty, input_ty) → unify(input_ty, arg_ty)
+  → typeck/check.rs:324 (FnDef call return): unify(&dest_ty, &sig.output) → unify(&sig.output, &dest_ty)
+  → typeck/check.rs:340 (FnPtr call arg): same swap
+  → typeck/check.rs:349 (FnPtr call return): same swap
+  → typeck/check.rs:392 (Closure call arg): same swap
+  → typeck/check.rs:400 (Closure call return): same swap
+  → typeck/check.rs:445 (Switch discr): unify(&discr_ty, &bool_ty) → unify(&bool_ty, &discr_ty)
+  → All 5 sites updated with §2 原則 3 (显式 > 隐式) rationale in comments
+
+- Test coverage (12 new tests):
+  → 9 negative: 4 FnDef arg/return + 3 Switch discr (if/while/struct) + 2 Closure call arg
+  → 3 positive: FnDef valid call + Closure valid call + If valid bool condition
+  → Per §9.4.3 1:3+ ratio: 9:3 = 3:1, meets requirement ✅
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3831 tests (675 lib + 3156 integration), 0 failures
+  → Test delta: +12 (stage18_259 regression tests)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.259.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - TD-UNIFY-ARG-ORDER status: 🟡 → ✅ Resolved
+    - Header updated to reflect Stage 18.259 completion
+  → tests/v0/stage18/plan/stage18_259_td_unify_arg_order_regression_tests.rs (12 tests)
+  → tests/all_tests.rs entry added
+
+- 版本: v0.492.0 (no bump — error message direction fix only)
+
+Stage Summary:
+- Stage 18.259 PASSED — TD-UNIFY-ARG-ORDER fully RESOLVED
+- 5 unify call sites in typeck/check.rs swapped to correct direction
+- 12 regression tests added (9 negative + 3 positive, 1:3 ratio ✅)
+- 3831 tests, 0 failures, zero regression
+- §13.4 J1-J6 audit: all 6 judgments pass
+- §17.6 holistic integration: all 9 same-class unify arg order sites now fixed
+- §1.0 原則 9 (正确 > 妥协): soundness preserved — only error message direction changed
+- §2 原則 3 (显式 > 隐式): error messages now match user mental model

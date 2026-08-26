@@ -595,6 +595,10 @@ mod stage18_255_td_tuple_ctor_typeck_regression_tests;
 #[path = "v0/stage18/plan/stage18_256_phase2a_scaffolding_tests.rs"]
 mod stage18_256_phase2a_scaffolding_tests;
 
+// === Stage 18.259: TD-UNIFY-ARG-ORDER batch fix (5 sites in typeck/check.rs) ===
+#[path = "v0/stage18/plan/stage18_259_td_unify_arg_order_regression_tests.rs"]
+mod stage18_259_td_unify_arg_order_regression_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
