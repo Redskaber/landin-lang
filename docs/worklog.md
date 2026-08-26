@@ -23173,3 +23173,55 @@ Work Log:
 - intrinsic_lower.rs (1957 LOC) 单一职责，可接受。
 - expr_variants.rs (1734 LOC) 单一职责，可接受。
 - v0.3 release sign-off 是下一个关键里程碑。
+
+---
+Task ID: stage18.281
+Agent: Super Z (main) — PM-A (协调) + ARCH-A + QA-A + ALG-C + SKL-A
+Task: Stage 18.281 — §14.5 D1-D8 深度审查 + v0.3 Release Sign-off. v0.492.0.
+
+3秒启动自检:
+- 定位: L3（大阶段末尾深度审查）→ §14.5 全部执行
+- 对齐: tech-debt-register 已清理（Stage 18.280），流程文档 v7.3
+- 阻断: 无 P0/P1；仅 2 个 BLOCKED TDs（有明确目标版本）
+
+决策点:
+- 为什么选 A（release sign-off）而不选 B（继续 P3 重构如 borrowck/mod.rs 1934 LOC）？
+  → 引用 §14.5 触发条件 #1：大阶段最末轮 — TD-TUPLE-CTOR-TYPECK 批次全部完成
+  → 引用 §12.1：所有可行 TD 已修复；剩余 2 个 TD 被 BLOCKED，不是"不修复"而是"无法修复"
+  → 引用 §14.5.3：不进入下一阶段的 P2/P3 可记录为技术债 — 均有目标版本
+  → P3 重构（borrowck/mod.rs 等）倍数 < 2.0×，归入 v0.3+ 优化，不阻塞 release
+
+权衡点:
+- 跳过了 §14.6 阶段间深度验证（3 轮）— 为什么安全？
+  → §14.6 已在 Stages 18.265-18.266 完成 3 轮验证
+  → 本阶段是 release sign-off，不是阶段切换 — §14.5 是必要条件，§14.6 已满足
+  → 引用 §14.5.2 不可跳过情况 #2：连续 3 轮收敛后进入下一大阶段前 — §14.6 已在之前完成
+
+Work Log:
+- §3.2 验收全绿:
+  → cargo build --release --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests, 0 failures
+
+- §14.5 D1-D8 八维度审查:
+  → D1 架构健康度: ✅ — one-way flow, no circular deps, all LOC TDs resolved
+  → D2 技术债清单: ✅ — all P0/P1 resolved, 2 BLOCKED TDs (v0.3+/v0.4+)
+  → D3 测试覆盖深度: ✅ — 3914 tests, 10:4 ratio in final audit
+  → D4 下一阶段就绪度: ✅ — v0.3 fully ready, all features complete
+  → D5 设计合理性: ✅ — architecturally sound
+  → D6 性能: ✅ — ~44s build, ~10s test, no O(n²)
+  → D7 文档: ✅ — 26 plan docs + tech-debt-register + process doc v7.3
+  → D8 管道覆盖: ✅ — all 10 expression contexts verified closed
+
+- 委员会投票: 5/5 GO (weighted 5.5/5.5, 100%)
+
+- v0.3 RELEASE SIGNED OFF
+
+下一步:
+- v0.3 release sign-off 完成。下一步由用户决定：
+  (a) v0.4+ 架构工作（TD-INTRINSIC-OVERUSE Phase 2 — 需 primitive type impl, fat ptr, extern C in prelude）
+  (b) P3 优化（borrowck/mod.rs 1934 LOC, region_inference.rs 1789 LOC 重构）
+  (c) 新功能开发
+  (d) 其他用户指定方向
