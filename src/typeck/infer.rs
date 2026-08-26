@@ -538,9 +538,15 @@ impl TypeChecker {
                     // `[1, true]` (Int + Bool mismatch).
                     // Stage 15.83: use stmt_span for unify errors (was:
                     // Span::DUMMY from mismatch(), producing "1:1").
+                    // Stage 18.255 (TD-TUPLE-CTOR-TYPECK Phase 1): swap unify
+                    // arg order — declared type is "expected", actual value is
+                    // "found". Previously `unify(&op_ty, elem_ty)` produced
+                    // "expected <actual>, found <declared>" which is reversed.
+                    // Per §2 原则 3 (显式 > 隐式): error messages must match
+                    // user's mental model (declared type is expected).
                     for op in operands {
                         let op_ty = self.infer_operand(mir, op);
-                        if let Err(mut e) = self.unify.unify(&op_ty, elem_ty, stmt_span) {
+                        if let Err(mut e) = self.unify.unify(elem_ty, &op_ty, stmt_span) {
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
                             }
@@ -561,11 +567,17 @@ impl TypeChecker {
                 // return the Adt type.
                 // Stage 15.83: use stmt_span for unify errors (was:
                 // Span::DUMMY from mismatch(), producing "1:1").
+                // Stage 18.255 (TD-TUPLE-CTOR-TYPECK Phase 1): swap unify
+                // arg order — declared field type is "expected", actual
+                // operand type is "found". Previously `unify(&op_ty, field_ty)`
+                // produced "expected <actual>, found <declared>" which is
+                // reversed. Per §2 原则 3 (显式 > 隐式) + §2 原则 9
+                // (正确 > 妥协): error messages must reflect Rust semantics.
                 AggregateKind::Adt(def_id, _variant, _substs, field_tys) => {
                     for (i, op) in operands.iter().enumerate() {
                         let op_ty = self.infer_operand(mir, op);
                         if let Some(field_ty) = field_tys.get(i) {
-                            if let Err(mut e) = self.unify.unify(&op_ty, field_ty, stmt_span) {
+                            if let Err(mut e) = self.unify.unify(field_ty, &op_ty, stmt_span) {
                                 if stmt_span != Span::DUMMY {
                                     e.span = stmt_span;
                                 }

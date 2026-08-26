@@ -587,6 +587,10 @@ mod stage18_236_ptr_arith_tests;
 #[path = "v0/stage18/plan/stage18_241_str_method_resolve_tests.rs"]
 mod stage18_241_str_method_resolve_tests;
 
+// === Stage 18.255: TD-TUPLE-CTOR-TYPECK Phase 1 fix + Phase 2 design ===
+#[path = "v0/stage18/plan/stage18_255_td_tuple_ctor_typeck_regression_tests.rs"]
+mod stage18_255_td_tuple_ctor_typeck_regression_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
