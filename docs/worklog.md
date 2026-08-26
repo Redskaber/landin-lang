@@ -23290,3 +23290,48 @@ Work Log:
 - 仅剩 1 个 BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2 (需 v0.4+ 语言特性)
 - 可选: P3 LOC 重构 (borrowck/mod.rs 1934 LOC, region_inference.rs 1789 LOC)
 - 可选: loop-aware move tracking (当前 loop 中的 move 可能不被检测)
+
+---
+Task ID: stage18.283
+Agent: Super Z (main) — PM-A (协调) + ARCH-A (审查)
+Task: Stage 18.283 — §18 依赖审查：TD-INTRINSIC-OVERUSE Phase 2 阻塞条件分析。L1（审查 only）。v0.492.0.
+
+3秒启动自检:
+- 定位: L1（文档审查，无代码变更）
+- 对齐: 已查阅 tech-debt-register + method_resolution.rs + intrinsic_lower.rs
+- 阻断: 无 P0/P1
+
+决策点:
+- 为什么选 A（审查 TD-INTRINSIC-OVERUSE Phase 2 阻塞条件）而不选 B（等待用户指定）？
+  → 引用 §18（依赖审查）：主动审查阻塞条件是否可被部分解除
+  → 引用 §20（迭代审计）：顺着同类路径深挖 — 发现阻塞可能被部分解除
+  → 引用 §12（最优 > 最小）：消除根因 — intrinsic 存在的根因是方法解析不支持 primitive types
+
+裁剪点:
+- L1 仅执行 §3.2 验收 + §8 文档同步。跳过 §14.5/§14.6/§7.3。安全理由：纯审查，无代码变更。
+
+Work Log:
+- §18 依赖审查结果:
+  → 阻塞条件 (1) "primitive type impl (impl str)": **部分可推进**
+    - 语法层面已支持（parser/HIR 接受 `impl str { fn ... }`）
+    - 方法解析不支持：resolve_inherent_method (method_resolution.rs:182-184) 只处理 Adt 类型
+    - 需要：扩展 resolve_inherent_method 以匹配 PrimTy 类型名
+  → 阻塞条件 (2) "fat pointer construction": 仍然阻塞
+    - 需要 &str → (ptr, len) 的 MIR lower 支持
+  → 阻塞条件 (3) "extern C in prelude impl": 仍然阻塞
+    - 需要 codegen 对 extern "C" fn 的支持
+
+- 影响范围分析:
+  → src/mir/lower/method_resolution.rs: resolve_inherent_method 需扩展
+  → src/stdlib/prelude.rs: 需要 `impl str { fn len/is_empty/as_bytes }` 
+  → src/mir/lower/intrinsic_lower.rs: 需移除 str method intrinsics
+  → src/typeck/checker.rs: 需验证 str 方法类型检查
+  → 这是 L3 任务（跨 4+ 模块）
+
+- 下一步：需要 §13.5 设计-审查循环产出设计文档，然后分阶段实现
+
+下一步:
+- 设计文档：扩展 resolve_inherent_method 支持 primitive types
+- 实现：在 prelude 中添加 `impl str { fn len(&self) -> usize { ... } }`
+- 迁移：移除 intrinsic_lower.rs 中的 str::len/is_empty/as_bytes intrinsics
+- 测试：验证 str 方法通过标准方法解析而非 intrinsic 工作
