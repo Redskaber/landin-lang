@@ -26,6 +26,8 @@ mod control_flow;
 mod expr_operand;
 mod expr_variants;
 mod field_resolution;
+// Stage 18.273 §13.4 J1-J6: extract intrinsic lowering from expr_variants.rs
+mod intrinsic_lower;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
 mod overflow_assert;

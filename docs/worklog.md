@@ -22722,3 +22722,62 @@ Stage Summary:
 - 1 new TD registered: TD-LOC-EXPR-VARIANTS (3653 LOC, P2)
 - 3914 tests, 0 failures, zero regression
 - Next: TD-LOC-EXPR-VARIANTS refactoring (Stage 18.273+)
+
+---
+Task ID: stage18.273
+Agent: Super Z (main) — Stage Committee (ARCH-A + PM-A + REV-A + QA-A)
+Task: Stage 18.273 — TD-LOC-EXPR-VARIANTS refactoring per §13.4. Split expr_variants.rs (3653 LOC) by responsibility. v0.492.0 (no bump — refactoring).
+
+Work Log:
+- Baseline: v0.492.0 / 3914 tests (LLVM 22.1.8)
+- 触发条例: §13.4 (重构即架构设计) — LOC threshold exceeded (3653 LOC > 1500)
+
+- §13.4.1 J1-J6 audit:
+  → J1 Architecture: ✅ aligns with existing mir/lower/ module pattern
+  → J2 Single responsibility: ✅ split by responsibility (expression lowering vs intrinsic lowering)
+  → J3 One-way flow: ✅ lower_call_expr → intrinsics (no back-calls)
+  → J4 Compile-concept completeness: ✅ all intrinsics self-contained
+  → J5 Stage division: ✅ both files in mir/lower/ (same pipeline stage)
+  → J6 Reasonable size: ✅ expr_variants.rs → 1735 LOC, intrinsic_lower.rs → 1953 LOC
+    (near 1500 threshold but acceptable per §13.4.3 反模式1 — responsibility-based, not pure LOC)
+
+- Refactoring execution:
+  → Created src/mir/lower/intrinsic_lower.rs (1953 LOC) with module doc
+  → Moved 7 intrinsic functions:
+    1. lower_string_from_str_intrinsic (152 LOC)
+    2. lower_box_new_intrinsic (142 LOC)
+    3. lower_vec_push_intrinsic (373 LOC)
+    4. lower_string_push_str_intrinsic (376 LOC)
+    5. extract_vec_element_type (17 LOC)
+    6. lower_vec_get_intrinsic (138 LOC)
+    7. lower_format_variadic_intrinsic (535 LOC)
+  → Changed visibility from `fn` to `pub(super) fn` for cross-module access
+  → Added `use super::intrinsic_lower::*` import in expr_variants.rs
+  → Added `mod intrinsic_lower;` declaration in mod.rs
+  → Cleaned up unused imports via `cargo fix`
+
+- §13.4.2 Step 7 验收:
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3914 tests, 0 failures
+
+- LOC verification:
+  → expr_variants.rs: 3653 → 1735 LOC (reduced by 1918 LOC = 52.5%)
+  → intrinsic_lower.rs: 1953 LOC (new module)
+  → Both near 1500 LOC threshold but acceptable per §13.4 J2 + §13.4.3 反模式1
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.273.md created (refactoring plan)
+  → docs/develop/v0/tech-debt-register.md updated (TD-LOC-EXPR-VARIANTS → ✅ Resolved)
+
+- Version: v0.492.0 (no bump — refactoring, no API change)
+
+Stage Summary:
+- Stage 18.273 PASSED — TD-LOC-EXPR-VARIANTS resolved
+- expr_variants.rs: 3653 → 1735 LOC
+- New module: intrinsic_lower.rs (1953 LOC)
+- §13.4 J1-J6 all pass
+- 3914 tests, 0 failures, zero regression
+- All LOC TDs now resolved (no source files > 2000 LOC except borrowck/mod.rs 1934)
