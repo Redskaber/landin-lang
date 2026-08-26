@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-25 (last updated Stage 18.271 — final comprehensive audit complete)
+> **Date**: 2026-08-25 (last updated Stage 18.274 — stale TD cleanup + v0.3 release readiness assessment)
 > **Version**: v0.492.0
-> **Status**: Active — all P0/P1 items resolved. §17.6 "直到审查不出问题为止" audit COMPLETE — ALL expected-ty propagation soundness holes FULLY CLOSED across all 10 expression contexts (let binding, fn call args, struct literal fields, Box::new intrinsic, enum variant ctors, generic struct fields, fn body return, if branches, match arms, array elements). 3914 tests, 0 failures. TD-TUPLE-CTOR-TYPECK batch (Stages 18.255-18.271, 17 stages) complete. Remaining: TD-INTRINSIC-OVERUSE Phase 2 (blocked on v0.4+ language features), TD-DROP-MOVED-LOCALS full (deferred to v0.3+ flow-sensitive tracking).
+> **Status**: Active — all P0/P1 items resolved. §17.6 "直到审查不出问题为止" audit COMPLETE. ALL expected-ty soundness holes CLOSED across 10 expression contexts. ALL LOC TDs resolved (no source files > 2000 LOC). 3914 tests, 0 failures. **v0.3 is READY for release sign-off.** Remaining: TD-INTRINSIC-OVERUSE Phase 2 (BLOCKED on v0.4+ language features), TD-DROP-MOVED-LOCALS full (BLOCKED on v0.3+ flow-sensitive tracking).
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 

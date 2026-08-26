@@ -22781,3 +22781,62 @@ Stage Summary:
 - §13.4 J1-J6 all pass
 - 3914 tests, 0 failures, zero regression
 - All LOC TDs now resolved (no source files > 2000 LOC except borrowck/mod.rs 1934)
+
+---
+Task ID: stage18.274
+Agent: Super Z (main) — Stage Committee (ARCH-A + REV-A + QA-A + PM-A + ALG-C)
+Task: Stage 18.274 — Restore project from uploaded tar.gz + LLVM setup + full validation + §14.5 D1-D8 final deep review + v0.3 release sign-off. v0.492.0.
+
+Work Log:
+- Environment restoration:
+  → Previous project state: v0.67.0 (LLVM 191) — OLD
+  → Backed up old project to landin-stage0-old-v0.67-backup
+  → Extracted uploaded tar.gz: landin-stage0-v0.492.0-stage18.273-td-loc-expr-variants-refactoring-r424.tar.gz
+  → Restored to v0.492.0 (LLVM 221) ✅
+
+- LLVM environment setup:
+  → Ran: source scripts/setup-llvm-env.sh
+  → LLVM 22.1.8 installed at /tmp/llvm-22-prefix
+  → llvm-config --version: 22.1.8 ✅
+
+- Rust toolchain:
+  → Installed via rustup (curl https://sh.rustup.rs | sh -s -- -y)
+  → rustc 1.98.0, cargo 1.98.0
+
+- Full validation pipeline (§3.2):
+  → cargo clean ✅
+  → cargo build --release --features llvm-backend ✅ 0 warnings (46s)
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests, 0 failures (~10s)
+
+- §14.5 D1-D8 final deep review:
+  → D1 Architecture: ✅ — all one-way flow, no circular deps, all LOC TDs resolved
+  → D2 Tech Debt: ✅ — all P0/P1 resolved, 2 P3 blocked (v0.4+ and v0.3+)
+  → D3 Test Coverage: ✅ — 3914 tests, +116 this batch, 10:4 ratio in final audit
+  → D4 Next Stage: ✅ — v0.3 fully ready, all features complete
+  → D5 Design: ✅ — architecturally sound, no over/under-engineering
+  → D6 Performance: ✅ — ~46s build, ~10s test, no O(n²)
+  → D7 Documentation: ✅ — 19 plan docs + tech-debt-register comprehensive
+  → D8 Pipeline: ✅ — all stages covered, 10 expression contexts verified
+
+- v0.3 release sign-off:
+  → Committee vote: 5/5 GO (weighted 5.5/5.5, 100%)
+  → All v0.3 features verified complete (15 features listed)
+  → v0.3 is READY for release sign-off
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.274.md created
+  → docs/develop/v0/tech-debt-register.md updated (header reflects v0.3 READY)
+
+- Version: v0.492.0 (no bump — release sign-off)
+
+Stage Summary:
+- Stage 18.274 PASSED — v0.3 RELEASE SIGNED OFF
+- Project restored from uploaded tar.gz (v0.492.0, LLVM 22.1.8)
+- Full validation pipeline: ALL GREEN (3914 tests, 0 failures)
+- §14.5 D1-D8: all ✅
+- Committee vote: 5/5 GO
+- v0.3 is READY for release
+- Next: v0.4+ architectural work (TD-INTRINSIC-OVERUSE Phase 2)
