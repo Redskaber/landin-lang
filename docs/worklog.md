@@ -21238,3 +21238,50 @@ Stage Summary:
 - All macro_expand code files now < 1500 LOC (mod.rs + collection + expansion)
 - builtin_macros.rs (2069 LOC) is the only remaining file > 1500
 - 3798 tests, 0 failures, zero regression
+
+---
+Task ID: stage18.249
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.249 — TD-LOC-MACRO-EXPAND complete: Split builtin_macros.rs (2069 → 130 + 686 + 664 + 601). v0.490.0 → v0.491.0.
+
+Work Log:
+- Baseline: v0.490.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: TD-LOC-MACRO-EXPAND 🟡 Partial — builtin_macros.rs 2069 LOC > 1500 threshold
+
+- Implementation:
+  1. Converted builtin_macros.rs to directory module (builtin_macros/mod.rs)
+  2. Split into 3 sub-modules:
+     - print_macros.rs (686 LOC): make_print/assert/panic/vec/format/dbg/panic_msg/write macro rules
+     - compile_time_macros.rs (664 LOC): make_stringify/concat/env/file/line/module_path/include_str/matches/cfg/option_env
+     - low_level_macros.rs (601 LOC): make_asm/compile_error/cfg_attr/unreachable/trace_macros/format_args/noop
+  3. mod.rs (130 LOC): build_builtin_macro_table + make_builtin_macro_rule dispatcher + imports
+  4. Made all functions pub(crate) for cross-module access
+  5. Used explicit function imports (not glob) in mod.rs for clarity (§1.0 原則 3 显式>隐式)
+  6. Removed trailing doc comments from extracted files (cleanup)
+
+- Per §13.4 J2 (单一职责): each sub-module owns one macro category
+- Per §1.0 原則 5 (去除兼容思维): stale doc comments removed
+- Per §1.0 原則 6 (通解>特解): one pattern for module extraction
+
+- File sizes after split:
+  → builtin_macros/mod.rs: 130 LOC ✅ < 1500
+  → print_macros.rs: 686 LOC ✅ < 1500
+  → compile_time_macros.rs: 664 LOC ✅ < 1500
+  → low_level_macros.rs: 601 LOC ✅ < 1500
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated: TD-LOC-MACRO-EXPAND ✅ COMPLETE — ALL files < 1500
+
+- 版本: v0.491.0 (bump — builtin_macros split complete)
+
+Stage Summary:
+- Stage 18.249 PASSED — TD-LOC-MACRO-EXPAND COMPLETE
+- builtin_macros.rs 2069 LOC → mod.rs(130) + print_macros(686) + compile_time_macros(664) + low_level_macros(601)
+- ALL macro_expand code files now < 1500 LOC ✅
+- TD-LOC-MACRO-EXPAND: 🟡 Partial → ✅ Complete
+- 3798 tests, 0 failures, zero regression

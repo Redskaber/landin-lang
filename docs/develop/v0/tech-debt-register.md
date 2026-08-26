@@ -32,7 +32,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-LOC-MIR-LOWER-EXPR (partial continued) | mir/lower/expr_operand.rs 2503 LOC → expr_operand.rs 2171 + call_lower.rs 362 (call helpers extracted); MethodCall arm extraction attempted+reverted (type signature issues); expr_operand still > 1500, needs Stage 18.133 | 18.132 | 🟡 Partial |
 | TD-LOC-MIR-LOWER-EXPR (complete) | mir/lower/expr_operand.rs 2171 LOC → expr_operand.rs 1156 + expr_variants.rs 1016 (4 largest match arms extracted as functions: Path + Call + For + MethodCall); all 4 mir/lower/ files < 1500 LOC | 18.133 | ✅ |
 | TD-LOC-DRIVER (partial) | driver.rs 4038 LOC → driver/mod.rs 1729 + driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164 (validation + scan + object safety extracted); mod.rs slightly > 1500 (compile_inner ~1442 LOC), acceptable — further split deferred | 18.134 | 🟡 Partial — mod.rs 1729 LOC, close to threshold |
-| TD-LOC-MACRO-EXPAND (partial) | macro_expand.rs 5962 LOC → macro_expand/mod.rs 1138 + collection.rs 240 + expansion.rs 201 + expansion_tests.rs 2345 + builtin_macros.rs 2069; mod.rs + expansion.rs now < 1500 ✅; expansion_tests.rs 2345 (test file, exempt from threshold); builtin_macros.rs 2069 still > 1500 | 18.247-18.248 | 🟡 Partial — mod.rs + expansion.rs < 1500 ✅; builtin_macros.rs 2069 LOC needs split |
+| TD-LOC-MACRO-EXPAND (complete) | macro_expand.rs 5962 LOC → macro_expand/mod.rs 1138 + collection.rs 240 + expansion.rs 201 + expansion_tests.rs 2345 (test) + builtin_macros/mod.rs 130 + print_macros.rs 686 + compile_time_macros.rs 664 + low_level_macros.rs 601; ALL code files now < 1500 LOC ✅ | 18.247-18.249 | ✅ All macro_expand code files < 1500 LOC |
 
 ## 2. Remaining Tech Debt (v0.2 Phase 2+)
 
