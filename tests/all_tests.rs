@@ -639,6 +639,10 @@ mod stage18_270_fn_return_expected_ty_regression_tests;
 #[path = "v0/stage18/plan/stage18_271_final_comprehensive_audit_tests.rs"]
 mod stage18_271_final_comprehensive_audit_tests;
 
+// === Stage 18.282: TD-DROP-MOVED-LOCALS full — flow-sensitive move tracking ===
+#[path = "v0/stage18/plan/stage18_282_moved_state_tests.rs"]
+mod stage18_282_moved_state_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

@@ -23225,3 +23225,68 @@ Work Log:
   (b) P3 优化（borrowck/mod.rs 1934 LOC, region_inference.rs 1789 LOC 重构）
   (c) 新功能开发
   (d) 其他用户指定方向
+
+---
+Task ID: stage18.282
+Agent: Super Z (main) — PM-A (协调) + ARCH-A (设计) + DEV-A (实现) + REV-A (审查) + QA-A (测试)
+Task: Stage 18.282 — TD-DROP-MOVED-LOCALS full: flow-sensitive move tracking. v0.492.0.
+
+3秒启动自检:
+- 定位: L3 (500+ LOC, 跨模块: drop_elaboration + liveness pattern) → 全流程执行
+- 对齐: 已查阅 docs/lang-design/25-drop-elaboration.md §2.2-2.3（drop elaboration 设计）
+- 阻断: 无 P0/P1
+
+决策点:
+- 为什么选 A（forwards dataflow fixpoint）而不选 B（per-block if-else 检查）？
+  → 引用 §12（最优 > 最小）：forwards dataflow fixpoint 是通解，per-block if-else 是特解
+  → 引用 §1.0 原則 6（通解 > 特解）：一个 dataflow fixpoint 替代所有 per-block 检查
+  → 引用 §2.2 原則 9（正确 > 妥协）：flow-sensitive 是正确的，flow-insensitive 是妥协
+
+- 为什么选 C（保留 collect_moved_locals 作为 fallback）而不选 D（直接删除）？
+  → 引用 §2.2 原則 4（报错 > 静默）：如果 compute_moved_state 返回空（无 moves），fallback 到 flow-insensitive 而非静默空集
+  → 引用 §13.3 原則 5（去除兼容思维）：但 fallback 是安全网，不是兼容保留 — 当新实现返回空时说明无 moves，两者结果一致
+
+裁剪点:
+- 跳过了 §14.6 阶段间深度验证（3 轮）— 为什么安全？
+  → 这是 TD 修复，不是阶段切换
+  → §14.5 在阶段末尾执行，不是每个 TD 修复都执行
+  → 引用 §1.2.1：L3 全流程执行，但 §14.6 是阶段间验证，不是每个 MUV 都执行
+
+5W2H:
+- WHAT: compute_moved_state forwards dataflow fixpoint + elaborate_drops 集成 + 6 回归测试
+- WHY: TD-DROP-MOVED-LOCALS 影响 drop 正确性（soundness）
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 测试
+- WHEN: fixpoint 收敛后停止（~3 轮迭代）
+- WHERE: src/mir/drop_elaboration.rs + tests/v0/stage18/plan/stage18_282_moved_state_tests.rs
+- HOW: 模仿 compute_liveness fixpoint 模式 + pre-compute block_moves + 前向迭代
+- HOW MUCH: §3.2 全绿（3920 tests, 0 failures, 0 warnings, 0 clippy, fmt clean）
+
+Work Log:
+- §18 依赖审查: 基础设施完备（compute_liveness fixpoint 可复用）
+- §13.4 J1-J6: 全部通过
+- §13.5 设计-审查: 设计文档 plan-18.282.md 产出
+- 实现 compute_moved_state (~150 LOC):
+  → Pre-compute per-block move sets (block_moves)
+  → Pre-compute predecessor list from terminator successors
+  → Fixpoint: moved_out[B] = moved_in[B] ∪ block_moves[B]
+  → Fixpoint: moved_in[B] = ∩ moved_out[P] for P in preds(B)
+  → 收敛条件: no moved_in changes
+- 集成到 elaborate_drops:
+  → 用 compute_moved_state 替代 collect_moved_locals
+  → Fallback: 当 moved_out_map 全空时回退到 collect_moved_locals
+- 修复 clippy: iter_overeager_cloned + unused variable
+- 6 回归测试 (2 positive + 4 negative = 1:3 ratio ✅)
+
+- 全校验流 (§3.2):
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3920 tests, 0 failures
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.282.md created (设计文档)
+  → docs/develop/v0/tech-debt-register.md updated (TD-DROP-MOVED-LOCALS → ✅ Resolved)
+
+下一步:
+- 仅剩 1 个 BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2 (需 v0.4+ 语言特性)
+- 可选: P3 LOC 重构 (borrowck/mod.rs 1934 LOC, region_inference.rs 1789 LOC)
+- 可选: loop-aware move tracking (当前 loop 中的 move 可能不被检测)

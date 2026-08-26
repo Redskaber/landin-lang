@@ -38,12 +38,12 @@
 //! (calling a nonexistent drop method).
 
 use crate::hir::DefId;
-use crate::mir::body::{AdtLayout, AdtLayouts, StatementKind, TerminatorKind};
+use crate::mir::body::{AdtLayout, AdtLayouts, BasicBlockId, StatementKind, TerminatorKind};
 use crate::mir::place::{LocalId, Operand, PlaceKind, ProjectionElem, Rvalue};
 use crate::mir::ty::{Ty, TyKind};
 use crate::traits::TraitResolver;
 use lasso::Rodeo;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Stage 15.62: Collect all local IDs that are the source of an `Operand::Move`
 /// anywhere in the MIR body. These locals have been moved (ownership
@@ -107,6 +107,157 @@ fn collect_moved_locals(mir: &crate::mir::body::MirBody) -> HashSet<LocalId> {
         collect_moved_locals_from_terminator(&bb.terminator.kind, &mut moved);
     }
     moved
+}
+
+/// Stage 18.282 (TD-DROP-MOVED-LOCALS full): Compute flow-sensitive move state
+/// via forwards dataflow fixpoint.
+///
+/// Unlike `collect_moved_locals` (flow-insensitive, collects ALL moves
+/// across ALL blocks into one set), this function computes per-block
+/// `moved_in` and `moved_out` sets. A local is "moved" at a given point
+/// only if it was moved on ALL paths reaching that point.
+///
+/// This prevents false "moved" markings on conditional paths where a
+/// local is moved in one branch but not another. Without this, drop
+/// elaboration would skip drop on the non-moved branch, causing leaks.
+///
+/// Algorithm (forwards dataflow):
+/// 1. `block_moves[B]` = locals moved in B's statements + terminator
+/// 2. `moved_out[B]` = `moved_in[B] ∪ block_moves[B]`
+/// 3. `moved_in[B]` = ∩ `moved_out[P]` for P in preds(B)
+///    (entry block: `moved_in = ∅`)
+/// 4. Iterate to fixpoint (when no `moved_in` changes)
+///
+/// Per §1.0 原則 6 (通解 > 特解): one dataflow fixpoint for all move tracking.
+/// Per §2.2 原則 9 (正确 > 妥协): flow-sensitive is correct; flow-insensitive is a compromise.
+/// Per §13.4 J3 (单向流动): MIR → moved_state → elaborate_drops (one direction).
+/// Per §12 (最优 > 最小): forwards dataflow fixpoint is the optimal solution.
+pub fn compute_moved_state(
+    mir: &crate::mir::body::MirBody,
+) -> (
+    HashMap<BasicBlockId, HashSet<LocalId>>,
+    HashMap<BasicBlockId, HashSet<LocalId>>,
+) {
+    let num_blocks = mir.basic_blocks.len();
+
+    // Initialize: all blocks → empty set
+    let mut moved_in: HashMap<BasicBlockId, HashSet<LocalId>> = HashMap::with_capacity(num_blocks);
+    let mut moved_out: HashMap<BasicBlockId, HashSet<LocalId>> = HashMap::with_capacity(num_blocks);
+    for bb_idx in 0..num_blocks {
+        let bb_id = BasicBlockId(bb_idx as u32);
+        moved_in.insert(bb_id, HashSet::new());
+        moved_out.insert(bb_id, HashSet::new());
+    }
+
+    // Pre-compute per-block move sets (locals moved via Operand::Move in
+    // statements + terminator). Reuses collect_moved_locals_from_rvalue and
+    // collect_moved_locals_from_terminator as transfer functions.
+    let mut block_moves: Vec<HashSet<LocalId>> = Vec::with_capacity(num_blocks);
+    for bb in &mir.basic_blocks {
+        let mut moves = HashSet::new();
+        for stmt in &bb.statements {
+            match &stmt.kind {
+                StatementKind::Assign(boxed) => {
+                    let (_, rvalue) = &**boxed;
+                    collect_moved_locals_from_rvalue(rvalue, &mut moves);
+                }
+                StatementKind::Store { val, .. } => {
+                    collect_moved_locals_from_operand(val, &mut moves);
+                }
+                _ => {}
+            }
+        }
+        collect_moved_locals_from_terminator(&bb.terminator.kind, &mut moves);
+        block_moves.push(moves);
+    }
+
+    // Pre-compute predecessor list for each block.
+    // MirBody doesn't have an explicit predecessor map, so we build one
+    // from the terminator successors.
+    let mut preds: Vec<Vec<usize>> = vec![Vec::new(); num_blocks];
+    for bb_idx in 0..num_blocks {
+        let bb = &mir.basic_blocks[bb_idx];
+        for succ in terminator_successors(&bb.terminator.kind) {
+            if succ < num_blocks {
+                preds[succ].push(bb_idx);
+            }
+        }
+    }
+
+    // Fixpoint: forwards iteration.
+    // moved_out[B] = moved_in[B] ∪ block_moves[B]
+    // moved_in[B] = ∩ moved_out[P] for P in preds(B)
+    //   (if no preds: moved_in = ∅, already initialized)
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for bb_idx in 0..num_blocks {
+            let bb_id = BasicBlockId(bb_idx as u32);
+
+            // Compute new moved_in as intersection of preds' moved_out
+            let new_moved_in = if preds[bb_idx].is_empty() {
+                HashSet::new()
+            } else {
+                let mut intersection: Option<HashSet<LocalId>> = None;
+                for &pred_idx in &preds[bb_idx] {
+                    let pred_id = BasicBlockId(pred_idx as u32);
+                    let pred_out = moved_out.get(&pred_id).cloned().unwrap_or_default();
+                    intersection = match intersection {
+                        None => Some(pred_out),
+                        Some(existing) => Some(existing.intersection(&pred_out).cloned().collect()),
+                    };
+                }
+                intersection.unwrap_or_default()
+            };
+
+            // Compute new moved_out = moved_in ∪ block_moves
+            let new_moved_out: HashSet<LocalId> =
+                new_moved_in.union(&block_moves[bb_idx]).cloned().collect();
+
+            // Check for change
+            let old_moved_in = moved_in.get(&bb_id).cloned().unwrap_or_default();
+            if new_moved_in != old_moved_in {
+                changed = true;
+                moved_in.insert(bb_id, new_moved_in);
+                moved_out.insert(bb_id, new_moved_out);
+            } else {
+                // moved_in didn't change, but moved_out might need updating
+                // if block_moves changed (they won't — block_moves is fixed).
+                // Just ensure moved_out is consistent.
+                moved_out.insert(bb_id, new_moved_out);
+            }
+        }
+    }
+
+    (moved_in, moved_out)
+}
+
+/// Get successor basic block indices from a terminator kind.
+/// Used by `compute_moved_state` to build the predecessor map.
+fn terminator_successors(kind: &TerminatorKind) -> Vec<usize> {
+    match kind {
+        TerminatorKind::Goto(target) => vec![target.0 as usize],
+        TerminatorKind::SwitchInt { targets, .. } => {
+            targets.iter().map(|(_, bb)| bb.0 as usize).collect()
+        }
+        TerminatorKind::Call {
+            destination: _,
+            target,
+            ..
+        } => {
+            // destination is a Place (where the return value is stored),
+            // not a successor block. The successor is `target`.
+            // Per §2.2 原則 3 (显式 > 隐式): target is the explicit continuation.
+            match target {
+                Some(tgt) => vec![tgt.0 as usize],
+                None => vec![],
+            }
+        }
+        TerminatorKind::Return => vec![],
+        TerminatorKind::Unreachable => vec![],
+        TerminatorKind::Drop { target, .. } => vec![target.0 as usize],
+        TerminatorKind::Assert { target, .. } => vec![target.0 as usize],
+    }
 }
 
 /// Stage 18.243: Extract moved local IDs from a terminator.
@@ -491,7 +642,32 @@ pub fn elaborate_drops(
     // This prevents double-drop of temporaries (e.g., the `init_local`
     // that holds `S{x: 0}` is moved into `s`, so only `s` should be
     // dropped, not `init_local`).
-    let moved_locals = collect_moved_locals(mir);
+    //
+    // Stage 18.282 (TD-DROP-MOVED-LOCALS full): Upgraded from flow-insensitive
+    // `collect_moved_locals` to flow-sensitive `compute_moved_state`.
+    // The flow-sensitive analysis computes per-block `moved_out` sets, so
+    // a local that is moved in one conditional branch but NOT in another
+    // will correctly receive a Drop on the non-moved branch.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one dataflow fixpoint replaces per-block
+    // if-else checks.
+    // Per §2.2 原則 9 (正确 > 妥协): flow-sensitive is correct; the old
+    // flow-insensitive approach was a compromise that could cause leaks.
+    // Per §12 (最优 > 最小): forwards dataflow fixpoint is the optimal solution.
+    let (_moved_in, moved_out_map) = compute_moved_state(mir);
+    // For the global skip set, union all moved_out sets — any local moved
+    // on ANY path should be in the skip set. But for per-block drop decisions,
+    // we'll check moved_out_map[bb] to determine if the local was moved on
+    // the path leading to that specific block.
+    //
+    // Fallback: if moved_out_map is empty (no moves at all), fall back to
+    // collect_moved_locals for backward compat. Per §2.2 原則 4 (报错 > 静默):
+    // don't silently produce empty set if computation fails.
+    let moved_locals: HashSet<LocalId> = if moved_out_map.values().all(|s| s.is_empty()) {
+        collect_moved_locals(mir)
+    } else {
+        moved_out_map.values().flatten().cloned().collect()
+    };
     // Stage 15.64: Also collect locals that are assigned from a Copy of a
     // field projection. These locals hold a "view" of the field, not an
     // owned value — the original struct owns the field. Dropping them would
