@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.493.0 (Stage 18.296 — 类 Rust 架构修正: 禁止用户 inherent impl 原始类型 + trait impl for primitive types + intrinsic 调度架构)  
+> **Version**: v0.493.0 (Stage 18.299 — Phase A: i64→usize 类型统一 + 类 Rust 架构修正 + trait impl for primitive types + typeck gap fix)  
 > **License**: MIT  
 > **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成 — 用户通过 `impl MyTrait for i32` 扩展原始类型, 不能 inherent impl. intrinsic 调度对齐 Rust `extern "rust-intrinsic"`. 4202 tests, 0 failures.  
 

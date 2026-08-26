@@ -47,7 +47,7 @@ pub(super) fn lower_string_from_str_intrinsic(
 ) -> LocalId {
     use crate::mir::place::AggregateKind;
 
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
     let u8_ptr_ty = Ty::new(
         TyKind::RawPtr(
             crate::mir::ty::Mutability::Mutable,
@@ -57,13 +57,13 @@ pub(super) fn lower_string_from_str_intrinsic(
     );
 
     // Step 1: Extract len from &str fat pointer (field 1).
-    let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
     cx.push_assign(
         Place::local(len_local, expr.span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(src_local, expr.span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span: expr.span,
         })),
@@ -174,7 +174,7 @@ pub(super) fn lower_string_from_str_intrinsic(
                 string_def_id.unwrap_or(crate::hir::DefId::new(0)),
                 0,
                 std::vec::Vec::new().into(),
-                vec![u8_ptr_ty.clone(), i64_ty.clone(), i64_ty.clone()],
+                vec![u8_ptr_ty.clone(), usize_ty.clone(), usize_ty.clone()],
             ),
             vec![
                 Operand::Copy(Place::local(alloc_dest, expr.span)),
@@ -221,15 +221,15 @@ pub(super) fn lower_box_new_intrinsic(
     // Box::new: fallback 8 (safe over-allocation - extra bytes unused by Deref load).
     let size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 8);
 
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
 
     // Step 2: Create size constant and call __landin_alloc(size).
-    let size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    let size_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
     cx.push_assign(
         Place::local(size_local, expr.span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(size as u128),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         expr.span,
     );
@@ -406,7 +406,7 @@ pub(super) fn lower_vec_push_intrinsic(
     use crate::mir::ty::ConstVal;
 
     let span = expr.span;
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
     let bool_ty = Ty::new(TyKind::Bool, span);
 
     // Stage 18.208: Extract the element type T from `Vec<T>` (or `&Vec<T>`).
@@ -445,13 +445,13 @@ pub(super) fn lower_vec_push_intrinsic(
     );
 
     // Step 2: Extract vec.len (field 1, i64).
-    let len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(len_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(recv_local, span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span,
         })),
@@ -459,13 +459,13 @@ pub(super) fn lower_vec_push_intrinsic(
     );
 
     // Step 3: Extract vec.cap (field 2, i64).
-    let cap_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let cap_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(cap_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(recv_local, span)),
-                ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(2), usize_ty.clone()),
             ),
             span,
         })),
@@ -474,12 +474,12 @@ pub(super) fn lower_vec_push_intrinsic(
 
     // Step 4: Compute elem_size from val type (single source of truth).
     let elem_size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 4);
-    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let elem_size_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(elem_size_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(elem_size as u128),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
@@ -521,7 +521,7 @@ pub(super) fn lower_vec_push_intrinsic(
             Operand::Copy(Place::local(cap_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(0),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -548,7 +548,7 @@ pub(super) fn lower_vec_push_intrinsic(
     // Per §1.0 原則 6 (通解>特例): same pattern as if/else result locals
     // (control_flow.rs:31 uses new_local_with_mut for PHI-like assignments).
     let new_cap_local = cx.mir.new_local_with_mut(
-        i64_ty.clone(),
+        usize_ty.clone(),
         None,
         span,
         crate::mir::ty::Mutability::Mutable,
@@ -557,7 +557,7 @@ pub(super) fn lower_vec_push_intrinsic(
         Place::local(new_cap_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(4),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
@@ -565,7 +565,7 @@ pub(super) fn lower_vec_push_intrinsic(
 
     // === nonzero_cap_bb: new_cap = cap + cap (2x growth) ===
     cx.current_block = nonzero_cap_bb;
-    let doubled_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let doubled_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(doubled_local, span),
         Rvalue::BinaryOp(
@@ -586,7 +586,7 @@ pub(super) fn lower_vec_push_intrinsic(
     cx.current_block = alloc_bb;
 
     // new_bytes = new_cap * elem_size
-    let new_bytes_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let new_bytes_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(new_bytes_local, span),
         Rvalue::BinaryOp(
@@ -598,7 +598,7 @@ pub(super) fn lower_vec_push_intrinsic(
     );
 
     // old_bytes = cap * elem_size (passed to __landin_realloc for diagnostics)
-    let old_bytes_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let old_bytes_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(old_bytes_local, span),
         Rvalue::BinaryOp(
@@ -662,12 +662,12 @@ pub(super) fn lower_vec_push_intrinsic(
                 ptr: Place {
                     kind: PlaceKind::Projection(
                         Box::new(Place::local(recv_local, span)),
-                        ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+                        ProjectionElem::Field(FieldId(2), usize_ty.clone()),
                     ),
                     span,
                 },
                 val: Operand::Copy(Place::local(new_cap_local, span)),
-                val_ty: i64_ty.clone(),
+                val_ty: usize_ty.clone(),
             },
             span,
         },
@@ -725,7 +725,7 @@ pub(super) fn lower_vec_push_intrinsic(
     );
 
     // new_len = BinaryOp(Add, len, 1)
-    let new_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let new_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(new_len_local, span),
         Rvalue::BinaryOp(
@@ -733,7 +733,7 @@ pub(super) fn lower_vec_push_intrinsic(
             Operand::Copy(Place::local(len_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(1),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -746,12 +746,12 @@ pub(super) fn lower_vec_push_intrinsic(
                 ptr: Place {
                     kind: PlaceKind::Projection(
                         Box::new(Place::local(recv_local, span)),
-                        ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                        ProjectionElem::Field(FieldId(1), usize_ty.clone()),
                     ),
                     span,
                 },
                 val: Operand::Copy(Place::local(new_len_local, span)),
-                val_ty: i64_ty.clone(),
+                val_ty: usize_ty.clone(),
             },
             span,
         },
@@ -811,7 +811,7 @@ pub(super) fn lower_string_push_str_intrinsic(
     use crate::mir::ty::ConstVal;
 
     let span = expr.span;
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
     let bool_ty = Ty::new(TyKind::Bool, span);
     let u8_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::U8), span);
     let u8_ptr_ty = Ty::new(
@@ -834,13 +834,13 @@ pub(super) fn lower_string_push_str_intrinsic(
     );
 
     // Step 2: Extract str.len (field 1, i64).
-    let len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(len_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(recv_local, span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span,
         })),
@@ -848,13 +848,13 @@ pub(super) fn lower_string_push_str_intrinsic(
     );
 
     // Step 3: Extract str.cap (field 2, i64).
-    let cap_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let cap_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(cap_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(recv_local, span)),
-                ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(2), usize_ty.clone()),
             ),
             span,
         })),
@@ -876,13 +876,13 @@ pub(super) fn lower_string_push_str_intrinsic(
     );
 
     // Step 5: Extract src.len (field 1) from &str fat pointer.
-    let src_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let src_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(src_len_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(src_local, span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span,
         })),
@@ -890,7 +890,7 @@ pub(super) fn lower_string_push_str_intrinsic(
     );
 
     // Step 6: new_len = len + src_len.
-    let new_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let new_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(new_len_local, span),
         Rvalue::BinaryOp(
@@ -935,7 +935,7 @@ pub(super) fn lower_string_push_str_intrinsic(
             Operand::Copy(Place::local(cap_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(0),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -956,7 +956,7 @@ pub(super) fn lower_string_push_str_intrinsic(
     cx.current_block = zero_cap_bb;
     // Mutable because assigned in zero_cap_bb, nonzero_cap_bb, and grow_body_bb.
     let new_cap_local = cx.mir.new_local_with_mut(
-        i64_ty.clone(),
+        usize_ty.clone(),
         None,
         span,
         crate::mir::ty::Mutability::Mutable,
@@ -965,7 +965,7 @@ pub(super) fn lower_string_push_str_intrinsic(
         Place::local(new_cap_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(4),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
@@ -1006,7 +1006,7 @@ pub(super) fn lower_string_push_str_intrinsic(
 
     // === grow_body_bb: new_cap = new_cap + new_cap (2x)  ← BACK-EDGE ===
     cx.current_block = grow_body_bb;
-    let doubled_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let doubled_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(doubled_local, span),
         Rvalue::BinaryOp(
@@ -1078,12 +1078,12 @@ pub(super) fn lower_string_push_str_intrinsic(
                 ptr: Place {
                     kind: PlaceKind::Projection(
                         Box::new(Place::local(recv_local, span)),
-                        ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+                        ProjectionElem::Field(FieldId(2), usize_ty.clone()),
                     ),
                     span,
                 },
                 val: Operand::Copy(Place::local(new_cap_local, span)),
-                val_ty: i64_ty.clone(),
+                val_ty: usize_ty.clone(),
             },
             span,
         },
@@ -1154,12 +1154,12 @@ pub(super) fn lower_string_push_str_intrinsic(
                 ptr: Place {
                     kind: PlaceKind::Projection(
                         Box::new(Place::local(recv_local, span)),
-                        ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                        ProjectionElem::Field(FieldId(1), usize_ty.clone()),
                     ),
                     span,
                 },
                 val: Operand::Copy(Place::local(new_len_local, span)),
-                val_ty: i64_ty.clone(),
+                val_ty: usize_ty.clone(),
             },
             span,
         },
@@ -1252,7 +1252,7 @@ pub(super) fn lower_vec_get_intrinsic(
     idx_local: LocalId,
 ) -> LocalId {
     let span = expr.span;
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
 
     // Stage 18.208: Extract the element type T from `Vec<T>` (or `&Vec<T>`).
     // Per §10 DRY: single source of truth for element-type extraction.
@@ -1285,13 +1285,13 @@ pub(super) fn lower_vec_get_intrinsic(
     );
 
     // Step 2: Extract `vec.len` (field 1, `i64`) via Place::Projection.
-    let len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(len_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(recv_local, span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span,
         })),
@@ -1301,13 +1301,13 @@ pub(super) fn lower_vec_get_intrinsic(
     // Step 3: Cast `index` to `i64` (if needed). Numeric cast handles
     // i32→i64, u32→i64, etc. Per §1.0 原則 6 (通解>特例): one cast path
     // for all integer index types.
-    let idx_i64 = cx.mir.new_local(i64_ty.clone(), None, span);
+    let idx_usize = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
-        Place::local(idx_i64, span),
+        Place::local(idx_usize, span),
         Rvalue::Cast(
             crate::mir::place::CastKind::Numeric,
             Operand::Copy(Place::local(idx_local, span)),
-            i64_ty.clone(),
+            usize_ty.clone(),
         ),
         span,
     );
@@ -1319,7 +1319,7 @@ pub(super) fn lower_vec_get_intrinsic(
         Place::local(cond_local, span),
         Rvalue::BinaryOp(
             crate::mir::place::BinOp::Lt,
-            Operand::Copy(Place::local(idx_i64, span)),
+            Operand::Copy(Place::local(idx_usize, span)),
             Operand::Copy(Place::local(len_local, span)),
         ),
         span,
@@ -1356,7 +1356,7 @@ pub(super) fn lower_vec_get_intrinsic(
         Place::local(elem_ptr_local, span),
         Rvalue::GetElementPtr {
             base: Operand::Copy(Place::local(data_ptr_local, span)),
-            indices: vec![Operand::Copy(Place::local(idx_i64, span))],
+            indices: vec![Operand::Copy(Place::local(idx_usize, span))],
             result_ty: elem_ptr_ty.clone(),
         },
         span,
@@ -1427,7 +1427,7 @@ pub(super) fn lower_format_variadic_intrinsic(
     use crate::mir::ty::ConstVal;
 
     let span = expr.span;
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
     let u8_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::U8), span);
     let u8_ptr_ty = Ty::new(
         TyKind::RawPtr(crate::mir::ty::Mutability::Mutable, Box::new(u8_ty.clone())),
@@ -1467,12 +1467,12 @@ pub(super) fn lower_format_variadic_intrinsic(
     // Step 1: Allocate a fixed-size output buffer (4096 bytes).
     // Matches C helper MVP (runtime.rs:351: char buffer[4096]).
     let buf_size: i64 = 4096;
-    let buf_size_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let buf_size_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(buf_size_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(buf_size as u128),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
@@ -1511,13 +1511,13 @@ pub(super) fn lower_format_variadic_intrinsic(
     );
 
     // Step 3: Extract fmt.len (field 1) from &str fat pointer.
-    let fmt_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let fmt_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(fmt_len_local, span),
         Rvalue::Use(Operand::Copy(Place {
             kind: PlaceKind::Projection(
                 Box::new(Place::local(fmt_local, span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                ProjectionElem::Field(FieldId(1), usize_ty.clone()),
             ),
             span,
         })),
@@ -1529,7 +1529,7 @@ pub(super) fn lower_format_variadic_intrinsic(
     // fmt_idx = 0 (current read position in format string)
     // arg_idx = 1 (next arg to consume, 1-based; arg_locals[0] is fmt)
     let out_len_local = cx.mir.new_local_with_mut(
-        i64_ty.clone(),
+        usize_ty.clone(),
         None,
         span,
         crate::mir::ty::Mutability::Mutable,
@@ -1538,13 +1538,13 @@ pub(super) fn lower_format_variadic_intrinsic(
         Place::local(out_len_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(0),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
 
     let fmt_idx_local = cx.mir.new_local_with_mut(
-        i64_ty.clone(),
+        usize_ty.clone(),
         None,
         span,
         crate::mir::ty::Mutability::Mutable,
@@ -1553,13 +1553,13 @@ pub(super) fn lower_format_variadic_intrinsic(
         Place::local(fmt_idx_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(0),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
 
     let arg_idx_local = cx.mir.new_local_with_mut(
-        i64_ty.clone(),
+        usize_ty.clone(),
         None,
         span,
         crate::mir::ty::Mutability::Mutable,
@@ -1568,7 +1568,7 @@ pub(super) fn lower_format_variadic_intrinsic(
         Place::local(arg_idx_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(1),
-            ty: i64_ty.clone(),
+            ty: usize_ty.clone(),
         })),
         span,
     );
@@ -1628,13 +1628,13 @@ pub(super) fn lower_format_variadic_intrinsic(
     );
 
     // Cast byte to i64 for comparison (BinaryOp needs matching types).
-    let byte_i64_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let byte_usize_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
-        Place::local(byte_i64_local, span),
+        Place::local(byte_usize_local, span),
         Rvalue::Cast(
             crate::mir::place::CastKind::Numeric,
             Operand::Copy(Place::local(byte_local, span)),
-            i64_ty.clone(),
+            usize_ty.clone(),
         ),
         span,
     );
@@ -1645,10 +1645,10 @@ pub(super) fn lower_format_variadic_intrinsic(
         Place::local(is_open_brace_local, span),
         Rvalue::BinaryOp(
             crate::mir::place::BinOp::Eq,
-            Operand::Copy(Place::local(byte_i64_local, span)),
+            Operand::Copy(Place::local(byte_usize_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(123), // '{'
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -1704,13 +1704,13 @@ pub(super) fn lower_format_variadic_intrinsic(
         cx.current_block = arg_block;
 
         // Cast arg to i64.
-        let arg_i64_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let arg_i64_local = cx.mir.new_local(usize_ty.clone(), None, span);
         cx.push_assign(
             Place::local(arg_i64_local, span),
             Rvalue::Cast(
                 crate::mir::place::CastKind::Numeric,
                 Operand::Copy(Place::local(*arg_local, span)),
-                i64_ty.clone(),
+                usize_ty.clone(),
             ),
             span,
         );
@@ -1728,7 +1728,7 @@ pub(super) fn lower_format_variadic_intrinsic(
         );
 
         // Compute remaining capacity: buf_size - out_len.
-        let remaining_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let remaining_local = cx.mir.new_local(usize_ty.clone(), None, span);
         cx.push_assign(
             Place::local(remaining_local, span),
             Rvalue::BinaryOp(
@@ -1746,7 +1746,7 @@ pub(super) fn lower_format_variadic_intrinsic(
             span,
         );
         let i64_to_str_fn_local = cx.mir.new_local(i64_to_str_fn_ty, None, span);
-        let written_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let written_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
         let i64_to_str_cont = cx.new_block();
         cx.terminate_kind_and_goto(
             TerminatorKind::Call {
@@ -1764,7 +1764,7 @@ pub(super) fn lower_format_variadic_intrinsic(
         );
 
         // out_len += written_len
-        let new_out_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let new_out_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
         cx.push_assign(
             Place::local(new_out_len_local, span),
             Rvalue::BinaryOp(
@@ -1781,7 +1781,7 @@ pub(super) fn lower_format_variadic_intrinsic(
         );
 
         // fmt_idx += 2 (skip "{}")
-        let new_fmt_idx_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let new_fmt_idx_local = cx.mir.new_local(usize_ty.clone(), None, span);
         cx.push_assign(
             Place::local(new_fmt_idx_local, span),
             Rvalue::BinaryOp(
@@ -1789,7 +1789,7 @@ pub(super) fn lower_format_variadic_intrinsic(
                 Operand::Copy(Place::local(fmt_idx_local, span)),
                 Operand::Constant(Const {
                     val: ConstVal::Int(2),
-                    ty: i64_ty.clone(),
+                    ty: usize_ty.clone(),
                 }),
             ),
             span,
@@ -1801,7 +1801,7 @@ pub(super) fn lower_format_variadic_intrinsic(
         );
 
         // arg_idx += 1
-        let new_arg_idx_local = cx.mir.new_local(i64_ty.clone(), None, span);
+        let new_arg_idx_local = cx.mir.new_local(usize_ty.clone(), None, span);
         cx.push_assign(
             Place::local(new_arg_idx_local, span),
             Rvalue::BinaryOp(
@@ -1809,7 +1809,7 @@ pub(super) fn lower_format_variadic_intrinsic(
                 Operand::Copy(Place::local(arg_idx_local, span)),
                 Operand::Constant(Const {
                     val: ConstVal::Int(1),
-                    ty: i64_ty.clone(),
+                    ty: usize_ty.clone(),
                 }),
             ),
             span,
@@ -1864,7 +1864,7 @@ pub(super) fn lower_format_variadic_intrinsic(
     );
 
     // out_len += 1
-    let lit_new_out_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let lit_new_out_len_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(lit_new_out_len_local, span),
         Rvalue::BinaryOp(
@@ -1872,7 +1872,7 @@ pub(super) fn lower_format_variadic_intrinsic(
             Operand::Copy(Place::local(out_len_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(1),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -1884,7 +1884,7 @@ pub(super) fn lower_format_variadic_intrinsic(
     );
 
     // fmt_idx += 1
-    let lit_new_fmt_idx_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let lit_new_fmt_idx_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(lit_new_fmt_idx_local, span),
         Rvalue::BinaryOp(
@@ -1892,7 +1892,7 @@ pub(super) fn lower_format_variadic_intrinsic(
             Operand::Copy(Place::local(fmt_idx_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(1),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
@@ -1911,7 +1911,7 @@ pub(super) fn lower_format_variadic_intrinsic(
 
     // Stage 18.231: cap = out_len + 1 (matches C helper's `result_len + 1`
     // convention — the +1 accounts for the null terminator byte).
-    let cap_val_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    let cap_val_local = cx.mir.new_local(usize_ty.clone(), None, span);
     cx.push_assign(
         Place::local(cap_val_local, span),
         Rvalue::BinaryOp(
@@ -1919,14 +1919,14 @@ pub(super) fn lower_format_variadic_intrinsic(
             Operand::Copy(Place::local(out_len_local, span)),
             Operand::Constant(Const {
                 val: ConstVal::Int(1),
-                ty: i64_ty.clone(),
+                ty: usize_ty.clone(),
             }),
         ),
         span,
     );
 
     // Construct the String struct via Aggregate.
-    // Stage 18.231: field_tys are [u8_ptr_ty, i64_ty, i64_ty] (ptr, len, cap).
+    // Stage 18.231: field_tys are [u8_ptr_ty, usize_ty, usize_ty] (ptr, len, cap).
     let dest = cx.mir.new_local(string_ty.clone(), None, span);
     let after = cx.new_block();
     cx.push_assign(
@@ -1936,7 +1936,7 @@ pub(super) fn lower_format_variadic_intrinsic(
                 string_def_id.unwrap_or(crate::hir::DefId::new(0)),
                 0,
                 std::vec::Vec::new().into(),
-                vec![u8_ptr_ty.clone(), i64_ty.clone(), i64_ty.clone()],
+                vec![u8_ptr_ty.clone(), usize_ty.clone(), usize_ty.clone()],
             ),
             vec![
                 Operand::Copy(Place::local(out_ptr_local, span)),

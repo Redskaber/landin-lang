@@ -62,7 +62,7 @@ use super::MirLowerCtxt;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 pub(crate) enum PrimitiveIntrinsic {
-    /// `str::len()` → Field(1) projection of the fat pointer (returns i64).
+    /// `str::len()` → Field(1) projection of the fat pointer (returns usize).
     StrLen,
     /// `str::is_empty()` → Field(1) + BinOp::Eq with 0 (returns bool).
     StrIsEmpty,
@@ -194,14 +194,14 @@ pub(crate) fn emit_primitive_intrinsic(
     }
 }
 
-/// `str::len()` → Field(1) projection of the fat pointer (returns i64).
+/// `str::len()` → Field(1) projection of the fat pointer (returns usize).
 ///
-/// `&str` is a fat pointer `{ ptr, len: i64 }`. The length is field 1.
+/// `&str` is a fat pointer `{ ptr, len: usize }`. The length is field 1.
 /// Emit: `dest = &recv.1` (copy of the len field).
 ///
 /// Per §1.0 原則 6 (通解>特例): one fat pointer layout for all &str.
 fn emit_str_len(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> LocalId {
-    let dest_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let dest_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
     let dest = cx.mir.new_local(dest_ty.clone(), None, span);
     let cont = cx.new_block();
     cx.push_assign(
@@ -235,7 +235,7 @@ fn emit_str_len(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> Local
 /// Per §1.0 原則 6 (通解>特例): reuse the len() Field projection pattern.
 fn emit_str_is_empty(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> LocalId {
     // Step 1: Extract len field.
-    let len_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let len_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), span);
     let len_local = cx.mir.new_local(len_ty.clone(), None, span);
     cx.push_assign(
         Place::local(len_local, span),
@@ -283,7 +283,7 @@ fn emit_str_is_empty(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> 
 
 /// `str::as_bytes()` → no-op (return receiver).
 ///
-/// `&str` and `&[u8]` have the SAME LLVM fat pointer layout `{ ptr, i64 }`.
+/// `&str` and `&[u8]` have the SAME LLVM fat pointer layout `{ ptr, usize }`.
 /// The conversion is a no-op at the MIR level — just return the receiver
 /// local. The type system handles the type change (str → [u8]).
 ///

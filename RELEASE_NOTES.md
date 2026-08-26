@@ -7,9 +7,11 @@
 
 ---
 
-## v0.493.0 — Stage 18.296 (类 Rust 架构修正 + trait impl for primitive types)
+## v0.493.0 — Stage 18.299 (Phase A: i64→usize 类型统一 + 类 Rust 架构修正)
 
 ### Overview
+
+Phase A 完成: i64 → usize 类型统一。消除 Rust 模型偏差 #3 (设计文档说 usize, 实现用 i64)。
 
 类 Rust 架构修正完成。Landin 现在对齐 Rust 的原始类型扩展模型:
 

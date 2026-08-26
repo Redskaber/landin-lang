@@ -107,7 +107,7 @@ struct Box<T>(*mut T)
 // Per §1.0 原則 6 (通解>特例): one String type — no per-encoding special cases.
 // Per §2 原則 9 (正确>妥协): the &str alias compromise is removed — real
 // owned String is the correct design.
-struct String { ptr: *mut u8, len: i64, cap: i64 }
+struct String { ptr: *mut u8, len: usize, cap: usize }
 // Stage 18.185 (TD-STRING-INTRINSICS): String methods.
 //
 // String::len() — returns the byte length (field access).
@@ -118,8 +118,8 @@ struct String { ptr: *mut u8, len: i64, cap: i64 }
 // Per §1.0 原則 6 (通解>特例): methods defined in prelude source, not
 // intrinsics — reuses existing field access + method resolution.
 impl String {
-    fn len(&self) -> i64 { self.len }
-    fn new() -> String { String { ptr: 0 as *mut u8, len: 0, cap: 0 } }
+    fn len(&self) -> usize { self.len }
+    fn new() -> String { String { ptr: 0 as *mut u8, len: 0usize, cap: 0usize } }
 }
 // Stage 18.195 (TD-VEC-MVP): Vec<T> — owned dynamic array.
 //
@@ -130,13 +130,13 @@ impl String {
 // Per §1.0 原則 6 (通解>特例): one Vec type for all T (generic, not per-type).
 // Per §2 原則 9 (正确>妥协): MVP uses ptr/len/cap layout (not Vec<u8> wrapper
 // like Rust's Vec<T> { buf: RawVec<T>, len }). Simplification acceptable.
-struct Vec<T> { ptr: *mut T, len: i64, cap: i64 }
+struct Vec<T> { ptr: *mut T, len: usize, cap: usize }
 // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec methods via prelude impl.
 // Per §1.0 原則 6 (通解 > 特解): methods defined in prelude source, not
 // hardcoded MIR lower intrinsics. Standard method resolution handles these.
 impl<T> Vec<T> {
-    fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0, cap: 0 } }
-    fn len(&self) -> i64 { self.len }
+    fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0usize, cap: 0usize } }
+    fn len(&self) -> usize { self.len }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //
@@ -165,7 +165,7 @@ impl<T> Vec<T> {
 // checker.rs (KNOWN_INTRINSIC_METHODS) — typeck works naturally with
 // the real prelude signatures.
 impl str {
-    fn len(&self) -> i64 { loop {} }
+    fn len(&self) -> usize { loop {} }
     fn is_empty(&self) -> bool { loop {} }
     fn as_bytes(&self) -> &[u8] { loop {} }
 }

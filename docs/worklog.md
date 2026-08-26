@@ -23964,3 +23964,109 @@ Work Log:
   → (B) Phase 2-B: String::as_str (需 lang feature)
   → (C) Phase 2-C: extern "C" in prelude impl
   → (D) P3 LOC 重构
+
+---
+Task ID: stage18.297
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.297 — 修复 typeck gap: trait not implemented for type X 应报错 + 12 个 TODO 测试改回 assert_ne. L2. v0.493.0.
+
+决策点:
+- 为什么在 dyn Trait dispatch 前检查 receiver type 而不选在 typeck 后检查?
+  → 引用 §12 (最优>最小): 根因是 dyn Trait dispatch 在 MIR lower 阶段按方法名匹配 dyn_trait_plan, 不检查 receiver type. 在 dispatch 决策点检查 type match 是根因修复.
+  → 引用 §1.0 原則 6 (通解>特解): 一个 type match 检查处理所有类型 (ADT + primitive + Infer).
+  → 引用 §2.2 原則 4 (报错>静默): 不匹配时 fall through 到 "no method found" 错误路径.
+
+裁剪点:
+- L2 执行 §3.2 全校验流. 跳过 §14.5 (L2 用 §7.3 替代).
+
+5W2H:
+- WHAT: 在 dyn Trait dispatch 前检查 receiver type 是否匹配 dyn_trait_plan 的 type_name + 12 个 TODO 测试改回 assert_ne + 修复 2 个旧 dyn trait 测试 + 修复 1 个 assoc type 测试 + 文档 + 打包
+- WHY: typeck gap — `impl T for bool` 后调用 `5i32.m()` 编译成功 (exit=0), 应该报错 "no method m found for type i32"
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/expr_variants.rs (dyn Trait dispatch 路径) + tests/
+- HOW: (1) 在 dyn Trait dispatch 前检查 recv_type_name == call.type_name; (2) 不匹配或 Infer → fall through 到 error path; (3) 匹配 → dyn Trait dispatch (正确); (4) 12 个 TODO 测试改回 assert_ne; (5) 修复 2 个旧 dyn trait 测试 (期望 0 dyn calls 而非 1/2); (6) 修复 1 个 assoc type 测试 (MyWrapper → MyBox typo)
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean. Package: 4.4MB.
+
+Work Log:
+- 5W2H 剖析: What=5i32.m() 编译成功当 T 只为 bool 实现, Why=dyn Trait dispatch 按方法名匹配不检查 type, Where=expr_variants.rs:1169-1191
+- Rust 设计依据: Rust 在 trait resolution 阶段就拒绝不匹配的 impl — 不会生成 dyn dispatch code for wrong type
+- Rust 哲学: 显式>隐式 — dispatch 决策必须显式检查 type match; 让非法状态不可表示 — 不应生成 type mismatch 的 dyn call
+- 修复: 在 dyn Trait dispatch 路径前添加 recv_type_name == call.type_name 检查
+  → ADT: 通过 HIR lookup 获取 type name
+  → Primitive: 通过 name_of_primitive_ty 获取 type name
+  → Infer: name_of_primitive_ty 返回 None → recv_type_name = "" → 不匹配 → fall through to error
+- 验证: `5i32.m()` 当 T 只为 bool → "no method m found for type i32" ✅
+- 12 个 TODO 测试改回 assert_ne (exit=1, 报错正确) ✅
+- 修复 2 个旧 dyn trait 测试: Infer receiver 不匹配 plan type_name → 期望 0 dyn calls (而非 1/2)
+- 修复 1 个 assoc type 测试: MyWrapper → MyBox (原测试有 typo)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release ✅ 4202 tests (675 lib + 3527 integration), 0 failures, 0 ignored
+- §19 打包: download/landin-stage0-v0.493.0-stage18.297-typeck-gap-trait-dispatch-r1.tar.gz (4.4MB)
+- 文档: README.md + RELEASE_NOTES.md 更新到 Stage 18.297
+
+下一步:
+- v0.493.0 完整交付: 4202 tests, 0 failures, fmt+clippy clean, 文档+打包完成
+- 可选下一步:
+  → (A) Phase 2-B: String::as_str (需 lang feature)
+  → (B) Phase 2-C: extern "C" in prelude impl
+  → (C) P3 LOC 重构
+  → (D) 修复 pre-existing gap: field access on primitive type not caught (self.nonexistent on i32)
+
+---
+Task ID: stage18.298
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 18.298 — 深度架构审查: Landin vs Rust 模型全面对比与重新规划. L3 (架构审查). v0.493.0 (no bump — design).
+
+3秒启动自检:
+- 定位: L3 (架构审视 + 重新规划)
+- 对齐: 已查阅 docs/lang-design/03-type-system.md §5.6, §01 inherent impl rule, §09 stdlib primitive methods + Rust 完整模型
+- 阻断: 无 P0/P1 (4202 tests 全绿). 用户指出架构片面性 — ARCH-A 审查范围.
+
+决策点:
+- 为什么产出架构审查报告而不直接实施修复?
+  → 引用 §13.5 (设计-审查循环): 7 个维度的片面性需要系统性规划, 不是逐案修复.
+  → 引用 §12 (最优>最小): 每个片面点都有根因 (language feature gap), 需要按依赖排序实施.
+  → 引用 §1.0 原則 6 (通解>特解): 目标架构是 "ALL real bodies, NO intrinsic dispatch, NO early interception" — 这是通解.
+
+裁剪点:
+- L3 执行 §13.5 设计-审查循环 (产出 plan-18.298.md). 跳过 §14.5/§14.6 (本阶段是设计审视, 不是代码变更).
+
+5W2H:
+- WHAT: 7 个维度的片面性审查 + 重新规划 (4 Phase 实施路径)
+- WHY: 用户指出 "很多维度上都是片面且是特解而非最优" — 需要系统性对比 Rust 模型
+- WHO: ARCH-A 审查 + PM-A 规划
+- WHEN: 审查报告完成后停止 (不实施代码变更)
+- WHERE: docs/develop/v0/stage-18/plan-18.298.md
+- HOW: (1) 5W2H 剖析 7 个片面点; (2) 对比 Rust 官方设计; (3) 基于 Rust 哲学判断每个片面点的严重性; (4) 产出 4 Phase 实施路径
+- HOW MUCH: 0 代码变更, 0 测试变更 (纯设计审查)
+
+Work Log:
+- 维度 1 (marker body + intrinsic dispatch): str::len/is_empty/as_bytes 用 marker body + lookup_primitive_intrinsic, 但 i64::is_zero/bool::to_int 用 real body. 两条 dispatch 路径 — 特解. 根因: 不支持 fat pointer 字段访问语法.
+- 维度 2 (6 个 early interception): String::as_str/from_str/push_str, Vec::push/get, Box::new — 每个有独立的 if method_name == "xxx" 检查 + 专用 lower 函数. 根因: 不支持 extern "C" in prelude impl body.
+- 维度 3 (i64 vs usize): 设计文档说 usize, 实现用 i64. fat pointer len 字段是 i64, String/Vec len/cap 字段是 i64, str::len 返回 i64. 与 Rust 不一致.
+- 维度 4 (as_bytes type mismatch): as_bytes intrinsic 是 no-op (返回 receiver), 但 &str 和 &[u8] 可能有 typeck 类型不匹配.
+- 维度 5 (format! macro): 整个 format! 实现是一个大的 intrinsic 函数, 而非宏展开 + real codegen.
+- 维度 6 (STDLIB_ALLOC_TYPES): 硬编码 13 个类型名列表 — 每新增 alloc 类型需要修改.
+- 维度 7 (orphan rule): 未实现 (设计文档 §03 §5.6: B1 v0.2+) — 合理 deferred.
+
+- 重新规划 (4 Phase):
+  → Phase A (P1, L2): i64 → usize 统一 — 修改 fat pointer/String/Vec 字段类型 + str::len 返回类型
+  → Phase B (P1, L3): Fat pointer 字段访问语法 → str::len/is_empty/as_bytes 用 real body → 移除 marker body + intrinsic dispatch + primitive_intrinsics.rs
+  → Phase C (P2, L3): extern "C" in prelude impl → String/Vec/Box 方法用 real body → 移除 6 个 early interception + intrinsic_lower.rs (1957 LOC)
+  → Phase D (P3, L3): format! macro → 宏展开 + real codegen → 移除 lower_format_variadic_intrinsic
+
+- 目标架构 (类 Rust 完整模型):
+  → ALL primitive methods have REAL bodies
+  → NO marker body, NO intrinsic dispatch, NO early interception
+  → ALL use standard method resolution
+  → usize for all length/size types
+  → extern "C" for runtime calls (alloc/memcpy/realloc)
+
+下一步:
+- 架构审查完成. 7 个片面点已识别, 4 Phase 实施路径已规划.
+- 建议从 Phase A (i64 → usize 统一) 开始 — 最小依赖, 最大一致性提升.
+- Phase A → Phase B → Phase C → Phase D 依次实施, 每个阶段完整交付 (§3.2 + 文档 + 打包).

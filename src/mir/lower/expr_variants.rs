@@ -1504,7 +1504,7 @@ pub(super) fn lower_method_call_expr(
                     ),
                     expr.span,
                 );
-                let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+                let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
 
                 // Extract ptr (field 0) and len (field 1) from String.
                 let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
@@ -1519,22 +1519,22 @@ pub(super) fn lower_method_call_expr(
                     })),
                     expr.span,
                 );
-                let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+                let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
                 cx.push_assign(
                     Place::local(len_local, expr.span),
                     Rvalue::Use(Operand::Copy(Place {
                         kind: PlaceKind::Projection(
                             Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                            ProjectionElem::Field(FieldId(1), usize_ty.clone()),
                         ),
                         span: expr.span,
                     })),
                     expr.span,
                 );
 
-                // Construct &str fat pointer { ptr, i64 }.
+                // Construct &str fat pointer { ptr, usize }.
                 // Stage 18.189: We build a Tuple first, then Cast it to &str.
-                // The Tuple and &str have the same LLVM layout ({ ptr, i64 }),
+                // The Tuple and &str have the same LLVM layout ({ ptr, usize }),
                 // so the cast is a no-op at codegen level, but it makes the
                 // MIR type correct for typeck.
                 let str_ty = Ty::new(
@@ -1546,7 +1546,7 @@ pub(super) fn lower_method_call_expr(
                     expr.span,
                 );
                 let tuple_ty = Ty::new(
-                    TyKind::Tuple(vec![u8_ptr_ty.clone(), i64_ty.clone()]),
+                    TyKind::Tuple(vec![u8_ptr_ty.clone(), usize_ty.clone()]),
                     expr.span,
                 );
                 let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
