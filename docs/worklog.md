@@ -21804,3 +21804,82 @@ Stage Summary:
 - §17.6 holistic integration: all 9 same-class unify arg order sites now fixed
 - §1.0 原則 9 (正确 > 妥协): soundness preserved — only error message direction changed
 - §2 原則 3 (显式 > 隐式): error messages now match user mental model
+
+---
+Task ID: stage18.260
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.260 — Phase 2d-2f gap analysis. Verify TD-TUPLE-CTOR-TYPECK soundness hole is fully closed. Identify remaining gaps. v0.492.0 (no bump — analysis only).
+
+Work Log:
+- Baseline: v0.492.0 / 3831 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — verify completeness before declaring TD fully resolved
+
+- Gap analysis approach:
+  → Wrote 5 tests covering different expression contexts where ctor calls appear:
+    1. fn return expr: `fn f() -> Wrapper<i32> { Wrapper(true) }`
+    2. if branches: `if true { Holder(42) } else { Holder(true) }` (with `: Holder<i32>`)
+    3. match arms: `match x { _ => Holder(true) }` (with `: Holder<i32>`)
+    4. array elements: `[Holder(42), Holder(true)]` (with `: [Holder<i32>; 2]`)
+    5. fn call arg: `take_holder(Holder(true))` (with `fn take_holder(h: Holder<i32>)`)
+
+- Test results:
+  → 4 of 5 cases: ✅ CLOSED — typeck catches via existing unify paths
+  → 1 case: 🔴 GAP — fn call arg path remains soundness hole
+  → Identified new TD: TD-TUPLE-CTOR-CALL-ARG (Phase 2e deferred)
+
+- Root cause analysis for Phase 2e gap:
+  → MIR lower doesn't have fn_sigs access (built in writeback, AFTER MIR lower)
+  → lower_call_expr lowers each arg via lower_expr_to_operand(cx, a, None)
+  → arg Holder(true) lowers to Adt(holder_def, []) — empty substs
+  → typeck unify silently accepts Adt(def, []) ↔ Adt(def, [i32]) per unify.rs:742
+
+- Fix options evaluated:
+  → Option A: thread fn_sigs into MIR lower (architectural change)
+  → Option B: typeck-level fix via unify table modification (violates §11)
+  → Option C: pre-compute generic_adt_def_ids in resolver
+  → Option D: defer to v0.3+ when trait solver / GATs require fn_sigs access
+
+- Selected: Option D (defer to v0.3+)
+  → Rationale: gap is narrow (only call args of generic tuple struct ctors)
+  → All other cases (let binding, return expr, if/else, match, array) are closed
+  → Architectural changes (Options A/B/C) risk regressions in stable code
+  → v0.3+ will naturally require fn_sigs access in MIR lower
+  → Workaround: explicit turbofish (take_holder(Holder::<i32>(true))) catches today
+  → Per §1.0 原則 9 (正确 > 妥协): compromise justified by narrow gap + workaround
+  → Per §17.6: documented as MVP with fix plan
+
+- §13.4 J1-J6 audit pre-done for future Phase 2e (Option A):
+  → J1 Architecture: ✅ requires 06-mir.md §3.3 update for fn_sigs availability
+  → J2 Single responsibility: ✅ fn_sigs access encapsulated
+  → J3 One-way flow: ✅ fn_sigs flows driver → MIR lower (no back-edges)
+  → J4 Compile-concept completeness: ✅ fn_sigs is single coherent concept
+  → J5 Stage division: ✅ touches MIR lower + driver only
+  → J6 Reasonable size: ✅ ~150 LOC across 3-4 files
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3836 tests (675 lib + 3161 integration), 0 failures
+  → Test delta: +5 (stage18_260 gap analysis tests)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.260.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - Header updated to reflect Stage 18.260 gap analysis
+    - New TD-TUPLE-CTOR-CALL-ARG entry added (Phase 2e deferred)
+  → tests/v0/stage18/plan/stage18_260_phase2d_2f_gap_analysis_tests.rs (5 tests)
+  → tests/all_tests.rs entry added
+
+- 版本: v0.492.0 (no bump — gap analysis only, no behavior change)
+
+Stage Summary:
+- Stage 18.260 PASSED — gap analysis complete
+- 4 of 5 cases already closed by Phase 2c + typeck's existing unify paths
+- 1 narrow gap identified: fn call arg path (Phase 2e needed)
+- New TD-TUPLE-CTOR-CALL-ARG registered (Phase 2e deferred to v0.3+)
+- 3836 tests, 0 failures, zero regression
+- §13.4 J1-J6 audit pre-done for future Phase 2e implementation
+- §17.6 holistic defect integration: gap documented as MVP with fix plan
+- §1.0 原則 9 (正确 > 妥协): compromise justified by narrow gap + workaround

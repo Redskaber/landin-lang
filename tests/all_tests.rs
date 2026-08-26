@@ -599,6 +599,10 @@ mod stage18_256_phase2a_scaffolding_tests;
 #[path = "v0/stage18/plan/stage18_259_td_unify_arg_order_regression_tests.rs"]
 mod stage18_259_td_unify_arg_order_regression_tests;
 
+// === Stage 18.260: Phase 2d-2f gap analysis (verify soundness hole fully closed) ===
+#[path = "v0/stage18/plan/stage18_260_phase2d_2f_gap_analysis_tests.rs"]
+mod stage18_260_phase2d_2f_gap_analysis_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
