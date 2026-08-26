@@ -238,8 +238,11 @@ pub(crate) fn lower_expr_to_operand(
         }
         HirExprKind::Block(block) => control_flow::lower_block(cx, block),
         HirExprKind::Call { func, args, .. } => {
-            // Stage 18.133 §13.4 J2: extracted to expr_variants.rs
-            super::expr_variants::lower_call_expr(cx, expr, func, args)
+            // Stage 18.133 §13.4 J2: extracted to expr_variants.rs.
+            // Stage 18.258 (TD-TUPLE-CTOR-TYPECK Phase 2c): thread
+            // expected_ty into lower_call_expr so it can extract substs
+            // from the expected type when turbofish is absent.
+            super::expr_variants::lower_call_expr(cx, expr, func, args, expected_ty)
         }
         HirExprKind::If {
             cond, then, else_, ..

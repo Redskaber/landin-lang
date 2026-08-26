@@ -235,23 +235,26 @@ fn test_array_mixed_element_types_errors() {
 }
 
 // ============================================================================
-// Phase 2 — DEFERRED (soundness hole, no turbofish + inferred type).
+// Phase 2 — FIXED (Stage 18.258, was DEFERRED).
 //
-// Per §17.6 缺陷纳入: documented as MVP, fix planned in plan-18.255.md.
-// These tests verify the CURRENT (buggy) behavior so future Phase 2
-// implementation can flip them to assert errors.
+// Per §17.6 缺陷纳入: previously documented as MVP, now closed by
+// Phase 2c (expected_ty threading into lower_call_expr Adt ctor path).
 // ============================================================================
 
 #[test]
-fn test_holder_inferred_with_wrong_arg_soundness_hole_ph2_deferred() {
-    // KNOWN BUG (TD-TUPLE-CTOR-TYPECK Phase 2):
-    // `Holder(true)` with `let : Holder<i32>` should ERROR but doesn't,
-    // because the field type stays as `Param(T)` and unifies with anything
-    // silently.
+fn test_holder_inferred_with_wrong_arg_soundness_hole_now_errors() {
+    // `Holder(true)` with `let : Holder<i32>` — no turbofish, let
+    // annotation provides expected type.
     //
-    // This test asserts CURRENT behavior (no error) so that Phase 2
-    // implementation will be detected when it changes behavior.
-    // After Phase 2: this test should be updated to assert has_errors.
+    // Stage 18.233 audit: was soundness hole (no error).
+    // Stage 18.255 Phase 1: error message direction fixed (turbofish case).
+    // Stage 18.258 Phase 2c: soundness hole CLOSED. expected_ty threading
+    // into lower_call_expr Adt ctor path now extracts substs from
+    // expected_ty when turbofish is absent, allowing field_tys to be
+    // substituted correctly.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): full soundness fix, not just MVP.
+    // Per §17.6: MVP marker converted to assert.
     let src = r#"
         struct Holder<T>(T);
         fn main() -> i32 {
@@ -260,11 +263,16 @@ fn test_holder_inferred_with_wrong_arg_soundness_hole_ph2_deferred() {
         }
     "#;
     let result = compile(src);
-    // CURRENT: no error (soundness hole).
-    // EXPECTED AFTER PHASE 2: has_errors == true.
-    // Per §17.6: documenting this as known MVP.
-    eprintln!(
-        "[PHASE 2 DEFERRED] Holder(true) with let : Holder<i32> — has_errors = {} (expected: true after Phase 2)",
-        result.has_errors()
+    assert!(
+        result.has_errors(),
+        "Phase 2c must close soundness hole: Holder(true) with let : Holder<i32> should error"
+    );
+    assert!(!result.errors.typeck.is_empty(), "Expected typeck error");
+    let msg = &result.errors.typeck[0].message;
+    // Per §2 原则 3 (显式 > 隐式): declared field type (i32) is expected,
+    // actual value type (bool) is found.
+    assert!(
+        msg.contains("expected i32") && msg.contains("found bool"),
+        "Error message direction wrong: {msg}"
     );
 }

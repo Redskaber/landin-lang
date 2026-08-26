@@ -286,9 +286,37 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
     for stmt in &block.stmts {
         match stmt {
             HirStmt::Local(local) => {
+                // Stage 18.257 (TD-TUPLE-CTOR-TYPECK Phase 2b): thread
+                // expected_ty from `let : T = expr` annotation into the init
+                // expression's lowering. This enables the ctor path to
+                // extract substs from the expected type when turbofish is
+                // absent (Phase 2c will use this in lower_call_expr).
+                //
+                // Per §13.4 J3 (one-way flow): expected_ty flows from let
+                // annotation → lower_expr_to_operand → lower_call_expr →
+                // arg operands. No back-edges.
+                // Per §1.0 原則 3 (显式 > 隐式): the expected type is
+                // explicit in the source (`let : T = ...`) and should be
+                // propagated explicitly through MIR lower.
+                //
+                // NOTE: For tuple destructuring patterns (e.g.,
+                // `let (a, b) = (1, 2)`), we don't have a single expected
+                // type — each sub-pattern has its own. Phase 2b only
+                // threads expected_ty for simple ident patterns; tuple
+                // destructure remains using None (Phase 2e+ may extend).
+                let expected_ty: Option<Ty> = if let Some(ty) = &local.ty {
+                    if matches!(&local.pat.kind, HirPatKind::Ident(..)) {
+                        Some(super::lower_hir_ty_to_mir_ty_with_hir(ty, cx.hir))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 // Lower the init expression first (if present)
                 if let Some(init) = &local.init {
-                    let init_local = lower_expr_to_operand(cx, init, None);
+                    let init_local = lower_expr_to_operand(cx, init, expected_ty.as_ref());
 
                     // Stage 14.46: Handle tuple destructuring patterns.
                     // `let (a, b, c) = (10, 20, 30)` should:

@@ -21653,3 +21653,82 @@ Stage Summary:
 - 3819 tests, 0 failures, zero regression
 - §13.4 J1-J6 audit: all 6 judgments pass post-implementation
 - Phase 2b (thread from let:T=expr binding) next: Stage 18.257
+
+---
+Task ID: stage18.257-18.258
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.257 (Phase 2b: thread expected_ty from let:T=expr) + Stage 18.258 (Phase 2c: use expected_ty in lower_call_expr). v0.492.0 (no bump — closes soundness hole).
+
+Work Log:
+- Baseline: v0.492.0 / 3819 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — Phase 2b+2c of plan-18.255.md §4.2.3
+
+- Phase 2b implementation (Stage 18.257):
+  → src/mir/lower/control_flow.rs::lower_block line 285+
+  → Compute `expected_ty: Option<Ty>` from `local.ty` (let annotation)
+  → Only thread for simple ident patterns (tuple destructure remains None)
+  → Pass `expected_ty.as_ref()` to `lower_expr_to_operand`
+  → Per §13.4 J3 (one-way flow): expected_ty flows from let annotation →
+    lower_expr_to_operand → lower_call_expr → arg operands
+
+- Phase 2c implementation (Stage 18.258):
+  → Updated `lower_call_expr` signature: added `expected_ty: Option<&Ty>` param
+  → Updated `lower_expr_to_operand` Call arm to thread `expected_ty` to `lower_call_expr`
+  → Added expected-ty-based substs extraction in lower_call_expr Adt ctor path:
+    - When adt_substs (from turbofish) is empty AND expected_ty is Some(Adt
+      with same def_id) with non-empty substs, use expected substs
+    - Closes soundness hole: `Holder(true)` with `let : Holder<i32>` now errors
+  → Per §1.0 原則 6 (通解 > 特解): one path for all Adt ctors without
+    turbofish, not a per-type special case
+  → Per §2 原則 9 (正确 > 妥协): proper field type substitution at lower
+    time, not relying on typeck back-propagation (which was unsound)
+
+- Verification:
+  → Soundness hole CLOSED: `Holder(true)` with `let : Holder<i32>` now
+    errors with "expected i32, found bool" (correct direction)
+  → Existing valid code still compiles (Holder::<i32>(42), Holder(42),
+    Pair::<i32, bool>(42, true))
+  → Phase 1 fix (turbofish + Array) still works
+  → All 3819 tests pass, 0 failures
+
+- Test updates:
+  → stage18_255_td_tuple_ctor_typeck_regression_tests.rs:
+    - Renamed `test_holder_inferred_with_wrong_arg_soundness_hole_ph2_deferred`
+      to `test_holder_inferred_with_wrong_arg_soundness_hole_now_errors`
+    - Converted eprintln marker to assert!(has_errors())
+    - Added assertion for error message direction
+  → stage18_256_phase2a_scaffolding_tests.rs:
+    - Renamed `test_phase_2a_soundness_hole_still_deferred`
+      to `test_phase_2c_soundness_hole_now_closed`
+    - Converted eprintln marker to assert!(has_errors())
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3819 tests (675 lib + 3144 integration), 0 failures
+  → Test delta: 0 (no new tests, 2 tests converted from marker to assert)
+
+- Documentation:
+  → docs/develop/v0/tech-debt-register.md updated:
+    - TD-TUPLE-CTOR-TYPECK status changed from 🟡 to ✅ RESOLVED
+    - Header updated with Phase 2c close
+    - Phases 2d-2f noted as optional improvements (current fix already
+      closes the soundness hole)
+
+- 版本: v0.492.0 (no bump — closes soundness hole but no API change)
+
+Stage Summary:
+- Stage 18.257-18.258 PASSED — TD-TUPLE-CTOR-TYPECK soundness hole CLOSED
+- Phase 2b: expected_ty threaded from `let : T = expr` annotation
+- Phase 2c: expected_ty used in lower_call_expr Adt ctor path to extract
+  substs when turbofish is absent
+- Soundness hole CLOSED: `Holder(true)` with `let : Holder<i32>` now errors
+  with "expected i32, found bool" (correct direction)
+- 3819 tests, 0 failures, zero regression
+- 2 tests converted from deferred-MVP marker to assert (full soundness fix)
+- §1.0 原則 9 (正确 > 妥协): proper field type substitution at lower time
+- §13.4 J1-J6 audit: all 6 judgments still pass post-implementation
+- Phases 2d-2f (return expr + method call + tests cleanup) deferred as
+  optional improvements — current fix already closes the soundness hole

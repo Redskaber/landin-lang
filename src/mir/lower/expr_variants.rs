@@ -251,11 +251,23 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
 }
 
 /// Lower a Call expression to a MIR operand (Stage 18.133: extracted from lower_expr_to_operand).
+///
+/// Stage 18.258 (TD-TUPLE-CTOR-TYPECK Phase 2c): added `expected_ty` param.
+/// When the call is a tuple struct ctor (e.g., `Holder(true)`) and turbofish
+/// is absent, `expected_ty` carries the expected type from the let-binding
+/// (e.g., `let w: Holder<i32> = Holder(true)`). We extract substs from
+/// `expected_ty` and use them to resolve field_tys correctly.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path for all
+/// ctor calls without turbofish, not a per-type special case.
+/// Per §2 原則 9 (正确 > 妥协): proper field type substitution at lower
+/// time, not relying on typeck back-propagation.
 pub(super) fn lower_call_expr(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,
     func: &HirExpr,
     args: &[HirExpr],
+    expected_ty: Option<&crate::mir::ty::Ty>,
 ) -> LocalId {
     // Lower func first — this determines whether the call is a real
     // function call or an ADT construction (struct/enum ctor).
@@ -414,9 +426,41 @@ pub(super) fn lower_call_expr(
             .local_decls
             .get(func_local.0 as usize)
             .expect("func local must exist");
-        let (adt_def_id, adt_substs) = match &func_local_decl.ty.kind {
+        let (adt_def_id, adt_substs_from_func) = match &func_local_decl.ty.kind {
             TyKind::Adt(def_id, substs) => (*def_id, substs.clone()),
             _ => unreachable!("checked is_adt_ctor above"),
+        };
+        // Stage 18.258 (TD-TUPLE-CTOR-TYPECK Phase 2c): if substs from
+        // turbofish are empty (no turbofish) AND expected_ty is
+        // Some(Adt with same def_id) with non-empty substs, use the
+        // expected substs. This closes the soundness hole where
+        // `Holder(true)` with `let : Holder<i32>` would silently
+        // accept because field_tys were resolved with empty substs
+        // (Param T unifies with anything).
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path for
+        // all Adt ctors without turbofish, not a per-type special case.
+        // Per §2 原則 9 (正确 > 妥协): proper field type substitution at
+        // lower time, not relying on typeck back-propagation (which
+        // was unsound).
+        // Per §13.4 J3 (one-way flow): expected_ty flows IN from the
+        // let-binding context — no back-edges.
+        let adt_substs = if adt_substs_from_func.is_empty() {
+            if let Some(expected) = expected_ty {
+                if let TyKind::Adt(exp_def_id, exp_substs) = &expected.kind {
+                    if *exp_def_id == adt_def_id && !exp_substs.is_empty() {
+                        exp_substs.clone()
+                    } else {
+                        adt_substs_from_func.clone()
+                    }
+                } else {
+                    adt_substs_from_func.clone()
+                }
+            } else {
+                adt_substs_from_func.clone()
+            }
+        } else {
+            adt_substs_from_func.clone()
         };
         // Stage 3.38 (L-ENUM): For enum variant ctors (e.g.,
         // `Opt::Some(42)`), resolve the variant index and field

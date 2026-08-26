@@ -146,9 +146,15 @@ fn test_phase_2a_regression_turbofish_wrong_arg_still_errors() {
 }
 
 #[test]
-fn test_phase_2a_soundness_hole_still_deferred() {
-    // Phase 2 not yet implemented — soundness hole still exists.
-    // This test documents current behavior; Phase 2b+ will flip it.
+fn test_phase_2c_soundness_hole_now_closed() {
+    // Stage 18.258 (Phase 2c): soundness hole CLOSED.
+    // `Holder(true)` with `let : Holder<i32>` now errors because
+    // expected_ty threading extracts substs from the let annotation
+    // when turbofish is absent, allowing field_tys to be substituted
+    // correctly.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): full soundness fix.
+    // Per §17.6: MVP marker converted to assert.
     let src = r#"
         struct Holder<T>(T);
         fn main() -> i32 {
@@ -157,10 +163,8 @@ fn test_phase_2a_soundness_hole_still_deferred() {
         }
     "#;
     let result = compile(src);
-    // CURRENT (Phase 2a): no error (soundness hole).
-    // EXPECTED (Phase 2b+): has_errors == true.
-    eprintln!(
-        "[PHASE 2a DEFERRED] Holder(true) with let : Holder<i32> — has_errors = {} (expected: true after Phase 2b+)",
-        result.has_errors()
+    assert!(
+        result.has_errors(),
+        "Phase 2c must close soundness hole: Holder(true) with let : Holder<i32> should error"
     );
 }
