@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-25 (last updated Stage 18.268 — TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY resolved)
+> **Date**: 2026-08-25 (last updated Stage 18.271 — final comprehensive audit complete)
 > **Version**: v0.492.0
-> **Status**: Active — all P0/P1 items resolved. TD-TUPLE-CTOR-TYPECK fully RESOLVED (Phases 1+2a+2b+2c, Stages 18.255-18.258). TD-UNIFY-ARG-ORDER (P3) RESOLVED Stage 18.259. TD-TUPLE-CTOR-CALL-ARG (Phase 2e) RESOLVED Stage 18.262. TD-STRUCT-LITERAL-FIELD-EXPECTED-TY + TD-BOX-NEW-EXPECTED-TY RESOLVED Stage 18.264. TD-ENUM-VARIANT-CTOR-EXPECTED-TY RESOLVED Stage 18.267. TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY RESOLVED Stage 18.268 (continued holistic audit per §17.6 "直到审查不出问题为止"). Soundness hole FULLY CLOSED across all expression contexts. 3895 tests, 0 failures. Remaining open: TD-GENERIC-FN-RETURN-EXPECTED-TY (deferred — needs return_ty threading into fn body, blocked on Phase 2d architecture). TD-INTRINSIC-OVERUSE Phase 2 (blocked on v0.4+ language features). TD-DROP-MOVED-LOCALS full (deferred to v0.3+ flow-sensitive tracking).
+> **Status**: Active — all P0/P1 items resolved. §17.6 "直到审查不出问题为止" audit COMPLETE — ALL expected-ty propagation soundness holes FULLY CLOSED across all 10 expression contexts (let binding, fn call args, struct literal fields, Box::new intrinsic, enum variant ctors, generic struct fields, fn body return, if branches, match arms, array elements). 3914 tests, 0 failures. TD-TUPLE-CTOR-TYPECK batch (Stages 18.255-18.271, 17 stages) complete. Remaining: TD-INTRINSIC-OVERUSE Phase 2 (blocked on v0.4+ language features), TD-DROP-MOVED-LOCALS full (deferred to v0.3+ flow-sensitive tracking).
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 

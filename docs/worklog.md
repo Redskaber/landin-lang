@@ -22605,3 +22605,59 @@ Stage Summary:
   all expression contexts (let binding, fn call args, struct literal
   fields, Box::new intrinsic, enum variant ctors, generic struct fields,
   fn body return)
+
+---
+Task ID: stage18.271
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.271 — Final comprehensive soundness audit per §17.6 "直到审查不出问题为止". v0.492.0 (no bump — audit only, no code change).
+
+Work Log:
+- Baseline: v0.492.0 / 3900 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — "直到审查不出问题为止" (final audit round)
+
+- Final comprehensive audit approach:
+  → Wrote 14 audit tests covering ALL 10 expression contexts where
+    generic tuple struct ctors can appear
+  → 10 negative cases (wrong ctor — should error)
+  → 4 positive cases (valid code — should NOT error, verify no false positives)
+
+- Audit results:
+  → ALL 10 negative cases: ✅ has_errors = true (correctly erroring)
+  → ALL 4 positive cases: ✅ has_errors = false (no false positives)
+  → **0 new soundness holes found — audit CONVERGED!**
+
+- 10 expression contexts verified CLOSED:
+  1. let binding ✅
+  2. fn call arg ✅
+  3. struct literal field ✅
+  4. Box::new intrinsic ✅
+  5. Option::Some ✅
+  6. Result::Ok ✅
+  7. generic struct field ✅
+  8. fn body return ✅
+  9. if branch ✅
+  10. match arm ✅
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅
+  → cargo build --release --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests (675 lib + 3239 integration), 0 failures
+  → Test delta: +14 (final comprehensive audit tests)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.271.md created (final audit report)
+  → docs/develop/v0/tech-debt-register.md updated (header reflects audit COMPLETE)
+
+- Version: v0.492.0 (no bump — audit only, no code change)
+
+Stage Summary:
+- Stage 18.271 PASSED — §17.6 "直到审查不出问题为止" audit CONVERGED
+- 0 new soundness holes found across all 10 expression contexts
+- 14 comprehensive audit tests verify all contexts + no false positives
+- 3914 tests, 0 failures, zero regression
+- TD-TUPLE-CTOR-TYPECK batch (Stages 18.255-18.271, 17 stages) COMPLETE
+- 8 TDs resolved this batch
+- §17.6 "直到审查不出问题为止": audit COMPLETE — no more problems found

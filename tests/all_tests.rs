@@ -635,6 +635,10 @@ mod stage18_268_audit_round3_tests;
 #[path = "v0/stage18/plan/stage18_270_fn_return_expected_ty_regression_tests.rs"]
 mod stage18_270_fn_return_expected_ty_regression_tests;
 
+// === Stage 18.271: Final comprehensive soundness audit (per §17.6) ===
+#[path = "v0/stage18/plan/stage18_271_final_comprehensive_audit_tests.rs"]
+mod stage18_271_final_comprehensive_audit_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
