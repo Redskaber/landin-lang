@@ -22661,3 +22661,64 @@ Stage Summary:
 - TD-TUPLE-CTOR-TYPECK batch (Stages 18.255-18.271, 17 stages) COMPLETE
 - 8 TDs resolved this batch
 - §17.6 "直到审查不出问题为止": audit COMPLETE — no more problems found
+
+---
+Task ID: stage18.272
+Agent: Super Z (main) — Stage Committee (ARCH-A + REV-A + QA-A + PM-A + ALG-C)
+Task: Stage 18.272 — §14.5 D1-D8 deep review + stale TD cleanup + TD-LOC-EXPR-VARIANTS registered. v0.492.0 (no bump — doc cleanup + deep review).
+
+Work Log:
+- Baseline: v0.492.0 / 3914 tests (LLVM 22.1.8)
+- 触发条例: §14.5 (阶段末尾深度审查 — batch 18.255-18.271 complete) + §8 (文档同步规则 — stale entries)
+
+- §8 Stale TD cleanup:
+  → Checked actual LOC of previously "Partial" TDs:
+    - mir/lower/mod.rs: 1029 LOC (< 1500) ✅ — TD-LOC-MIR-LOWER-MOD resolved
+    - mir/lower/expr_operand.rs: 1335 LOC (< 1500) ✅ — TD-LOC-MIR-LOWER-EXPR resolved
+    - parser/macro_expand/mod.rs: 1138 LOC (< 1500) ✅ — TD-LOC-MACRO-EXPAND resolved
+    - driver/mod.rs: 768 LOC (< 1500) ✅ — TD-LOC-DRIVER resolved
+  → Updated §4.4 classification index: 4 stale "Partial" entries → ✅ Resolved
+
+- New TD discovered:
+  → src/mir/lower/expr_variants.rs: 3653 LOC — exceeds 1500 LOC threshold
+  → Root cause: grew from 1016 LOC (Stage 18.133) to 3653 LOC during
+    Stages 18.262-18.270 (pre_adt_field_tys + enum variant substitution +
+    Box::new detection + Phase 2e arg lowering + Phase 2d continuation)
+  → Per §13.4 J2 (单一职责): file now handles too many responsibilities
+  → Registered as TD-LOC-EXPR-VARIANTS (P2, needs refactoring)
+
+- §14.5 D1-D8 deep review:
+  → D1 Architecture: ✅ — one-way flow, no circular deps. Risk: TD-LOC-EXPR-VARIANTS
+  → D2 Tech Debt: ✅ — all P0/P1 resolved, stale cleaned, 1 new P2 registered
+  → D3 Test Coverage: ✅ — 3914 tests, +116 this batch, 10:4 ratio in final audit
+  → D4 Next Stage: ✅ — TD-LOC-EXPR-VARIANTS refactoring is next actionable item
+  → D5 Design: ✅ — all expected-ty decisions architecturally sound
+  → D6 Performance: ✅ — ~10s test runtime, no O(n²), O(1) per call site
+  → D7 Documentation: ✅ — 17 plan docs + tech-debt-register comprehensive
+  → D8 Pipeline: ✅ — all stages covered, 10 expression contexts verified
+
+- 委员会投票: 5/5 GO (weighted 5.5/5.5, 100%)
+
+- 全校验流:
+  → cargo build --release --features llvm-backend ✅ (from Stage 18.271)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests, 0 failures
+  → No code changes this stage — doc cleanup only
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.272.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - 4 stale "Partial" entries → ✅ Resolved (with superseding stage references)
+    - New TD-LOC-EXPR-VARIANTS entry registered (P2, 3653 LOC)
+
+- Version: v0.492.0 (no bump — doc cleanup + deep review)
+
+Stage Summary:
+- Stage 18.272 PASSED — §14.5 D1-D8 deep review + stale TD cleanup
+- D1-D8: all ✅
+- 4 stale TD entries cleaned → ✅ Resolved
+- 1 new TD registered: TD-LOC-EXPR-VARIANTS (3653 LOC, P2)
+- 3914 tests, 0 failures, zero regression
+- Next: TD-LOC-EXPR-VARIANTS refactoring (Stage 18.273+)

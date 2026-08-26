@@ -310,8 +310,11 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 
 | ID | J# Violated | Description | Status |
 |----|-------------|-------------|--------|
-| TD-LOC-MACRO-EXPAND | J2 (单一职责) + J6 (LOC) | macro_expand.rs 5962 → 3904 LOC (builtin_macros.rs 2069 提取) | 🟡 Partial 18.135 — Stage 18.136 core matching |
-| TD-LOC-DRIVER | J2 + J6 | driver.rs 4038 → 2351 LOC (driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164 提取) | 🟡 Partial 18.134 — Stage 18.136 compile_inner |
+| TD-LOC-MACRO-EXPAND | J2 (单一职责) + J6 (LOC) | macro_expand.rs 5962 → 1138 LOC (mod.rs) — all code files < 1500 LOC ✅ | ✅ Resolved 18.247-18.249 (stale "Partial 18.135" superseded) |
+| TD-LOC-DRIVER | J2 + J6 | driver.rs 4038 → 768 LOC (mod.rs) — all code files < 1500 LOC ✅ | ✅ Resolved 18.134-18.250 (stale "Partial 18.134" superseded) |
+| TD-LOC-MIR-LOWER-MOD | J2 + J6 | mir/lower/mod.rs 2857 → 1029 LOC — all files < 1500 LOC ✅ | ✅ Resolved 18.129-18.130 (stale "Partial 18.129" superseded) |
+| TD-LOC-MIR-LOWER-EXPR | J2 + J6 | mir/lower/expr_operand.rs 3599 → 1335 LOC — all files < 1500 LOC ✅ | ✅ Resolved 18.131-18.133 (stale "Partial 18.131-18.132" superseded) |
+| TD-LOC-EXPR-VARIANTS | J2 (单一职责) + J6 (LOC) | `src/mir/lower/expr_variants.rs` grew to 3653 LOC during Stages 18.262-18.270 (pre_adt_field_tys computation + enum variant substitution + Box::new detection + Phase 2e arg lowering). Was 1016 LOC at creation (Stage 18.133), grew ~2600 LOC from expected-ty propagation work. | 🟡 NEW (Stage 18.272 audit) — needs refactoring. Per §13.4 J2: the file now handles Call lowering + MethodCall lowering + For lowering + Path lowering + Box::new/String::from_str intrinsics + pre_adt_field_tys computation. Should split by responsibility. |
 | TD-LOC-MIR-LOWER-EXPR | J2 + J6 | mir/lower/expr_operand.rs 3599 → 1156 LOC (method_resolution.rs 1132 + call_lower.rs 362 + expr_variants.rs 1016 提取) | ✅ Resolved 18.131-18.133 |
 | TD-LOC-MIR-LOWER-MOD | J2 + J6 | mir/lower/mod.rs 2857 → 960 LOC (ty_lower.rs 863 + body_lower.rs 1110 提取) | ✅ Resolved 18.129-18.130 |
 | TD-LOC-TYPECK-CHECKER | J2 + J6 | typeck/checker.rs 2635 LOC → 1371 LOC (4 文件) | ✅ Resolved 18.128 |
