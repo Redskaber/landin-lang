@@ -627,6 +627,10 @@ mod stage18_267_generic_enum_audit_tests;
 #[path = "v0/stage18/plan/stage18_267_enum_variant_ctor_regression_tests.rs"]
 mod stage18_267_enum_variant_ctor_regression_tests;
 
+// === Stage 18.268: Continued holistic audit Round 3 (per §17.6) ===
+#[path = "v0/stage18/plan/stage18_268_audit_round3_tests.rs"]
+mod stage18_268_audit_round3_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

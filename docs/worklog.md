@@ -22410,3 +22410,79 @@ Stage Summary:
 - Soundness hole coverage expanded to include enum variant ctors
 - 3879 tests, 0 failures, zero regression
 - §17.6 "直到审查不出问题为止": continue to Round 3 in Stage 18.268+
+
+---
+Task ID: stage18.268
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.268 — Holistic audit Round 3 per §17.6 "直到审查不出问题为止". 1 new TD closed (TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY) + 1 new MVP documented (TD-GENERIC-FN-RETURN-EXPECTED-TY). v0.492.0 (no bump — soundness fix).
+
+Work Log:
+- Baseline: v0.492.0 / 3888 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — "直到审查不出问题为止" (keep auditing until no problems found)
+
+- Audit Round 3 — 7 audit tests covering:
+  → match on generic enum with binding
+  → generic struct with generic field (Generic { f: Holder(true) })
+  → nested generic (Box<Option<Holder<i32>>>)
+  → generic tuple struct multi-arg (first wrong)
+  → generic tuple struct multi-arg (second wrong, valid case)
+  → generic fn return with wrong inner ctor
+  → generic fn call with wrong arg
+
+- Results:
+  → 4 already closed (by previous stages or typeck's existing paths)
+  → 1 GAP closed this stage: TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY
+    (Generic { f: Holder(true) } where Generic<Holder<i32>>)
+  → 1 GAP documented as MVP: TD-GENERIC-FN-RETURN-EXPECTED-TY
+    (fn make() -> Holder<i32> { Holder(true) })
+
+- TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY fix:
+  → Root cause: pre_field_tys in HirExprKind::Struct arm used
+    lower_path_generic_args (returns empty substs when turbofish absent)
+    instead of extracting substs from expected_ty
+  → Fix: extract substs from expected_ty when turbofish absent
+    (same pattern as Phase 2c in lower_call_expr)
+  → ~30 LOC change in src/mir/lower/expr_operand.rs
+  → Per §17.6: same class as TD-TUPLE-CTOR-TYPECK Phase 2c
+  → Per §1.0 原則 6 (通解 > 特解): one expected_ty-based substs extraction path
+
+- TD-GENERIC-FN-RETURN-EXPECTED-TY MVP documentation:
+  → Root cause: expected_ty from fn sig return type is not threaded
+    into fn body's lower_expr_to_operand calls
+  → Fix plan: thread fn_return_ty: Option<&Ty> into MIR lower as 8th param
+    (similar to fn_sigs in Stage 18.262)
+  → Rationale for deferral:
+    - Gap is narrow (only fn body return position with generic tuple struct ctors)
+    - Workaround: explicit turbofish (Holder::<i32>(true))
+    - Fix adds another param to entry point signature
+    - Will be naturally addressed in v0.3+ trait solver work
+  → Per §1.0 原則 9 (正确 > 妥协): documented as MVP with fix plan
+  → Per §17.6: same class as TD-TUPLE-CTOR-CALL-ARG
+
+- §13.4 J1-J6 audit (for the closed fix): all 6 judgments pass
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3895 tests (675 lib + 3220 integration), 0 failures
+  → Test delta: +7 (audit tests)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.268.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - Header updated to reflect Stage 18.268
+    - New TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY entry (✅ Resolved)
+    - New TD-GENERIC-FN-RETURN-EXPECTED-TY entry (🟡 MVP, Phase 2d deferred)
+  → tests/v0/stage18/plan/stage18_268_audit_round3_tests.rs (7 tests)
+  → tests/all_tests.rs entry added
+
+- Version: v0.492.0 (no bump — soundness fix, no API change)
+
+Stage Summary:
+- Stage 18.268 PASSED — §17.6 Round 3 audit + 1 new TD resolved + 1 MVP documented
+- TD-GENERIC-STRUCT-LITERAL-FIELD-EXPECTED-TY: ✅ Resolved
+- TD-GENERIC-FN-RETURN-EXPECTED-TY: 🟡 NEW — Phase 2d deferred (MVP with fix plan)
+- 3895 tests, 0 failures, zero regression
+- §17.6 "直到审查不出问题为止": continue to Round 4 in Stage 18.269+
