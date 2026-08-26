@@ -172,18 +172,15 @@ fn main() -> i32 {
 
 /// Regression: Box::new(i32) still works (no segfault from elem_size change).
 /// Per Stage 18.189 convention: Box is `Box(*mut T)` tuple struct; access
-/// inner value via `*b.0` and explicit `__landin_dealloc` (no auto-drop yet).
 #[test]
 fn stage18_203_box_i32_basic() {
     assert_runtime(
         "box-i32-basic",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i32> = Box::new(42);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -199,12 +196,10 @@ fn stage18_203_box_i64_basic() {
     assert_runtime(
         "box-i64-basic",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i64> = Box::new(42);
     let v: i64 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,

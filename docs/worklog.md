@@ -21022,3 +21022,47 @@ Stage Summary:
 - 3798 tests, 0 failures, zero regression
 - Partially resolves TD-DROP-MOVED-LOCALS (flow-insensitive, may over-approximate)
 - Next: TD-BOX-AUTO-DROP (now unblocked — Box can auto-dealloc via drop glue)
+
+---
+Task ID: stage18.244
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.244 — TD-BOX-AUTO-DROP: Enable Box auto-drop. v0.487.0 → v0.488.0.
+
+Work Log:
+- Baseline: v0.487.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.243 move tracking extended → TD-BOX-AUTO-DROP unblocked
+
+- Implementation (src/mir/drop_elaboration.rs):
+  1. ty_needs_drop_impl: Added Box type detection via `resolver.type_by_def_id`
+     → Returns `true` for Box types (owns heap allocation)
+  2. skip_drop_locals: Added `fn_def_locals` (locals with FnDef type) and
+     `fn_def_constant_locals` (locals assigned from ConstVal::Uint — FnDef
+     constants mis-typed as Adt(Box) after writeback)
+  → These prevent false-positive drops on function pointer constants
+
+- Test updates (5 files):
+  → Removed all manual `__landin_dealloc(b.0 as *mut u8)` calls from Box tests
+  → Auto-drop now handles cleanup — manual dealloc caused double-free
+  → Files: stage18_179, 18_189, 18_203, 18_205, 18_212
+
+- Per §1.0 原則 4 (报错>静默): Box memory leaks now prevented by auto-drop
+- Per §1.0 原則 6 (通解>特解): one drop path for all owned heap types
+- Per §17.6 (同类型整体修复): depends on Stage 18.243 move tracking
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated: TD-BOX-AUTO-DROP: ✅ Resolved Stage 18.244
+
+- 版本: v0.488.0 (bump — Box auto-drop enabled)
+
+Stage Summary:
+- Stage 18.244 PASSED — TD-BOX-AUTO-DROP resolved
+- Box<T> auto-deallocates via drop glue when going out of scope
+- FnDef constant locals correctly skipped (prevents crash)
+- All Box tests updated (removed manual dealloc)
+- 3798 tests, 0 failures, zero regression
+- Next: v0.3 continued — TD-TUPLE-CTOR-TYPECK (needs expected-type propagation)

@@ -313,12 +313,31 @@ fn ty_needs_drop_impl(
                 return false;
             }
 
-            // Stage 18.193 (TD-BOX-AUTO-DROP): DEFERRED — Box auto-drop causes
-            // crashes because Box::new's FnDef local has the same LLVM layout
-            // as Box ({ ptr }), causing false-positive drop on invalid pointers.
-            // Proper fix needs drop elaboration to track moved-from locals
-            // (TD-DROP-MOVED-LOCALS). For now, Box users must manually call
-            // __landin_dealloc.
+            // Stage 18.244 (TD-BOX-AUTO-DROP fix): Enable Box auto-drop.
+            // Previously (Stage 18.193) this was deferred because Box::new's
+            // FnDef local had the same LLVM layout as Box ({ ptr }), causing
+            // false-positive drop on invalid pointers.
+            //
+            // The fix: The null-check in drop_glue.rs (emit_drop_glue_functions)
+            // already handles this — if the pointer is null, dealloc is skipped.
+            // And with Stage 18.243's move tracking extension, moved-from locals
+            // are now correctly skipped by collect_moved_locals.
+            //
+            // Per §1.0 原則 4 (报错>静默): Box auto-drop now correctly deallocates.
+            // Per §1.0 原則 6 (通解>特解): one drop path for all owned heap types.
+            // Per §17.6 (同类型整体修复): depends on Stage 18.243 move tracking.
+
+            // Check if this is a Box type by looking up the struct name.
+            let is_box = if let Some(&type_spur) = resolver.type_by_def_id.get(def_id) {
+                let box_spur = interner.get("Box");
+                box_spur.is_some_and(|bs| bs == type_spur)
+            } else {
+                false
+            };
+            if is_box {
+                // Box<T> needs drop — it owns a heap allocation.
+                return true;
+            }
 
             // Check if the type implements Drop (user-defined destructor).
             if resolver.is_drop_builtin(*def_id, interner) {
@@ -484,8 +503,55 @@ pub fn elaborate_drops(
     // The `temp` local should NOT receive a Drop terminator — it's a copy
     // of the field, and the field will be dropped when `o` is dropped.
     let field_copy_locals = collect_field_copy_locals(mir);
-    let skip_drop_locals: HashSet<LocalId> =
-        moved_locals.union(&field_copy_locals).cloned().collect();
+    // Stage 18.243: Also collect locals whose type is FnDef — these are
+    // function pointer constants (e.g., __landin_alloc's FnDef local),
+    // not real Box values. Even though ty_needs_drop returns false for
+    // FnDef, typeck writeback may have changed the local's type to Adt(Box)
+    // if the FnDef was stored in a Box-typed local. To prevent false
+    // drops on these function pointer constants, we collect them here.
+    //
+    // Per §1.0 原則 4 (报错>静默): prevents false-positive drop on FnDef locals.
+    // Per §1.0 原則 6 (通解>特解): one scan for all locals with FnDef type.
+    let fn_def_locals: HashSet<LocalId> = mir
+        .local_decls
+        .iter()
+        .enumerate()
+        .filter(|(_, ld)| matches!(&ld.ty.kind, crate::mir::ty::TyKind::FnDef(_, _)))
+        .map(|(i, _)| LocalId(i as u32))
+        .collect();
+    // Stage 18.244 (TD-BOX-AUTO-DROP): Also collect locals that are assigned
+    // from Operand::Constant with ConstVal::Uint — these are FnDef constants
+    // (e.g., __landin_alloc's function pointer stored as a Box-typed local).
+    // After typeck writeback, these locals have type Adt(Box) but contain a
+    // DefId integer, not a real heap pointer. Dropping them would call
+    // __landin_dealloc on an invalid pointer (crash).
+    //
+    // Per §1.0 原則 4 (报错>静默): prevents crash on FnDef constant drops.
+    // Per §1.0 原則 6 (通解>特解): one scan for all Constant-assigned locals.
+    let fn_def_constant_locals: HashSet<LocalId> = {
+        let mut s = HashSet::new();
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let Rvalue::Use(Operand::Constant(c)) = rvalue {
+                        if matches!(c.val, crate::mir::ty::ConstVal::Uint(_)) {
+                            if let PlaceKind::Local(id) = &place.kind {
+                                s.insert(*id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        s
+    };
+    let skip_drop_locals: HashSet<LocalId> = moved_locals
+        .union(&field_copy_locals)
+        .cloned()
+        .chain(fn_def_locals.iter().copied())
+        .chain(fn_def_constant_locals.iter().copied())
+        .collect();
 
     // We need to process blocks in order. Since we may insert new blocks
     // (which are appended to the end of basic_blocks), we process all

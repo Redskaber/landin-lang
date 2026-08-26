@@ -59,12 +59,10 @@ fn stage18_189_box_new_i32() {
     assert_runtime(
         "box-new-i32",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i32> = Box::new(42);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -77,12 +75,10 @@ fn stage18_189_box_new_u8() {
     assert_runtime(
         "box-new-u8",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<u8> = Box::new(255);
     let v: u8 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -99,12 +95,10 @@ fn stage18_189_box_new_i64() {
     assert_runtime(
         "box-new-i64",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i64> = Box::new(42);
     let v: i64 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -117,13 +111,10 @@ fn stage18_189_box_new_multiple() {
     assert_runtime(
         "box-new-multiple",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b1: Box<i32> = Box::new(10);
     let b2: Box<i32> = Box::new(20);
     println!("{} {}", *b1.0, *b2.0);
-    __landin_dealloc(b1.0 as *mut u8);
-    __landin_dealloc(b2.0 as *mut u8);
     0
 }
 "#,
@@ -205,13 +196,11 @@ fn stage18_189_box_and_string_combined() {
     assert_runtime(
         "box-and-string-combined",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i32> = Box::new(42);
     let s: String = String::from_str("hello");
     let sref: &str = s.as_str();
     println!("{} {}", *b.0, sref.len());
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,

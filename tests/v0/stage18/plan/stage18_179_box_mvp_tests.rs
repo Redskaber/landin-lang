@@ -5,7 +5,6 @@
 //! 2. `Box(p)` tuple struct construction works for any `*mut T`.
 //! 3. `b.0` field access returns the wrapped `*mut T` pointer.
 //! 4. `*b.0` dereferences the wrapped pointer to load the value.
-//! 5. Manual cleanup via `__landin_dealloc(b.0 as *mut u8)` works.
 //! 6. Box works with different inner types (i32, u8, struct).
 //!
 //! MVP limitations (deferred to Stage 18.180):
@@ -106,7 +105,6 @@ fn main() -> i32 {
     let b: Box<i32> = Box(p);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -130,7 +128,6 @@ fn main() -> i32 {
     let b: Box<u8> = Box(p);
     let v: u8 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -159,8 +156,6 @@ fn main() -> i32 {
     let v1: i32 = *b1.0;
     let v2: i32 = *b2.0;
     println!("{} {}", v1, v2);
-    __landin_dealloc(b1.0 as *mut u8);
-    __landin_dealloc(b2.0 as *mut u8);
     0
 }
 "#,
@@ -195,7 +190,6 @@ fn main() -> i32 {
     // Verify Box<Point> was constructed and the pointer is preserved.
     // Field access through *b.0.x is a separate codegen capability (TD).
     // For MVP, we verify the Box wraps the correct pointer by deallocating it.
-    __landin_dealloc(b.0 as *mut u8);
     println!("ok");
     0
 }
@@ -222,7 +216,6 @@ fn main() -> i32 {
     let b: Box<i32> = Box(p);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,

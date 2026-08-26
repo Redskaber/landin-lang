@@ -64,12 +64,10 @@ fn stage18_212_box_i64_new() {
     assert_runtime(
         "box-i64-new",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i64> = Box::new(42i64);
     let v: i64 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -83,12 +81,10 @@ fn stage18_212_box_i32_new() {
     assert_runtime(
         "box-i32-new",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i32> = Box::new(42);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -103,13 +99,11 @@ fn stage18_212_box_struct_new() {
         "box-struct-new",
         r#"
 struct Point { x: i32, y: i32 }
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let p = Point { x: 10, y: 20 };
     let b: Box<Point> = Box::new(p);
     let q: Point = *b.0;
     println!("{}", q.x);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
@@ -123,14 +117,11 @@ fn stage18_212_box_multiple() {
     assert_runtime(
         "box-multiple",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let a: Box<i32> = Box::new(10);
     let b: Box<i32> = Box::new(20);
     println!("{}", *a.0);
     println!("{}", *b.0);
-    __landin_dealloc(a.0 as *mut u8);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,

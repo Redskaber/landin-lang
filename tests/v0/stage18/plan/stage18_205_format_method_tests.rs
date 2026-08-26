@@ -165,12 +165,10 @@ fn stage18_205_box_new_deref() {
     assert_runtime(
         "box-new-deref",
         r#"
-extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i32> = Box::new(42);
     let v: i32 = *b.0;
     println!("{}", v);
-    __landin_dealloc(b.0 as *mut u8);
     0
 }
 "#,
