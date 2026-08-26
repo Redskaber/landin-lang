@@ -8,7 +8,9 @@
 //! `TypeError` (in `typeck/error.rs`), `BorrowError` (in `borrowck/error.rs`).
 //! Per §23: `TraitError` follows the `<Noun>Error` pattern.
 
-use crate::traits::{CoherenceError, IncompleteImpl};
+use crate::traits::{
+    CoherenceError, IncompleteImpl, InherentImplConflict, PrimitiveInherentImplError,
+};
 use lasso::Rodeo;
 
 /// A trait-related error encountered during trait validation.
@@ -30,6 +32,14 @@ pub enum TraitError {
     /// Stage 5.19: An `impl Trait for Type` block is missing one or more
     /// methods declared by the trait.
     Incomplete(IncompleteImpl),
+    /// Stage 18.292 (类 Rust 架构修正): Multiple `impl Type` blocks define
+    /// the same method name — duplicate inherent impl. 类 Rust 设计:
+    /// 用户不能覆盖 prelude 定义的原始类型方法。
+    InherentConflict(InherentImplConflict),
+    /// Stage 18.293 (类 Rust 架构修正): User inherent impl on primitive type.
+    /// 类 Rust: only prelude ("core") can define `impl i32 { fn method {} }`.
+    /// Users must extend primitive types via traits: `impl MyTrait for i32`.
+    PrimitiveInherentImpl(PrimitiveInherentImplError),
 }
 
 impl TraitError {
@@ -80,6 +90,19 @@ impl TraitError {
                     parts.join("; ")
                 )
             }
+            TraitError::InherentConflict(ic) => {
+                let type_str = interner.try_resolve(&ic.self_ty_name).unwrap_or("?");
+                let method_str = interner.try_resolve(&ic.method_name).unwrap_or("?");
+                format!(
+                    "duplicate definitions with name `{}` for type `{}` ({} impl blocks)",
+                    method_str,
+                    type_str,
+                    ic.impl_def_ids.len()
+                )
+            }
+            TraitError::PrimitiveInherentImpl(_pie) => {
+                "cannot define inherent `impl` for primitive type — only prelude is allowed; use `impl Trait for Type` instead".to_string()
+            }
         }
     }
 
@@ -104,6 +127,15 @@ impl TraitError {
                     inc.missing_methods.len(),
                     inc.missing_associated_consts.len()
                 )
+            }
+            TraitError::InherentConflict(ic) => {
+                format!(
+                    "duplicate definitions with name `<unknown>` for type `<unknown>` ({} impl blocks)",
+                    ic.impl_def_ids.len()
+                )
+            }
+            TraitError::PrimitiveInherentImpl(_pie) => {
+                "cannot define inherent `impl` for primitive type — only prelude is allowed; use `impl Trait for Type` instead".to_string()
             }
         }
     }

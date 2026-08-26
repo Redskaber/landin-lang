@@ -463,4 +463,24 @@ impl ArithmeticEmitter for LLVMSysEmitter {
             self.fresh_named(r)
         }
     }
+
+    /// Stage 18.287 (TD-NEGOVERFLOW-I32 fix): Emit a typed integer constant.
+    ///
+    /// Emits the constant with the EXACT LLVM type specified by `ty`,
+    /// avoiding the default i32 fallback in `emit_const`. This ensures
+    /// overflow asserts produce type-matched operands for checked binops.
+    fn emit_const_typed(&mut self, val: i64, ty: &EmitType) -> EmitValue {
+        unsafe {
+            let llvm_ty = self.llvm_type(ty);
+            // Stage 18.287: Use the value as u64 (reinterpreting the bits)
+            // for LLVMConstInt. The `sign_extend` param (3rd arg) is set to 1
+            // for signed types (Int) and 0 for unsigned (Uint/Bool/Ptr).
+            let sign_extend = matches!(
+                ty,
+                EmitType::I8 | EmitType::I16 | EmitType::I32 | EmitType::I64 | EmitType::I128
+            );
+            let c = LLVMConstInt(llvm_ty, val as u64, if sign_extend { 1 } else { 0 });
+            self.fresh_named(c)
+        }
+    }
 }

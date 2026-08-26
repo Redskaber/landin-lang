@@ -319,31 +319,70 @@ fn collect_terminator_read_locals(
 /// Per §1.0 原則 6 "通用 > 特例": one pass handles int/uint/bool/float.
 /// Per §13.4 J2: single responsibility — only const prop + folding.
 pub fn run_const_prop(mir: &mut MirBody) {
-    // Map: LocalId → Const (the constant value assigned to this local).
-    let mut const_map: HashMap<crate::mir::place::LocalId, Const> = HashMap::new();
-
-    // Stage 18.110 (S11 fix): Detect back-edges (Goto to a lower-indexed BB).
-    // If back-edges exist (loops), don't fold BinaryOp comparisons in the
-    // loop header — the loop variable changes between iterations, so the
-    // first-iteration value is wrong.
+    // Stage 18.286 (TD-IF-RETURN-VALUE-CODEGEN fix): Make const_prop
+    // control-flow aware by computing per-BB const_map snapshots and
+    // intersecting at merge points (BBs with >1 predecessor).
     //
-    // Per §1.0 原則 9 "正确 > 妥协": correct loop behavior > aggressive folding.
-    // Per §1.0 原則 6 "通用 > 特例": one check for all loop types.
+    // Previous bug: a single global `const_map` was accumulated across all
+    // BBs in index order. At a merge point (e.g., if/else join), the
+    // const_map held the value from whichever predecessor was processed
+    // LAST — not the intersection. This caused `if true { 1 } else { 0 }`
+    // to propagate `0` (the else value) to the join, ignoring the then value.
+    //
+    // Fix: snapshot each BB's outgoing const_map. At a merge point, compute
+    // the intersection of all predecessors' outgoing maps — a local is
+    // constant only if ALL predecessors agree on its value.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one intersection logic handles all
+    // merge-point shapes (if/else, match, multiple goto targets).
+    // Per §2 原則 9 (正确 > 妥协): correct propagation > aggressive folding.
+    // Per §12 (最优 > 最小): fix the root cause (merge-point handling),
+    // not the symptom (disable const_prop for if/else).
+
+    // Step 1: Compute predecessors for each BB.
+    let preds = compute_predecessors(mir);
+
+    // Step 2: Detect back-edges (loops) — existing behavior preserved.
     let has_back_edges = mir.basic_blocks.iter().enumerate().any(|(i, bb)| {
-        if let crate::mir::body::TerminatorKind::Goto(target) = &bb.terminator.kind {
+        if let TerminatorKind::Goto(target) = &bb.terminator.kind {
             (target.0 as usize) <= i
         } else {
             false
         }
     });
 
+    // Step 3: Per-BB outgoing const_map snapshots (for intersection at merge points).
+    let mut bb_outgoing: Vec<HashMap<crate::mir::place::LocalId, Const>> =
+        vec![HashMap::new(); mir.basic_blocks.len()];
+
     for bb_idx in 0..mir.basic_blocks.len() {
-        // Stage 18.110 (S11 fix): If this BB is a loop header (target of a
-        // back-edge), clear the const_map before processing — loop variables
-        // may have been modified in the loop body.
+        // Step 3a: Compute incoming const_map for this BB.
+        // - For bb0 (entry): start empty.
+        // - For BBs with 1 predecessor: inherit predecessor's outgoing map.
+        // - For BBs with >1 predecessor (merge points): intersect all
+        //   predecessors' outgoing maps — a local is constant only if ALL
+        //   predecessors agree.
+        // - For loop headers (back-edge targets): clear (existing behavior).
+        let mut const_map: HashMap<crate::mir::place::LocalId, Const> = if bb_idx == 0 {
+            HashMap::new()
+        } else {
+            let bb_preds = &preds[bb_idx];
+            if bb_preds.is_empty() {
+                // Unreachable BB — start empty (no info).
+                HashMap::new()
+            } else if bb_preds.len() == 1 {
+                // Single predecessor — inherit its outgoing map.
+                bb_outgoing[bb_preds.iter().next().unwrap().0 as usize].clone()
+            } else {
+                // Merge point — intersect all predecessors' outgoing maps.
+                intersect_const_maps(bb_preds, &bb_outgoing)
+            }
+        };
+
+        // Stage 18.110 (S11 fix): Loop header — clear const_map.
         let is_loop_header = has_back_edges
             && mir.basic_blocks.iter().any(|bb| {
-                if let crate::mir::body::TerminatorKind::Goto(target) = &bb.terminator.kind {
+                if let TerminatorKind::Goto(target) = &bb.terminator.kind {
                     (target.0 as usize) == bb_idx
                 } else {
                     false
@@ -353,6 +392,7 @@ pub fn run_const_prop(mir: &mut MirBody) {
             const_map.clear();
         }
 
+        // Step 3b: Process statements in this BB (existing logic).
         let bb = &mut mir.basic_blocks[bb_idx];
         for stmt in &mut bb.statements {
             if let StatementKind::Assign(pair) = &mut stmt.kind {
@@ -362,12 +402,7 @@ pub fn run_const_prop(mir: &mut MirBody) {
                 let propagated = propagate_rvalue(rvalue, &const_map);
 
                 // Try to fold constant operations.
-                // Stage 18.110 (S11 fix): Only fold if no back-edges (loops),
-                // OR if the rvalue doesn't involve loop-modified variables.
-                // Safe simplification: skip BinaryOp folding when back-edges exist.
                 if has_back_edges {
-                    // Don't fold BinaryOps in loops — just propagate constants
-                    // into Use/Move operands (safe), but don't fold the op itself.
                     *rvalue = propagated;
                 } else {
                     if let Some(folded) = fold_rvalue(&propagated) {
@@ -390,7 +425,84 @@ pub fn run_const_prop(mir: &mut MirBody) {
                 }
             }
         }
+
+        // Step 3c: Save outgoing const_map for this BB.
+        bb_outgoing[bb_idx] = const_map;
     }
+}
+
+/// Stage 18.286 (TD-IF-RETURN-VALUE-CODEGEN): Compute the predecessor set
+/// for each basic block. A BB's predecessors are all BBs whose terminator
+/// targets it (via Goto, SwitchInt targets, or otherwise).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one function handles all terminator kinds.
+/// Per §23: `compute_predecessors` follows `<verb>_<noun>` pattern.
+fn compute_predecessors(mir: &MirBody) -> Vec<HashSet<crate::mir::body::BasicBlockId>> {
+    let mut preds: Vec<HashSet<crate::mir::body::BasicBlockId>> =
+        vec![HashSet::new(); mir.basic_blocks.len()];
+    for (i, bb) in mir.basic_blocks.iter().enumerate() {
+        let src = crate::mir::body::BasicBlockId(i as u32);
+        // Collect all successor BBs of this terminator.
+        for succ in terminator_successors(&bb.terminator.kind) {
+            if (succ.0 as usize) < preds.len() {
+                preds[succ.0 as usize].insert(src);
+            }
+        }
+    }
+    preds
+}
+
+/// Stage 18.286: Collect all successor BBs of a terminator.
+/// Used by `compute_predecessors` to build the predecessor graph.
+fn terminator_successors(term: &TerminatorKind) -> Vec<crate::mir::body::BasicBlockId> {
+    let mut succs = Vec::new();
+    match term {
+        TerminatorKind::Goto(target) => succs.push(*target),
+        TerminatorKind::SwitchInt {
+            targets, otherwise, ..
+        } => {
+            for (_, target) in targets {
+                succs.push(*target);
+            }
+            succs.push(*otherwise);
+        }
+        TerminatorKind::Call {
+            target: Some(t), ..
+        } => succs.push(*t),
+        TerminatorKind::Drop { target, .. } => succs.push(*target),
+        TerminatorKind::Assert { target, .. } => succs.push(*target),
+        // Return, Unreachable, Resume — no successors.
+        _ => {}
+    }
+    succs
+}
+
+/// Stage 18.286 (TD-IF-RETURN-VALUE-CODEGEN): Intersect const_maps from
+/// multiple predecessors at a merge point.
+///
+/// A local is constant at the merge point only if ALL predecessors agree on
+/// its value. If any predecessor has a different value OR no entry, the local
+/// is unknown → dropped from the intersection.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one intersection logic for all merge shapes.
+/// Per §2 原則 9 (正确 > 妥协): conservative (drop on disagreement) is correct.
+fn intersect_const_maps(
+    preds: &HashSet<crate::mir::body::BasicBlockId>,
+    bb_outgoing: &[HashMap<crate::mir::place::LocalId, Const>],
+) -> HashMap<crate::mir::place::LocalId, Const> {
+    if preds.is_empty() {
+        return HashMap::new();
+    }
+    // Start with the first predecessor's outgoing map as the candidate set.
+    let first_pred = preds.iter().next().unwrap();
+    let first_map = &bb_outgoing[first_pred.0 as usize];
+    let mut result: HashMap<crate::mir::place::LocalId, Const> = first_map.clone();
+    // For each other predecessor, keep only locals that agree on value.
+    for pred in preds.iter().skip(1) {
+        let pred_map = &bb_outgoing[pred.0 as usize];
+        result.retain(|local, val| pred_map.get(local).is_some_and(|pv| pv == val));
+    }
+    result
 }
 
 /// Stage 18.96: Run MIR optimization passes in design-doc order

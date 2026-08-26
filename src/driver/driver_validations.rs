@@ -970,6 +970,33 @@ pub(super) fn run_post_typeck_validations(
     for inc in validation_report.incomplete_impls {
         errors.trait_errors.push(TraitError::Incomplete(inc));
     }
+    // Stage 18.292 (类 Rust 架构修正): Check for duplicate inherent impl
+    // method definitions — two `impl Type { fn same_method {} }` blocks
+    // with the same method name on the same type.
+    //
+    // 类 Rust 设计: 用户不能覆盖 prelude 定义的原始类型方法。
+    // Rust 报 "duplicate definitions with name `X`" for this case。
+    // Landin 之前静默接受第一个定义, 是 soundness bug。
+    //
+    // **不跳过 marker impl** — prelude 的 `impl str { fn len { loop {} } }`
+    // 与用户的 `impl str { fn len { 42 } }` 冲突 → 报错。
+    //
+    // Per §2 原則 4 (报错>静默): conflicts must be reported。
+    // Per §1.0 原則 6 (通解>特解): one check for all inherent impl conflicts。
+    // Per §12 (最优>最小): 类 Rust — 不允许覆盖, 冲突即报错。
+    let inherent_conflicts = trait_resolver.check_inherent_impl_conflicts();
+    for ic in inherent_conflicts {
+        errors.trait_errors.push(TraitError::InherentConflict(ic));
+    }
+    // Stage 18.293 (类 Rust 架构修正): Report user inherent impls on primitive
+    // types. 类 Rust: only prelude ("core") can `impl i32 { fn method {} }`.
+    // Users must extend primitive types via traits.
+    // Per §2 原則 4 (报错>静默): must report, not silently allow.
+    for pie in &trait_resolver.primitive_inherent_impl_errors {
+        errors
+            .trait_errors
+            .push(TraitError::PrimitiveInherentImpl(pie.clone()));
+    }
 
     // Stage 18.71 P0-4: Validate trait impl method signatures against
     // trait declarations. Catches:

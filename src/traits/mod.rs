@@ -26,6 +26,6 @@ pub use error::TraitError;
 pub use object_safety::{check_trait_object_safety, ObjectSafetyViolation};
 pub use resolver::{
     extract_impl_self_ty_name, CoherenceError, ImplInfo, ImplValidationReport, IncompleteImpl,
-    TraitInfo, TraitResolver,
+    InherentImplConflict, PrimitiveInherentImplError, TraitInfo, TraitResolver,
 };
 pub use vtable::{Vtable, VtableEntry};

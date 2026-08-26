@@ -120,6 +120,10 @@ fn stage15_9_trait_error_coherence_structured() {
             );
         }
         TraitError::Incomplete(_) => panic!("expected Coherence, got Incomplete"),
+        TraitError::InherentConflict(_) => panic!("expected Coherence, got InherentConflict"),
+        TraitError::PrimitiveInherentImpl(_) => {
+            panic!("expected Coherence, got PrimitiveInherentImpl")
+        }
     }
 }
 

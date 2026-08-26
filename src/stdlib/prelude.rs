@@ -30,7 +30,7 @@ use crate::parser::Parser;
 /// available, but compilation continues (user gets "undefined type" errors).
 /// Per §11: prelude injection is a driver-level concern (runs after parse,
 /// before HIR lower).
-pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) {
+pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) -> usize {
     let prelude_src = PRELUDE_SOURCE;
     let (tokens, _lex_errors) = tokenize(prelude_src, interner);
     let mut parser = Parser::new(tokens, interner);
@@ -38,7 +38,14 @@ pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) {
     // Note: we ignore parse errors from prelude — if the prelude source has
     // a syntax error, it's a compiler bug, not a user error. The prelude
     // types simply won't be available.
+    let prelude_count = prelude_crate.items.len();
     krate.items.extend(prelude_crate.items);
+    // Stage 18.293: Return the count of prelude items so the driver can
+    // determine which items are prelude (appended after user items) vs user.
+    // This is used by the trait resolver to allow prelude inherent impls on
+    // primitive types while forbidding user ones.
+    // Per §12 (最优>最小): clean separation via item count, not span/heuristic.
+    prelude_count
 }
 
 /// Stage 18.169: The prelude source code.
@@ -130,5 +137,89 @@ struct Vec<T> { ptr: *mut T, len: i64, cap: i64 }
 impl<T> Vec<T> {
     fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0, cap: 0 } }
     fn len(&self) -> i64 { self.len }
+}
+// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
+//
+// str::len, str::is_empty, str::as_bytes — migrated from hardcoded MIR
+// intrinsics (expr_variants.rs:1377/1413/1472) to prelude impl declarations.
+//
+// Bodies are marker `loop {}` — never executed. The MIR lower intercepts
+// these specific primitive intrinsics AFTER method resolution succeeds
+// (via lookup_primitive_intrinsic in primitive_intrinsics.rs) and emits
+// the appropriate MIR directly. The signatures here are real — they
+// enable typeck and user introspection ("what methods does str have?").
+//
+// Why `loop {}` (Never type) instead of `panic!()` or `unreachable!()`:
+//   - `loop {}` has type `!` which unifies with any return type cleanly.
+//   - `panic!()` requires panic in prelude scope (not yet available).
+//   - `unreachable!()` requires macro support (not yet available).
+//   - The body is NEVER REACHED — `lookup_primitive_intrinsic` intercepts
+//     before body lowering. The marker is purely a type-checking placeholder.
+//
+// Per §1.0 原則 6 (通解 > 特解): one impl block declares all primitive str
+// methods — replaces 3+ scattered hardcoded checks across the MIR lower.
+// Per §12 (最优 > 最小): infrastructure for ALL future primitive impls
+// (i32::abs, bool::then, char::is_ascii, etc.) — they follow the same
+// pattern: prelude impl declaration + post-resolution intrinsic dispatch.
+// Per §17.6 (整体性修复): removes the str-specific whitelist in
+// checker.rs (KNOWN_INTRINSIC_METHODS) — typeck works naturally with
+// the real prelude signatures.
+impl str {
+    fn len(&self) -> i64 { loop {} }
+    fn is_empty(&self) -> bool { loop {} }
+    fn as_bytes(&self) -> &[u8] { loop {} }
+}
+// Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Primitive type
+// impls with REAL bodies (not markers). These verify the architecture is
+// general — `impl i32 { fn abs(self) -> i32 { ... } }` works through standard
+// method resolution without any intrinsic dispatch.
+//
+// Per §1.0 原則 6 (通解 > 特解): one architecture handles ALL primitive impls.
+// Adding new primitive methods = prelude impl declaration (no compiler changes).
+// Per §12 (最优 > 最小): infrastructure proven general by these real-body impls.
+// Per §17.6 (整体性修复): same path as `impl str { ... }` (Stage 18.284) —
+// the only difference is real bodies vs marker `loop {}` bodies.
+//
+// Note: `impl i32` parses `i32` as `HirTyKind::Int(I32)` (parser keyword),
+// unlike `impl str` which parses `str` as `HirTyKind::Path("str")` (not a
+// keyword). Stage 18.285's `name_of_primitive_hir_ty` handles both paths
+// uniformly via string comparison.
+//
+// Note on suffixed literals: integer literals in prelude impl bodies use
+// explicit type suffixes (e.g., `0i32`, `1i32`) to avoid defaulting to i64
+// (Landin's default int type). Without suffixes, `if self < 0` where
+// `self: i32` would unify with i64, causing LLVM type mismatch errors.
+//
+// Note on unary negation: Stage 18.287 FIXED TD-NEGOVERFLOW-I32 + TD-BINOP-SELF-SEGFAULT
+// (emit_const_typed now produces type-matched zero constants for overflow asserts).
+// `-self` and `0 - self` both work correctly now. Prelude impls use idiomatic form.
+//
+// Note on prelude arithmetic: prelude impls AVOID generating arithmetic intrinsics
+// (`add nsw`, `ssub.with.overflow`, etc.) because existing codegen tests assert on
+// the ABSENCE of these patterns in user code's IR. Prelude impls are injected into
+// every compilation, so prelude-generated arithmetic would appear in all test
+// outputs and break assertions. Use `match` (no arithmetic) only. `abs`/`signum`
+// (which need `0 - self` Sub) are NOT in prelude — users can define them in their
+// own code where the IR assertions don't apply. Stage 18.287 verified `0 - self`
+// works correctly in user code (test_impl_sub.lin).
+//
+// Note on if-as-tail: Stage 18.286 FIXED TD-IF-RETURN-VALUE-CODEGEN (const_prop
+// merge point bug). `if cond { val } else { val2 }` as tail expression now
+// works correctly. Prelude impls use if/match freely.
+impl i64 {
+    fn is_zero(self) -> bool {
+        match self {
+            0i64 => true,
+            _ => false,
+        }
+    }
+}
+impl bool {
+    fn to_int(self) -> i32 {
+        match self {
+            true => 1i32,
+            false => 0i32,
+        }
+    }
 }
 "#;

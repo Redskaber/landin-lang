@@ -52,6 +52,17 @@ pub(super) fn populate_fn_name_by_def_id(
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                    // Stage 18.287 (TD-NEGOVERFLOW-I32 fix continuation): Handle
+                    // primitive variant self_tys (`impl i32`, `impl bool`, etc.)
+                    // by using `name_of_primitive_hir_ty` to get the source name.
+                    // Previously, non-Path self_tys defaulted to "Self", causing
+                    // `impl i32 { fn abs }` and `impl i64 { fn abs }` to both
+                    // resolve to `landin_Self_abs` — a duplicate symbol crash.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one name-resolution path
+                    // for both Path and primitive-variant self_tys.
+                    // Per §12 (最优 > 最小): reuse `name_of_primitive_hir_ty`
+                    // (already exists for method resolution).
                     let self_ty_name =
                         if let crate::hir::HirTyKind::Path(_, p) = &impl_block.self_ty.kind {
                             if let Some(seg) = p.segments.last() {
@@ -60,7 +71,9 @@ pub(super) fn populate_fn_name_by_def_id(
                                 "Self"
                             }
                         } else {
-                            "Self"
+                            // Primitive variant (Int/Uint/Bool/Char/Float).
+                            crate::mir::lower::name_of_primitive_hir_ty(&impl_block.self_ty.kind)
+                                .unwrap_or("Self")
                         };
                     let self_stripped =
                         self_ty_name.strip_prefix("landin_").unwrap_or(self_ty_name);
@@ -260,6 +273,7 @@ pub(super) fn build_trait_resolver_and_plan(
     hir: &HirCrate,
     interner: &mut lasso::Rodeo,
     errors: &mut super::CompileErrors,
+    user_item_count: usize,
 ) -> (
     crate::traits::TraitResolver,
     crate::mir::dyn_trait::DynTraitMIRPlan,
@@ -267,7 +281,7 @@ pub(super) fn build_trait_resolver_and_plan(
     let mut trait_resolver = crate::traits::TraitResolver::new();
     trait_resolver.register_builtin_traits(interner);
     crate::stdlib::register_stdlib(interner);
-    trait_resolver.collect(hir, interner);
+    trait_resolver.collect(hir, interner, user_item_count);
 
     super::driver_validations::check_object_safety_for_dyn_trait_usage(
         hir,

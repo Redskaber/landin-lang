@@ -26,6 +26,72 @@ use crate::session::Span;
 use super::ty_lower::lower_hir_ty_to_mir_ty;
 use super::MirLowerCtxt;
 
+/// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Map a primitive `TyKind`
+/// to its source-language name as it would appear in `impl <name> { ... }`.
+///
+/// Returns `None` for types that don't support inherent impls (Ref, RawPtr,
+/// Tuple, Array, Slice, etc.).
+///
+/// Per §1.0 原則 6 (通解>特例): one mapping function for all primitive types.
+/// Per §10 (api-naming): `name_of_primitive_ty` follows `<noun>_<prep>_<noun>`.
+pub(super) fn name_of_primitive_ty(ty: &Ty) -> Option<&'static str> {
+    use crate::ast::{FloatTy, IntTy, UintTy};
+    match ty.kind {
+        TyKind::Str => Some("str"),
+        TyKind::Bool => Some("bool"),
+        TyKind::Char => Some("char"),
+        TyKind::Int(IntTy::I8) => Some("i8"),
+        TyKind::Int(IntTy::I16) => Some("i16"),
+        TyKind::Int(IntTy::I32) => Some("i32"),
+        TyKind::Int(IntTy::I64) => Some("i64"),
+        TyKind::Int(IntTy::I128) => Some("i128"),
+        TyKind::Int(IntTy::Isize) => Some("isize"),
+        TyKind::Uint(UintTy::U8) => Some("u8"),
+        TyKind::Uint(UintTy::U16) => Some("u16"),
+        TyKind::Uint(UintTy::U32) => Some("u32"),
+        TyKind::Uint(UintTy::U64) => Some("u64"),
+        TyKind::Uint(UintTy::U128) => Some("u128"),
+        TyKind::Uint(UintTy::Usize) => Some("usize"),
+        TyKind::Float(FloatTy::F32) => Some("f32"),
+        TyKind::Float(FloatTy::F64) => Some("f64"),
+        _ => None,
+    }
+}
+
+/// Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Map a primitive
+/// `HirTyKind` to its source-language name. Mirror of `name_of_primitive_ty`
+/// for the HIR side, needed because `impl i32 { ... }` parses `i32` as
+/// `HirTyKind::Int(I32)` (not `HirTyKind::Path("i32")`) — see parser/ty.rs.
+///
+/// Returns `None` for non-primitive HIR types (Path, Ref, Tuple, etc.) and
+/// for `Str` (which IS parsed as Path in Landin, not as a primitive variant).
+///
+/// Per §1.0 原則 6 (通解>特例): one mapping function for all primitive HIR types.
+/// Per §12 (最优>最小): reuses the same `&'static str` returns as
+/// `name_of_primitive_ty` so direct string comparison works uniformly.
+pub(crate) fn name_of_primitive_hir_ty(kind: &crate::hir::HirTyKind) -> Option<&'static str> {
+    use crate::ast::{FloatTy, IntTy, UintTy};
+    match kind {
+        crate::hir::HirTyKind::Bool => Some("bool"),
+        crate::hir::HirTyKind::Char => Some("char"),
+        crate::hir::HirTyKind::Int(IntTy::I8) => Some("i8"),
+        crate::hir::HirTyKind::Int(IntTy::I16) => Some("i16"),
+        crate::hir::HirTyKind::Int(IntTy::I32) => Some("i32"),
+        crate::hir::HirTyKind::Int(IntTy::I64) => Some("i64"),
+        crate::hir::HirTyKind::Int(IntTy::I128) => Some("i128"),
+        crate::hir::HirTyKind::Int(IntTy::Isize) => Some("isize"),
+        crate::hir::HirTyKind::Uint(UintTy::U8) => Some("u8"),
+        crate::hir::HirTyKind::Uint(UintTy::U16) => Some("u16"),
+        crate::hir::HirTyKind::Uint(UintTy::U32) => Some("u32"),
+        crate::hir::HirTyKind::Uint(UintTy::U64) => Some("u64"),
+        crate::hir::HirTyKind::Uint(UintTy::U128) => Some("u128"),
+        crate::hir::HirTyKind::Uint(UintTy::Usize) => Some("usize"),
+        crate::hir::HirTyKind::Float(FloatTy::F32) => Some("f32"),
+        crate::hir::HirTyKind::Float(FloatTy::F64) => Some("f64"),
+        _ => None,
+    }
+}
+
 /// Stage 3.38 (L-ENUM): Resolve the variant index and field types for an
 /// enum variant construction.
 ///
@@ -159,6 +225,7 @@ pub(super) fn query_method_self_kind(
 
 pub(super) fn resolve_inherent_method(
     hir: &crate::hir::HirCrate,
+    interner: &lasso::Rodeo,
     recv_ty: &Ty,
     method_name: &lasso::Spur,
 ) -> Option<crate::hir::DefId> {
@@ -178,33 +245,73 @@ pub(super) fn resolve_inherent_method(
         _ => recv_ty,
     };
 
-    // Only ADT types (structs/enums) can have inherent impls.
-    let adt_def_id = match &recv_ty.kind {
-        TyKind::Adt(def_id, _) => *def_id,
-        _ => return None,
+    // Stage 18.284+18.285 (TD-INTRINSIC-OVERUSE Phase 2-A): Determine the
+    // receiver type's source-language name as a `&str` for impl-block matching.
+    //
+    // Three cases:
+    //
+    // (1) ADT types: look up the struct/enum name in HIR, resolve the Symbol
+    //     to a `&str` via the interner. Impl blocks for `struct Foo { ... }`
+    //     use `self_ty = Path("Foo")` — match by string comparison.
+    //
+    // (2) `str` primitive: parser parses `str` as a Path (since "str" is NOT
+    //     in the primitive keyword list — see parser/ty.rs). So `impl str`
+    //     has `self_ty = Path("str")` — match by string comparison (same as
+    //     ADT path). The `&str` comes from `name_of_primitive_ty` returning
+    //     `&'static str "str"`.
+    //
+    // (3) Other primitives (`i32`, `bool`, etc.): parser parses the keyword
+    //     as a `HirTyKind::Int(I32)` / `HirTyKind::Bool` variant (since these
+    //     keywords ARE in the primitive list). So `impl i32` has
+    //     `self_ty = HirTyKind::Int(I32)` — match via `name_of_primitive_hir_ty`
+    //     which returns the same `&'static str` we'd get from
+    //     `name_of_primitive_ty` for the corresponding MIR type.
+    //
+    // Per §1.0 原則 6 (通解>特解): one unified string-based comparison path
+    // for ALL types (ADT + all primitives). The impl-matching loop checks
+    // both Path-based self_tys (resolved to &str) AND primitive-variant
+    // self_tys (mapped to &str via name_of_primitive_hir_ty).
+    // Per §12 (最优>最小): infrastructure for ALL primitive impls — adding
+    // new primitive types (i32::abs, bool::then, char::is_ascii, etc.)
+    // requires no architecture changes, only prelude impl declarations.
+    let type_name_str: &str = match &recv_ty.kind {
+        TyKind::Adt(def_id, _) => {
+            // ADT path: look up the struct/enum name in HIR, resolve via interner.
+            let sym = hir.find_owner(*def_id).and_then(|owner| match owner {
+                crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
+                crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
+                _ => None,
+            })?;
+            interner.resolve(&sym)
+        }
+        _ => {
+            // Primitive path (str, i32, bool, etc.) — get &'static str name.
+            // For `str`, this is "str" (matches `impl str { ... }`'s Path self_ty
+            // when resolved to string). For `i32`, this is "i32" (matches
+            // `impl i32 { ... }`'s HirTyKind::Int(I32) self_ty via
+            // name_of_primitive_hir_ty).
+            name_of_primitive_ty(recv_ty)?
+        }
     };
 
-    // Get the ADT's name (for matching impl self_ty).
-    // The impl's self_ty is a HirTy::Path with the type name as the single segment.
-    let adt_name = hir.find_owner(adt_def_id).and_then(|owner| match owner {
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
-        _ => None,
-    })?;
-
-    // Search all impl blocks for one whose self_ty matches adt_name.
+    // Search all impl blocks for one whose self_ty matches the type name.
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
-            // Check if this impl is for our ADT (inherent impl, not trait impl).
+            // Check if this impl is for our type (inherent impl, not trait impl).
             if impl_block.of_trait.is_some() {
                 continue; // Skip trait impls; only looking for inherent methods.
             }
-            // Check if the impl's self_ty matches adt_name.
+            // Check if the impl's self_ty matches type_name_str.
+            // Stage 18.285: Two matching paths, unified by string comparison:
+            //   (1) Path self_ty (`impl str { ... }`, `impl Foo { ... }`):
+            //       resolve the path's single segment to &str, compare.
+            //   (2) Primitive variant self_ty (`impl i32 { ... }`, `impl bool`):
+            //       use name_of_primitive_hir_ty to get &str, compare.
             let self_ty_matches = match &impl_block.self_ty.kind {
-                crate::hir::HirTyKind::Path(_qself, path) => {
-                    path.segments.len() == 1 && path.segments[0].ident.name == adt_name
+                crate::hir::HirTyKind::Path(_qself, path) if path.segments.len() == 1 => {
+                    interner.resolve(&path.segments[0].ident.name) == type_name_str
                 }
-                _ => false,
+                hir_kind => name_of_primitive_hir_ty(hir_kind) == Some(type_name_str),
             };
             if !self_ty_matches {
                 continue;
@@ -410,47 +517,52 @@ pub fn query_method_return_type_uncached(
 /// self_ty + method name. This is O(n*m) but sufficient for v0.1's scale.
 pub(super) fn resolve_trait_method(
     hir: &crate::hir::HirCrate,
+    interner: &lasso::Rodeo,
     recv_ty: &Ty,
     method_name: &lasso::Spur,
 ) -> Option<crate::hir::DefId> {
-    // Auto-deref Ref to find the underlying ADT type.
+    // Auto-deref Ref to find the underlying type.
     let recv_ty = match &recv_ty.kind {
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => inner,
         _ => recv_ty,
     };
 
-    // Only ADT types can have trait impls.
-    let adt_def_id = match &recv_ty.kind {
-        TyKind::Adt(def_id, _) => *def_id,
-        _ => return None,
+    // Stage 18.295: Unified type name resolution — supports both ADT and
+    // primitive types. Reuses the same pattern as resolve_inherent_method.
+    // Per §1.0 原則 6 (通解>特解): one path for all types.
+    // Per §12 (最优>最小): root cause fix — add interner param (same as
+    // resolve_inherent_method) to enable string comparison.
+    let type_name_str: &str = match &recv_ty.kind {
+        TyKind::Adt(def_id, _) => {
+            let sym = hir.find_owner(*def_id).and_then(|owner| match owner {
+                crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
+                crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
+                _ => None,
+            })?;
+            interner.resolve(&sym)
+        }
+        _ => name_of_primitive_ty(recv_ty)?,
     };
 
-    // Get the ADT's name.
-    let adt_name = hir.find_owner(adt_def_id).and_then(|owner| match owner {
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
-        _ => None,
-    })?;
-
-    // Search all TRAIT impl blocks (of_trait.is_some()) for one whose self_ty
-    // matches adt_name and whose items include the method.
+    // Search all TRAIT impl blocks for one whose self_ty matches and whose
+    // items include the method.
+    // Stage 18.295: Two matching paths, unified by string comparison:
+    //   (1) Path self_ty (`impl Trait for str` / `impl Trait for Foo`)
+    //   (2) Primitive variant self_ty (`impl Trait for i32`)
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
-            // Only look at TRAIT impls (skip inherent impls).
             if impl_block.of_trait.is_none() {
                 continue;
             }
-            // Check if the impl's self_ty matches adt_name.
             let self_ty_matches = match &impl_block.self_ty.kind {
-                crate::hir::HirTyKind::Path(_qself, path) => {
-                    path.segments.len() == 1 && path.segments[0].ident.name == adt_name
+                crate::hir::HirTyKind::Path(_qself, path) if path.segments.len() == 1 => {
+                    interner.resolve(&path.segments[0].ident.name) == type_name_str
                 }
-                _ => false,
+                hir_kind => name_of_primitive_hir_ty(hir_kind) == Some(type_name_str),
             };
             if !self_ty_matches {
                 continue;
             }
-            // Search the impl's items for a method with the given name.
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     if f.ident.name == *method_name {
@@ -461,17 +573,9 @@ pub(super) fn resolve_trait_method(
         }
     }
 
-    // Stage 14.97 (Bug Y1 fix): If the method wasn't found in any impl block,
-    // search trait definitions for a default body. If the trait has a method
-    // with the given name AND a body (Some(BodyId)), use that method's DefId.
-    //
-    // This handles `trait T { fn f(&self) -> i32; fn g(&self) -> i32 { self.f() + 1 } }`
-    // where `g` has a default body and is not overridden in `impl T for S`.
+    // Stage 14.97 (Bug Y1 fix): Search trait definitions for default body.
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
-            // Check if this trait is implemented for our ADT type.
-            // We check by seeing if any impl block implements this trait
-            // for the ADT name.
             let trait_name = t.ident.name;
             let trait_implemented = hir.owners.iter().any(|(_, o)| {
                 if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = o {
@@ -481,9 +585,14 @@ pub(super) fn resolve_trait_method(
                         .and_then(|p| p.segments.last().map(|s| s.ident.name))
                         == Some(trait_name)
                     {
-                        if let crate::hir::HirTyKind::Path(_, path) = &impl_block.self_ty.kind {
-                            return path.segments.last().map(|s| s.ident.name) == Some(adt_name);
-                        }
+                        // Stage 18.295: Use unified string comparison.
+                        let impl_self_matches = match &impl_block.self_ty.kind {
+                            crate::hir::HirTyKind::Path(_, path) if path.segments.len() == 1 => {
+                                interner.resolve(&path.segments[0].ident.name) == type_name_str
+                            }
+                            hir_kind => name_of_primitive_hir_ty(hir_kind) == Some(type_name_str),
+                        };
+                        return impl_self_matches;
                     }
                 }
                 false
@@ -491,7 +600,6 @@ pub(super) fn resolve_trait_method(
             if !trait_implemented {
                 continue;
             }
-            // Search trait items for a method with the given name that has a body.
             for trait_item in &t.items {
                 if let crate::hir::HirTraitItem::Fn(f) = trait_item {
                     if f.ident.name == *method_name && f.body.is_some() {
@@ -520,7 +628,7 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                     TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
                     receiver.span,
                 );
-                resolve_inherent_method(hir, &synth_ty, method_name)
+                resolve_inherent_method(hir, cx.interner, &synth_ty, method_name)
             } else {
                 None
             }
@@ -530,7 +638,7 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
             if let crate::hir::Res::Local(hir_id) = path.res {
                 // Find the let binding for this local.
                 if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
-                    return resolve_inherent_method(hir, &init_ty, method_name);
+                    return resolve_inherent_method(hir, cx.interner, &init_ty, method_name);
                 }
                 // Stage 14.38: If find_local_init_type failed (e.g. init is a
                 // MethodCall), try to find the init expression directly and
@@ -550,7 +658,12 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                                 if matches!(init_kind, crate::resolve::DefKind::Fn) {
                                     // Stage 15.6 (perf): use cached lookup.
                                     if let Some(ret_ty) = cx.query_method_return_type(init_did) {
-                                        return resolve_inherent_method(hir, &ret_ty, method_name);
+                                        return resolve_inherent_method(
+                                            hir,
+                                            cx.interner,
+                                            &ret_ty,
+                                            method_name,
+                                        );
                                     }
                                 }
                             }
@@ -573,8 +686,15 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                                 // resolution, not just inherent. Without this,
                                 // `let r1 = p.f(); let r2 = r1.g();` where g is
                                 // a trait default body crashes (LLVM "call i32 0").
-                                return resolve_inherent_method(hir, &ret_ty, method_name)
-                                    .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
+                                return resolve_inherent_method(
+                                    hir,
+                                    cx.interner,
+                                    &ret_ty,
+                                    method_name,
+                                )
+                                .or_else(|| {
+                                    resolve_trait_method(hir, cx.interner, &ret_ty, method_name)
+                                });
                             }
                         }
                     }
@@ -598,7 +718,7 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                             TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
                             receiver.span,
                         );
-                        return resolve_inherent_method(hir, &synth_ty, method_name);
+                        return resolve_inherent_method(hir, cx.interner, &synth_ty, method_name);
                     }
                     // Stage 14.41: Static method call (e.g., `Vec::new().push(1)`)
                     // — look up the method's return type and resolve the target
@@ -608,8 +728,10 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                         if let Some(ret_ty) = cx.query_method_return_type(def_id) {
                             // Stage 14.98 (Bug Z3 fix): Also try trait method
                             // resolution for static method call results.
-                            return resolve_inherent_method(hir, &ret_ty, method_name)
-                                .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
+                            return resolve_inherent_method(hir, cx.interner, &ret_ty, method_name)
+                                .or_else(|| {
+                                    resolve_trait_method(hir, cx.interner, &ret_ty, method_name)
+                                });
                         }
                     }
                 }
@@ -639,8 +761,8 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                     // (added in Stage 14.42), so `&mut Counter` correctly
                     // resolves to `Counter`.
                     // Stage 14.98 (Bug Z3 fix): Also try trait method resolution.
-                    return resolve_inherent_method(hir, &ret_ty, method_name)
-                        .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
+                    return resolve_inherent_method(hir, cx.interner, &ret_ty, method_name)
+                        .or_else(|| resolve_trait_method(hir, cx.interner, &ret_ty, method_name));
                 }
             }
             None
@@ -662,10 +784,10 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                     if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
                         // If it's an Array, extract the element type.
                         if let TyKind::Array(elem_ty, _) = &init_ty.kind {
-                            return resolve_inherent_method(hir, elem_ty, method_name);
+                            return resolve_inherent_method(hir, cx.interner, elem_ty, method_name);
                         }
                         // Otherwise, try resolving on the type directly.
-                        return resolve_inherent_method(hir, &init_ty, method_name);
+                        return resolve_inherent_method(hir, cx.interner, &init_ty, method_name);
                     }
                     // Stage 14.44b: find_local_init_type failed (e.g., init is
                     // a static method call). Try find_local_init_expr to get
@@ -686,6 +808,7 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                                                 {
                                                     return resolve_inherent_method(
                                                         hir,
+                                                        cx.interner,
                                                         &ret_ty,
                                                         method_name,
                                                     );
@@ -723,13 +846,17 @@ pub(super) fn resolve_inherent_method_from_hir_expr(
                                     if f.ident.map(|fi| fi.name) == Some(ident.name) {
                                         let field_mir_ty =
                                             crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty);
-                                        if let Some(did) =
-                                            resolve_inherent_method(hir, &field_mir_ty, method_name)
-                                        {
+                                        if let Some(did) = resolve_inherent_method(
+                                            hir,
+                                            cx.interner,
+                                            &field_mir_ty,
+                                            method_name,
+                                        ) {
                                             return Some(did);
                                         }
                                         return resolve_trait_method(
                                             hir,
+                                            cx.interner,
                                             &field_mir_ty,
                                             method_name,
                                         );

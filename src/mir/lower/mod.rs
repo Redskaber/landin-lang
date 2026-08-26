@@ -31,6 +31,8 @@ mod intrinsic_lower;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
 mod overflow_assert;
+// Stage 18.284 §13.4 J1-J6: primitive intrinsic dispatch (post-resolution)
+mod primitive_intrinsics;
 // Stage 18.279 §13.4 J1-J6: extract pattern/match lowering from control_flow.rs
 mod pattern_bindings;
 mod pattern_lower;
@@ -60,6 +62,11 @@ pub use call_lower::build_dyn_trait_call_terminator;
 // cache wrapper doesn't change behavior.
 // Stage 18.131: moved to method_resolution.rs (extracted sub-responsibility).
 pub use method_resolution::query_method_return_type_uncached;
+// Stage 18.287: re-export name_of_primitive_hir_ty for driver codegen prep
+// (needed to generate correct LLVM function names for primitive impl methods).
+// `pub(crate)` re-export — only used within the compiler crate, not exposed
+// to external callers.
+pub(crate) use method_resolution::name_of_primitive_hir_ty;
 // Stage 15.7 (v0.2): Expose consolidated writeback functions for the
 // driver to call. Per §23 (API Naming): `pub use` of named functions
 // (no glob). Per §16: driver is orchestrator-only — these functions

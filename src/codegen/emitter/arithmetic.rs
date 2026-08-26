@@ -78,4 +78,16 @@ pub trait ArithmeticEmitter {
         lhs: &EmitValue,
         rhs: &EmitValue,
     ) -> EmitValue;
+
+    /// Stage 18.287 (TD-NEGOVERFLOW-I32 fix): Emit a typed integer constant.
+    ///
+    /// Unlike `emit_const(&ConstVal::Int(0))` (which defaults to i32 for
+    /// small values), this method emits the constant with the EXACT type
+    /// specified by `ty`. This is needed for overflow asserts where the
+    /// operand's type must match the zero constant's type (e.g., i64 operand
+    /// needs `i64 0`, not `i32 0`).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one typed-const method for all int widths.
+    /// Per §12 (最优 > 最小): fix root cause (typed const), not symptom (cast).
+    fn emit_const_typed(&mut self, val: i64, ty: &EmitType) -> EmitValue;
 }

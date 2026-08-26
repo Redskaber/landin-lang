@@ -201,34 +201,18 @@ impl TypeChecker {
     /// if the method is a known intrinsic or a user-defined method. If not,
     /// report "no method found".
     ///
-    /// **MVP scope (§17.6 record)**: This check uses a whitelist of known
-    /// intrinsic method names to avoid false positives. A full fix would
-    /// re-attempt method resolution with HIR access (requires TypeChecker
-    /// to hold a HIR reference — deferred to v0.3). The whitelist approach
-    /// is conservative: it only reports methods that are clearly not
-    /// intrinsics AND not resolvable. Known limitation: if a user defines
-    /// a method with the same name as an intrinsic (e.g., `impl String {
-    /// fn len(&self) -> i32 {...} }`), the check would skip it. This is
-    /// acceptable because the MIR lower already handles user-defined
-    /// methods when the receiver type is concrete.
+    /// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): The previous
+    /// `KNOWN_INTRINSIC_METHODS` whitelist has been removed. With prelude
+    /// `impl str { fn len/is_empty/as_bytes ... }` declarations, method
+    /// resolution succeeds for known primitive methods (returning a real
+    /// DefId), so deferred calls with concrete receivers now resolve
+    /// cleanly. Unknown methods fall through to the "no method found"
+    /// error uniformly — no special-case whitelist needed.
     ///
     /// Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
     /// Per §1.0 原則 6 (通解>特例): one re-check for all deferred calls.
-    /// Per §17.6 (同类型整体修复): tracks method resolution through typeck.
+    /// Per §17.6 (整体性修复): removes str-specific whitelist.
     fn check_deferred_method_calls(&mut self, mir: &MirBody) {
-        // Stage 18.234: Known intrinsic method names. These are handled
-        // by MIR lower's intrinsic paths when the receiver type is resolved
-        // to a concrete Adt. If the receiver is still Infer at lower time,
-        // the intrinsic check fails, and the call falls through to the
-        // deferred path. Here, we skip reporting for these method names
-        // because they ARE valid methods.
-        //
-        // Per §1.0 原則 9 (正确>妥协): conservative whitelist avoids false
-        // positives. Full fix (re-attempt resolution with HIR) deferred to v0.3.
-        const KNOWN_INTRINSIC_METHODS: &[&str] = &[
-            "len", "is_empty", "as_bytes", "as_str", "push_str", "get", "push", "new", "from_str",
-            "cap", "ptr",
-        ];
         for deferred in &mir.deferred_method_calls {
             // Get the receiver's resolved type.
             let recv_ty = if let Some(ld) = mir.local_decls.get(deferred.recv_local.0 as usize) {
@@ -245,11 +229,6 @@ impl TypeChecker {
             }
             // Resolve method name string.
             let method_name_str = self.format_method_name(&deferred.method_name);
-            // Skip known intrinsic methods (they're handled by MIR lower
-            // when the type is concrete; the deferred call is a false alarm).
-            if KNOWN_INTRINSIC_METHODS.contains(&method_name_str.as_str()) {
-                continue;
-            }
             // Check if an error was already reported for this span (dedup).
             let already_reported = self
                 .errors

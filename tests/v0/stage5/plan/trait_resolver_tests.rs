@@ -30,7 +30,7 @@ fn parse_lower_resolve(src: &str) -> landin_compiler::hir::HirCrate {
 fn test_trait_collected() {
     let hir = parse_lower_resolve("trait Foo { fn bar(); }");
     let mut resolver = TraitResolver::new();
-    resolver.collect(&hir, &mut Rodeo::new());
+    resolver.collect(&hir, &mut Rodeo::new(), 0);
     assert_eq!(resolver.trait_count(), 1, "should collect 1 trait");
     assert_eq!(resolver.impl_count(), 0, "no impls in source");
 }
@@ -40,7 +40,7 @@ fn test_impl_collected() {
     let hir =
         parse_lower_resolve("trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} }");
     let mut resolver = TraitResolver::new();
-    resolver.collect(&hir, &mut Rodeo::new());
+    resolver.collect(&hir, &mut Rodeo::new(), 0);
     assert_eq!(resolver.trait_count(), 1, "should collect 1 trait");
     assert_eq!(resolver.impl_count(), 1, "1 user impl");
 }
@@ -51,7 +51,7 @@ fn test_method_dispatch_table() {
         "trait Display { fn show(); } struct Point; impl Display for Point { fn show() {} }",
     );
     let mut resolver = TraitResolver::new();
-    resolver.collect(&hir, &mut Rodeo::new());
+    resolver.collect(&hir, &mut Rodeo::new(), 0);
     assert_eq!(resolver.trait_count(), 1, "1 user trait");
     assert_eq!(resolver.impl_count(), 1, "1 user impl");
     // Verify dispatch table was built (trait_name, self_ty_name) → impl DefId

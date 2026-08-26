@@ -52,7 +52,13 @@ pub(crate) fn compile_inner(
     // Per §11: prelude injection is a driver-level concern (after parse,
     // before HIR lower). Per §1.0 原則 6 (通解>特例): one injection
     // mechanism for all built-in types.
-    crate::stdlib::prelude::inject_prelude(&mut krate, &mut interner);
+    // Stage 18.293: Record user_item_count for prelude/user boundary detection.
+    let user_item_count = krate.items.len();
+    let _prelude_item_count = crate::stdlib::prelude::inject_prelude(&mut krate, &mut interner);
+    // user_item_count = number of items from user code (before prelude appended).
+    // HIR lowering assigns DefIds in item order, so user items get
+    // DefId(0..user_item_count-1) and prelude items get DefId(user_item_count..).
+    // Per §12 (最优>最小): clean separation via item count.
 
     // === Stage 18.152: Multi-file module loading (only in project mode) ===
     // Per §11: ModuleLoader runs after parse, before HIR lower.
@@ -302,8 +308,12 @@ pub(crate) fn compile_inner(
     let mut synthesized_closure_mir_bodies: Vec<crate::mir::body::MirBody> = Vec::new();
 
     // Stage 18.143 §13.4 J2: extracted to driver_codegen_prep.rs
-    let (trait_resolver, dyn_trait_plan) =
-        driver_codegen_prep::build_trait_resolver_and_plan(&hir, &mut interner, &mut errors);
+    let (trait_resolver, dyn_trait_plan) = driver_codegen_prep::build_trait_resolver_and_plan(
+        &hir,
+        &mut interner,
+        &mut errors,
+        user_item_count,
+    );
 
     // Stage 14.100 (Bug AA5 fix): Track which body_ids are lowered (i.e., not
     // skipped). This set is used to filter body_metas so codegen doesn't try

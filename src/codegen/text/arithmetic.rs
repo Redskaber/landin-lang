@@ -285,4 +285,24 @@ impl ArithmeticEmitter for TextEmitter {
         ));
         format!("%v{}", r)
     }
+
+    /// Stage 18.287 (TD-NEGOVERFLOW-I32 fix): Emit a typed integer constant.
+    ///
+    /// Text emitter: just emit the value with the type string. This is used
+    /// by the text backend for debugging/testing — the LLVM backend is the
+    /// primary path for actual codegen.
+    fn emit_const_typed(&mut self, val: i64, ty: &EmitType) -> EmitValue {
+        let ty_str = match ty {
+            EmitType::I1 => "i1",
+            EmitType::I8 => "i8",
+            EmitType::I16 => "i16",
+            EmitType::I32 => "i32",
+            EmitType::I64 => "i64",
+            EmitType::I128 => "i128",
+            EmitType::F32 => "f32",
+            EmitType::F64 => "f64",
+            _ => "i64",
+        };
+        format!("{} {}", ty_str, val)
+    }
 }

@@ -587,6 +587,34 @@ mod stage18_236_ptr_arith_tests;
 #[path = "v0/stage18/plan/stage18_241_str_method_resolve_tests.rs"]
 mod stage18_241_str_method_resolve_tests;
 
+// === Stage 18.284: TD-INTRINSIC-OVERUSE Phase 2-A — primitive type method resolution ===
+#[path = "v0/stage18/plan/stage18_284_primitive_intrinsics_tests.rs"]
+mod stage18_284_primitive_intrinsics_tests;
+
+// === Stage 18.285: TD-INTRINSIC-OVERUSE Phase 2-A continuation — primitive impl generality ===
+#[path = "v0/stage18/plan/stage18_285_primitive_impl_generality_tests.rs"]
+mod stage18_285_primitive_impl_generality_tests;
+
+// === Stage 18.286: TD-IF-RETURN-VALUE-CODEGEN fix — const_prop merge point ===
+#[path = "v0/stage18/plan/stage18_286_const_prop_merge_tests.rs"]
+mod stage18_286_const_prop_merge_tests;
+
+// === Stage 18.287: TD-NEGOVERFLOW-I32 + TD-BINOP-SELF-SEGFAULT fix — typed const emit ===
+#[path = "v0/stage18/plan/stage18_287_typed_const_emit_tests.rs"]
+mod stage18_287_typed_const_emit_tests;
+
+// === Stage 18.288: §17.6 audit — TD-DIVZERO-CONST-TYPE + TD-SHIFTOVERFLOW-CONST-TYPE ===
+#[path = "v0/stage18/plan/stage18_288_audit_div_shl_const_type_tests.rs"]
+mod stage18_288_audit_div_shl_const_type_tests;
+
+// === Stage 18.292: 类 Rust 架构修正 — inherent impl 冲突检测 (不允许覆盖) ===
+#[path = "v0/stage18/plan/stage18_292_rust_model_inherent_conflict_tests.rs"]
+mod stage18_292_rust_model_inherent_conflict_tests;
+
+// === Stage 18.296: trait impl for primitive types — 正负测试 ===
+#[path = "v0/stage18/plan/stage18_296_trait_impl_primitive_tests.rs"]
+mod stage18_296_trait_impl_primitive_tests;
+
 // === Stage 18.255: TD-TUPLE-CTOR-TYPECK Phase 1 fix + Phase 2 design ===
 #[path = "v0/stage18/plan/stage18_255_td_tuple_ctor_typeck_regression_tests.rs"]
 mod stage18_255_td_tuple_ctor_typeck_regression_tests;

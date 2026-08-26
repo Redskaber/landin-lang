@@ -277,6 +277,8 @@ impl CompileErrors {
             let span = match e {
                 TraitError::Coherence(ce) => ce.span,
                 TraitError::Incomplete(inc) => inc.span,
+                TraitError::InherentConflict(ic) => ic.span,
+                TraitError::PrimitiveInherentImpl(pie) => pie.span,
             };
             diags.push(
                 DiagnosticBuilder::error(&msg, span)

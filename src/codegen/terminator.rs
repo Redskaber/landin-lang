@@ -539,9 +539,20 @@ pub(crate) fn codegen_terminator(
                                 EmitType::I128 => 128,
                                 _ => 32, // Fallback for Float/Struct/Ptr/etc.
                             };
-                            let width_str = bit_width.to_string();
+                            // Stage 18.288 (TD-SHIFTOVERFLOW-CONST-TYPE fix):
+                            // Use `emit_const_typed` instead of raw string.
+                            // The old code passed `bit_width.to_string()` (e.g.,
+                            // "64") which was parsed as `i32 64` by the LLVM
+                            // emitter's `lookup`, causing type mismatch when
+                            // `op_ty` was i64:
+                            //   "icmp uge i64 %v4, i32 64" → LLVM verify fail
+                            //
+                            // Same class as TD-NEGOVERFLOW-I32 + TD-DIVZERO-CONST-TYPE.
+                            // Per §17.6 (直到审查不出问题为止): found during audit.
+                            // Per §12 (最优 > 最小): reuse `emit_const_typed`.
+                            let width_val = emitter.emit_const_typed(bit_width as i64, &op_ty);
                             let is_overflow =
-                                emitter.emit_icmp("uge", &op_ty, &rhs_val, &width_str);
+                                emitter.emit_icmp("uge", &op_ty, &rhs_val, &width_val);
                             emitter.emit_br_cond(
                                 &is_overflow,
                                 &panic_label,
@@ -598,7 +609,26 @@ pub(crate) fn codegen_terminator(
                         );
                         let rhs_ty =
                             detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
-                        let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
+                        // Stage 18.288 (TD-DIVZERO-CONST-TYPE fix): Use
+                        // `emit_const_typed` instead of `"0".to_string()` for
+                        // the zero constant. The old code passed a raw "0"
+                        // string which the text emitter formatted as `i32 0`,
+                        // but the LLVM emitter's `lookup` parsed it as an i32
+                        // constant — causing LLVM type mismatch when `rhs_ty`
+                        // was i64 (e.g., `a / b` where a, b: i64):
+                        //   "Both operands to ICmp instruction are not of the
+                        //    same type! icmp eq i64 %v2, i32 0"
+                        //
+                        // Same class as TD-NEGOVERFLOW-I32 (Stage 18.287 fix):
+                        // overflow/division asserts must emit zero constants
+                        // with the EXACT type matching the operand.
+                        //
+                        // Per §17.6 (直到审查不出问题为止): found during the
+                        // post-Stage-18.287 audit of similar emit_const patterns.
+                        // Per §12 (最优 > 最小): reuse `emit_const_typed` (added
+                        // in Stage 18.287) — one typed-const path for all asserts.
+                        let zero_val = emitter.emit_const_typed(0, &rhs_ty);
+                        let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &zero_val);
                         emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                     }
                 }
@@ -617,7 +647,21 @@ pub(crate) fn codegen_terminator(
                     let op_ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
                     // Reuse emit_checked_binop with Sub to get {result, overflow}.
                     // Per §1.0 原則 6 "通用 > 特例": reuse existing infrastructure.
-                    let zero_val = emitter.emit_const(&ConstVal::Int(0));
+                    //
+                    // Stage 18.287 (TD-NEGOVERFLOW-I32 fix): Use `emit_const_typed`
+                    // instead of `emit_const(&ConstVal::Int(0))`. The old code
+                    // emitted `0` as i32 (the default for small ConstVal::Int),
+                    // causing LLVM type mismatch when `op_ty` was i64:
+                    //   "Call parameter type does not match function signature!
+                    //    i32 0 vs i64 %v = call { i64, i1 } @llvm.ssub.with.overflow.i64(...)"
+                    //
+                    // The fix emits `0` with the EXACT type matching `op_ty`,
+                    // so the checked binop's operands are always type-matched.
+                    //
+                    // Per §12 (最优 > 最小): fix root cause (typed const),
+                    // not symptom (cast after emit).
+                    // Per §1.0 原則 6 (通解 > 特解): one typed-const path for all widths.
+                    let zero_val = emitter.emit_const_typed(0, &op_ty);
                     let checked =
                         emitter.emit_checked_binop(BinOp::Sub, &op_ty, &zero_val, &op_val);
                     // Extract overflow flag (field 1 of {T, i1} struct).

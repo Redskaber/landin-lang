@@ -38,6 +38,9 @@ use super::intrinsic_lower::{
     lower_box_new_intrinsic, lower_format_variadic_intrinsic, lower_string_from_str_intrinsic,
     lower_string_push_str_intrinsic, lower_vec_get_intrinsic, lower_vec_push_intrinsic,
 };
+// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
+// (post-resolution). Per §13.4 J2 (单一职责).
+use super::primitive_intrinsics::{emit_primitive_intrinsic, lookup_primitive_intrinsic};
 
 /// Lower a Path expression to a MIR operand (Stage 18.133: extracted from lower_expr_to_operand).
 pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirPath) -> LocalId {
@@ -1135,13 +1138,13 @@ pub(super) fn lower_method_call_expr(
     // Check if static dispatch is possible before using dyn Trait
     let can_static_dispatch = cx.hir.is_some_and(|hir| {
         let recv_ty = cx.mir.local(recv_local).ty.clone();
-        if resolve_inherent_method(hir, &recv_ty, &method.name).is_some() {
+        if resolve_inherent_method(hir, cx.interner, &recv_ty, &method.name).is_some() {
             return true;
         }
         if resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name).is_some() {
             return true;
         }
-        if resolve_trait_method(hir, &recv_ty, &method.name).is_some() {
+        if resolve_trait_method(hir, cx.interner, &recv_ty, &method.name).is_some() {
             return true;
         }
         // Stage 14.91: Also try HIR-traced type for trait method resolution.
@@ -1158,7 +1161,7 @@ pub(super) fn lower_method_call_expr(
                 return false;
             }
         }) {
-            return resolve_trait_method(hir, &init_ty, &method.name).is_some();
+            return resolve_trait_method(hir, cx.interner, &init_ty, &method.name).is_some();
         }
         false
     });
@@ -1209,7 +1212,7 @@ pub(super) fn lower_method_call_expr(
     let method_def_id: Option<crate::hir::DefId> = cx.hir.and_then(|hir| {
         // Strategy 1: Check MIR local type.
         let recv_ty = cx.mir.local(recv_local).ty.clone();
-        if let Some(did) = resolve_inherent_method(hir, &recv_ty, &method.name) {
+        if let Some(did) = resolve_inherent_method(hir, cx.interner, &recv_ty, &method.name) {
             return Some(did);
         }
         // Strategy 2: Check HIR receiver expression for ADT construction.
@@ -1220,7 +1223,7 @@ pub(super) fn lower_method_call_expr(
         // resolution. If the receiver's ADT type has a trait impl that
         // provides the method, resolve to that trait impl method's DefId.
         // This enables static trait dispatch (`impl Trait for Type`).
-        if let Some(did) = resolve_trait_method(hir, &recv_ty, &method.name) {
+        if let Some(did) = resolve_trait_method(hir, cx.interner, &recv_ty, &method.name) {
             return Some(did);
         }
         // Stage 14.91: Also try HIR-traced type for trait method resolution.
@@ -1228,7 +1231,9 @@ pub(super) fn lower_method_call_expr(
         if let HirExprKind::Path(path) = &receiver.kind {
             if let crate::hir::Res::Local(hir_id) = path.res {
                 if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
-                    if let Some(did) = resolve_trait_method(hir, &init_ty, &method.name) {
+                    if let Some(did) =
+                        resolve_trait_method(hir, cx.interner, &init_ty, &method.name)
+                    {
                         return Some(did);
                     }
                 }
@@ -1236,6 +1241,53 @@ pub(super) fn lower_method_call_expr(
         }
         None
     });
+
+    // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Primitive intrinsic
+    // dispatch — AFTER method resolution succeeds, check if the resolved
+    // method is a primitive intrinsic (str::len, str::is_empty, str::as_bytes).
+    // If yes, emit the appropriate MIR directly via `emit_primitive_intrinsic`
+    // and return early. Otherwise, fall through to normal call lowering.
+    //
+    // This replaces the previous early-interception code (3+ scattered
+    // `if method_name_str == "len" && is_str { ... }` blocks in the else
+    // branch below). The prelude now declares `impl str { fn len(...) ... }`
+    // with real signatures, so method resolution finds the prelude impl's
+    // DefId. We intercept here, AFTER resolution, to emit the intrinsic MIR.
+    //
+    // Per §1.0 原則 6 (通解>特解): one dispatch path for all primitive intrinsics.
+    // Per §12 (最优>最小): infrastructure for ALL future primitive impls.
+    // Per §17.6 (整体性修复): removes scattered str special-casing.
+    if let Some(def_id) = method_def_id {
+        let intrinsic = cx
+            .hir
+            .and_then(|hir| lookup_primitive_intrinsic(hir, cx.interner, def_id));
+        if let Some(intrinsic) = intrinsic {
+            // Stage 18.284: Validate arg count before dispatching.
+            // Per §1.0 原則 4 (报错>静默): if the user passed wrong number
+            // of args, report an error instead of silently ignoring extras
+            // or missing required ones. Fall through to the error placeholder
+            // path below (which emits an Error terminator).
+            if args.len() == intrinsic.expected_arg_count() {
+                return emit_primitive_intrinsic(cx, intrinsic, recv_local, expr);
+            } else {
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    format!(
+                        "method `{}` expects {} argument{}, got {}",
+                        cx.interner.resolve(&method.name),
+                        intrinsic.expected_arg_count(),
+                        if intrinsic.expected_arg_count() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        args.len()
+                    ),
+                    expr.span,
+                ));
+                // Fall through to emit Error placeholder (below).
+            }
+        }
+    }
 
     // Stage 14.90 (Bug X2 fix): Check if the receiver is a local whose
     // init is a reference expression (e.g., `let r = &p; r.method()`).
@@ -1366,121 +1418,17 @@ pub(super) fn lower_method_call_expr(
             cont,
         );
     } else {
-        // Stage 18.173 (TD-STR-LEN): Handle str::len() as a builtin intrinsic.
-        // &str is a fat pointer {ptr, i64} — not an ADT, so resolve_inherent_method
-        // can't find it. We intercept `s.len()` on &str/str and extract the i64
-        // length field directly.
-        // Per §1.0 原則 6 (通解>特例): one intrinsic check for all str methods.
+        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): The str::len,
+        // str::is_empty, str::as_bytes early interception has been removed.
+        // These methods now resolve through the prelude `impl str { ... }`
+        // block and dispatch via `lookup_primitive_intrinsic` (called above
+        // after method_def_id resolution). Remaining intrinsics below
+        // (String::as_str, String::from_str, Vec::push, etc.) still use
+        // early interception because they need language features not yet
+        // implemented (fat pointer construction, extern "C" in prelude impl
+        // bodies). Phase 2-B/C will migrate them when those features land.
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
-
-        if method_name_str == "len" && args.is_empty() {
-            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
-                || matches!(&recv_ty.kind,
-                    crate::mir::ty::TyKind::Ref(_, _, inner)
-                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
-                );
-            if is_str {
-                let dest_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-                let dest = cx.mir.new_local(dest_ty.clone(), None, expr.span);
-                let cont = cx.new_block();
-                cx.push_assign(
-                    Place::local(dest, expr.span),
-                    Rvalue::Use(Operand::Copy(Place {
-                        kind: PlaceKind::Projection(
-                            Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(1), dest_ty),
-                        ),
-                        span: expr.span,
-                    })),
-                    expr.span,
-                );
-                cx.terminate_and_goto(
-                    Terminator {
-                        kind: TerminatorKind::Goto(cont),
-                        span: expr.span,
-                    },
-                    cont,
-                );
-                return dest;
-            }
-        }
-
-        // Stage 18.184 (TD-STR-METHODS-RUNTIME): str::is_empty() intrinsic.
-        // `s.is_empty()` → `s.len() == 0` (returns bool).
-        // Per §1.0 原則 6 (通解>特例): reuse the len() Field projection pattern,
-        // then compare to 0 via BinaryOp.
-        if method_name_str == "is_empty" && args.is_empty() {
-            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
-                || matches!(&recv_ty.kind,
-                    crate::mir::ty::TyKind::Ref(_, _, inner)
-                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
-                );
-            if is_str {
-                // Step 1: Extract len field (same as len() intrinsic).
-                let len_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-                let len_local = cx.mir.new_local(len_ty.clone(), None, expr.span);
-                cx.push_assign(
-                    Place::local(len_local, expr.span),
-                    Rvalue::Use(Operand::Copy(Place {
-                        kind: PlaceKind::Projection(
-                            Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(1), len_ty.clone()),
-                        ),
-                        span: expr.span,
-                    })),
-                    expr.span,
-                );
-                // Step 2: Compare len == 0 → bool.
-                let bool_ty = Ty::new(TyKind::Bool, expr.span);
-                let zero_local = cx.mir.new_local(len_ty.clone(), None, expr.span);
-                cx.push_assign(
-                    Place::local(zero_local, expr.span),
-                    Rvalue::Use(Operand::Constant(Const {
-                        val: crate::mir::ty::ConstVal::Int(0),
-                        ty: len_ty.clone(),
-                    })),
-                    expr.span,
-                );
-                let dest = cx.mir.new_local(bool_ty, None, expr.span);
-                let cont = cx.new_block();
-                cx.push_assign(
-                    Place::local(dest, expr.span),
-                    Rvalue::BinaryOp(
-                        crate::mir::place::BinOp::Eq,
-                        Operand::Copy(Place::local(len_local, expr.span)),
-                        Operand::Copy(Place::local(zero_local, expr.span)),
-                    ),
-                    expr.span,
-                );
-                cx.terminate_and_goto(
-                    Terminator {
-                        kind: TerminatorKind::Goto(cont),
-                        span: expr.span,
-                    },
-                    cont,
-                );
-                return dest;
-            }
-        }
-
-        // Stage 18.184: str::as_bytes() intrinsic.
-        // `s.as_bytes()` → return the same fat pointer as &[u8].
-        // &str and &[u8] have the SAME LLVM layout ({ ptr, i64 }), so this
-        // is a no-op at the MIR level — just return the receiver.
-        // Per §1.0 原則 6 (通解>特例): one fat pointer layout for all byte slices.
-        if method_name_str == "as_bytes" && args.is_empty() {
-            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
-                || matches!(&recv_ty.kind,
-                    crate::mir::ty::TyKind::Ref(_, _, inner)
-                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
-                );
-            if is_str {
-                // &[u8] has the same fat pointer layout as &str.
-                // Return the receiver directly (no-op).
-                return recv_local;
-            }
-        }
 
         // Stage 18.189 (TD-STRING-INTRINSICS): String::as_str() intrinsic.
         // `s.as_str()` → construct &str fat pointer { ptr, len } from String fields.
@@ -1660,33 +1608,29 @@ pub(super) fn lower_method_call_expr(
 
         // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
         // instead of silently producing an Error placeholder.
+        //
+        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Removed `Ref(_, _, _)`
+        // from this list. With prelude `impl str { ... }` and extended
+        // `resolve_inherent_method` (which auto-derefs Ref to find the inner
+        // type's impl), Ref receivers now resolve methods properly. Unknown
+        // methods on `&T` should be reported as errors, not silently ignored.
+        // Only `Error` (already-reported type error) and `Infer` (deferred
+        // to typeck post-defaulting) skip the error report.
         let is_known_unsupported = matches!(
             &recv_ty.kind,
-            crate::mir::ty::TyKind::Error
-                | crate::mir::ty::TyKind::Ref(_, _, _)
-                | crate::mir::ty::TyKind::Infer(_)
+            crate::mir::ty::TyKind::Error | crate::mir::ty::TyKind::Infer(_)
         );
-        // Stage 18.241 (v0.3 Phase 1): For str (built-in primitive type),
-        // check if the method name is a known str method. If not, report
-        // "no method found" — this catches `s.nonexistent()` on &str.
+        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): The str-specific
+        // "known str methods" whitelist has been removed. With the prelude
+        // `impl str { fn len/is_empty/as_bytes ... }` declarations, method
+        // resolution succeeds for known str methods (dispatched via
+        // `lookup_primitive_intrinsic` above) and fails for unknown methods
+        // (falls through to here). The generic "no method found" error
+        // below handles both cases uniformly.
         //
-        // Per §1.0 原則 4 (报错>静默): unknown str methods must be reported.
-        // Per §17.6 (缺陷纳入): this is a MVP — the 通解 is `impl str` (v0.4+).
-        // The hardcoded str method list is a 特解 that will be removed when
-        // impl str syntax is available.
-        let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
-            || matches!(&recv_ty.kind,
-                crate::mir::ty::TyKind::Ref(_, _, inner)
-                    if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
-            );
-        let known_str_methods = ["len", "is_empty", "as_bytes"];
-        let is_known_str_method = is_str && known_str_methods.contains(&method_name_str);
-        if is_str && !is_known_str_method {
-            cx.type_errors.push(crate::typeck::TypeError::new(
-                format!("no method `{}` found for type `str`", method_name_str),
-                expr.span,
-            ));
-        } else if !is_known_unsupported {
+        // Per §1.0 原則 6 (通解>特解): one error path for all unknown methods.
+        // Per §17.6 (整体性修复): removes str-specific error reporting special case.
+        if !is_known_unsupported {
             cx.type_errors.push(crate::typeck::TypeError::new(
                 // Stage 15.88: use human-readable type name
                 // (was: {:?} Debug format leaking Adt(DefId(N), [])).

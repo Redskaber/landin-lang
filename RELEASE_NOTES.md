@@ -1,9 +1,58 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.388.0
-**Date**: 2026-08-15
-**Test count**: 640 rust lib tests + 2663 integration tests + 2935 conformance tests + 7 fuzz tests = 6245 total (100% pass rate, 0 skipped)
+**Current version**: v0.493.0
+**Date**: 2026-08-26
+**Test count**: 675 lib tests + 3527 integration tests = 4202 total (100% pass rate, 0 skipped)
+
+---
+
+## v0.493.0 — Stage 18.296 (类 Rust 架构修正 + trait impl for primitive types)
+
+### Overview
+
+类 Rust 架构修正完成。Landin 现在对齐 Rust 的原始类型扩展模型:
+
+1. **禁止用户 inherent impl 原始类型** (Stage 18.293, 类 Rust E0117)
+   - `impl i32 { fn method {} }` → 编译报错 "cannot define inherent impl for primitive type"
+   - 用户必须通过 `impl MyTrait for i32` 扩展原始类型
+
+2. **inherent impl 冲突检测** (Stage 18.292, 类 Rust "duplicate definitions")
+   - 两个 `impl Type { fn same_method {} }` → 报错 "duplicate definitions with name X"
+   - 不跳过 prelude marker impl — prelude 是权威实现, 用户不能覆盖
+
+3. **trait impl for primitive types** (Stage 18.295, `impl MyTrait for i32` works)
+   - 修复 `resolve_trait_method` 不支持 primitive types 的 bug
+   - 添加 `interner` 参数, 统一 string comparison (ADT + primitive)
+   - static dispatch 正确工作 (不 crash)
+
+4. **intrinsic 调度架构** (Stage 18.284-18.288)
+   - marker body `loop {}` + post-resolution dispatch (类 Rust `extern "rust-intrinsic"`)
+   - prelude 是 "core crate", 定义 str::len/is_empty/as_bytes 等 intrinsic
+   - `emit_const_typed` 修复类型不匹配 (TD-NEGOVERFLOW-I32 + TD-DIVZERO-CONST-TYPE + TD-SHIFTOVERFLOW-CONST-TYPE)
+   - `const_prop` merge point 修复 (TD-IF-RETURN-VALUE-CODEGEN)
+
+5. **Primitive type impl 架构** (Stage 18.284-18.285)
+   - `name_of_primitive_ty` / `name_of_primitive_hir_ty` — 16 个 primitive types 的名称映射
+   - `resolve_inherent_method` 统一 string comparison (ADT + primitive)
+   - `populate_fn_name_by_def_id` 正确命名 primitive impl methods (`landin_i32_abs` vs `landin_i64_abs`)
+
+### 架构对齐状态
+
+| 维度 | Rust 模型 | Landin 实现 | 状态 |
+|------|-----------|-------------|------|
+| 原始类型 inherent impl | 只在 core crate (E0117) | Stage 18.293 禁止用户 | ✅ 对齐 |
+| 原始类型扩展方式 | 通过 trait impl | `impl MyTrait for i32` | ✅ 对齐 |
+| 孤儿规则 | 完整实现 | 设计文档 §03 §5.6: B1 v0.2+ | ⏸ deferred |
+| Coherence 检查 | trait + inherent | Stage 18.292: trait + inherent 冲突检测 | ✅ 对齐 |
+| Intrinsic 调度 | `extern "rust-intrinsic"` ABI | marker body `loop {}` + post-resolution dispatch | ✅ 等价 |
+| Intrinsic 不可覆盖 | core 定义, 用户不能覆盖 | 冲突报错 "duplicate definitions" | ✅ 对齐 |
+
+### Test Summary
+
+- 675 lib tests + 3527 integration tests = **4202 tests, 0 failures**
+- 0 warnings, 0 clippy issues, fmt clean
+- Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
 
 ---
 ## v0.388.0 — Stage 18.120 (Comprehensive Tech Debt Register)

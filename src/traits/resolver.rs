@@ -61,6 +61,10 @@ pub struct TraitResolver {
     pub traits: HashMap<DefId, TraitInfo>,
     /// All impl blocks: DefId → ImplInfo.
     pub impls: HashMap<DefId, ImplInfo>,
+    /// Stage 18.293 (类 Rust 架构修正): Errors for user inherent impls on
+    /// primitive types (e.g., `impl i32 { fn method {} }` in user code).
+    /// 类 Rust: only prelude ("core") can define inherent impls on primitives.
+    pub primitive_inherent_impl_errors: Vec<PrimitiveInherentImplError>,
     /// Trait name → DefId (for looking up traits by name).
     pub trait_by_name: HashMap<Spur, DefId>,
     /// (trait_name, self_ty_name) → impl DefId (for impl lookup).
@@ -137,6 +141,40 @@ pub struct CoherenceError {
     /// Stage 15.89: Source span of the first conflicting impl block.
     /// Used to attach accurate spans to coherence error messages
     /// (was: Span::DUMMY, producing "1:1").
+    pub span: crate::session::Span,
+}
+
+/// Stage 18.292 (类 Rust 架构修正): Error for duplicate inherent
+/// impl method definitions — two `impl Type { fn same_method {} }` blocks.
+///
+/// 类 Rust 设计: 用户不能覆盖 prelude 定义的原始类型方法。
+/// Rust 报 "duplicate definitions with name `X`" for this case。
+/// Landin 之前静默接受第一个定义, 是 soundness bug。
+///
+/// Per §2 原則 4 (报错>静默): conflicts must be reported。
+/// Per §1.0 原則 6 (通解>特解): one check for all inherent impl method conflicts。
+/// Per §12 (最优>最小): 类 Rust 设计 — 不允许覆盖, 冲突即报错。
+#[derive(Debug, Clone)]
+pub struct InherentImplConflict {
+    /// The self type name (interned symbol) with conflicting methods.
+    pub self_ty_name: Spur,
+    /// The method name (interned symbol) that's duplicated.
+    pub method_name: Spur,
+    /// The DefIds of all impl blocks containing this method.
+    pub impl_def_ids: Vec<DefId>,
+    /// Source span of the first conflicting impl block.
+    pub span: crate::session::Span,
+}
+
+/// Stage 18.293 (类 Rust 架构修正): Error for user inherent impl on primitive
+/// types. 类 Rust: only prelude ("core") can define `impl i32 { fn method {} }`.
+/// Users must extend primitive types via traits: `impl MyTrait for i32 { ... }`.
+///
+/// Per §12 (最优>最小): 类 Rust 设计 — prelude 是权威实现, 用户不能覆盖或扩展。
+/// Per §2 原則 4 (报错>静默): must report error, not silently allow.
+#[derive(Debug, Clone)]
+pub struct PrimitiveInherentImplError {
+    /// Source span of the forbidden impl block.
     pub span: crate::session::Span,
 }
 
@@ -223,10 +261,16 @@ impl TraitResolver {
 
     /// Collect all trait definitions, impl blocks, type names, and vtables from HIR.
     ///
+    /// Stage 18.293: `user_item_count` is the number of items from user code
+    /// (before prelude items were appended). Items with DefId < user_item_count
+    /// are user code; items with DefId >= user_item_count are prelude ("core").
+    /// This is used to forbid user inherent impls on primitive types (类 Rust:
+    /// only "core" / prelude can `impl str { fn len {} }`, users must use traits).
+    ///
     /// Stage 15.9: Changed `interner` from `&Rodeo` to `&mut Rodeo` so we can
     /// intern the resolved vtable symbol names (VtableEntry.fn_name is now Spur).
     /// All call sites already pass `&mut Rodeo` or can be adjusted trivially.
-    pub fn collect(&mut self, hir: &HirCrate, interner: &mut Rodeo) {
+    pub fn collect(&mut self, hir: &HirCrate, interner: &mut Rodeo, user_item_count: usize) {
         // Stage 5.8: Builtin traits are registered by the driver before
         // collect() is called (via register_builtin_traits), because that
         // method needs &mut Rodeo while collect() takes &Rodeo. Here we
@@ -311,7 +355,58 @@ impl TraitResolver {
                             .of_trait
                             .as_ref()
                             .and_then(|p| p.segments.last().map(|s| s.ident.name));
-                        let self_ty_name = extract_ty_name(&i.self_ty);
+                        // Stage 18.293 (类 Rust 架构修正): Forbid user inherent
+                        // impl on primitive types. Only prelude ("core") is
+                        // allowed to define `impl i32 { fn method {} }`.
+                        // Users must extend primitive types via traits:
+                        // `impl MyTrait for i32 { ... }`.
+                        //
+                        // 类 Rust E0117: "only traits defined in the current
+                        // crate can be implemented for types defined outside
+                        // of the crate" — but for inherent impls on primitives,
+                        // NO user crate is allowed at all (not even via traits).
+                        //
+                        // Per §12 (最优>最小): 类 Rust — prelude is authoritative.
+                        // Per §1.0 原則 6 (通解>特解): one check for all primitive types.
+                        if trait_name.is_none() {
+                            // Inherent impl — check if self_ty is primitive.
+                            // Stage 18.293: 类 Rust — only prelude ("core") can
+                            // define inherent impls on primitive types.
+                            let is_primitive = match &i.self_ty.kind {
+                                HirTyKind::Int(_)
+                                | HirTyKind::Uint(_)
+                                | HirTyKind::Bool
+                                | HirTyKind::Char
+                                | HirTyKind::Float(_) => true,
+                                HirTyKind::Path(_, path) if path.segments.len() == 1 => {
+                                    // str is parsed as Path (not a keyword).
+                                    let name = interner
+                                        .try_resolve(&path.segments[0].ident.name)
+                                        .unwrap_or("");
+                                    name == "str"
+                                }
+                                _ => false,
+                            };
+                            if is_primitive {
+                                // Check if this impl is from prelude ("core") or user.
+                                // DefId ordering: user items come first (DefId 0..user_count-1),
+                                // prelude items come after (DefId >= user_count).
+                                let def_id_idx = def_id.0 as usize;
+                                if def_id_idx < user_item_count {
+                                    // User code — FORBIDDEN: inherent impl on primitive type.
+                                    // Per §2 原則 4 (报错>静默): must report error.
+                                    self.primitive_inherent_impl_errors
+                                        .push(PrimitiveInherentImplError { span: i.span });
+                                }
+                                // Prelude — allowed (it's the "core crate").
+                            }
+                        }
+                        // Stage 18.292: Extract self_ty_name for both Path
+                        // types (struct/enum/str) AND primitive variant types
+                        // (i32/bool/etc.). This enables inherent impl conflict
+                        // detection for `impl i32 { fn method {} }`.
+                        // Per §1.0 原則 6 (通解>特解): one extraction path.
+                        let self_ty_name = extract_ty_name_with_interner(&i.self_ty, interner);
 
                         // Stage 5.6: resolve the self type's string form up front
                         // so vtable entries can carry the LLVM symbol name
@@ -1282,6 +1377,63 @@ impl TraitResolver {
         count > 1
     }
 
+    /// Stage 18.292 (类 Rust 架构修正): Check for duplicate inherent impl
+    /// method definitions — two `impl Type { fn same_method {} }` blocks
+    /// with the same method name on the same type.
+    ///
+    /// 类 Rust 设计: 用户不能覆盖 prelude 定义的原始类型方法。
+    /// Rust 报 "duplicate definitions with name `X`" for this case。
+    /// Landin 之前静默接受第一个定义, 是 soundness bug。
+    ///
+    /// **不跳过 marker impl** — prelude 的 `impl str { fn len { loop {} } }`
+    /// 与用户的 `impl str { fn len { 42 } }` 冲突 → 报错。
+    /// 这是类 Rust 设计: prelude 是权威实现, 用户不能覆盖。
+    ///
+    /// Per §2 原則 4 (报错>静默): conflicts must be reported。
+    /// Per §1.0 原則 6 (通解>特解): one check for all inherent impl conflicts。
+    /// Per §12 (最优>最小): 类 Rust — 不允许覆盖, 冲突即报错。
+    pub fn check_inherent_impl_conflicts(&self) -> Vec<InherentImplConflict> {
+        use std::collections::HashMap as StdHashMap;
+        // Group impl DefIds by (self_ty_name, method_name) for inherent impls.
+        // Inherent impls have trait_name == None.
+        // Stage 18.292: 不跳过 marker impl — 类 Rust 设计, prelude 是权威实现。
+        let mut groups: StdHashMap<(Spur, Spur), (Vec<DefId>, crate::session::Span)> =
+            StdHashMap::new();
+        for impl_info in self.impls.values() {
+            // Only check inherent impls (trait_name is None).
+            if impl_info.trait_name.is_some() {
+                continue;
+            }
+            // Only check impls with a known self_ty_name.
+            let self_ty_name = match impl_info.self_ty_name {
+                Some(name) => name,
+                None => continue,
+            };
+            // Check each method in this impl block.
+            for &method_name in &impl_info.methods {
+                let entry = groups
+                    .entry((self_ty_name, method_name))
+                    .or_insert_with(|| (Vec::new(), impl_info.span));
+                if !entry.0.contains(&impl_info.def_id) {
+                    entry.0.push(impl_info.def_id);
+                }
+            }
+        }
+        // Any group with >1 distinct impl is a conflict.
+        groups
+            .into_iter()
+            .filter(|(_, (def_ids, _))| def_ids.len() > 1)
+            .map(
+                |((self_ty_name, method_name), (impl_def_ids, span))| InherentImplConflict {
+                    self_ty_name,
+                    method_name,
+                    impl_def_ids,
+                    span,
+                },
+            )
+            .collect()
+    }
+
     /// Stage 5.18: Get the coherence error count (number of (trait, type)
     /// pairs with conflicting impls).
     ///
@@ -1483,10 +1635,47 @@ pub fn extract_impl_self_ty_name(ty: &HirTy) -> Option<Spur> {
 }
 
 /// Best-effort extraction of a type name from a HirTy.
+/// Stage 18.292: Also handles primitive variant types (Int/Uint/Bool/Char/Float)
+/// by interning their source-language name. This enables inherent impl conflict
+/// detection for `impl i32 { fn method {} }` etc.
 fn extract_ty_name(ty: &HirTy) -> Option<Spur> {
     match &ty.kind {
         HirTyKind::Path(_, path) => path.segments.last().map(|s| s.ident.name),
         _ => None,
+    }
+}
+
+/// Stage 18.292: Extract type name with interner access, handling both
+/// Path types and primitive variant types (Int/Uint/Bool/Char/Float).
+/// Interns the primitive name ("i32", "bool", etc.) as a Spur.
+/// Per §1.0 原則 6 (通解>特解): one extraction path for all type kinds.
+fn extract_ty_name_with_interner(ty: &HirTy, interner: &mut Rodeo) -> Option<Spur> {
+    match &ty.kind {
+        HirTyKind::Path(_, path) => path.segments.last().map(|s| s.ident.name),
+        hir_kind => {
+            // Primitive variant: intern the source name.
+            use crate::ast::{FloatTy, IntTy, UintTy};
+            let name: &'static str = match hir_kind {
+                HirTyKind::Bool => "bool",
+                HirTyKind::Char => "char",
+                HirTyKind::Int(IntTy::I8) => "i8",
+                HirTyKind::Int(IntTy::I16) => "i16",
+                HirTyKind::Int(IntTy::I32) => "i32",
+                HirTyKind::Int(IntTy::I64) => "i64",
+                HirTyKind::Int(IntTy::I128) => "i128",
+                HirTyKind::Int(IntTy::Isize) => "isize",
+                HirTyKind::Uint(UintTy::U8) => "u8",
+                HirTyKind::Uint(UintTy::U16) => "u16",
+                HirTyKind::Uint(UintTy::U32) => "u32",
+                HirTyKind::Uint(UintTy::U64) => "u64",
+                HirTyKind::Uint(UintTy::U128) => "u128",
+                HirTyKind::Uint(UintTy::Usize) => "usize",
+                HirTyKind::Float(FloatTy::F32) => "f32",
+                HirTyKind::Float(FloatTy::F64) => "f64",
+                _ => return None,
+            };
+            Some(interner.get_or_intern(name))
+        }
     }
 }
 
