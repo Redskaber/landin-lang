@@ -21191,3 +21191,50 @@ Stage Summary:
 - mod.rs now < 1500 LOC threshold ✅
 - expansion.rs still > 1500 (needs further split in future stage)
 - 3798 tests, 0 failures, zero regression
+
+---
+Task ID: stage18.248
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.248 — Extract expansion tests to expansion_tests.rs. v0.489.0 → v0.490.0.
+
+Work Log:
+- Baseline: v0.489.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: User directive "expansion.rs 可将测试部分分离出来作为一个单独的测试文件"
+- Stage 18.247 left expansion.rs at 2537 LOC (code + tests mixed)
+
+- Implementation:
+  1. Split expansion.rs (2537 LOC) into:
+     - expansion.rs (201 LOC): pure code — expand_macro_calls, expand_macros, tokens_eq
+     - expansion_tests.rs (2345 LOC): all #[test] functions
+  2. Removed `mod tests { ... }` wrapper — tests now at file scope
+  3. Added `#[cfg(test)] #[path = "expansion_tests.rs"] mod tests;` in expansion.rs
+  4. Updated imports in expansion_tests.rs: `use super::*` references expansion.rs
+
+- Per §13.4 J2 (单一职责): code and tests separated
+- Per §1.0 原則 6 (通解 > 特解): one pattern for test extraction
+- Per user directive: test files exempt from 1500 LOC threshold
+
+- File sizes after split:
+  → expansion.rs: 201 LOC ✅ < 1500 (was 2537)
+  → expansion_tests.rs: 2345 LOC (test file, exempt)
+  → collection.rs: 240 LOC ✅
+  → mod.rs: 1138 LOC ✅
+  → builtin_macros.rs: 2069 LOC 🟡 (unchanged, needs future split)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated: TD-LOC-MACRO-EXPAND expansion.rs now < 1500 ✅
+
+- 版本: v0.490.0 (bump — test extraction)
+
+Stage Summary:
+- Stage 18.248 PASSED — Extract expansion tests to expansion_tests.rs
+- expansion.rs: 2537 → 201 LOC (code only, < 1500 ✅)
+- expansion_tests.rs: 2345 LOC (test file, exempt from threshold)
+- All macro_expand code files now < 1500 LOC (mod.rs + collection + expansion)
+- builtin_macros.rs (2069 LOC) is the only remaining file > 1500
+- 3798 tests, 0 failures, zero regression
