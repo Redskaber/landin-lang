@@ -168,3 +168,30 @@ fn test_phase_2c_soundness_hole_now_closed() {
         "Phase 2c must close soundness hole: Holder(true) with let : Holder<i32> should error"
     );
 }
+
+#[test]
+fn test_phase_2e_call_arg_soundness_hole_now_closed() {
+    // Stage 18.262 (Phase 2e): soundness hole CLOSED for call args.
+    // `take_holder(Holder(true))` where `fn take_holder(h: Holder<i32>)`
+    // now errors because:
+    // 1. Driver pre-builds fn_sig_table
+    // 2. Passes fn_sigs as read-only data contract to MirLowerCtxt
+    // 3. `lower_call_expr` looks up callee's sig.inputs[i]
+    // 4. Threads expected_ty into arg's `lower_expr_to_operand`
+    // 5. Adt ctor path uses expected_ty to extract substs (Phase 2c)
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): full soundness fix.
+    // Per §17.6: MVP marker converted to assert.
+    let src = r#"
+        struct Holder<T>(T);
+        fn take_holder(h: Holder<i32>) -> i32 { 0 }
+        fn main() -> i32 {
+            take_holder(Holder(true))
+        }
+    "#;
+    let result = compile(src);
+    assert!(
+        result.has_errors(),
+        "Phase 2e must close soundness hole: take_holder(Holder(true)) should error"
+    );
+}

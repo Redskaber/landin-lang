@@ -89,6 +89,7 @@ fn test_with_plan_none_matches_legacy() {
         None,
         None,
         None,
+        None,
     );
 
     // Both should produce identical MIR (same local count, same block count).
@@ -118,6 +119,7 @@ fn test_with_empty_plan_no_change() {
         &hir,
         None,
         Some(&plan),
+        None,
         None,
     );
 
@@ -149,6 +151,7 @@ fn test_with_plan_no_method_call_no_record() {
         &hir,
         None,
         Some(&plan),
+        None,
         None,
     );
 
@@ -182,6 +185,7 @@ fn test_with_plan_matching_method_call_records_dyn_call() {
         &hir,
         None,
         Some(&plan),
+        None,
         None,
     );
 
@@ -224,6 +228,7 @@ fn test_with_plan_method_name_mismatch_no_record() {
         None,
         Some(&plan),
         None,
+        None,
     );
 
     // Source has x.bar() but plan has foo → no match → empty side-table.
@@ -252,6 +257,7 @@ fn test_multiple_method_calls_multiple_records() {
         &hir,
         None,
         Some(&plan),
+        None,
         None,
     );
 
@@ -346,6 +352,7 @@ fn test_new_entry_point_signature() {
         &hir,
         None,
         Some(&plan),
+        None,
         None,
     );
 }

@@ -94,7 +94,10 @@ pub fn lower_hir_body_to_mir_full(
     // Stage 5.80: delegate to the new entry point with plan = None.
     // Backward-compatible: all existing callers see identical behavior.
     // Stage 16.85: resolver = None (legacy path, no rich error messages).
-    lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None, None)
+    // Stage 18.262 (Phase 2e): fn_sigs = None (legacy path, no expected-ty
+    // propagation in call args — soundness hole remains for callers
+    // using this legacy entry point).
+    lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None, None, None)
 }
 
 /// Stage 5.80: Full lowering entry point with optional `DynTraitMIRPlan`.
@@ -131,6 +134,13 @@ pub fn lower_hir_body_to_mir_full(
 /// The `_with_dyn_trait_plan` suffix is the Rust API-guidelines convention
 /// for "extended variant with additional feature" (mirrors `Vec::with_capacity`,
 /// `HashMap::with_hasher`).
+///
+/// Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): added `fn_sigs`
+/// parameter for call-arg expected-ty propagation. When set,
+/// `lower_call_expr` can look up the callee's sig.inputs[i] to thread
+/// the expected arg type into each arg's `lower_expr_to_operand`.
+/// Per §11.2 (allowed cross-stage access — pre-computed data contract):
+/// fn_sigs is built upstream by the driver.
 pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     body: &Body,
     interner: &Rodeo,
@@ -138,6 +148,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     return_ty: Option<HirTy>,
     plan: Option<&DynTraitMIRPlan>,
     resolver: Option<&crate::traits::TraitResolver>,
+    fn_sigs: Option<&std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>>,
 ) -> (
     MirBody,
     UnificationTable,
@@ -156,6 +167,13 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Stage 16.85: Set resolver for rich error messages (Adt type names).
     if let Some(resolver) = resolver {
         cx.set_resolver(resolver);
+    }
+
+    // Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): Set fn_sigs for
+    // call-arg expected-ty propagation. Per §11.2: pre-computed data
+    // contract — fn_sigs built upstream by the driver.
+    if let Some(fn_sigs) = fn_sigs {
+        cx.set_fn_sigs(fn_sigs);
     }
 
     // Stage 5.80: attach the dyn Trait plan if provided.

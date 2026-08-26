@@ -272,9 +272,45 @@ pub(super) fn lower_call_expr(
     // Lower func first — this determines whether the call is a real
     // function call or an ADT construction (struct/enum ctor).
     let func_local = lower_expr_to_operand(cx, func, None);
+
+    // Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): If func resolves
+    // to a FnDef and cx.fn_sigs is set, look up the callee's sig and
+    // thread each arg's expected type (sig.inputs[i]) into its
+    // lower_expr_to_operand call. This closes the soundness hole where
+    // `take_holder(Holder(true))` (where fn take_holder(h: Holder<i32>))
+    // silently accepted type mismatches.
+    //
+    // Per §11.2 (allowed cross-stage access — pre-computed data
+    // contract): fn_sigs is built upstream by the driver.
+    // Per §1.0 原則 6 (通解 > 特解): one fn_sigs-based path for all
+    // call args, not a per-type special case.
+    // Per §2 原則 9 (正确 > 妥协): proper expected-ty propagation at
+    // lower time, not relying on typeck back-propagation (which was
+    // unsound for generic tuple struct ctors).
+    let callee_sig_inputs: Option<&Vec<crate::mir::ty::Ty>> = {
+        let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
+        if let Some(ld) = func_local_decl {
+            if let TyKind::FnDef(def_id, _) = &ld.ty.kind {
+                if let Some(fn_sigs) = cx.fn_sigs {
+                    fn_sigs.get(def_id).map(|sig| &sig.inputs)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
     let arg_locals: Vec<LocalId> = args
         .iter()
-        .map(|a| lower_expr_to_operand(cx, a, None))
+        .enumerate()
+        .map(|(i, a)| {
+            let arg_expected_ty = callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i));
+            lower_expr_to_operand(cx, a, arg_expected_ty)
+        })
         .collect();
     // Stage 16.06: Use Operand::Move for call arguments.
     // Previously always used Operand::Copy, which failed the

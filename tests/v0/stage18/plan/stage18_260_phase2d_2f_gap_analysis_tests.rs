@@ -145,20 +145,25 @@ fn test_phase_2e_array_element_no_gap() {
 }
 
 // ============================================================================
-// Phase 2e GAP: method/function call arg — `take_holder(Holder(true))`
+// Phase 2e FIXED (Stage 18.262): method/function call arg
 // ============================================================================
 
 #[test]
-fn test_phase_2e_method_call_arg_gap_documented_as_mvp() {
-    // KNOWN GAP (TD-TUPLE-CTOR-TYPECK Phase 2e):
-    // When `Holder(true)` is passed as a function arg, the soundness
-    // hole remains because:
-    // 1. MIR lower doesn't have fn_sigs access (built in writeback)
-    // 2. arg's Holder(true) lowers to Adt(def, []) with empty substs
-    // 3. typeck unify silently accepts Adt(def, []) ↔ Adt(def, [i32])
+fn test_phase_2e_method_call_arg_now_errors() {
+    // Stage 18.262 (Phase 2e): soundness hole CLOSED via fn_sigs
+    // propagation into MIR lower.
     //
-    // Per §17.6: documented as MVP, fix deferred to v0.3+ when
-    // fn_sigs access in MIR lower becomes feasible (Option A).
+    // `take_holder(Holder(true))` where `fn take_holder(h: Holder<i32>)`
+    // now errors because:
+    // 1. Driver pre-builds fn_sig_table (lines 109-285 of compile_inner.rs)
+    // 2. Passes fn_sigs as read-only data contract to MirLowerCtxt
+    //    via `set_fn_sigs` (per §11.2 — allowed cross-stage access)
+    // 3. `lower_call_expr` looks up callee's sig.inputs[i]
+    // 4. Threads expected_ty into arg's `lower_expr_to_operand`
+    // 5. Adt ctor path uses expected_ty to extract substs (Phase 2c)
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): full soundness fix, not MVP.
+    // Per §17.6: MVP marker converted to assert.
     let src = r#"
         struct Holder<T>(T);
         fn take_holder(h: Holder<i32>) -> i32 { 0 }
@@ -167,10 +172,16 @@ fn test_phase_2e_method_call_arg_gap_documented_as_mvp() {
         }
     "#;
     let result = compile(src);
-    // CURRENT (Phase 2e deferred): no error (soundness hole).
-    // EXPECTED (Phase 2e future): has_errors == true.
-    eprintln!(
-        "[PHASE 2e DEFERRED — MVP] take_holder(Holder(true)) — has_errors = {} (expected: true after Phase 2e)",
-        result.has_errors()
+    assert!(
+        result.has_errors(),
+        "Phase 2e must close soundness hole: take_holder(Holder(true)) should error"
+    );
+    assert!(!result.errors.typeck.is_empty(), "Expected typeck error");
+    let msg = &result.errors.typeck[0].message;
+    // Per §2 原則 3 (显式 > 隐式): declared field type (i32) is expected,
+    // actual value type (bool) is found.
+    assert!(
+        msg.contains("expected i32") && msg.contains("found bool"),
+        "Error message direction wrong: {msg}"
     );
 }

@@ -136,6 +136,22 @@ pub struct MirLowerCtxt<'a> {
     /// `build_dyn_trait_mir_plan_from_resolver()`) and passed in as a
     /// read-only value. `MirLowerCtxt` does not own a TraitResolver.
     pub dyn_trait_plan: Option<DynTraitMIRPlan>,
+    /// Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): Optional pre-built
+    /// `fn_sigs` map (DefId → Sig) for call-arg expected-ty propagation.
+    /// When set, `lower_call_expr` can look up the callee's sig.inputs[i]
+    /// to thread the expected arg type into `lower_expr_to_operand`.
+    ///
+    /// Per §11.2 (allowed cross-stage access — pre-computed data
+    /// contract): `fn_sigs` is built **upstream** by the driver (per
+    /// `driver/compile_inner.rs` lines 109-285) and passed in as a
+    /// read-only reference. `MirLowerCtxt` does not own or modify it.
+    /// Per §11.5 (data sinking preferred): the sig is pre-computed
+    /// once and reused, not re-derived from HIR at each call site.
+    /// Per §1.0 原則 6 (通解 > 特解): one fn_sigs-based path for all
+    /// call arg expected-ty propagation, not a per-type special case.
+    /// Per §13.4 J3 (one-way flow): fn_sigs flows driver → MIR lower
+    /// → lower_call_expr → arg operands. No back-edges.
+    pub fn_sigs: Option<&'a std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>>,
     /// Stage 16.85: Optional resolver for rich error messages.
     /// When set, "no method found" errors show actual type names
     /// (e.g., "MyStruct") instead of placeholders ("<adt>").
@@ -272,6 +288,10 @@ impl<'a> MirLowerCtxt<'a> {
             unify: UnificationTable::new(),
             hir: None,
             dyn_trait_plan: None,
+            // Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): default
+            // None — set by `set_fn_sigs` before lowering begins when
+            // the driver has pre-built fn_sig_table.
+            fn_sigs: None,
             resolver: None,
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
@@ -281,6 +301,25 @@ impl<'a> MirLowerCtxt<'a> {
             closure_def_id_counter: 0,
             generic_params: Vec::new(),
         }
+    }
+
+    /// Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): Set the pre-built
+    /// `fn_sigs` map for call-arg expected-ty propagation.
+    ///
+    /// After calling this, `lower_call_expr` can look up the callee's
+    /// `sig.inputs[i]` and thread the expected arg type into each arg's
+    /// `lower_expr_to_operand`. This closes the soundness hole where
+    /// `take_holder(Holder(true))` (where `fn take_holder(h: Holder<i32>)`)
+    /// silently accepted type mismatches.
+    ///
+    /// Per §11.2 (allowed cross-stage access — pre-computed data
+    /// contract): fn_sigs is built upstream by the driver.
+    /// Per §23: `set_fn_sigs` follows `<verb>_<noun>` pattern.
+    pub fn set_fn_sigs(
+        &mut self,
+        fn_sigs: &'a std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    ) {
+        self.fn_sigs = Some(fn_sigs);
     }
 
     /// Stage 16.85: Set the resolver for rich error messages.
@@ -339,6 +378,9 @@ impl<'a> MirLowerCtxt<'a> {
             unify,
             hir: None,
             dyn_trait_plan: None,
+            // Stage 18.262 (Phase 2e): default None — closure bodies
+            // built via new_with_unify can call set_fn_sigs if needed.
+            fn_sigs: None,
             resolver: None,
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),

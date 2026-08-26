@@ -377,6 +377,11 @@ pub(crate) fn compile_inner(
                 return_ty,
                 Some(&dyn_trait_plan),
                 Some(&trait_resolver),
+                // Stage 18.262 (TD-TUPLE-CTOR-CALL-ARG Phase 2e): pass
+                // fn_sigs so lower_call_expr can thread expected_ty from
+                // sig.inputs[i] into call args. Per §11.2: pre-computed
+                // data contract — fn_sigs built upstream in this fn.
+                Some(&fn_sig_table.sigs),
             );
 
         // Stage 18.103 (TD-MONO-CODEGEN): Set def_id on MirBody so codegen
