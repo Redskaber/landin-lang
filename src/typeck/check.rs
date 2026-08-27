@@ -218,14 +218,34 @@ impl TypeChecker {
                     // Stage 18.99 (TD-13 fix): For FnDef↔FnPtr, do NOT suppress
                     // unify errors — the unify_fndef_with_fnptr now checks sig
                     // compatibility, and incompatible sigs must be reported.
-                    // For other coercions (Int widening, &mut→&), errors are
-                    // still suppressed (the coercion is intentional).
+                    //
+                    // Stage 18.336 (P1 soundness fix): For Infer rvalues with
+                    // concrete place types (e.g. `fn foo() -> S { 42 }` where
+                    // 42 is Infer IntVar), do NOT suppress unify errors. The
+                    // previous `let _ = unify(...)` discard silently accepted
+                    // type-incorrect code where an Infer rvalue coerced to a
+                    // non-int concrete type. The suppression was masking the
+                    // fact that `Infer(IntVar)` cannot bind to `Adt(S)`.
+                    //
+                    // For legitimate coercions (Int↔Uint widening, &mut→&):
+                    // these succeed unify OR are valid coercions that should
+                    // succeed — keeping the suppression is safe for those.
+                    //
+                    // Per §1.0 原則 4 (报错 > 静默): unify errors are real type
+                    // mismatches that must be reported when the rvalue is Infer.
+                    // Per §20 (iterative audit): found via §20 Round 5 audit
+                    // (TD-TYPECK-STRUCT-RETURN-INFER).
                     let is_fndef_fnptr = matches!(
                         (&resolved_place.kind, &resolved_rvalue.kind),
                         (TyKind::FnDef(_, _), TyKind::FnPtr(_))
                             | (TyKind::FnPtr(_), TyKind::FnDef(_, _))
                     );
-                    if is_fndef_fnptr {
+                    // Stage 18.336: Detect Infer rvalue with non-Infer place
+                    // (the case where suppression masked real errors).
+                    let rvalue_is_infer = matches!(resolved_rvalue.kind, TyKind::Infer(_));
+                    let place_is_concrete = !matches!(resolved_place.kind, TyKind::Infer(_));
+                    let is_infer_to_concrete = rvalue_is_infer && place_is_concrete;
+                    if is_fndef_fnptr || is_infer_to_concrete {
                         if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
                             if stmt.span != Span::DUMMY {
                                 e.span = stmt.span;

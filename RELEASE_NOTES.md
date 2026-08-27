@@ -3,12 +3,126 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.497.0 |
+| **Current version** | v0.498.0 |
 | **Date** | 2026-08-27 |
-| **Test count** | 676 lib tests + 3671 integration tests = 4347 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 676 lib tests + 3683 integration tests = 4359 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (16 tests in `stage18_334` + `stage18_335`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (28 tests in `stage18_334` + `stage18_335` + `stage18_336`) |
+
+---
+
+## v0.498.0 — Stage 18.336 (P1+P2 soundness: ZST nested aggregate Void leak + typeck return/trait gaps)
+
+### Overview
+
+**Stage 18.336: P1+P2 soundness fix — Void leak in nested aggregates + typeck silently accepts incorrect code**
+
+The §20 Round 5 iterative audit (sub-agent, empirically verified via
+`landin_compiler::compile` + `llvm-as` validation) found:
+
+- **4 P1 NEW bugs (ZST Void leak in nested aggregates)** — same class as
+  Stage 18.335 ZST param elision, but at struct/tuple/enum/array element positions.
+- **5 P2 NEW typeck gaps** (silent acceptance of type-incorrect code).
+- **2 P2 known gaps** (Stage 18.335 tests skip with warning) — now fixed.
+
+### Bugs fixed (4 P1 + 7 P2 = 11 bugs)
+
+**P1 — ZST Void leak in nested aggregates (A1-A4)**:
+
+1. **TD-CODEGEN-ZST-STRUCT-FIELD**: `struct S { u: () }` → `alloca { void }`
+   → `llvm-as` rejects.
+2. **TD-CODEGEN-ZST-TUPLE-ELEM**: `(i32, ())` → `alloca { i32, void }` → rejects.
+3. **TD-CODEGEN-ZST-ENUM-PAYLOAD**: `enum E { V(()), W(i32) }` → rejects.
+4. **TD-CODEGEN-ZST-ARRAY-ELEM**: `[(); 3]` → `alloca [3 x void]` → rejects.
+
+**Fix**: New `filter_void_fields(fields)` helper in `mir_translation/types.rs`
+filters `EmitType::Void` from struct/tuple/enum-payload field lists. If all
+fields are Void, returns `Struct(vec![])` (LLVM `{}`, valid). For ZST array
+elements, uses `Struct(vec![])` as the element type → `[3 x {}]` is valid.
+
+Per §1.0 原則 6 (通解 > 特解): one helper covers all 4 cases (A1-A4 same class).
+Per §20 (iterative audit): same root cause as Stage 18.335 ZST param elision.
+
+**P2 — Typeck return type mismatches (B1-B4)**:
+
+5. **TD-TYPECK-ZST-RETURN**: `fn foo() -> () { 42i64 }` → no error.
+6. **TD-TYPECK-STRUCT-RETURN-INFER**: `fn foo() -> S { 42 }` → no error.
+7. **TD-TYPECK-UNIT-RETURN-BOOL**: `fn foo() -> () { true }` → no error.
+8. **TD-TYPECK-IMPLICIT-UNIT-RETURN**: `fn foo() { 42i64 }` → no error.
+
+**Fix B1/B3/B4**: In `body_lower.rs:443-475`, `skip_assign` is refined to
+only skip for Infer/unit/Ref/Ptr/FnPtr/FnDef/Str rvalues. Concrete scalar
+types (Int/Bool/Float) and Adt (struct/enum) no longer skip → triggers
+`post_check_statement` type mismatch check.
+
+Per §1.0 原則 9 (正确 > 妥协): matches Rust's behavior (scalar/struct return
+in void fn is an error; ref/ptr return is discard+warning).
+
+**Fix B2**: In `typeck/check.rs:215-257`, the `let _ = unify(...)` discard
+is narrowed to only apply to legitimate coercions (Int↔Uint widening,
+&mut→&). For Infer rvalues with concrete place types (e.g., `fn foo() -> S
+{ 42 }` where 42 is Infer IntVar and S is concrete Adt), the unify error
+is now reported.
+
+Per §1.0 原則 4 (报错 > 静默): Infer→concrete binding failures must be reported.
+Per §1.0 原則 5 (去除兼容思维): the suppression was a workaround; narrowed, not removed.
+
+**P2 — Trait method signature validation (C1-C3)**:
+
+9. **TD-TYPECK-DROP-SELF**: `impl Drop for Foo { fn drop(self) {} }` → no error.
+10. **TD-TYPECK-TRAIT-RECEIVER**: `trait T { fn f(&self); } impl T for X { fn f(self) {} }` → no error.
+11. **TD-TYPECK-TRAIT-RET-INT-WIDTH**: `trait T { fn f() -> i32; } impl T for X { fn f() -> i64 {} }` → no error.
+
+**Fix C1/C2**: In `driver_validations.rs:204-235`, added `self_kind` comparison
+between trait declaration and impl. Mismatches push `TypeError` with clear
+message.
+
+**Fix C3**: In `driver_validations.rs:255-272`, `mir_ty_kinds_compatible`
+tightened to require exact Int/Uint/Float width match (`a_i == b_i`).
+Int↔Uint is now treated as incompatible (was: `(_, _) => true`).
+
+Per §1.0 原則 9 (正确 > 妥协): trait impls must match the declared signature exactly.
+Per §1.0 原則 4 (报错 > 静默): self receiver mismatches must be reported.
+
+### Test impact
+
+- Single-thread: **3683 tests, 0 failures** (was 3671 before Stage 18.336).
+- Multi-thread (`--test-threads=2`, `ulimit -s unlimited`): **5/5 stable**.
+- Added 12 new regression tests (4 positive + 8 negative) in
+  `tests/v0/stage18/plan/stage18_336_zst_aggregate_typeck_tests.rs`.
+- Converted 2 skip-with-warning tests (in `stage18_335`) to hard assertions.
+- **NEW**: `llvm-as` accepts TextEmitter IR for all 4 ZST aggregate repros (A1-A4).
+- **NEW**: All 7 typeck gap repros (B1-B4, C1-C3) now report errors.
+
+### Files changed
+
+- `src/codegen/mir_translation/types.rs` — `filter_void_fields` helper + apply to 6 Struct construction sites
+- `src/codegen/mir_translation/layouts.rs` — apply `filter_void_fields` to AdtLayout
+- `src/mir/lower/body_lower.rs` — refine `skip_assign` to only skip Infer/unit/Ref/Ptr
+- `src/typeck/check.rs` — narrow `let _ = unify(...)` suppression to non-Infer coercions
+- `src/driver/driver_validations.rs` — add `self_kind` comparison + tighten Int/Uint/Float match
+- `tests/v0/stage18/plan/stage18_336_zst_aggregate_typeck_tests.rs` — new (12 regression tests)
+- `tests/v0/stage18/plan/stage18_335_zst_drop_eprintf_tests.rs` — convert 2 skip-with-warning to hard assertions
+- `tests/all_tests.rs` — register `stage18_336_zst_aggregate_typeck_tests`
+- `docs/develop/v0/stage-18/plan-18.336.md` — new design doc
+- `docs/develop/v0/tech-debt-register.md` — 9 TDs marked Resolved
+- `Cargo.toml` — v0.497.0 → v0.498.0
+
+### Design boundary
+
+- ZST fields are elided from LLVM struct types (mirror rustc).
+- ZST array elements use `Struct(vec![])` (LLVM `{}`) → `[N x {}]` is valid.
+- `skip_assign` for ZST returns only applies to Infer/unit/Ref/Ptr rvalues —
+  concrete scalar/Adt rvalues trigger type mismatch check.
+- Trait impl signatures must match the declared signature exactly (no implicit
+  coercion, exact Int/Uint/Float width, exact self_kind).
+
+### Known limitations
+
+- LLVM 22 needs `ulimit -s unlimited` (or 65536) on systems with default
+  8MB stack. `scripts/run_tests.sh` handles this.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).
 
 ---
 

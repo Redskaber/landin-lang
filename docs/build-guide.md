@@ -1,8 +1,8 @@
 # Landin Stage 0 构建指南
 
-> **版本**：v0.497.0 (Stage 18.335)
+> **版本**：v0.498.0 (Stage 18.336)
 > **平台**：Linux (x86_64 + aarch64) — Windows/macOS 待 v0.2+
-> **最后更新**：Stage 18.335 (2026-08-27)
+> **最后更新**：Stage 18.336 (2026-08-27)
 > **LLVM**：LLVM 22.1 (llvm-sys 221, 默认) / LLVM 19.x (fallback)
 
 ---

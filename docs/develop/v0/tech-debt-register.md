@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.335 — P1 soundness fix: ZST param skip + __landin_eprintf declare + drop_glue declare removal + call_dest_type Void override fix + ZST comment correction)
-> **Version**: v0.497.0
-> **Status**: Stage 18.335 resolved TD-ZST-PARAM-VOID + TD-EPRINTF-UNDECLARED + TD-DROP-GLUE-REDECLARE + TD-CALL-DEST-VOID-OVERRIDE + TD-MISLEADING-ZST-COMMENT (P1 soundness — Void leaking into first-class type IR positions). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3671 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.336 — P1 soundness fix: ZST nested aggregate Void leak (A1-A4) + typeck return/trait gaps (B1-B4, C1-C3))
+> **Version**: v0.498.0
+> **Status**: Stage 18.336 resolved TD-CODEGEN-ZST-STRUCT-FIELD + TD-CODEGEN-ZST-TUPLE-ELEM + TD-CODEGEN-ZST-ENUM-PAYLOAD + TD-CODEGEN-ZST-ARRAY-ELEM + TD-TYPECK-ZST-RETURN + TD-TYPECK-STRUCT-RETURN-INFER + TD-TYPECK-DROP-SELF + TD-TYPECK-TRAIT-RECEIVER + TD-TYPECK-TRAIT-RET-INT-WIDTH (P1+P2 — Void leak in nested aggregates + typeck silently accepts incorrect code). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3683 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -96,6 +96,15 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-DROP-GLUE-REDECLARE | drop_glue.rs:101 emit_declare `landin_<type>_drop` 与 codegen_function 的 define 冲突 — llvm-as 拒绝 "invalid redefinition of function" (即使签名匹配) | 任何 `impl Drop for X` 产生无效 TextEmitter IR；LLVMSysEmitter 静默重用声明 (掩盖 bug) | ✅ Resolved Stage 18.335: drop_glue.rs:98-123 移除 emit_declare — LLVM 允许前向引用, define 自然处理符号。Per §1.0 原則 5 (去除兼容思维): 移除冗余。 |
 | TD-CALL-DEST-VOID-OVERRIDE | call_dest_type override 可能产生 EmitType::Void (callee 返回 `()`), 但 Void 检查在 override 之前 — `emit_alloca(&Void, ...)` 产生无效 IR | 潜在: 若 typeck 留下 Call 目标 local 为非 void 但 callee 返回 `()`, codegen 崩溃 | ✅ Resolved Stage 18.335: codegen/function.rs:363-399 移动 `if ty == EmitType::Void { continue }` 到 call_dest_type override 之后。Per §2.2 (根因思维): 检查顺序错误是根因。 |
 | TD-MISLEADING-ZST-COMMENT | mir_translation/types.rs:34-37 注释声称 `alloca {}` "valid, zero-size" — 但 LLVM docs 说 size-0 allocas 产生 undef 指针 (UB 解引用) | 误导未来开发者移除 i8 fallback, 重新引入 Stage 16.22 已修复的 UB | ✅ Resolved Stage 18.335: mir_translation/types.rs:25-50 纠正注释 — 说明 alloca {} 产生 undef 指针, i8 fallback 是正确变通。 |
+| TD-CODEGEN-ZST-STRUCT-FIELD | ZST struct field (`struct S { u: () }`) 映射为 `{ void }` — LLVM IR 拒绝 "void type only allowed for function results" | 任何含 ZST 字段的结构体编译失败 — 影响 ZST 模式 (PhantomData, marker traits, etc.) | ✅ Resolved Stage 18.336: filter_void_fields helper 过滤 Void fields. Per §1.0 原則 6 (通解 > 特解): 一个 helper 覆盖 A1-A4 (struct field, tuple elem, enum payload, array elem). |
+| TD-CODEGEN-ZST-TUPLE-ELEM | ZST tuple element (`(i32, ())`) 映射为 `{ i32, void }` — LLVM IR 拒绝 | 任何含 ZST 元素的 tuple 编译失败 | ✅ Resolved Stage 18.336: 同 TD-CODEGEN-ZST-STRUCT-FIELD (filter_void_fields). |
+| TD-CODEGEN-ZST-ENUM-PAYLOAD | ZST enum payload (`enum E { V(()), W(i32) }`) 映射为 `{ i32, void, i32 }` — LLVM IR 拒绝 | 任何含 ZST payload 的 enum 编译失败 | ✅ Resolved Stage 18.336: 同 TD-CODEGEN-ZST-STRUCT-FIELD (filter_void_fields). |
+| TD-CODEGEN-ZST-ARRAY-ELEM | ZST array element (`[(); 3]`) 映射为 `[3 x void]` — LLVM IR 拒绝 | 任何 ZST 数组编译失败 | ✅ Resolved Stage 18.336: ZST array element 用 Struct(vec![]) (LLVM `{}`) 替代 Void → `[3 x {}]` 是 valid zero-size array. |
+| TD-TYPECK-ZST-RETURN | `fn foo() -> () { 42i64 }` 不报错 — body_lower.rs:443 skip_assign 对所有 void fn 跳过 assign, typeck 看不到类型不匹配 | 静默接受类型不正确代码 (ZST 返回 + 非 ZST rvalue) | ✅ Resolved Stage 18.336: skip_assign 仅对 Infer/unit/Ref/Ptr/FnPtr/FnDef/Str 保留 — concrete scalar (Int/Bool/Float) + Adt 不 skip, 触发 post_check_statement 类型检查. Per §1.0 原則 9 (正确 > 妥协): 匹配 Rust 行为. |
+| TD-TYPECK-STRUCT-RETURN-INFER | `fn foo() -> S { 42 }` (struct return + Infer rvalue) 不报错 — typeck/check.rs:236 `let _ = unify(...)` 丢弃 unify 错误 | 静默接受类型不正确代码 (Infer 绑定到 Adt 失败被丢弃) | ✅ Resolved Stage 18.336: 仅对 FnDef↔FnPtr + Infer rvalue + concrete place 移除 suppression. 合法 coercion (Int↔Uint widening, &mut→&) 仍保留 suppression. Per §1.0 原則 4 (报错 > 静默): Infer→concrete 失败必须报错. |
+| TD-TYPECK-DROP-SELF | `impl Drop for Foo { fn drop(self) {} }` 不报错 — driver_validations.rs:110-125 过滤 self_kind, 不比较 | 静默接受 Drop impl 错误 self receiver (应为 &mut self) | ✅ Resolved Stage 18.336: 新增 self_kind 比较 (trait vs impl). 不匹配时 push TypeError. Per §1.0 原則 4 (报错 > 静默): self receiver 必须匹配. |
+| TD-TYPECK-TRAIT-RECEIVER | `trait T { fn f(&self); } impl T for X { fn f(self) {} }` 不报错 — 同 TD-TYPECK-DROP-SELF | 静默接受 trait impl 错误 self receiver | ✅ Resolved Stage 18.336: 同 TD-TYPECK-DROP-SELF (self_kind 比较). |
+| TD-TYPECK-TRAIT-RET-INT-WIDTH | `trait T { fn f() -> i32; } impl T for X { fn f() -> i64 {} }` 不报错 — mir_ty_kinds_compatible 把 Int↔Int 视为兼容 (regardless of width) | 静默接受 trait impl 错误返回类型宽度 | ✅ Resolved Stage 18.336: mir_ty_kinds_compatible 收紧 — Int/Uint/Float 要求 exact match (a_i == b_i); Int↔Uint 视为不兼容. Per §1.0 原則 9 (正确 > 妥协): trait impls 必须精确匹配声明签名. |
 
 ### 2.6 Standard Library
 

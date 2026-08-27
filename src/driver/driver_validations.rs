@@ -200,6 +200,43 @@ pub(super) fn validate_impl_method_signatures(
                     ));
                 }
             }
+
+            // Stage 18.336 (P1 soundness fix): 4. Self receiver kind mismatch.
+            //
+            // Per §20 Round 5 audit: trait validator filtered out self_kind from
+            // param comparison, so `&mut self` vs `self` mismatches were never
+            // caught. This silently accepted incorrect Drop impls and other
+            // trait method signature violations.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): self receiver kind must match
+            // between trait declaration and impl.
+            // Per §1.0 原則 6 (通解 > 特解): one self_kind comparison covers
+            // all trait methods (Drop, Display, custom traits, etc.).
+            // Per §20 (iterative audit): same root cause as TD-TYPECK-DROP-SELF.
+            let trait_self = trait_fn
+                .sig
+                .inputs
+                .iter()
+                .find_map(|p| p.self_kind.as_ref());
+            let impl_self = impl_fn.sig.inputs.iter().find_map(|p| p.self_kind.as_ref());
+            if trait_self != impl_self {
+                let method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
+                let trait_self_str = match trait_self {
+                    Some(s) => format!("{:?}", s),
+                    None => "no self".to_string(),
+                };
+                let impl_self_str = match impl_self {
+                    Some(s) => format!("{:?}", s),
+                    None => "no self".to_string(),
+                };
+                errors.push(TypeError::new(
+                    format!(
+                        "method `{}` self receiver mismatch: expected `{}`, found `{}`",
+                        method_name, trait_self_str, impl_self_str
+                    ),
+                    impl_fn.span,
+                ));
+            }
         }
     }
 }
@@ -223,14 +260,20 @@ pub(super) fn mir_ty_kinds_compatible(a: &crate::mir::ty::Ty, b: &crate::mir::ty
         | (TyKind::Char, TyKind::Char)
         | (TyKind::Str, TyKind::Str)
         | (TyKind::Never, TyKind::Never) => true,
-        // Any Int with any Int: ok (width differences are coercible).
-        (TyKind::Int(_), TyKind::Int(_)) => true,
-        // Any Uint with any Uint: ok.
-        (TyKind::Uint(_), TyKind::Uint(_)) => true,
-        // Any Float with any Float: ok.
-        (TyKind::Float(_), TyKind::Float(_)) => true,
-        // Int ↔ Uint of same width: ok (lossless reinterpretation).
-        (TyKind::Int(_), TyKind::Uint(_)) | (TyKind::Uint(_), TyKind::Int(_)) => true,
+        // Stage 18.336 (P1 soundness fix): Trait method signatures must match
+        // EXACTLY (no implicit coercion). Was: any Int with any Int was
+        // considered compatible (e.g., i32 vs i64), but trait impls returning
+        // i64 cannot satisfy a trait declaring i32.
+        // Per §1.0 原則 9 (正确 > 妥协): trait impls must match the declared
+        // signature exactly, no implicit coercion.
+        // Per §20 (iterative audit): found via §20 Round 5 audit
+        // (TD-TYPECK-TRAIT-RET-INT-WIDTH).
+        (TyKind::Int(a_i), TyKind::Int(b_i)) => a_i == b_i,
+        (TyKind::Uint(a_u), TyKind::Uint(b_u)) => a_u == b_u,
+        (TyKind::Float(a_f), TyKind::Float(b_f)) => a_f == b_f,
+        // Int ↔ Uint are DISTINCT types — trait impls must match exactly.
+        // (Was: treated as compatible, allowing i32 to satisfy u32 trait decl.)
+        (TyKind::Int(_), TyKind::Uint(_)) | (TyKind::Uint(_), TyKind::Int(_)) => false,
         // Tuple with same length: recurse.
         (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) if a_tys.len() == b_tys.len() => a_tys
             .iter()

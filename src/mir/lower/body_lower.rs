@@ -444,6 +444,41 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     let return_is_unit = matches!(&return_ty.kind, TyKind::Tuple(tys) if tys.is_empty());
     let skip_assign = cx.is_terminated() || return_is_unit;
 
+    // Stage 18.336 (P1 soundness fix): When the return type is `()` (unit) AND
+    // the trailing expression has a CONCRETE non-unit type, do NOT skip the
+    // assign ONLY if the type is a primitive scalar (Int/Uint/Bool/Float) or
+    // Adt (struct/enum). For Ref/Ptr/FnPtr types, keep the skip — Rust's
+    // behavior for `fn f() { "hello" }` is to discard with a warning, not
+    // a hard error. Only "scalar value where unit is expected" should error.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): concrete scalar/struct mismatches must
+    // be reported (e.g., `fn foo() -> () { 42i64 }`, `fn foo() -> () { true }`).
+    // Per §1.0 原則 9 (正确 > 妥协): match Rust's behavior for Ref/Ptr (discard).
+    // Per §20 (iterative audit): found via §20 Round 5 audit (TD-TYPECK-ZST-RETURN).
+    let skip_assign = if skip_assign && return_is_unit {
+        // Check if the trailing value is a concrete non-unit, non-Ref/Ptr type.
+        let value_ty = cx.mir.local(value_local).ty.clone();
+        let value_is_infer = matches!(&value_ty.kind, TyKind::Infer(_));
+        let value_is_unit = matches!(&value_ty.kind, TyKind::Tuple(tys) if tys.is_empty());
+        // Ref/Ptr/FnPtr/FnDef/Str are "discardable" — Rust allows them as trailing
+        // expressions in void fns (with a warning, not an error).
+        let value_is_discardable = matches!(
+            &value_ty.kind,
+            TyKind::Ref(_, _, _)
+                | TyKind::RawPtr(_, _)
+                | TyKind::FnPtr(_)
+                | TyKind::FnDef(_, _)
+                | TyKind::Str
+                | TyKind::Slice(_)
+        );
+        // Skip only if rvalue is Infer, unit, or discardable (Ref/Ptr/etc.).
+        // Concrete scalar types (Int/Bool/Float) and Adt (struct/enum) should
+        // NOT skip — they're real mismatches.
+        value_is_infer || value_is_unit || value_is_discardable
+    } else {
+        skip_assign
+    };
+
     if !skip_assign {
         // Stage 16.06: Use Operand::Move for the function body's tail
         // expression. The tail value semantically moves into the return

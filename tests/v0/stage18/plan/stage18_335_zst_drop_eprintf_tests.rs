@@ -215,10 +215,10 @@ fn main() -> i32 {
 
 /// Stage 18.335 negative 2: Returning wrong type from function.
 ///
-/// Landin typeck may not yet catch all return-type mismatches for ZST returns.
-/// This test documents the EXPECTED behavior (typeck should catch it). If
-/// Landin's typeck is still incomplete here, the test will be skipped with
-/// a warning rather than fail.
+/// Stage 18.336 (P1 soundness fix): Converted from skip-with-warning to hard
+/// assertion. The `body_lower.rs:443` skip_assign logic was refined to only
+/// skip for Infer/unit/Ref/Ptr rvalues — concrete scalar types (i64) now
+/// correctly trigger the type mismatch check.
 #[test]
 fn stage18_335_zst_return_wrong_type() {
     let result = compile(
@@ -227,12 +227,10 @@ fn foo() -> () { 42i64 }
 fn main() -> i32 { 0 }
 "#,
     );
-    if !has_errors(&result) {
-        eprintln!(
-            "warn: Landin typeck does not yet catch return type mismatch for ZST returns. \
-             Expected error for `fn foo() -> () {{ 42i64 }}`. This is a known typeck gap."
-        );
-    }
+    assert!(
+        has_errors(&result),
+        "Returning i64 from function declared to return () must report typeck error"
+    );
 }
 
 /// Stage 18.335 negative 3: Drop trait with wrong signature.
@@ -254,9 +252,9 @@ fn main() -> i32 { 0 }
 
 /// Stage 18.335 negative 4: Drop method with wrong self receiver.
 ///
-/// Landin typeck may not yet validate Drop trait method signatures strictly.
-/// This test documents the EXPECTED behavior. If Landin's typeck is still
-/// incomplete here, the test will skip with a warning rather than fail.
+/// Stage 18.336 (P1 soundness fix): Converted from skip-with-warning to hard
+/// assertion. The `driver_validations.rs` trait validator now compares
+/// `self_kind` between trait declaration and impl.
 #[test]
 fn stage18_335_drop_wrong_self() {
     let result = compile(
@@ -267,12 +265,10 @@ impl Drop for Foo { fn drop(self) { } }
 fn main() -> i32 { 0 }
 "#,
     );
-    if !has_errors(&result) {
-        eprintln!(
-            "warn: Landin typeck does not yet strictly validate Drop method self receiver. \
-             Expected error for `fn drop(self)` (should be `&mut self`). This is a known typeck gap."
-        );
-    }
+    assert!(
+        has_errors(&result),
+        "Drop::drop with wrong self receiver (self instead of &mut self) must report typeck error"
+    );
 }
 
 // ============================================================================

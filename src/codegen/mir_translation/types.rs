@@ -12,6 +12,39 @@ use crate::codegen::mir_translation::layouts::adt_layout_to_emit_type;
 use crate::codegen::{mir_type_to_emit_type, EmitType};
 use crate::mir::ty::ConstVal;
 
+/// Stage 18.336 (P1 soundness fix): Filter `EmitType::Void` from a list of
+/// struct/tuple/enum-payload field types.
+///
+/// Per §20 Round 5 audit: ZST fields (`()`) leak `EmitType::Void` into nested
+/// aggregate positions (struct field, tuple element, enum payload, array
+/// element). LLVM IR rejects `{ void }`, `[3 x void]`, etc. with "void type
+/// only allowed for function results".
+///
+/// Mirrors rustc_codegen_llvm: ZST fields are elided from the LLVM struct
+/// type (Rust ABI doesn't allocate space for them in the struct layout).
+///
+/// If ALL fields are Void (fully ZST aggregate), returns `Struct(vec![])`
+/// (LLVM `{}`, valid as a struct type — the issue is only with `Void` fields
+/// INSIDE a struct, not with empty structs themselves).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one fix covers all 4 cases (A1-A4 same class
+/// — struct field, tuple element, enum payload, array element).
+/// Per §20 (iterative audit): same root cause as Stage 18.335 ZST param elision.
+pub(crate) fn filter_void_fields(fields: Vec<EmitType>) -> EmitType {
+    let filtered: Vec<EmitType> = fields
+        .into_iter()
+        .filter(|ty| *ty != EmitType::Void)
+        .collect();
+    if filtered.is_empty() {
+        // All fields were ZST → represent as LLVM `{}` (valid empty struct).
+        // (Not `Void` — Void is only valid as a function return type, not as
+        // a struct field or array element.)
+        EmitType::Struct(vec![])
+    } else {
+        EmitType::Struct(filtered)
+    }
+}
+
 pub fn mir_type_to_emit_type_with_layouts(
     ty: &crate::mir::ty::Ty,
     layouts: &crate::mir::body::AdtLayouts,
@@ -52,12 +85,14 @@ pub fn mir_type_to_emit_type_with_layouts(
                     // Stage 3.47: recurse with `layouts` so nested Adts
                     // resolve correctly (e.g., `struct Outer { i: Inner }`
                     // renders as `{ { i32 } }`, not `{ i32 }`).
-                    EmitType::Struct(
-                        field_tys
-                            .iter()
-                            .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
-                            .collect(),
-                    )
+                    // Stage 18.336 (P1 soundness fix): Filter Void fields
+                    // (ZST fields like `()` would leak `Void` into the struct
+                    // type → `llvm-as` rejects `{ void }`).
+                    let fields: Vec<EmitType> = field_tys
+                        .iter()
+                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                        .collect();
+                    filter_void_fields(fields)
                 }
             }
             Some(AdtLayout::Enum {
@@ -68,6 +103,9 @@ pub fn mir_type_to_emit_type_with_layouts(
                 // payload fields into the storage struct. This fixes the
                 // soundness bug where `enum E { A, B(i32), C(i64) }` only
                 // allocated i32 storage for C's i64 payload.
+                // Stage 18.336 (P1 soundness fix): Filter Void fields (ZST
+                // payloads like `()` would leak `Void` into the enum storage
+                // struct → `llvm-as` rejects).
                 let mut field_tys =
                     vec![mir_type_to_emit_type_with_layouts(discriminant_ty, layouts)];
                 for payload in variant_payloads {
@@ -75,7 +113,7 @@ pub fn mir_type_to_emit_type_with_layouts(
                         field_tys.push(mir_type_to_emit_type_with_layouts(t, layouts));
                     }
                 }
-                EmitType::Struct(field_tys)
+                filter_void_fields(field_tys)
             }
             // Test-context fallback: layout not registered (MIR body constructed
             // without HIR). Falls back to I32 placeholder (preserves Stage 3.30
@@ -92,11 +130,14 @@ pub fn mir_type_to_emit_type_with_layouts(
             if tys.is_empty() {
                 EmitType::Void
             } else {
-                EmitType::Struct(
-                    tys.iter()
-                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
-                        .collect(),
-                )
+                // Stage 18.336 (P1 soundness fix): Filter Void tuple elements
+                // (ZST elements like `()` would leak `Void` into the struct
+                // type → `llvm-as` rejects `{ i32, void }`).
+                let fields: Vec<EmitType> = tys
+                    .iter()
+                    .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                    .collect();
+                filter_void_fields(fields)
             }
         }
         TyKind::Array(elem, len) => {
@@ -104,7 +145,17 @@ pub fn mir_type_to_emit_type_with_layouts(
                 ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
                 _ => 0,
             };
-            EmitType::array_of(mir_type_to_emit_type_with_layouts(elem, layouts), n)
+            // Stage 18.336 (P1 soundness fix): ZST array element (e.g., `[(); 3]`)
+            // would produce `[3 x void]` → `llvm-as` rejects. Use `Struct(vec![])`
+            // (LLVM `{}`) as the element type instead → `[3 x {}]` is valid
+            // (zero-size array).
+            let elem_ty = mir_type_to_emit_type_with_layouts(elem, layouts);
+            let elem_ty = if elem_ty == EmitType::Void {
+                EmitType::Struct(vec![])
+            } else {
+                elem_ty
+            };
+            EmitType::array_of(elem_ty, n)
         }
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
             // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
@@ -139,12 +190,14 @@ pub fn mir_type_to_emit_type_with_layouts(
         // Per §1.0 原則 5 "报错 > 静默": the legacy fallback silently
         // produced wrong LLVM types. The layouts-aware variant surfaces
         // the correct type and lets LLVM verification succeed.
+        // Stage 18.336: Filter Void from closure captures (ZST captures
+        // would leak `Void` into the closure struct type).
         TyKind::Closure(_, substs) => {
             let fields: Vec<EmitType> = substs
                 .iter()
                 .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
                 .collect();
-            EmitType::Struct(fields)
+            filter_void_fields(fields)
         }
         _ => mir_type_to_emit_type(ty),
     }
@@ -204,13 +257,14 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
             if tys.is_empty() {
                 EmitType::Void
             } else {
-                EmitType::Struct(
-                    tys.iter()
-                        .map(|t| {
-                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
-                        })
-                        .collect(),
-                )
+                // Stage 18.336 (P1 soundness fix): Filter Void tuple elements
+                // (ZST elements like `()` would leak `Void` into the struct
+                // type → `llvm-as` rejects).
+                let fields: Vec<EmitType> = tys
+                    .iter()
+                    .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts))
+                    .collect();
+                filter_void_fields(fields)
             }
         }
         TyKind::Array(elem, len) => {
@@ -218,10 +272,16 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
                 ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
                 _ => 0,
             };
-            EmitType::array_of(
-                mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
-                n,
-            )
+            // Stage 18.336 (P1 soundness fix): ZST array element (e.g., `[(); 3]`)
+            // would produce `[3 x void]` → `llvm-as` rejects. Use `Struct(vec![])`
+            // (LLVM `{}`) as the element type instead → `[3 x {}]` is valid.
+            let elem_ty = mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts);
+            let elem_ty = if elem_ty == EmitType::Void {
+                EmitType::Struct(vec![])
+            } else {
+                elem_ty
+            };
+            EmitType::array_of(elem_ty, n)
         }
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => match &inner.kind {
             TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
@@ -246,7 +306,8 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
                 .iter()
                 .map(|ty| mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts))
                 .collect();
-            EmitType::Struct(fields)
+            // Stage 18.336 (P1 soundness fix): Filter Void from closure captures.
+            filter_void_fields(fields)
         }
         // All other kinds — delegate to the existing function.
         _ => mir_type_to_emit_type_with_layouts(ty, layouts),

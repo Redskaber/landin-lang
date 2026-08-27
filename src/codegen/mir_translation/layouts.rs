@@ -6,7 +6,9 @@
 //!
 //! Per §16: reads MIR data (AdtLayout) — no HIR.
 
-use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts_and_mono;
+use crate::codegen::mir_translation::types::{
+    filter_void_fields, mir_type_to_emit_type_with_layouts_and_mono,
+};
 use crate::codegen::EmitType;
 
 /// Stage 16.58: Convert an AdtLayout to EmitType, recursing with mono_layouts.
@@ -25,20 +27,23 @@ pub(crate) fn adt_layout_to_emit_type(
             if field_tys.is_empty() {
                 EmitType::Struct(vec![])
             } else {
-                EmitType::Struct(
-                    field_tys
-                        .iter()
-                        .map(|t| {
-                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
-                        })
-                        .collect(),
-                )
+                // Stage 18.336 (P1 soundness fix): Filter Void fields (ZST
+                // fields like `()` would leak `Void` into the struct type
+                // → `llvm-as` rejects `{ void }`).
+                let fields: Vec<EmitType> = field_tys
+                    .iter()
+                    .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts))
+                    .collect();
+                filter_void_fields(fields)
             }
         }
         AdtLayout::Enum {
             discriminant_ty,
             variant_payloads,
         } => {
+            // Stage 18.336 (P1 soundness fix): Filter Void fields (ZST
+            // payloads like `()` would leak `Void` into the enum storage
+            // struct → `llvm-as` rejects).
             let mut field_tys = vec![mir_type_to_emit_type_with_layouts_and_mono(
                 discriminant_ty,
                 layouts,
@@ -53,7 +58,7 @@ pub(crate) fn adt_layout_to_emit_type(
                     ));
                 }
             }
-            EmitType::Struct(field_tys)
+            filter_void_fields(field_tys)
         }
     }
 }
