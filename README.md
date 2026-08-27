@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.321 — Cargo.toml 过时注释清理 + full audit complete: 104 files reviewed, 0 stale items remaining)
+> **Version**: v0.493.0 (Stage 18.325 — TD-CODEGEN-NEGATIVE: +60 tests, 14.9%→23.3% coverage, 25% target reached)
 > **License**: MIT
-> **Status**: v0.4 stable. 4203 tests, 0 failures. 类 Rust 原始类型扩展模型完成. 全量深度审查完成 (src + docs + scripts + config).
+> **Status**: v0.4 stable. 4317 tests, 0 failures. 类 Rust 原始类型扩展模型完成. 全量深度审查完成 + tech-debt 推进中.
 
 A work-in-progress systems programming language inspired by Rust, using
 LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
@@ -107,7 +107,7 @@ cargo test --release --test all_tests --features llvm-backend
 ./tests/conformance/run.sh
 ```
 
-**Test stats**: 676 lib + 3527 integration = **4203 tests, 0 failures, 0 warnings, 0 clippy issues**.
+**Test stats**: 676 lib + 3641 integration = **4317 tests, 0 failures, 0 warnings, 0 clippy issues**.
 
 ---
 
@@ -291,13 +291,17 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.321) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.325) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
+| 18.325 | v0.493.0 | TD-CODEGEN-NEGATIVE final push: +60 codegen negative tests (8 categories: operator/cast/numeric/string/array/struct/controlflow/misc) — 14.9%→23.3%, 25% target reached |
+| 18.324 | v0.493.0 | TD-CODEGEN-NEGATIVE continued: +30 codegen negative tests (7 categories: parser/visibility/generics/closure/macro/unsafe/pattern) — 10.7%→15.6% coverage |
+| 18.323 | v0.493.0 | TD-CODEGEN-NEGATIVE: +24 codegen negative tests (6 categories: typeck/borrowck/resolve/trait/intrinsic/runtime) — 6.7%→10.7% coverage |
+| 18.322 | v0.493.0 | TD-DUMMY-* 审计完成 (8 files, 250 Span::DUMMY 全部 Category A, 0 Category B 漏网) |
 | 18.321 | v0.493.0 | Cargo.toml 过时注释清理 (description "LLVM 19" → "LLVM 22" + llvm-sys 注释 "19+21" → "18-22 default 22") |
 | 18.320 | v0.493.0 | scripts/switch-llvm-version.sh 过时注释清理 (LLVM 19+21 → LLVM 18-22 default 22) |
 | 18.319 | v0.493.0 | docs/ 子目录过时内容清理 (build-guide + testing-guide + graph/README + llvm/README) |

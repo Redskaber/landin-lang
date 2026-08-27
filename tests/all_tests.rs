@@ -671,6 +671,18 @@ mod stage18_271_final_comprehensive_audit_tests;
 #[path = "v0/stage18/plan/stage18_282_moved_state_tests.rs"]
 mod stage18_282_moved_state_tests;
 
+// === Stage 18.323: TD-CODEGEN-NEGATIVE — codegen negative test coverage expansion ===
+#[path = "v0/stage18/plan/stage18_323_codegen_negative_coverage_tests.rs"]
+mod stage18_323_codegen_negative_coverage_tests;
+
+// === Stage 18.324: TD-CODEGEN-NEGATIVE continued — +30 codegen negative tests ===
+#[path = "v0/stage18/plan/stage18_324_codegen_negative_expansion_tests.rs"]
+mod stage18_324_codegen_negative_expansion_tests;
+
+// === Stage 18.325: TD-CODEGEN-NEGATIVE final push — +60 codegen negative tests ===
+#[path = "v0/stage18/plan/stage18_325_codegen_negative_final_push_tests.rs"]
+mod stage18_325_codegen_negative_final_push_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
