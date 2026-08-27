@@ -15,52 +15,13 @@
 
 #![cfg(all(test, feature = "llvm-backend"))]
 
-use std::path::Path;
-use std::process::Command;
+#[path = "../../../common/mod.rs"]
+#[allow(clippy::duplicate_mod)]
+mod common;
+use common::{assert_runtime, run_program};
 
 /// Helper: compile + run a Landin program and return (stdout, exit_code).
-fn run_program(code: &str) -> (String, i32) {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = if cfg!(debug_assertions) {
-        manifest.join("target/debug/landin-stage0")
-    } else {
-        manifest.join("target/release/landin-stage0")
-    };
-    // Use a unique file name per test invocation to avoid parallel conflicts.
-    // Include a counter via atomic to ensure uniqueness.
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let lin_file =
-        std::env::temp_dir().join(format!("landin_rt_test_{}_{}.lin", std::process::id(), id));
-    std::fs::write(&lin_file, code).expect("write .lin file");
-
-    let output = Command::new(&bin)
-        .arg("--run")
-        .arg(&lin_file)
-        .output()
-        .expect("failed to execute landin-stage0");
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let _ = std::fs::remove_file(&lin_file);
-    (stdout, output.status.code().unwrap_or(-1))
-}
-
 /// Helper: assert a program produces expected stdout and exit code 0.
-fn assert_runtime(name: &str, code: &str, expected_stdout: &str) {
-    let (stdout, exit) = run_program(code);
-    assert_eq!(
-        stdout, expected_stdout,
-        "Test '{}': stdout mismatch.\nExpected: {:?}\nGot:      {:?}",
-        name, expected_stdout, stdout
-    );
-    assert_eq!(
-        exit, 0,
-        "Test '{}': exit code mismatch (expected 0, got {})",
-        name, exit
-    );
-}
-
 // === Arithmetic ===
 
 #[test]

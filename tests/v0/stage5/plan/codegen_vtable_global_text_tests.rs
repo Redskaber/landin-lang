@@ -28,7 +28,7 @@ fn test_emit_vtable_global_text_basic() {
     let ir = emit_vtable_global_text(".vtable.Clone.S", &symbols);
     assert_eq!(
         ir,
-        "@.vtable.Clone.S = private unnamed_addr constant \
+        "@.vtable.Clone.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_clone, ptr @landin_S_clone_from]"
     );
 }
@@ -39,7 +39,7 @@ fn test_emit_vtable_global_text_empty() {
     let ir = emit_vtable_global_text(".vtable.Copy.S", &[]);
     assert_eq!(
         ir,
-        "@.vtable.Copy.S = private unnamed_addr constant zeroinitializer"
+        "@.vtable.Copy.S = internal unnamed_addr constant [0 x ptr] zeroinitializer"
     );
 }
 
@@ -50,7 +50,7 @@ fn test_emit_vtable_global_text_single() {
     let ir = emit_vtable_global_text(".vtable.Drop.S", &symbols);
     assert_eq!(
         ir,
-        "@.vtable.Drop.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
     );
 }
 
@@ -78,7 +78,7 @@ fn test_emit_vtable_global_text_null_symbol() {
     let ir = emit_vtable_global_text(".vtable.X.S", &symbols);
     assert_eq!(
         ir,
-        "@.vtable.X.S = private unnamed_addr constant [1 x ptr] [ptr null]"
+        "@.vtable.X.S = internal unnamed_addr constant [1 x ptr] [ptr null]"
     );
 }
 
@@ -89,7 +89,7 @@ fn test_emit_vtable_global_text_mixed_null() {
     let ir = emit_vtable_global_text(".vtable.Clone.S", &symbols);
     assert_eq!(
         ir,
-        "@.vtable.Clone.S = private unnamed_addr constant \
+        "@.vtable.Clone.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_clone, ptr null]"
     );
 }

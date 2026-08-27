@@ -26,7 +26,7 @@ fn test_emit_vtable_global_from_emission_clone() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Clone.S = private unnamed_addr constant \
+        "@.vtable.Clone.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_clone, ptr @landin_S_clone_from]"
     );
 }
@@ -38,7 +38,7 @@ fn test_emit_vtable_global_from_emission_drop() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Drop.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
     );
 }
 
@@ -49,7 +49,7 @@ fn test_emit_vtable_global_from_emission_marker() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Copy.S = private unnamed_addr constant zeroinitializer"
+        "@.vtable.Copy.S = internal unnamed_addr constant [0 x ptr] zeroinitializer"
     );
 }
 
@@ -60,7 +60,7 @@ fn test_emit_vtable_global_from_emission_partial() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Clone.S = private unnamed_addr constant \
+        "@.vtable.Clone.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_clone, ptr null]"
     );
 }
@@ -72,7 +72,7 @@ fn test_emit_vtable_global_from_emission_arith() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Add.Vec = private unnamed_addr constant [1 x ptr] [ptr @landin_Vec_add]"
+        "@.vtable.Add.Vec = internal unnamed_addr constant [1 x ptr] [ptr @landin_Vec_add]"
     );
 }
 
@@ -116,13 +116,13 @@ fn test_emit_vtable_global_from_emission_null_symbol() {
     assert!(ir.contains("ptr null"), "expected 'ptr null' in: {ir}");
 }
 
-/// Marker → `zeroinitializer` (no array type).
+/// Marker → `[0 x ptr] zeroinitializer` (Stage 18.326: typed).
 #[test]
 fn test_emit_vtable_global_from_emission_empty_marker_zeroinitializer() {
     let e = stdlib_vtable_emission("Send", "S", &[]).unwrap();
     let ir = emit_vtable_global_from_emission(&e);
     assert!(ir.contains("zeroinitializer"));
-    assert!(!ir.contains("x ptr]")); // no array type for markers
+    assert!(ir.contains("x ptr]")); // Stage 18.326: typed zeroinitializer
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ fn test_emit_vtable_global_from_emission_partial_eq() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.PartialEq.S = private unnamed_addr constant \
+        "@.vtable.PartialEq.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_eq, ptr null]"
     );
 }

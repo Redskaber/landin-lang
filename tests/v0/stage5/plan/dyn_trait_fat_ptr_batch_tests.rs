@@ -73,7 +73,7 @@ fn test_emit_dyn_trait_fat_ptrs_text_batch_valid_ir() {
     let lines = emit_dyn_trait_fat_ptrs_text_batch(&fps);
     for line in &lines {
         assert!(line.starts_with("@.dynptr."));
-        assert!(line.contains("private unnamed_addr constant"));
+        assert!(line.contains("internal unnamed_addr constant"));
         assert!(line.contains("{ ptr, ptr }"));
     }
 }

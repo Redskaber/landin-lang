@@ -6,6 +6,11 @@
 //! (checking file existence, reading source files for content patterns,
 //! checking Cargo.toml version strings) — all removed.
 
+// Stage 18.326: Shared test helpers (run_program, assert_runtime) for all tests.
+// Per §1.0 原則 6 (通解>特解): one shared helper for all 29+ test files.
+#[path = "common/mod.rs"]
+mod common;
+
 // === Stage 0 ===
 #[path = "v0/stage0/plan/ast_structure_tests.rs"]
 mod ast_structure_tests;

@@ -86,7 +86,7 @@ pub fn emit_dynptr_global_text(
         "{{ ptr, ptr }} {{ ptr @{}, ptr @{} }}",
         data_symbol, vtable_symbol
     );
-    format!("@{} = private unnamed_addr constant {}", global_name, init)
+    format!("@{} = internal unnamed_addr constant {}", global_name, init)
 }
 
 // ============================================================================

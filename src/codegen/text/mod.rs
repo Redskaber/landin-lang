@@ -170,17 +170,45 @@ impl TextEmitter {
         self.output.push('\n');
     }
 
-    /// Return the full module text: function bodies followed by accumulated
-    /// module-level globals (string constants). Stage 3.27.
+    /// Return the full module text with globals inserted at the correct position.
+    ///
+    /// Stage 18.326 B5 (P1 soundness fix): globals MUST come AFTER `target
+    /// triple` / `target datalayout` but BEFORE `define` blocks. Previously
+    /// globals were appended AFTER function definitions → `undefined reference`
+    /// at link time → intermittent segfaults (exit=139).
+    ///
+    /// **Design boundary** (per LLVM Language Reference + rustc_codegen_llvm):
+    /// - `target triple` + `target datalayout` must be at the top of the file.
+    /// - Global definitions can appear anywhere, but MUST be before use.
+    /// - rustc emits all globals before function definitions.
+    ///
+    /// Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
     pub fn output_with_globals(&self) -> String {
-        let mut out = String::with_capacity(self.output.len() + 1024);
-        out.push_str(&self.output);
+        let output = &self.output;
+        let mut out = String::with_capacity(output.len() + 1024);
+
         if !self.globals.is_empty() {
-            out.push_str("; --- Module-level string constants ---\n");
+            // Find the insertion point: after target datalayout (or target triple).
+            let insert_pos = output
+                .find("target datalayout")
+                .and_then(|pos| output[pos..].find('\n').map(|n| pos + n + 1))
+                .or_else(|| {
+                    output
+                        .find("target triple")
+                        .and_then(|pos| output[pos..].find('\n').map(|n| pos + n + 1))
+                })
+                .unwrap_or(0);
+
+            out.push_str(&output[..insert_pos]);
+            out.push_str("; --- Module-level globals ---\n");
             for g in &self.globals {
                 out.push_str(g);
                 out.push('\n');
             }
+            out.push('\n');
+            out.push_str(&output[insert_pos..]);
+        } else {
+            out.push_str(output);
         }
         out
     }

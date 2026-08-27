@@ -207,13 +207,44 @@ fn main() {
             // source/test directory with .o and .out files.
             // For --emit-obj/--emit-bin: use -o if specified, else alongside
             // the input file (user explicitly requested the output).
+            //
+            // Stage 18.326 (P1 soundness fix): use global atomic counter + PID + nanos
+            // to guarantee unique temp file names under multi-threaded test execution.
+            // Previously used only `std::process::id()` which caused intermittent
+            // /tmp file races when multiple `landin-stage0 --run` subprocesses
+            // executed concurrently (e.g., cargo test --test-threads=N).
+            // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix, not workaround.
+            static TEMP_COUNTER: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
+            let temp_id = {
+                let c = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                format!("{}_{}_{}", std::process::id(), nanos, c)
+            };
+            // Stage 13.23: Determine object file path.
+            // For --run: use the input file's parent directory (which is a
+            // unique temp subdir created by the test harness, per Stage 18.326).
+            // This ensures all artifacts (.o, .out, .c) live in the same unique
+            // subdir, eliminating /tmp file races under multi-threaded execution.
+            // For --emit-obj/--emit-bin: use -o if specified, else alongside
+            // the input file (user explicitly requested the output).
+            //
+            // Stage 18.326 (P1 soundness fix): previously used std::env::temp_dir()
+            // which put all artifacts in /tmp root — multiple concurrent
+            // `landin-stage0 --run` processes could race on the same /tmp paths.
+            // Now we use the input file's parent dir, which is unique per test
+            // invocation (test harness creates /tmp/landin_test_{pid}_{nanos}_{counter}/).
+            // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
             let obj_path = if cli.run {
-                // --run: use temp dir, cleaned up after execution
-                std::env::temp_dir().join(format!(
-                    "landin_run_{}_{}.o",
-                    std::process::id(),
-                    cli.file.file_name().unwrap_or_default().to_string_lossy()
-                ))
+                // --run: use input file's parent dir (unique temp subdir in tests)
+                let parent = cli
+                    .file
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                parent.join(format!("landin_run_{}.o", temp_id,))
             } else if let Some(ref o) = cli.output {
                 o.with_extension("o")
             } else {
@@ -266,12 +297,13 @@ fn main() {
             // If --emit-bin or --run, link via cc/clang
             if cli.emit_bin || cli.run {
                 let exe_path = if cli.run {
-                    // --run: use temp dir, cleaned up after execution
-                    std::env::temp_dir().join(format!(
-                        "landin_run_{}_{}.out",
-                        std::process::id(),
-                        cli.file.file_name().unwrap_or_default().to_string_lossy()
-                    ))
+                    // --run: use input file's parent dir (unique temp subdir in tests)
+                    // Stage 18.326: same parent dir as obj_path to avoid /tmp races
+                    let parent = cli
+                        .file
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    parent.join(format!("landin_run_{}.out", temp_id))
                 } else if let Some(ref o) = cli.output {
                     o.clone()
                 } else {
@@ -295,8 +327,15 @@ fn main() {
                 // longer needs to call a separate println helper before
                 // landin_main() — that approach (Stage 13.12) broke
                 // output ordering for loops and conditionals.
-                let wrapper_c =
-                    std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
+                let wrapper_c = {
+                    // --run: use input file's parent dir (unique temp subdir in tests)
+                    // Stage 18.326: same parent dir as obj_path/exe_path
+                    let parent = cli
+                        .file
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    parent.join(format!("landin_wrapper_{}.c", temp_id))
+                };
                 let wrapper_src = landin_compiler::codegen::runtime::LANDIN_C_WRAPPER;
                 if let Err(e) = std::fs::write(&wrapper_c, wrapper_src) {
                     eprintln!("error: cannot write wrapper: {e}");

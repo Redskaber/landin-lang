@@ -39,7 +39,7 @@ fn test_emit_vtable_globals_batch_single() {
     assert_eq!(result.len(), 1);
     assert_eq!(
         result[0],
-        "@.vtable.Drop.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
     );
 }
 
@@ -150,7 +150,7 @@ fn test_emit_vtable_globals_batch_with_marker() {
     let result = emit_vtable_globals_batch(&specs);
     assert_eq!(result.len(), 1);
     assert!(result[0].contains("zeroinitializer"));
-    assert!(!result[0].contains("x ptr]")); // no array type for markers
+    assert!(result[0].contains("x ptr]")); // Stage 18.326: typed zeroinitializer
 }
 
 /// Batch with null symbol → `ptr null`.
@@ -256,7 +256,7 @@ fn test_emit_vtable_globals_batch_real_vtables() {
     // Each line should be valid LLVM IR
     for line in &result {
         assert!(line.starts_with("@.vtable."));
-        assert!(line.contains("private unnamed_addr constant"));
+        assert!(line.contains("internal unnamed_addr constant"));
     }
 }
 

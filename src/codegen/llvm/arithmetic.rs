@@ -284,15 +284,22 @@ impl ArithmeticEmitter for LLVMSysEmitter {
             } else if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
                 && dst_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind
             {
-                // Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix):
-                // Integer-to-pointer: use IntToPtr. This is required for
-                // constants like `ConstVal::Int(0)` used in pointer-typed
-                // contexts (e.g., `null` for `*mut u8`). Without this,
-                // `emit_store` would store only 4 bytes (i32) into an 8-byte
-                // pointer slot, leaving upper bytes as garbage → ABI mismatch
-                // → segfault when passed to C functions.
+                // Stage 18.326 B1 (P1 soundness fix): When the integer value
+                // is 0, emit `ptr null` directly instead of `inttoptr i32 0
+                // to ptr` (which leaves upper 32 bits undefined on 64-bit).
                 //
-                // Per §1.0 原則 6 (通解>特例): one rule for all int→ptr casts.
+                // **Design boundary** (per Rust rustc_codegen_llvm):
+                // - For null pointer constants, use `LLVMConstNull` directly.
+                // - `LLVMBuildIntToPtr` is correct for non-zero values, but
+                //   for zero it produces a partially-undefined pointer.
+                //
+                // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+                // Check if the value is a constant integer 0.
+                if val.trim() == "0" {
+                    // Emit null pointer constant directly.
+                    return "null".to_string();
+                }
+                // Non-zero: use IntToPtr.
                 LLVMBuildIntToPtr(self.builder, v, dst_ty, name_c.as_ptr())
             } else {
                 match (src, dst) {

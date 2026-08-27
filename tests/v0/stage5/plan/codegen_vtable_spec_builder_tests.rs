@@ -281,7 +281,7 @@ fn test_build_vtable_global_specs_then_batch_emit() {
     assert_eq!(ir_lines.len(), 1);
     assert_eq!(
         ir_lines[0],
-        "@.vtable.Drop.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
     );
 }
 

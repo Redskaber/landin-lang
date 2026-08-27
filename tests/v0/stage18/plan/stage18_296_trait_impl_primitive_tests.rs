@@ -11,6 +11,10 @@
 #![cfg(all(test, feature = "llvm-backend"))]
 
 use std::path::Path;
+#[path = "../../../common/mod.rs"]
+#[allow(clippy::duplicate_mod)]
+mod common;
+use common::run_program;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -29,26 +33,6 @@ fn compile_only(code: &str) -> i32 {
         .expect("failed to execute");
     let _ = std::fs::remove_file(&lin_file);
     output.status.code().unwrap_or(-1)
-}
-
-fn run_program(code: &str) -> (String, i32) {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/release/landin-stage0");
-    static COUNTER2: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER2.fetch_add(1, Ordering::SeqCst);
-    let lin_file =
-        std::env::temp_dir().join(format!("landin_296run_{}_{}.lin", std::process::id(), id));
-    std::fs::write(&lin_file, code).expect("write .lin file");
-    let output = Command::new(&bin)
-        .arg("--run")
-        .arg(&lin_file)
-        .output()
-        .expect("failed to execute");
-    let _ = std::fs::remove_file(&lin_file);
-    (
-        String::from_utf8_lossy(&output.stdout).to_string(),
-        output.status.code().unwrap_or(-1),
-    )
 }
 
 // =============================================================================

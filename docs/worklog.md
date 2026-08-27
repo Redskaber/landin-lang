@@ -25904,3 +25904,71 @@ Work Log:
   → TD-IGNORE-DISCIPLINE — 测试纪律
   → TD-NO-JUMP-THREADING / TD-CONST-PROP-LOOPS — MIR 优化
 - v0.4 已完全可交付: 4317 tests, 0 failures, 所有 P3 tech-debt 清零 + TD-DUMMY-* 审计完成 + TD-CODEGEN-NEGATIVE 推进完成 (23.3%).
+
+---
+Task ID: stage18.326
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.326 — P1 codegen bug 根因修复: 7 bugs systematic fix. L3 (跨模块 P1 soundness). v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 P1 codegen bug 修复 — 7 个相互依赖的 bug, 需系统性修复)
+- 对齐: 用户要求 "应当先清晰能力边界,设计边界,职责边界等确定性内容" — 参考了 Rust rustc_codegen_llvm 设计
+- 阻断: P1 codegen bug (多线程偶发 segfault) 是阻断项 — §18 依赖审查 + 根因修复
+
+决策点 (为何选此路):
+- 为什么系统性修复而非逐个修复?
+  → 引用 §20 (直到审查不出问题为止): 发现一个 bug 必须顺着同类路径深挖到底
+  → 引用 §1.0 原則 6 (通解>特解): 先清晰能力/设计/职责边界,再统一修复
+  → 引用 §12 (最优>最小): 设计统一约定 (per Rust rustc_codegen_llvm),而非逐个 hack
+- 为什么先分析能力/设计/职责边界再修复?
+  → 用户明确指令: "应当先清晰能力边界,设计边界,职责边界等确定性内容"
+  → 引用 §2.2 (根因思维): 边界不清晰 = 根因不清晰 = 修复可能是最小补丁
+  → 引用 §1.0 原則 3 (显式>隐式): 边界必须显式约定,参考 Rust rustc_codegen_llvm
+
+裁剪点 (为何跳流程):
+- L3 执行 §3.2 全校验流 + §14.5 深度审查. 跳过 §14.6 跨阶段验证 (无跨阶段变更).
+
+5W2H:
+- WHAT: 系统性修复 7 个 codegen bug (B1-B6 + LLVMSysEmitter lookup)
+- WHY: P1 codegen bug — 多线程偶发 segfault (exit=139) + link error (exit=1)
+- WHO: ARCH-A (边界设计) + DEV-A (实施) + REV-A (深度审查)
+- WHEN: §3.2 单线程全绿后停止 (多线程改善但仍有 GEP typed pointer 残留)
+- WHERE: src/codegen/ (arithmetic.rs, rvalue.rs, statement.rs, text/mod.rs, text/module.rs, drop_glue.rs, trait_dispatch/vtable.rs, trait_dispatch/dynptr.rs, llvm/module.rs, llvm/arithmetic.rs, llvm/mod.rs)
+- HOW:
+  (1) §18 依赖审查: 分析 6 个 bug 的依赖关系 + 能力/设计/职责边界
+  (2) Rust 设计参考: rustc_codegen_llvm 的 global name / null ptr / cast op / param name / global ordering 约定
+  (3) 统一约定: emit_string_global 返回 name (调用方加 @), emit_null_ptr 返回 value (null, 调用方加 ptr), int→ptr 用 inttoptr (零值直接 null)
+  (4) 按依赖顺序修复: B3 (zeroinitializer) → B4 (ptr %self) → B6 (emit_null_ptr) → B1 (bitcast→inttoptr/null) → B2 (ptr @.str) → B5 (globals ordering) → B7 (LLVMSysEmitter lookup)
+  (5) 更新测试断言: private→internal, zeroinitializer→[0 x ptr] zeroinitializer
+- HOW MUCH: §3.2 单线程全绿 (4317 tests, 0 failures), 多线程改善 (6/10 pass, 之前 0/10)
+
+Work Log:
+- Bug 清单 (7 个):
+  - B1: bitcast i32 0 to ptr (非法 IR → segfault) — TextEmitter: emit_cast int→ptr 用 inttoptr; 零值直接返回 null
+  - B2: ptr .str.1 (missing @ → undefined reference) — statement.rs: emit_string_global 返回值加 @
+  - B3: zeroinitializer (missing type → invalid IR) — vtable.rs: [0 x ptr] zeroinitializer
+  - B4: ptr self (missing % → invalid IR) — drop_glue.rs: %self
+  - B5: globals after functions (→ undefined reference) — text/mod.rs: output_with_globals 插入在 target 之后
+  - B6: emit_null_ptr returns "ptr null" (→ store ptr ptr null) — arithmetic.rs: 返回 "null" (调用方加 ptr)
+  - B7: LLVMSysEmitter lookup("@.str.1") misses (→ undefined symbol) — llvm/mod.rs: strip @ 后查找
+- 能力/设计/职责边界:
+  - emit_string_global: 返回 name (.str.N), 调用方加 @
+  - emit_null_ptr: 返回 value (null), 调用方加 ptr
+  - emit_cast: int→ptr 用 inttoptr, ptr→int 用 ptrtoint
+  - emit_function_begin: 参数名带 %
+  - output_with_globals: globals 在 target 之后、函数之前
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 676 passed, 0 failed
+  → cargo test --release --test all_tests (单线程) ✅ 3641 passed, 0 failed
+  → cargo test --release --test all_tests (多线程 test-threads=2) 🟡 6/10 pass (改善 from 0/10)
+- 文档: README.md (版本号 + Stage History +18.326) + worklog.md (本条)
+
+下一步:
+- P1 codegen bug 部分修复 ✅ — 7 个 bug 已修复, 单线程全绿
+- 残留: GEP typed pointer (`{ ptr }*` → 应该是 `ptr`) — 多线程偶发 segfault 根因
+  → 需要修改所有 GEP 调用点 (src/codegen/text/memory.rs + src/codegen/drop_glue.rs)
+  → 独立 Stage 18.327 任务
+- v0.4 可交付: 4317 tests, 0 failures (单线程), P1 codegen bug 7/8 修复

@@ -12,43 +12,10 @@
 
 #![cfg(all(test, feature = "llvm-backend"))]
 
-use std::path::Path;
-use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-fn run_program(code: &str) -> (String, i32) {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = if cfg!(debug_assertions) {
-        manifest.join("target/debug/landin-stage0")
-    } else {
-        manifest.join("target/release/landin-stage0")
-    };
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let lin_file =
-        std::env::temp_dir().join(format!("landin_elemsize_{}_{}.lin", std::process::id(), id));
-    std::fs::write(&lin_file, code).expect("write .lin file");
-    let output = Command::new(&bin)
-        .arg("--run")
-        .arg(&lin_file)
-        .output()
-        .expect("failed to execute landin-stage0");
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let _ = std::fs::remove_file(&lin_file);
-    (stdout, output.status.code().unwrap_or(-1))
-}
-
-fn assert_runtime(name: &str, code: &str, expected: &str) {
-    let (stdout, exit) = run_program(code);
-    assert_eq!(
-        exit, 0,
-        "Test '{name}': compilation/runtime failed (exit {exit})\nstdout:\n{stdout}"
-    );
-    assert_eq!(
-        stdout, expected,
-        "Test '{name}': stdout mismatch\n  left: {stdout:?}\n  right: {expected:?}"
-    );
-}
+#[path = "../../../common/mod.rs"]
+#[allow(clippy::duplicate_mod)]
+mod common;
+use common::{assert_runtime, run_program};
 
 /// Regression: Vec<i32> push + get roundtrip still works after Stage 18.203.
 /// Verifies elem_size=4 is correctly passed to both Vec::push and Vec::get

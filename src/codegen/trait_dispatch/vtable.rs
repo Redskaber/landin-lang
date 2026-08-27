@@ -67,7 +67,8 @@ pub fn emit_vtable_global_from_emission(emission: &crate::stdlib::StdlibVtableEm
     //   - the literal string "null" (from `stdlib_vtable_method_symbols` when
     //     a slot is not provided) → emit as `ptr null` (no `@` prefix)
     let init = if emission.method_symbols.is_empty() {
-        "zeroinitializer".to_string()
+        // Stage 18.326 B3 (P1 soundness fix): typed initializer.
+        "[0 x ptr] zeroinitializer".to_string()
     } else {
         let entries: Vec<String> = emission
             .method_symbols
@@ -88,7 +89,7 @@ pub fn emit_vtable_global_from_emission(emission: &crate::stdlib::StdlibVtableEm
     };
 
     format!(
-        "@{} = private unnamed_addr constant {}",
+        "@{} = internal unnamed_addr constant {}",
         emission.global_name, init
     )
 }
@@ -131,7 +132,11 @@ pub fn emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> 
     // Stage 5.45 where `TextEmitter::emit_vtable_global()` will delegate
     // here.
     let init = if method_symbols.is_empty() {
-        "zeroinitializer".to_string()
+        // Stage 18.326 B3 (P1 soundness fix): empty vtable needs typed
+        // initializer. `zeroinitializer` alone is invalid LLVM IR — must
+        // be `[0 x ptr] zeroinitializer`. Per §2.2 + §12: root-cause fix.
+        // Per Rust design: rustc always emits typed initializers.
+        "[0 x ptr] zeroinitializer".to_string()
     } else {
         let entries: Vec<String> = method_symbols
             .iter()
@@ -146,7 +151,7 @@ pub fn emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> 
         format!("[{} x ptr] [{}]", method_symbols.len(), entries.join(", "))
     };
 
-    format!("@{} = private unnamed_addr constant {}", global_name, init)
+    format!("@{} = internal unnamed_addr constant {}", global_name, init)
 }
 
 // ============================================================================

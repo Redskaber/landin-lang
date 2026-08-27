@@ -28,7 +28,7 @@ fn test_text_emitter_dynptr_delegation_basic() {
     let output = emitter.output_with_globals();
 
     assert_eq!(result, ".dynptr.Foo.S");
-    assert!(output.contains("@.dynptr.Foo.S = private unnamed_addr constant"));
+    assert!(output.contains("@.dynptr.Foo.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @.data.S"));
     assert!(output.contains("ptr @.vtable.Foo.S"));
 }
@@ -45,7 +45,7 @@ fn test_text_emitter_dynptr_delegation_format() {
     let output = emitter.output_with_globals();
 
     assert!(output.contains(
-        "@.dynptr.Clone.MyType = private unnamed_addr constant \
+        "@.dynptr.Clone.MyType = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.MyType, ptr @.vtable.Clone.MyType }"
     ));
 }
@@ -137,7 +137,7 @@ fn test_text_emitter_dynptr_delegation_emitter_globals() {
 
     let dynptr_count = output
         .lines()
-        .filter(|l| l.starts_with("@.dynptr.") && l.contains("private unnamed_addr constant"))
+        .filter(|l| l.starts_with("@.dynptr.") && l.contains("internal unnamed_addr constant"))
         .count();
     assert_eq!(dynptr_count, 1);
 }
@@ -178,7 +178,7 @@ fn test_text_emitter_dynptr_delegation_real_scenario() {
 
     let dynptr_count = output
         .lines()
-        .filter(|l| l.starts_with("@.dynptr.") && l.contains("private unnamed_addr constant"))
+        .filter(|l| l.starts_with("@.dynptr.") && l.contains("internal unnamed_addr constant"))
         .count();
     assert_eq!(dynptr_count, 2);
     assert!(output.contains("@.dynptr.Clone.S"));
@@ -203,7 +203,7 @@ fn test_text_emitter_dynptr_delegation_multiple() {
 
     let dynptr_count = output
         .lines()
-        .filter(|l| l.starts_with("@.dynptr.") && l.contains("private unnamed_addr constant"))
+        .filter(|l| l.starts_with("@.dynptr.") && l.contains("internal unnamed_addr constant"))
         .count();
     assert_eq!(dynptr_count, 3);
 }

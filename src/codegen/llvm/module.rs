@@ -63,7 +63,7 @@ impl ModuleEmitter for LLVMSysEmitter {
                 1,
             );
             LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMInternalLinkage);
             LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
             LLVMSetGlobalConstant(global, 1);
             // Register the global's *pointer* under its name so callers
@@ -143,7 +143,7 @@ impl ModuleEmitter for LLVMSysEmitter {
                 method_symbols.len() as u64,
             );
             LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMInternalLinkage);
             LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
             LLVMSetGlobalConstant(global, 1);
             self.values.insert(global_name.to_string(), global);
@@ -199,7 +199,7 @@ impl ModuleEmitter for LLVMSysEmitter {
                     let data_global = LLVMAddGlobal(self.module, i8_ty, data_c.as_ptr());
                     let zero = LLVMConstInt(i8_ty, 0, 0);
                     LLVMSetInitializer(data_global, zero);
-                    LLVMSetLinkage(data_global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+                    LLVMSetLinkage(data_global, llvm_sys::LLVMLinkage::LLVMInternalLinkage);
                     data_global
                 } else {
                     existing
@@ -213,7 +213,7 @@ impl ModuleEmitter for LLVMSysEmitter {
             let init =
                 LLVMConstStructInContext(self.ctx, inits.as_ptr() as *mut LLVMValueRef, 2, 0);
             LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMInternalLinkage);
             LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
             LLVMSetGlobalConstant(global, 1);
             self.values.insert(global_name.to_string(), global);

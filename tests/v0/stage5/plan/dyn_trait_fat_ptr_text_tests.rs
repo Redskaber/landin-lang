@@ -14,7 +14,7 @@ use landin_compiler::mir::DynTraitFatPtr;
 fn test_emit_dyn_trait_fat_ptr_text_basic() {
     let fp = DynTraitFatPtr::new("Foo", "S");
     let ir = emit_dyn_trait_fat_ptr_text(&fp);
-    assert!(ir.starts_with("@.dynptr.Foo.S = private unnamed_addr constant"));
+    assert!(ir.starts_with("@.dynptr.Foo.S = internal unnamed_addr constant"));
     assert!(ir.contains("ptr @.data.S"));
     assert!(ir.contains("ptr @.vtable.Foo.S"));
 }
@@ -26,7 +26,7 @@ fn test_emit_dyn_trait_fat_ptr_text_full_line() {
     let ir = emit_dyn_trait_fat_ptr_text(&fp);
     assert_eq!(
         ir,
-        "@.dynptr.Display.Vec = private unnamed_addr constant \
+        "@.dynptr.Display.Vec = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.Vec, ptr @.vtable.Display.Vec }"
     );
 }
@@ -94,7 +94,7 @@ fn test_emit_dyn_trait_fat_ptr_text_real_scenario() {
     assert_eq!(irs.len(), 3);
     for ir in &irs {
         assert!(ir.starts_with("@.dynptr."));
-        assert!(ir.contains("private unnamed_addr constant"));
+        assert!(ir.contains("internal unnamed_addr constant"));
         assert!(ir.contains("{ ptr, ptr }"));
     }
     assert!(irs[0].contains("@.dynptr.Clone.S"));

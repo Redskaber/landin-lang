@@ -8,37 +8,10 @@
 
 #![cfg(all(test, feature = "llvm-backend"))]
 
-use std::path::Path;
-use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-fn run_program(code: &str) -> (String, i32) {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = if cfg!(debug_assertions) {
-        manifest.join("target/debug/landin-stage0")
-    } else {
-        manifest.join("target/release/landin-stage0")
-    };
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let lin_file =
-        std::env::temp_dir().join(format!("landin_vecget_{}_{}.lin", std::process::id(), id));
-    std::fs::write(&lin_file, code).expect("write .lin file");
-    let output = Command::new(&bin)
-        .arg("--run")
-        .arg(&lin_file)
-        .output()
-        .expect("failed to execute landin-stage0");
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let _ = std::fs::remove_file(&lin_file);
-    (stdout, output.status.code().unwrap_or(-1))
-}
-
-fn assert_runtime(name: &str, code: &str, expected: &str) {
-    let (stdout, exit) = run_program(code);
-    assert_eq!(stdout, expected, "Test '{}': stdout mismatch", name);
-    assert_eq!(exit, 0, "Test '{}': exit code mismatch", name);
-}
+#[path = "../../../common/mod.rs"]
+#[allow(clippy::duplicate_mod)]
+mod common;
+use common::{assert_runtime, run_program};
 
 #[test]
 fn stage18_200_vec_get_first() {

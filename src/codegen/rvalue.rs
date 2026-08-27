@@ -540,6 +540,37 @@ pub(crate) fn codegen_rvalue(
             );
             let src_ty = detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
+
+            // Stage 18.326 B1 (P1 soundness fix): When casting integer to
+            // pointer, check if the value is a zero constant (null pointer).
+            // If so, emit `null` directly instead of `inttoptr i32 0 to ptr`
+            // (which leaves upper 32 bits undefined on 64-bit → segfault).
+            //
+            // **Design boundary** (per Rust rustc_codegen_llvm):
+            // - `emit_null_ptr` returns `"null"` (value only, no type prefix).
+            // - Callers add `ptr` prefix via `format!("{} {}", ty, val)`.
+            // - This matches `emit_store` / `emit_call` / `emit_select` patterns.
+            //
+            // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+            // Per §1.0 原則 6 (通解>特解): one rule for ALL int→ptr casts.
+            let is_ptr_dst = matches!(dst_ty, EmitType::OpaquePtr | EmitType::Ptr(_));
+            let is_int_src = matches!(
+                src_ty,
+                EmitType::I1
+                    | EmitType::I8
+                    | EmitType::I16
+                    | EmitType::I32
+                    | EmitType::I64
+                    | EmitType::I128
+            );
+            if is_ptr_dst && is_int_src {
+                let val_str = val.as_str();
+                // Check if the value is a zero constant (null pointer).
+                if val_str.trim() == "0" {
+                    // Emit `null` — callers add `ptr` prefix → `ptr null`.
+                    return Ok("null".to_string());
+                }
+            }
             emitter.emit_cast(&src_ty, &dst_ty, &val)
         }
         // Stage 14.103 (SH-7 fix): BinaryOp2 is used for Range expressions

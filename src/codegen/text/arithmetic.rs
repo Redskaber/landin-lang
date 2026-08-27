@@ -205,6 +205,15 @@ impl ArithmeticEmitter for TextEmitter {
             (EmitType::F64, EmitType::I16) | (EmitType::F32, EmitType::I16) => "fptosi",
             (EmitType::F64, EmitType::F32) => "fptrunc",
             (EmitType::F32, EmitType::F64) => "fpext",
+            // Stage 18.326 B1 (P1 soundness fix): int → ptr cast must use
+            // `inttoptr`, NOT `bitcast`. `bitcast i32 0 to ptr` is invalid
+            // LLVM IR that causes segfaults (LLVM may fold incorrectly).
+            // Per LLVM Language Reference: int→ptr requires `inttoptr`.
+            // Per Rust design: rustc_codegen_llvm uses `inttoptr` for int→ptr.
+            // Per §2.2 (根因思维) + §1.0 原則 6 (通解>特解): one rule for all int→ptr.
+            (a, EmitType::OpaquePtr) | (a, EmitType::Ptr(_)) if is_int(a) => "inttoptr",
+            // Stage 18.326: ptr → int cast must use `ptrtoint`.
+            (EmitType::OpaquePtr, a) | (EmitType::Ptr(_), a) if is_int(a) => "ptrtoint",
             _ => "bitcast",
         };
         self.line(&format!(
@@ -214,11 +223,21 @@ impl ArithmeticEmitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
-    /// constant (`ptr null`) for the text backend.
+    /// Stage 18.205: Emit a null pointer constant for the text backend.
+    ///
+    /// Stage 18.326 B6 (P1 soundness fix): Return `"null"` (NOT `"ptr null"`).
+    ///
+    /// **Design boundary** (per Rust rustc_codegen_llvm):
+    /// - `emit_null_ptr` returns a **value** (`null`), NOT a typed value.
+    /// - Callers add the type prefix: `store ptr null`, `insertvalue ..., ptr null, ...`.
+    /// - This matches the `format!("{} {}", ty_str, val)` pattern in `emit_store`,
+    ///   `emit_call`, `emit_select`, etc.
+    ///
+    /// Previously returned `"ptr null"` which caused `store ptr ptr null`
+    /// (double type prefix → invalid IR → segfault). Per §2.2 + §12.
     fn emit_null_ptr(&mut self) -> EmitValue {
-        // ptr null — no instruction needed, just emit the constant directly.
-        "ptr null".to_string()
+        // Return value only — callers add "ptr" prefix via format!("{} {}", ty, val).
+        "null".to_string()
     }
 
     /// Stage 14.12 (GAP-18): TextEmitter select instruction.

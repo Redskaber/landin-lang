@@ -24,7 +24,7 @@ fn test_emit_dynptr_global_text_basic() {
     let ir = emit_dynptr_global_text(".dynptr.Foo.S", ".data.S", ".vtable.Foo.S");
     assert_eq!(
         ir,
-        "@.dynptr.Foo.S = private unnamed_addr constant \
+        "@.dynptr.Foo.S = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.S, ptr @.vtable.Foo.S }"
     );
 }
@@ -101,7 +101,7 @@ fn test_emit_dynptr_global_text_format() {
     // Full expected IR line
     assert_eq!(
         ir,
-        "@.dynptr.Clone.MyType = private unnamed_addr constant \
+        "@.dynptr.Clone.MyType = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.MyType, ptr @.vtable.Clone.MyType }"
     );
 }

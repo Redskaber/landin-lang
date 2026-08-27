@@ -272,7 +272,7 @@ fn test_build_dynptr_global_specs_then_emit() {
     );
     assert_eq!(
         ir,
-        "@.dynptr.Drop.S = private unnamed_addr constant \
+        "@.dynptr.Drop.S = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.S, ptr @.vtable.Drop.S }"
     );
 }

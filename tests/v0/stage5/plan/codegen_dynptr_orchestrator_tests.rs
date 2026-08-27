@@ -259,7 +259,7 @@ fn test_emit_dynptrs_from_resolver_emitter_called_correctly() {
     let output = emitter.output_with_globals();
     // Verify the full LLVM IR line is correct
     assert!(output.contains(
-        "@.dynptr.Clone.S = private unnamed_addr constant \
+        "@.dynptr.Clone.S = internal unnamed_addr constant \
          { ptr, ptr } { ptr @.data.S, ptr @.vtable.Clone.S }"
     ));
 }
@@ -312,7 +312,7 @@ fn test_emit_dynptrs_from_resolver_composes_build_and_emit() {
     // 1. Called build_dynptr_global_specs (which constructs ".dynptr.Drop.S")
     // 2. Called emitter.emit_dyn_trait_const with that spec
     // → output contains the full IR line
-    assert!(output.contains("@.dynptr.Drop.S = private unnamed_addr constant"));
+    assert!(output.contains("@.dynptr.Drop.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @.data.S"));
     assert!(output.contains("ptr @.vtable.Drop.S"));
 }

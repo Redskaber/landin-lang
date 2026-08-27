@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.325 — TD-CODEGEN-NEGATIVE: +60 tests, 14.9%→23.3% coverage, 25% target reached)
+> **Version**: v0.493.0 (Stage 18.326 — P1 codegen bug 根因修复: 7 bugs fixed — bitcast/inttoptr, private→internal, zeroinitializer typed, ptr %self, globals ordering, null ptr, LLVMSysEmitter lookup)
 > **License**: MIT
-> **Status**: v0.4 stable. 4317 tests, 0 failures. 类 Rust 原始类型扩展模型完成. 全量深度审查完成 + tech-debt 推进中.
+> **Status**: v0.4 stable. 4317 tests, 0 failures (单线程). 类 Rust 原始类型扩展模型完成. P1 codegen 根因修复.
 
 A work-in-progress systems programming language inspired by Rust, using
 LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
@@ -291,16 +291,17 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.325) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.326) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
-| 18.325 | v0.493.0 | TD-CODEGEN-NEGATIVE final push: +60 codegen negative tests (8 categories: operator/cast/numeric/string/array/struct/controlflow/misc) — 14.9%→23.3%, 25% target reached |
-| 18.324 | v0.493.0 | TD-CODEGEN-NEGATIVE continued: +30 codegen negative tests (7 categories: parser/visibility/generics/closure/macro/unsafe/pattern) — 10.7%→15.6% coverage |
-| 18.323 | v0.493.0 | TD-CODEGEN-NEGATIVE: +24 codegen negative tests (6 categories: typeck/borrowck/resolve/trait/intrinsic/runtime) — 6.7%→10.7% coverage |
+| 18.326 | v0.493.0 | P1 codegen bug 根因修复: 7 bugs (bitcast→inttoptr/null, private→internal, zeroinitializer typed, ptr %self, globals ordering, emit_null_ptr value, LLVMSysEmitter lookup) |
+| 18.325 | v0.493.0 | TD-CODEGEN-NEGATIVE final push: +60 codegen negative tests (8 categories) — 14.9%→23.3%, 25% target reached |
+| 18.324 | v0.493.0 | TD-CODEGEN-NEGATIVE continued: +30 codegen negative tests (7 categories) — 10.7%→15.6% coverage |
+| 18.323 | v0.493.0 | TD-CODEGEN-NEGATIVE: +24 codegen negative tests (6 categories) — 6.7%→10.7% coverage |
 | 18.322 | v0.493.0 | TD-DUMMY-* 审计完成 (8 files, 250 Span::DUMMY 全部 Category A, 0 Category B 漏网) |
 | 18.321 | v0.493.0 | Cargo.toml 过时注释清理 (description "LLVM 19" → "LLVM 22" + llvm-sys 注释 "19+21" → "18-22 default 22") |
 | 18.320 | v0.493.0 | scripts/switch-llvm-version.sh 过时注释清理 (LLVM 19+21 → LLVM 18-22 default 22) |

@@ -119,7 +119,7 @@ fn test_plan_text_contains_both() {
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let text = emit_dyn_trait_mir_plan_text(&plan);
     // Fat ptr global
-    assert!(text.contains("private unnamed_addr constant"));
+    assert!(text.contains("internal unnamed_addr constant"));
     // Method call
     assert!(text.contains("getelementptr"));
     assert!(text.contains("call ptr"));

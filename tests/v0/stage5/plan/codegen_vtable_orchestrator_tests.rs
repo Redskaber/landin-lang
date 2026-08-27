@@ -274,7 +274,7 @@ fn test_emit_vtables_from_resolver_emitter_called_correctly() {
     let output = emitter.output_with_globals();
     // Verify the full LLVM IR line is correct
     assert!(output.contains(
-        "@.vtable.Clone.S = private unnamed_addr constant \
+        "@.vtable.Clone.S = internal unnamed_addr constant \
          [2 x ptr] [ptr @landin_S_clone, ptr @landin_S_clone_from]"
     ));
 }
@@ -328,7 +328,7 @@ fn test_emit_vtables_from_resolver_composes_build_and_emit() {
     // 1. Called build_vtable_global_specs (which constructs ".vtable.Drop.S")
     // 2. Called emitter.emit_vtable_global with that spec
     // → output contains the full IR line
-    assert!(output.contains("@.vtable.Drop.S = private unnamed_addr constant"));
+    assert!(output.contains("@.vtable.Drop.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @landin_S_drop"));
 }
 

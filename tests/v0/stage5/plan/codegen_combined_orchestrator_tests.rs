@@ -218,13 +218,13 @@ fn test_emit_vtables_and_dynptrs_real_scenario() {
     let vtable_defs = output
         .lines()
         .filter(|line| {
-            line.starts_with("@.vtable.") && line.contains("private unnamed_addr constant")
+            line.starts_with("@.vtable.") && line.contains("internal unnamed_addr constant")
         })
         .count();
     let dynptr_defs = output
         .lines()
         .filter(|line| {
-            line.starts_with("@.dynptr.") && line.contains("private unnamed_addr constant")
+            line.starts_with("@.dynptr.") && line.contains("internal unnamed_addr constant")
         })
         .count();
     assert_eq!(vtable_defs, 3);
@@ -282,10 +282,10 @@ fn test_emit_vtables_and_dynptrs_emitter_called_correctly() {
 
     let output = emitter.output_with_globals();
     // vtable global
-    assert!(output.contains("@.vtable.Drop.S = private unnamed_addr constant"));
+    assert!(output.contains("@.vtable.Drop.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @landin_S_drop"));
     // dynptr global
-    assert!(output.contains("@.dynptr.Drop.S = private unnamed_addr constant"));
+    assert!(output.contains("@.dynptr.Drop.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @.data.S"));
     assert!(output.contains("ptr @.vtable.Drop.S"));
 }
@@ -317,18 +317,18 @@ fn test_emit_vtables_and_dynptrs_count_matches_vtables() {
     // 3 vtable global definitions + 3 dynptr global definitions
     // Note: `@.vtable.` also appears in dynptr initializers (ptr @.vtable.X.Y),
     // so we count global *definitions* (lines starting with `@.vtable.` after
-    // `constant`) — simpler: count `private unnamed_addr constant` lines
+    // `constant`) — simpler: count `internal unnamed_addr constant` lines
     // that start with `@.vtable.` or `@.dynptr.`.
     let vtable_defs = output
         .lines()
         .filter(|line| {
-            line.starts_with("@.vtable.") && line.contains("private unnamed_addr constant")
+            line.starts_with("@.vtable.") && line.contains("internal unnamed_addr constant")
         })
         .count();
     let dynptr_defs = output
         .lines()
         .filter(|line| {
-            line.starts_with("@.dynptr.") && line.contains("private unnamed_addr constant")
+            line.starts_with("@.dynptr.") && line.contains("internal unnamed_addr constant")
         })
         .count();
     assert_eq!(vtable_defs, 3);

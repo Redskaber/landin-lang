@@ -49,8 +49,7 @@
 ///
 /// Stage 18.157: Extracted from `src/bin/main.rs` (Stage 13.8/13.10/13.13)
 /// and `src/bin/landinc.rs` (Stage 18.156) to eliminate duplication.
-pub const LANDIN_C_WRAPPER: &str = r#"
-#include <stdio.h>
+pub const LANDIN_C_WRAPPER: &str = r#"#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 extern int landin_main(void);

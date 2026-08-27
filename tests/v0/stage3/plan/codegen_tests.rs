@@ -781,7 +781,7 @@ fn codegen_string_literal_emits_global() {
     let ll = gen_ll("fn f() { let s = \"hello\"; }");
     // Should emit a private unnamed_addr global with the bytes.
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
+        ll.contains("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected string global in:\n{}",
         ll
     );
@@ -816,7 +816,7 @@ fn codegen_string_literal_dedup() {
     // Same string twice should produce only ONE global.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"hello\"; }");
     let count = ll
-        .matches("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\"")
+        .matches("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\"")
         .count();
     assert_eq!(
         count, 1,
@@ -836,12 +836,12 @@ fn codegen_string_literal_distinct() {
     // Two different strings should produce TWO globals.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"world\"; }");
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
+        ll.contains("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected hello global in:\n{}",
         ll
     );
     assert!(
-        ll.contains("@.str.1 = private unnamed_addr constant [6 x i8] c\"world\\00\""),
+        ll.contains("@.str.1 = internal unnamed_addr constant [6 x i8] c\"world\\00\""),
         "expected world global in:\n{}",
         ll
     );
@@ -963,7 +963,7 @@ fn codegen_byte_string_literal_emits_global() {
     // Byte strings share the same global format as string literals
     // (LLVM doesn't distinguish i8 from u8).
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
+        ll.contains("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected byte string global in:\n{}",
         ll
     );
@@ -2809,7 +2809,7 @@ fn codegen_byte_string_dedup_with_str() {
     // b"hello" and "hello" share the same global (same bytes).
     let ll = gen_ll("fn f() { let s = \"hello\"; let b = b\"hello\"; }");
     let count = ll
-        .matches("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\"")
+        .matches("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\"")
         .count();
     assert_eq!(
         count, 1,

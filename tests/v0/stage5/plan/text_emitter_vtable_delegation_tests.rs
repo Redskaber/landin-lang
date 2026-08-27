@@ -26,7 +26,7 @@ fn test_text_emitter_vtable_global_delegation_basic() {
     let output = emitter.output_with_globals();
 
     assert_eq!(result, ".vtable.Foo.S");
-    assert!(output.contains("@.vtable.Foo.S = private unnamed_addr constant"));
+    assert!(output.contains("@.vtable.Foo.S = internal unnamed_addr constant"));
     assert!(output.contains("ptr @landin_S_bar"));
 }
 
@@ -50,7 +50,7 @@ fn test_text_emitter_vtable_global_delegation_single() {
     let output = emitter.output_with_globals();
 
     assert!(output.contains(
-        "@.vtable.Drop.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
     ));
 }
 
@@ -167,7 +167,7 @@ fn test_text_emitter_vtable_global_delegation_emitter_globals() {
     // The globals section should contain exactly one vtable global
     let vtable_count = output
         .lines()
-        .filter(|l| l.starts_with("@.vtable.") && l.contains("private unnamed_addr constant"))
+        .filter(|l| l.starts_with("@.vtable.") && l.contains("internal unnamed_addr constant"))
         .count();
     assert_eq!(vtable_count, 1);
 }
@@ -211,7 +211,7 @@ fn test_text_emitter_vtable_global_delegation_real_scenario() {
     // All 3 vtables should be present
     let vtable_count = output
         .lines()
-        .filter(|l| l.starts_with("@.vtable.") && l.contains("private unnamed_addr constant"))
+        .filter(|l| l.starts_with("@.vtable.") && l.contains("internal unnamed_addr constant"))
         .count();
     assert_eq!(vtable_count, 3);
 

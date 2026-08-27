@@ -382,7 +382,15 @@ impl LLVMSysEmitter {
             // (正确>妥协), we eliminate all `unwrap()` calls in codegen.
             if let Some(stripped) = name.strip_prefix('@') {
                 let func_name: String = stripped.to_string();
-                // Check if already in values map
+                // Stage 18.326 B2 (P1 soundness fix): Look up by the stripped
+                // name (without `@`), because emit_string_global registers
+                // globals under names like `.str.N` (without `@`).
+                // Previously looked up `name` (with `@`), which always missed
+                // → LLVM created a new undefined symbol → link error.
+                if let Some(&v) = self.values.get(&func_name) {
+                    return v;
+                }
+                // Also try with the full name (with `@`) for backward compat.
                 if let Some(&v) = self.values.get(name) {
                     return v;
                 }

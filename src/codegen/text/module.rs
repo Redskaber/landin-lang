@@ -46,7 +46,7 @@ impl ModuleEmitter for TextEmitter {
         }
         literal.push('"');
         let global_def = format!(
-            "@{} = private unnamed_addr constant [{} x i8] {}",
+            "@{} = internal unnamed_addr constant [{} x i8] {}",
             name,
             bytes.len(),
             literal

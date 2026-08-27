@@ -211,7 +211,7 @@ fn test_no_emitter_needed() {
     assert!(!lines.is_empty());
     for line in &lines {
         assert!(line.starts_with("@"));
-        assert!(line.contains("private unnamed_addr constant"));
+        assert!(line.contains("internal unnamed_addr constant"));
     }
 }
 

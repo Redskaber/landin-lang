@@ -434,8 +434,9 @@ pub(crate) fn emit_printf_call(
                         // Display impl for bool.
                         if arg_ty == EmitType::I1 {
                             // Bool → "true" / "false" via select + %s
-                            let true_str = emitter.emit_string_global(b"true\0");
-                            let false_str = emitter.emit_string_global(b"false\0");
+                            // Stage 18.326 B2: add `@` prefix for valid LLVM IR.
+                            let true_str = format!("@{}", emitter.emit_string_global(b"true\0"));
+                            let false_str = format!("@{}", emitter.emit_string_global(b"false\0"));
                             let selected = emitter.emit_select(
                                 &EmitType::OpaquePtr,
                                 &arg_val,
@@ -499,8 +500,11 @@ pub(crate) fn emit_printf_call(
                             // &i32 → load the value through the pointer, then print as int
                             let loaded = emitter.emit_load(inner_ref, &arg_val);
                             if *inner_ref == EmitType::I1 {
-                                let true_str = emitter.emit_string_global(b"true\0");
-                                let false_str = emitter.emit_string_global(b"false\0");
+                                // Stage 18.326 B2: add `@` prefix for valid LLVM IR.
+                                let true_str =
+                                    format!("@{}", emitter.emit_string_global(b"true\0"));
+                                let false_str =
+                                    format!("@{}", emitter.emit_string_global(b"false\0"));
                                 let selected = emitter.emit_select(
                                     &EmitType::OpaquePtr,
                                     &loaded,
@@ -541,8 +545,11 @@ pub(crate) fn emit_printf_call(
                     _ => {
                         // Unknown type — emit placeholder
                         c_fmt.push_str("%s");
-                        c_arg_vals
-                            .push((EmitType::OpaquePtr, emitter.emit_string_global(b"(?)\0")));
+                        // Stage 18.326 B2: add `@` prefix for valid LLVM IR.
+                        c_arg_vals.push((
+                            EmitType::OpaquePtr,
+                            format!("@{}", emitter.emit_string_global(b"(?)\0")),
+                        ));
                     }
                 }
             } else {
@@ -563,8 +570,13 @@ pub(crate) fn emit_printf_call(
     // Null-terminate the C format string
     c_fmt.push('\0');
 
-    // Emit the C format string as a global
-    let fmt_global = emitter.emit_string_global(c_fmt.as_bytes());
+    // Emit the C format string as a global.
+    // Stage 18.326 B2 (P1 soundness fix): emit_string_global returns name
+    // WITHOUT `@` prefix; add `@` here so emit_call generates `ptr @.str.N`
+    // (correct LLVM IR). Per design boundary: emit_string_global returns
+    // name, callers add `@`. Per §2.2 + §12: root-cause fix.
+    let fmt_global_name = emitter.emit_string_global(c_fmt.as_bytes());
+    let fmt_global = format!("@{}", fmt_global_name);
 
     // Build the args list for emit_call: first arg is the format string,
     // followed by the substituted arg values.

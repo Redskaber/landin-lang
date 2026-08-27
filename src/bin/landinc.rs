@@ -307,7 +307,19 @@ fn link_object_to_executable(
     }
 
     // Write C wrapper to temp file.
-    let wrapper_c = std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
+    // Stage 18.326 (P1 soundness fix): use global atomic counter + PID + nanos
+    // to guarantee unique temp file names under multi-threaded test execution.
+    // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix, not workaround.
+    static TEMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temp_id = {
+        let c = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{}_{}_{}", std::process::id(), nanos, c)
+    };
+    let wrapper_c = std::env::temp_dir().join(format!("landin_wrapper_{}.c", temp_id));
     if let Err(e) = std::fs::write(&wrapper_c, LANDIN_C_WRAPPER) {
         eprintln!("error: cannot write C wrapper: {}", e);
         std::process::exit(1);

@@ -191,7 +191,10 @@ pub(crate) fn emit_drop_glue_functions(
         };
 
         // Define the drop glue function.
-        let self_str = "self".to_string();
+        // Stage 18.326 B4 (P1 soundness fix): LLVM IR requires `%` prefix on
+        // parameter names. `ptr self` is invalid; `ptr %self` is correct.
+        // Per Rust design: rustc always emits `%`-prefixed parameter names.
+        let self_str = "%self".to_string();
         emitter.emit_function_begin(
             &drop_fn_name,
             &[(EmitType::OpaquePtr, &self_str)],

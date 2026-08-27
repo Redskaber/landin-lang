@@ -189,7 +189,7 @@ fn test_emit_trait_dispatch_globals_text_batch_vtable_lines() {
 
     let lines = emit_trait_dispatch_globals_text_batch(&plan);
     let vtable_line = lines.iter().find(|l| l.starts_with("@.vtable.")).unwrap();
-    assert!(vtable_line.contains("@.vtable.Drop.S = private unnamed_addr constant"));
+    assert!(vtable_line.contains("@.vtable.Drop.S = internal unnamed_addr constant"));
     assert!(vtable_line.contains("ptr @landin_S_drop"));
 }
 
@@ -202,7 +202,7 @@ fn test_emit_trait_dispatch_globals_text_batch_dynptr_lines() {
 
     let lines = emit_trait_dispatch_globals_text_batch(&plan);
     let dynptr_line = lines.iter().find(|l| l.starts_with("@.dynptr.")).unwrap();
-    assert!(dynptr_line.contains("@.dynptr.Drop.S = private unnamed_addr constant"));
+    assert!(dynptr_line.contains("@.dynptr.Drop.S = internal unnamed_addr constant"));
     assert!(dynptr_line.contains("ptr @.data.S"));
     assert!(dynptr_line.contains("ptr @.vtable.Drop.S"));
 }
@@ -305,7 +305,7 @@ fn test_emit_trait_dispatch_globals_text_batch_no_emitter_needed() {
     // Verify the lines are valid LLVM IR (start with @, contain "constant")
     for line in &lines {
         assert!(line.starts_with("@"));
-        assert!(line.contains("private unnamed_addr constant"));
+        assert!(line.contains("internal unnamed_addr constant"));
     }
 }
 

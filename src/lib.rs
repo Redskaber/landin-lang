@@ -6,21 +6,21 @@
 //!
 //! ## Crate Layout
 //!
-//! | Module      | Responsibility                                      |
-//! |-------------|-----------------------------------------------------|
-//! | `lexer`     | Source text → token stream                          |
-//! | `parser`    | Token stream → AST + macro expansion                |
-//! | `hir`       | AST → HIR (name resolution target)                  |
+//! | Module      | Responsibility                                     |
+//! |-------------|----------------------------------------------------|
+//! | `lexer`     | Source text → token stream                         |
+//! | `parser`    | Token stream → AST + macro expansion               |
+//! | `hir`       | AST → HIR (name resolution target)                 |
 //! | `resolve`   | HIR path resolution (`use` decls, scopes)           |
-//! | `mir`       | HIR → MIR (control-flow graph + types)              |
+//! | `mir`       | HIR → MIR (control-flow graph + types)             |
 //! | `typeck`    | MIR type checking + unification                     |
-//! | `borrowck`  | Ownership + borrow + NLL liveness                   |
-//! | `codegen`   | MIR → LLVM IR text + LLVM sys module (opt)          |
+//! | `borrowck`  | Ownership + borrow + NLL liveness                  |
+//! | `codegen`   | MIR → LLVM IR text + LLVM sys module (opt)         |
 //! | `driver`    | Pipeline orchestration (lex → parse → ... → codegen)|
-//! | `stdlib`    | Core/alloc/std type registry + vtable layout        |
-//! | `traits`    | TraitResolver + coherence + vtable dispatch         |
-//! | `diagnostics` | Error rendering (color, source context)           |
-//! | `session`   | SourceFile + SourceMap + Span                       |
+//! | `stdlib`    | Core/alloc/std type registry + vtable layout       |
+//! | `traits`    | TraitResolver + coherence + vtable dispatch        |
+//! | `diagnostics` | Error rendering (color, source context)         |
+//! | `session`   | SourceFile + SourceMap + Span                      |
 //! | `cargo`     | Mini-cargo manifest + build orchestration           |
 //!
 //! ## Public Entry Points
