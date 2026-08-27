@@ -17,13 +17,22 @@ impl MemoryEmitter for TextEmitter {
 
     fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue) {
         let ty_str = emit_type_to_llvm_str(ty);
-        self.line(&format!("  store {} {}, {}", ty_str, val, ptr));
+        // Stage 18.327 (P1 soundness fix): LLVM 17+ opaque pointer requires
+        // `store <ty> <val>, ptr <ptr_val>` format. Previously emitted
+        // `store <ty> <val>, <ptr_val>` (missing `ptr` prefix) → invalid IR.
+        // Per LLVM Language Reference: store instruction requires typed pointer.
+        self.line(&format!("  store {} {}, ptr {}", ty_str, val, ptr));
     }
 
     fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
-        self.line(&format!("  %v{} = load {}, {}", r, ty_str, ptr));
+        // Stage 18.327 (P1 soundness fix): LLVM 17+ opaque pointer requires
+        // `load <ty>, ptr <ptr_val>` format. Previously emitted `load <ty>, <ptr_val>`
+        // (missing `ptr` prefix) → invalid IR → segfault.
+        // Per LLVM Language Reference: load instruction requires typed pointer.
+        // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+        self.line(&format!("  %v{} = load {}, ptr {}", r, ty_str, ptr));
         format!("%v{}", r)
     }
 
@@ -35,10 +44,20 @@ impl MemoryEmitter for TextEmitter {
     ) -> EmitValue {
         let r = self.fresh();
         let struct_str = emit_type_to_llvm_str(struct_ty);
-        let ptr_str = format!("{}*", struct_str);
+        // Stage 18.327 (P1 soundness fix): use opaque pointer `ptr` instead of
+        // typed pointer `{}*`. LLVM 17+ requires opaque pointers — typed
+        // pointers like `{ ptr }*` produce invalid IR that causes segfaults.
+        //
+        // **Design boundary** (per LLVM Language Reference + rustc_codegen_llvm):
+        // - GEP format: `getelementptr inbounds <elem_ty>, ptr <base>, i32 0, i32 <idx>`
+        // - The base pointer type is ALWAYS `ptr` (opaque), not `T*` (typed).
+        // - The element type is specified as the first GEP parameter.
+        //
+        // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+        // Per §1.0 原則 6 (通解>特解): one rule for ALL GEP instructions.
         self.line(&format!(
-            "  %v{} = getelementptr inbounds {}, {} {}, i32 0, i32 {}",
-            r, struct_str, ptr_str, base_ptr, field_index
+            "  %v{} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}",
+            r, struct_str, base_ptr, field_index
         ));
         format!("%v{}", r)
     }

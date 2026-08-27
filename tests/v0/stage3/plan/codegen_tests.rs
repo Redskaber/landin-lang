@@ -229,7 +229,7 @@ fn codegen_function_with_params() {
 fn codegen_params_stored_to_allocas() {
     let ll = gen_ll("fn f(x: i32) -> i32 { x }");
     assert!(
-        ll.contains("store i32 %arg0, %loc_1"),
+        ll.contains("store i32 %arg0, ptr %loc_1"),
         "expected param store in:\n{}",
         ll
     );
@@ -1093,7 +1093,7 @@ fn codegen_named_struct_field_access() {
     );
     // Field access should use typed GEP with the struct type.
     assert!(
-        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_"),
+        ll.contains("getelementptr inbounds { i32, i32 }, ptr %loc_"),
         "expected typed GEP for struct field access in:\n{}",
         ll
     );
@@ -1145,7 +1145,7 @@ fn codegen_tuple_struct_field_access() {
     let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.1 }");
     // p.1 should GEP into { i32, i64 } and load i64.
     assert!(
-        ll.contains("getelementptr inbounds { i32, i64 }, { i32, i64 }*"),
+        ll.contains("getelementptr inbounds { i32, i64 }, ptr"),
         "expected typed GEP for tuple struct field access in:\n{}",
         ll
     );
@@ -1270,12 +1270,12 @@ fn codegen_field_load_correct_type_i64() {
     // p.1 where field 1 is i64 — load should be 'load i64', not 'load i32'.
     let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.1 }");
     assert!(
-        ll.contains("load i64, %v4") || ll.contains("load i64, %v"),
+        ll.contains("load i64, ptr %v4") || ll.contains("load i64, ptr %v"),
         "expected 'load i64' for i64 field access in:\n{}",
         ll
     );
     assert!(
-        true || !ll.contains("load i32, %v4"),
+        true || !ll.contains("load i32, ptr %v4"),
         "should NOT have 'load i32' for i64 field in:\n{}",
         ll
     );
@@ -1313,7 +1313,7 @@ fn codegen_named_field_load_correct_type() {
     );
     // Should GEP to field 1 (y) and load i32.
     assert!(
-        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }*") && ll.contains("i32 1"),
+        ll.contains("getelementptr inbounds { i32, i32 }, ptr") && ll.contains("i32 1"),
         "expected GEP to field 1 (y) in:\n{}",
         ll
     );
@@ -1350,12 +1350,12 @@ fn codegen_field_mutation_works() {
         gen_ll("struct Acc { v: i64 } fn f() -> i64 { let mut a = Acc { v: 0 }; a.v = 42; a.v }");
     // Should have a GEP + store to the struct field (not just a temp).
     assert!(
-        ll.contains("getelementptr inbounds { i64 }, { i64 }* %loc_3, i32 0, i32 0"),
+        ll.contains("getelementptr inbounds { i64 }, ptr %loc_3, i32 0, i32 0"),
         "expected GEP to struct field in:\n{}",
         ll
     );
     assert!(
-        ll.contains("store i64 42, %v3") || ll.contains("store i64 42, %v"),
+        ll.contains("store i64 42, ptr %v3") || ll.contains("store i64 42, ptr %v"),
         "expected 'store i64 42' to struct field in:\n{}",
         ll
     );
@@ -1716,7 +1716,7 @@ fn codegen_enum_match_discriminant_extraction() {
     let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, _ => 0 } }");
     // Should have GEP to extract discriminant (field 0 of the enum struct).
     assert!(
-        ll.contains("getelementptr inbounds { i32 }, { i32 }*"),
+        ll.contains("getelementptr inbounds { i32 }, ptr"),
         "expected GEP for discriminant extraction in:\n{}",
         ll
     );
@@ -2462,9 +2462,7 @@ fn codegen_enum_union_match_b_extracts_payload() {
         "enum E { A, B(i32), C(i64) } fn f(e: E) -> i32 { match e { E::B(x) => x, _ => 0 } }",
     );
     assert!(
-        ll.contains(
-            "getelementptr inbounds { i32, i32, i64 }, { i32, i32, i64 }* %loc_1, i32 0, i32 1"
-        ),
+        ll.contains("getelementptr inbounds { i32, i32, i64 }, ptr %loc_1, i32 0, i32 1"),
         "expected GEP to field 1 (B's payload) in:\n{}",
         ll
     );
@@ -2477,9 +2475,7 @@ fn codegen_enum_union_match_c_extracts_payload() {
         "enum E { A, B(i32), C(i64) } fn f(e: E) -> i64 { match e { E::C(x) => x, _ => 0 } }",
     );
     assert!(
-        ll.contains(
-            "getelementptr inbounds { i32, i32, i64 }, { i32, i32, i64 }* %loc_1, i32 0, i32 2"
-        ),
+        ll.contains("getelementptr inbounds { i32, i32, i64 }, ptr %loc_1, i32 0, i32 2"),
         "expected GEP to field 2 (C's payload) in:\n{}",
         ll
     );
@@ -2492,7 +2488,7 @@ fn codegen_enum_binding_extraction_case_b() {
     let ll = gen_ll("enum Opt { None, Some(i32) } fn f(o: Opt) -> i32 { match o { Opt::Some(x) => x, Opt::None => 0 } }");
     // The binding x's local must be loaded from the enum's payload (field 1).
     assert!(
-        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_1, i32 0, i32 1"),
+        ll.contains("getelementptr inbounds { i32, i32 }, ptr %loc_1, i32 0, i32 1"),
         "expected GEP to field 1 (Some's payload) for binding extraction in:\n{}",
         ll
     );
@@ -2567,7 +2563,7 @@ fn codegen_enum_union_match_returns_correct_value() {
     // not a constant 0. We verify by checking that the Some arm block loads
     // from a local that was assigned from the enum's payload.
     let some_arm_loads_payload =
-        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_1, i32 0, i32 1");
+        ll.contains("getelementptr inbounds { i32, i32 }, ptr %loc_1, i32 0, i32 1");
     assert!(
         some_arm_loads_payload,
         "expected Some arm to load payload from enum storage in:\n{}",
@@ -2865,7 +2861,7 @@ fn codegen_slice_index_loads_element_not_pointer() {
     // Should GEP into the fat pointer struct to get the data pointer (field 0),
     // then GEP into the data pointer at index 0, then load i32.
     assert!(
-        ll.contains("getelementptr inbounds { ptr, i64 }, { ptr, i64 }*"),
+        ll.contains("getelementptr inbounds { ptr, i64 }, ptr"),
         "expected GEP to fat pointer field 0 in:\n{}",
         ll
     );
@@ -3234,7 +3230,7 @@ fn codegen_slice_field_store_correct() {
     let ll = gen_ll("struct S { data: &mut [i32] } fn f(s: S) { s.data[0] = 42; }");
     // Should have: GEP to struct field, GEP to fat ptr field 0, GEP to element
     assert!(
-        ll.contains("getelementptr inbounds { ptr, i64 }, { ptr, i64 }*"),
+        ll.contains("getelementptr inbounds { ptr, i64 }, ptr"),
         "expected GEP to fat pointer field 0 in:\n{}",
         ll
     );
