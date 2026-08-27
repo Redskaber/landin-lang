@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.327 — P1 codegen bug 根因修复完成: 10 bugs fixed — opaque pointer migration: GEP/load/store/entry block/typed ptr)
+> **Version**: v0.493.0 (Stage 18.329 — P1 codegen bug 根因修复: 15 bugs fixed — opaque pointer migration + LLVMSysEmitter typed ptr + CodeGenLevelDefault + struct return ABI + entry block br)
 > **License**: MIT
-> **Status**: v0.4 stable. 4317 tests, 0 failures. 类 Rust 原始类型扩展模型完成. P1 codegen 根因修复完成.
+> **Status**: v0.4 stable. 4317 tests, 0 failures (单线程). 类 Rust 原始类型扩展模型完成. P1 codegen 根因修复.
 
 A work-in-progress systems programming language inspired by Rust, using
 LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
@@ -291,14 +291,15 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.327) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.329) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
-| 18.327 | v0.493.0 | P1 codegen bug 根因修复完成: opaque pointer migration — GEP typed ptr→opaque, load/store 加 ptr 前缀, entry block 加 br terminator (3 bugs, 总计 10 bugs fixed) |
+| 18.329 | v0.493.0 | P1 codegen bug 根因修复: LLVMSysEmitter typed ptr store→opaque, emit_null_ptr→ConstNull, CodeGenLevel→Default (struct return ABI), entry block br (5 bugs, 总计 15 bugs fixed) |
+| 18.327 | v0.493.0 | P1 codegen bug 根因修复: opaque pointer migration — GEP typed ptr→opaque, load/store 加 ptr 前缀, entry block 加 br terminator (3 bugs, 总计 10 bugs fixed) |
 | 18.326 | v0.493.0 | P1 codegen bug 根因修复: 7 bugs (bitcast→inttoptr/null, private→internal, zeroinitializer typed, ptr %self, globals ordering, emit_null_ptr value, LLVMSysEmitter lookup) |
 | 18.325 | v0.493.0 | TD-CODEGEN-NEGATIVE final push: +60 codegen negative tests (8 categories) — 14.9%→23.3%, 25% target reached |
 | 18.324 | v0.493.0 | TD-CODEGEN-NEGATIVE continued: +30 codegen negative tests (7 categories) — 10.7%→15.6% coverage |

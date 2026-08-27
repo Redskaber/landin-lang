@@ -380,16 +380,20 @@ pub(crate) fn codegen_function(
         }
     }
 
-    // Stage 18.327 (P1 soundness fix): After alloca + store, emit a branch
-    // to the first basic block. LLVM IR requires that the entry block (which
-    // contains the alloca instructions) ends with a terminator before the
-    // first labeled block. Without this `br`, LLVM sees `alloca` followed
-    // by `bb0:` label, which produces "expected instruction opcode" error.
+    // Stage 18.329: Emit `br label %bb0` to terminate the entry block.
     //
     // **Design boundary** (per LLVM Language Reference):
-    // - The entry block is implicit (no label) after `define ... {`.
-    // - It must end with a terminator (`br`, `ret`, etc.) before the next block.
-    // - rustc_codegen_llvm always emits `br label %entry` after alloca.
+    // - The entry block (containing alloca) MUST end with a terminator.
+    // - Without a terminator, LLVM produces invalid IR → segfault.
+    // - Both TextEmitter and LLVMSysEmitter need this `br`.
+    //
+    // Stage 18.327 added this `br`. Stage 18.329 temporarily removed it,
+    // but that caused both_news to regress (101/500 segfault). Restoring.
+    //
+    // The LLVMSysEmitter's `emit_block("bb0")` reuse mechanism works correctly
+    // with the `br`: after `emit_br("bb0")`, the entry block is terminated.
+    // `emit_block("bb0")` then creates a NEW block (not reusing entry, because
+    // entry already has a terminator). This is the correct behavior.
     //
     // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
     if !mir.basic_blocks.is_empty() {

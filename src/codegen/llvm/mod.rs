@@ -230,30 +230,43 @@ impl LLVMSysEmitter {
             // Stage 17.02: Use cstr_result instead of unwrap for error safety.
             let cpu_c = cstr_result("generic", crate::session::Span::DUMMY)?;
             let feat_c = cstr_result("", crate::session::Span::DUMMY)?;
-            // Stage 18.328 (P1 soundness fix): Use LLVMCodeGenLevelNone instead
-            // of LLVMCodeGenLevelDefault. The default optimization level (-O2)
-            // was causing intermittent segfaults in Vec::new() programs because
-            // the optimizer would collapse null pointer stores to 4-byte stores,
-            // leaving upper bytes uninitialized (ABI mismatch on 8-byte loads).
+            // Stage 18.329 (P1 soundness fix): Use LLVMCodeGenLevelDefault.
             //
-            // **Design boundary** (per LLVM 22 opaque pointer mode):
-            // - In opaque pointer mode, the optimizer's type-based aliasing
-            //   analysis can incorrectly narrow pointer stores when it sees
-            //   an `i32 0` constant being stored to a `ptr` alloca.
-            // - Disabling optimization (CodeGenLevelNone) avoids this bug
-            //   entirely. Landin's own MIR optimization passes (DCE +
-            //   const_prop) handle the important optimizations.
-            // - rustc_codegen_llvm uses LLVMCodeGenLevelNone for unoptimized
-            //   builds and relies on LLVM's LTO for final optimization.
+            // Stage 18.328 changed to CodeGenLevelNone to avoid a 4-byte store
+            // optimization bug. However, CodeGenLevelNone also disables the
+            // ABI lowering pass that handles struct return values > 16 bytes
+            // (System V ABI: structs > 16 bytes must use sret — hidden pointer
+            // parameter). Without this pass, struct-returning functions like
+            // Vec::new() (returns { ptr, i64, i64 } = 24 bytes) would have
+            // incorrect calling conventions, causing intermittent segfaults.
             //
-            // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
-            // Per §1.0 原則 9 (正确>妥协): correct behavior > optimized but broken.
+            // The root cause of the 4-byte store bug was NOT the optimization
+            // level — it was the typed pointer issue (now fixed in Stage 18.327:
+            // GEP/load/store use opaque `ptr` instead of `T*`). With opaque
+            // pointers, LLVM's optimizer correctly handles null pointer stores
+            // without collapsing them to 4-byte stores.
+            //
+            // **Design boundary** (per LLVM Language Reference + System V ABI):
+            // - LLVM's CodeGenLevelDefault includes ABI lowering passes that
+            //   handle struct return values (sret), struct parameters (byval),
+            //   and other ABI requirements.
+            // - CodeGenLevelNone skips these passes, producing incorrect code
+            //   for functions that return large structs.
+            // - rustc_codegen_llvm uses CodeGenLevelDefault for release builds.
+            //
+            // Per §2.2 (根因思维): root-cause fix — the 4-byte store bug was
+            // caused by typed pointers (fixed in Stage 18.327), not by
+            // optimization level. Disabling optimization was a workaround
+            // that introduced a new bug (ABI mismatch).
+            // Per §12 (最优>最小): correct fix is to re-enable optimization
+            // now that the root cause (typed pointers) is fixed.
+            // Per §1.0 原則 9 (正确>妥协): correct ABI > no optimization.
             let tm = LLVMCreateTargetMachine(
                 target,
                 triple_c.as_ptr(),
                 cpu_c.as_ptr(),
                 feat_c.as_ptr(),
-                LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
+                LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
                 LLVMRelocMode::LLVMRelocDefault,
                 LLVMCodeModel::LLVMCodeModelDefault,
             );
