@@ -52,28 +52,14 @@ impl MemoryEmitter for LLVMSysEmitter {
             // not symptom (zero-initialize upper bytes separately).
             // Per §1.0 原則 6 (通解>特例): one rule for all pointer stores.
             if target_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind {
-                let i64_ty = LLVMInt64TypeInContext(self.ctx);
-                let i64_ptr_ty = LLVMPointerType(i64_ty, 0);
-                // Cast the pointer to i64* (bitcast is valid for ptr→ptr).
-                let name_c = cstr_owned("ptrstore_cast");
-                let i64_ptr = LLVMBuildBitCast(self.builder, p, i64_ptr_ty, name_c.as_ptr());
-                // Cast the value to i64 (PtrToInt handles ptr→i64).
-                let val_i64 = if val_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind {
-                    let name_c = cstr_owned("p2i");
-                    LLVMBuildPtrToInt(self.builder, v, i64_ty, name_c.as_ptr())
-                } else if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind {
-                    // Already integer — cast to i64 if needed.
-                    let val_width = LLVMGetIntTypeWidth(val_ty);
-                    if val_width == 64 {
-                        v
-                    } else {
-                        let name_c = cstr_owned("i2i64");
-                        LLVMBuildIntCast2(self.builder, v, i64_ty, 0, name_c.as_ptr())
-                    }
-                } else {
-                    v
-                };
-                LLVMBuildStore(self.builder, val_i64, i64_ptr);
+                // Stage 18.328: In opaque pointer mode, all pointers are `ptr`.
+                // Use opaque pointer directly for store — no typed pointer needed.
+                // The previous bitcast to `i64*` was a workaround for LLVM's
+                // 4-byte store optimization, but in opaque pointer mode this
+                // cast is unnecessary and can cause type mismatch errors.
+                //
+                // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+                LLVMBuildStore(self.builder, v, p);
                 return;
             }
 
@@ -100,13 +86,27 @@ impl MemoryEmitter for LLVMSysEmitter {
             // Per §1.0 原則 9 (正确>妥协): fix root cause (cast pointer type),
             // not symptom (skip store).
             // Per §1.0 原則 6 (通解>特例): one bitcast for all type mismatches.
-            let ptr_ty = LLVMTypeOf(p);
-            let expected_ptr_ty = LLVMPointerType(target_llvm_ty, 0);
-            let final_ptr = if ptr_ty == expected_ptr_ty {
+            // Stage 18.328 (P1 soundness fix): LLVM 22 opaque pointer mode
+            // requires using `ptr` type directly, not `LLVMPointerType(ty, 0)`
+            // (which creates a typed pointer `T*`). Using typed pointers in
+            // opaque pointer mode causes intermittent segfaults because
+            // LLVM's type system doesn't match the IR's opaque pointer model.
+            //
+            // **Design boundary** (per LLVM 22 + rustc_codegen_llvm):
+            // - All pointers are `ptr` (opaque) in LLVM 17+.
+            // - `LLVMPointerType(ty, 0)` creates `T*` which is invalid in
+            //   opaque pointer mode and causes type mismatch errors.
+            // - Use `LLVMPointerTypeInContext(ctx, 0)` for opaque `ptr` type.
+            //
+            // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+            // Per §1.0 原則 6 (通解>特解): one rule for ALL pointer operations.
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let final_ptr = if ptr_ty == LLVMTypeOf(p) {
                 p
             } else {
-                let name_c = cstr_owned("pcast");
-                LLVMBuildBitCast(self.builder, p, expected_ptr_ty, name_c.as_ptr())
+                // In opaque pointer mode, all pointers are the same type.
+                // No bitcast needed — just use the pointer directly.
+                p
             };
 
             LLVMBuildStore(self.builder, stored, final_ptr);

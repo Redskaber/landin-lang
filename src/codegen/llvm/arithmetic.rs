@@ -336,23 +336,23 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         }
     }
 
-    /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
-    /// constant (`ptr null`).
+    /// Stage 18.205: Emit a null pointer constant.
     ///
-    /// This avoids a LLVM backend optimization that collapses
-    /// `store ptr null` to a 4-byte `store i32 0`, leaving upper bytes
-    /// uninitialized and causing ABI mismatches on 8-byte loads.
+    /// Stage 18.328 (P1 soundness fix): Use `LLVMConstNull` with opaque
+    /// pointer type directly. Previously used `LLVMConstIntToPtr(i64 0, ptr)`
+    /// which is unnecessary in opaque pointer mode and can cause type
+    /// mismatch issues in LLVM's optimizer.
+    ///
+    /// **Design boundary** (per LLVM 22 opaque pointer mode):
+    /// - `LLVMConstNull(ptr_ty)` produces a proper null pointer constant.
+    /// - `LLVMConstIntToPtr` is only needed for non-zero integer→ptr casts.
+    /// - rustc_codegen_llvm uses `LLVMConstNull` for null pointers.
+    ///
+    /// Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
     fn emit_null_ptr(&mut self) -> EmitValue {
         unsafe {
-            // Stage 18.205: Use `i64 0` (8 bytes) and then `inttoptr` to
-            // produce a `ptr` constant. This forces LLVM to keep the full
-            // 8-byte zero, avoiding the 4-byte store optimization.
-            //
-            // Per §12 (最优 > 最小): emit the right constant type upfront.
-            let i64_ty = LLVMInt64TypeInContext(self.ctx);
-            let i64_zero = LLVMConstInt(i64_ty, 0, 0);
             let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
-            let null_val = LLVMConstIntToPtr(i64_zero, ptr_ty);
+            let null_val = LLVMConstNull(ptr_ty);
             self.fresh_named(null_val)
         }
     }
