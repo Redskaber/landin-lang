@@ -97,6 +97,20 @@ pub struct LLVMSysEmitter {
     /// function is referenced before its body is emitted (e.g., `fn adder()
     /// -> fn(i32) -> i32 { double }` references `double` before it's emitted).
     fn_sigs: HashMap<String, (EmitType, Vec<EmitType>)>,
+    /// Stage 18.334 (P1 soundness fix): Set of function names whose signature
+    /// is variadic (contains `...`). Populated by `emit_declare` from the
+    /// signature text (per `helpers::signature_is_variadic`).
+    ///
+    /// Used by `declare_function` + `emit_call` to set `isVariadic=1` on the
+    /// LLVM function type, replacing the previous hardcoded name-list
+    /// (`name == "printf" || name == "__landin_eprintf"`).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): variadicity is a property of the signature,
+    /// not the function name. The same set applies to ALL variadic functions
+    /// (printf, sprintf, fprintf, __landin_println, __landin_eprintf, etc.).
+    /// Per §20 (iterative audit): replaces the hardcoded name-list that was a
+    /// workaround for not parsing the signature.
+    variadic_fns: std::collections::HashSet<String>,
 }
 
 impl Default for LLVMSysEmitter {
@@ -134,6 +148,7 @@ impl LLVMSysEmitter {
                 declared: HashMap::new(),
                 struct_type_cache: std::cell::RefCell::new(HashMap::new()),
                 fn_sigs: HashMap::new(),
+                variadic_fns: std::collections::HashSet::new(),
             }
         }
     }
@@ -707,7 +722,16 @@ impl LLVMSysEmitter {
             // them with isVariadic=1 so the LLVM module declaration matches
             // the variadic call sites in emit_call.
             // Stage 18.232: __landin_format_variadic removed (migrated to MIR).
-            let is_variadic: i32 = if name == "printf" || name == "__landin_eprintf" {
+            // Stage 18.334 (P1 soundness fix): Replace hardcoded name-list with
+            // a set lookup. The set is populated by `emit_declare` from the
+            // signature text (per `helpers::signature_is_variadic`).
+            // Per §1.0 原則 6 (通解 > 特解): variadicity is a property of the
+            // signature, not the function name. The same set now applies to
+            // ALL variadic functions (printf, sprintf, fprintf, __landin_println,
+            // __landin_eprintf, etc.).
+            // Per §20 (iterative audit): the name-list was a workaround for not
+            // parsing the signature; this is the root-cause fix.
+            let is_variadic: i32 = if self.variadic_fns.contains(name) {
                 1
             } else {
                 0

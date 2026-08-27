@@ -696,6 +696,10 @@ mod stage18_332_sret_abi_tests;
 #[path = "v0/stage18/plan/stage18_333_byval_abi_tests.rs"]
 mod stage18_333_byval_abi_tests;
 
+// === Stage 18.334: P1 soundness fix — TextEmitter sret syntax + sret load + variadic detection + llvm-as smoke test ===
+#[path = "v0/stage18/plan/stage18_334_text_ir_tests.rs"]
+mod stage18_334_text_ir_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

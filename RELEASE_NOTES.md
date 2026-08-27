@@ -3,11 +3,125 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.495.0 |
+| **Current version** | v0.496.0 |
 | **Date** | 2026-08-27 |
-| **Test count** | 676 lib tests + 3655 integration tests = 4331 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
-| **Multi-thread** | 25/25 stable (4 threads, unlimited stack) via `scripts/run_tests.sh` |
+| **Test count** | 676 lib tests + 3663 integration tests = 4339 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (8 tests in `stage18_334_text_ir_tests.rs`) |
+
+---
+
+## v0.496.0 — Stage 18.334 (P1 soundness: TextEmitter sret syntax + sret load + variadic detection via signature parsing + llvm-as smoke test)
+
+### Overview
+
+**Stage 18.334: P1 soundness fix — TextEmitter IR validity**
+
+The §20 iterative audit (Stage 18.333) discovered that TextEmitter's sret
+path **silently produces invalid LLVM IR** (rejected by `llvm-as`). Stage
+18.332 added sret to TextEmitter but Stage 18.333's byval load-then-store
+fix wasn't mirrored. The audit also surfaced the deferred P1 variadic
+detection bug.
+
+### Bugs fixed
+
+1. **TD-TEXT-SRET-SYNTAX (P1 NEW)**: TextEmitter emitted `ptr sret %name`
+   instead of `ptr sret(<ty>) %name`. LLVM 17+ opaque pointer mode requires
+   the type argument — bare `sret` is rejected by `llvm-as` with
+   "expected '('". Fixed at 3 sites: `text/function.rs::emit_function_begin`
+   + `text/aggregate.rs::emit_call` + `text/aggregate.rs::emit_dyn_trait_method_call`.
+
+2. **TD-TEXT-SRET-LOAD (P1 NEW)**: TextEmitter's `emit_call` returned the
+   sret alloca **pointer** instead of **loading the struct** from the sret
+   slot. Caller's `emit_store(struct, ptr, alloca)` then tried to store a
+   `ptr` as a struct → type mismatch. Fixed by mirroring LLVMSysEmitter's
+   `LLVMBuildLoad2` path: emit `%vN = load <ret_ty>, ptr %sret_slot`
+   after `call void`, return `%vN`. 2 sites fixed.
+
+3. **TD-TEXT-UNDEFINED-DECLS (P2 NEW)**: TextEmitter IR referenced undeclared
+   runtime functions (`@__landin_dealloc`, `@__landin_alloc`, `@printf`,
+   etc.) — LLVMSysEmitter implicitly creates declarations via
+   `LLVMAddFunction`, TextEmitter doesn't. Fixed by adding explicit
+   `emit_declare(...)` calls in `pipeline.rs` for 6 runtime functions
+   + printf.
+
+4. **TD-TEXT-UNDEFINED-DATA-GLOBAL (P2 NEW)**: TextEmitter's
+   `emit_dyn_trait_const` referenced `@.data.<type>` but didn't define
+   it. LLVMSysEmitter's emit_dyn_trait_const emits a zero-initialized i8
+   global placeholder; TextEmitter now does the same. 1 site fixed
+   (`text/module.rs:108-112`).
+
+5. **TD-VARIADIC-DETECTION (P1 known)**: Variadic detection was hardcoded
+   to `name == "printf" || name == "__landin_eprintf"` name-list. Fixed
+   by:
+   - New `helpers::signature_is_variadic(sig)` helper: checks if signature
+     text contains `...` inside parens.
+   - New `helpers::count_args_in_signature` filter: excludes `...` from
+     arg count.
+   - New `LLVMSysEmitter::variadic_fns: HashSet<String>` field, populated
+     by `emit_declare` from signature text.
+   - `declare_function` + `emit_call` use set lookup
+     (`self.variadic_fns.contains(name)`) instead of name-list.
+
+### Architectural fix: `llvm-as` smoke test
+
+Added `assert_llvm_ir_valid(name, code)` helper in
+`tests/v0/stage18/plan/stage18_334_text_ir_tests.rs`:
+1. Compiles a Landin program via `--emit-llvm-ir`
+2. Pipes the IR to `llvm-as-22` (or fallback `llvm-as`)
+3. Asserts exit 0 (valid IR) — fails with detailed stderr/stdout/IR preview
+
+This catches the entire class of "TextEmitter IR silently invalid" bugs
+that Stages 18.332/18.333 missed. Per §1.0 原則 4 (报错 > 静默): silent
+IR invalidity is now impossible to introduce.
+
+### Test impact
+
+- Single-thread: **3663 tests, 0 failures** (was 3655 before Stage 18.334).
+- Multi-thread (`--test-threads=2`, `ulimit -s unlimited`): **5/5 stable**.
+- Added 8 regression tests (3 positive + 4 negative + 1 stress) in
+  `tests/v0/stage18/plan/stage18_334_text_ir_tests.rs`.
+- **NEW**: `llvm-as` accepts TextEmitter IR for the byval+sret combined
+  test program (was rejected before this stage).
+
+### Design boundary
+
+- TextEmitter now mirrors LLVMSysEmitter's sret+byval emission:
+  - Same `sret(<ty>)` syntax with type argument.
+  - Same `load <ret_ty>, ptr %sret_slot` after `call void`.
+  - Same `byval(<ty>)` syntax for params.
+  - Same `@.data.X = internal global i8 0` placeholder.
+- Variadicity is now a property of the signature, not the function name.
+  Same set lookup applies to all variadic functions (printf, sprintf,
+  fprintf, __landin_println, __landin_eprintf, etc.).
+- The `llvm-as` smoke test is the architectural fix that prevents this
+  class of bug from recurring.
+
+### Files changed
+
+- `src/codegen/text/function.rs` — sret type arg in `emit_function_begin`
+- `src/codegen/text/aggregate.rs` — sret type arg + load-then-return in `emit_call` + `emit_dyn_trait_method_call`
+- `src/codegen/text/module.rs` — emit `@.data.X` global placeholder in `emit_dyn_trait_const`
+- `src/codegen/llvm/helpers.rs` — new `signature_is_variadic()` + `count_args_in_signature` filter
+- `src/codegen/llvm/mod.rs` — new `variadic_fns` field + set lookup in `declare_function`
+- `src/codegen/llvm/aggregate.rs` — set lookup in `emit_call`
+- `src/codegen/llvm/module.rs` — populate `variadic_fns` from `emit_declare`
+- `src/codegen/pipeline.rs` — explicit pre-declare for 6 runtime functions + printf
+- `tests/v0/stage18/plan/stage18_334_text_ir_tests.rs` — new (8 regression tests + llvm-as smoke test)
+- `tests/all_tests.rs` — register `stage18_334_text_ir_tests`
+- `docs/develop/v0/stage-18/plan-18.334.md` — new design doc
+- `docs/develop/v0/tech-debt-register.md` — 5 TDs marked Resolved
+- `Cargo.toml` — v0.495.0 → v0.496.0
+
+### Known limitations
+
+- LLVM 22 needs `ulimit -s unlimited` (or 65536) on systems with default
+  8MB stack — without it, `landin-stage0` may segfault in `libLLVM.so.22.1`
+  during recursive optimization passes. `scripts/run_tests.sh` handles this.
+- TD-EMPTY-STRUCT-I8 (P2) — empty structs still modeled as `i8` instead of
+  LLVM `{}`. Plan: Stage 18.335.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).
 
 ---
 
@@ -103,7 +217,7 @@ truncated).
   during recursive optimization passes. `scripts/run_tests.sh` handles this.
 - TD-VARIADIC-DETECTION (P1) — variadic function detection still hardcoded
   to `printf | __landin_eprintf` name-list. Plan: Stage 18.334 — parse `...`
-  from `emit_declare` signature.
+  from `emit_declare` signature. **[Resolved in Stage 18.334]**
 - TD-EMPTY-STRUCT-I8 (P2) — empty structs still modeled as `i8` instead of
   LLVM `{}`. Plan: Stage 18.335.
 - TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).

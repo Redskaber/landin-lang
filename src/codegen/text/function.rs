@@ -15,7 +15,7 @@ impl FunctionEmitter for TextEmitter {
         // Rust's rustc_codegen_llvm does this in the IR layer explicitly.
         //
         // **Design boundary** (per System V ABI + rustc_codegen_llvm):
-        // - ret.needs_sret() → `define void @fn(ptr sret %_0, ...)`
+        // - ret.needs_sret() → `define void @fn(ptr sret(<ret_ty>) %_0, ...)`
         // - Otherwise → `define <ret_ty> @fn(...)`
         //
         // Per §2.2 (根因思维): LLVM's CodeGenPrepare should auto-convert,
@@ -26,9 +26,19 @@ impl FunctionEmitter for TextEmitter {
         // `ptr byval(<orig_ty>) %name` instead of `<orig_ty> %name`.
         // Per §20 (iterative audit): same root cause as sret; same fix pattern.
         // Per §1.0 原則 6 (通解 > 特解): one byval path across both backends.
+        //
+        // Stage 18.334 (P1 soundness fix): Use `sret(<ret_ty>)` syntax (with type
+        // argument) instead of bare `sret`. LLVM 17+ opaque pointer mode requires
+        // the type argument — bare `sret` is rejected by `llvm-as` with
+        // "expected '('".
+        // Per §20 (iterative audit): found via §20 audit after Stage 18.333 —
+        // TextEmitter's sret path silently produced invalid IR.
+        // Per §1.0 原則 6 (通解 > 特解): matches LLVMSysEmitter's
+        // `create_sret_attribute(ctx, ret_llvm_ty)` which already passes the type.
         let use_sret = ret.needs_sret();
         let sret_param_str: Option<String> = if use_sret {
-            Some(format!("ptr sret {}", "%_sret"))
+            let ret_str = emit_type_to_llvm_str(ret);
+            Some(format!("ptr sret({}) {}", ret_str, "%_sret"))
         } else {
             None
         };

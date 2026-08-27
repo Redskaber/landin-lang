@@ -31,6 +31,15 @@ impl ModuleEmitter for LLVMSysEmitter {
         // name + arg-count conservatively and emit an extern declaration.
         // MUV-2: pragmatic — many declarations repeat across crates.
         if let Some(name) = parse_declare_name(signature) {
+            // Stage 18.334 (P1 soundness fix): Track if this function is
+            // variadic, based on whether its signature contains `...`.
+            // This replaces the hardcoded `name == "printf"` name-list check
+            // in `declare_function` + `emit_call`.
+            // Per §1.0 原則 6 (通解 > 特解): variadicity is a property of the
+            // signature, not the function name.
+            if signature_is_variadic(signature) {
+                self.variadic_fns.insert(name.clone());
+            }
             // Heuristic: count commas in the parens for arg count.
             let arg_count = count_args_in_signature(signature);
             let arg_tys: Vec<EmitType> = (0..arg_count).map(|_| EmitType::I32).collect();

@@ -169,7 +169,12 @@ impl AggregateEmitter for LLVMSysEmitter {
             // For sret: void (ptr sret, ...user_params_with_byval_replacements).
             // For non-sret: <ret_ty> (...user_params_with_byval_replacements).
             // For variadic printf: i32 (..., ...).
-            let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
+            // Stage 18.334 (P1 soundness fix): Replace hardcoded name-list with
+            // set lookup. The set is populated by `emit_declare` from the
+            // signature text. Per §1.0 原則 6 (通解 > 特解): variadicity is a
+            // property of the signature, not the function name.
+            // Per §20 (iterative audit): the name-list was a workaround.
+            let is_variadic: i32 = if self.variadic_fns.contains(fn_name) {
                 1
             } else {
                 0

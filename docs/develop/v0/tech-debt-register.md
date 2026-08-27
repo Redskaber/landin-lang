@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.333 — P1 soundness fix: byval ABI Support for large struct/array params + LLVM stack size workaround)
-> **Version**: v0.495.0
-> **Status**: Stage 18.333 resolved TD-BYVAL-LLVM-SYS (P1 soundness — large struct/array params missing byval ABI). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features: fat pointer construction + extern "C" in prelude). 3655 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 25/25 stable. v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.334 — P1 soundness fix: TextEmitter sret syntax + sret load + variadic detection via signature parsing + llvm-as smoke test)
+> **Version**: v0.496.0
+> **Status**: Stage 18.334 resolved TD-TEXT-SRET-SYNTAX + TD-TEXT-SRET-LOAD + TD-VARIADIC-DETECTION (P1 soundness — TextEmitter IR silently invalid + variadic detection hardcoded). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3663 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -86,7 +86,11 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-ABI-DIVERSITY | Only `extern "C"` tested | No `extern "system"`, `extern "Rust"` | v0.2 P2: ABI diversity |
 | TD-SRET-LLVM-SYS | LLVMSysEmitter 缺 sret ABI 处理 — 函数返回 > 16B 结构体（如 Vec::new 返回 {ptr, i64, i64} = 24B）时未通过 sret 隐藏指针参数传递，导致多线程 cargo test 间歇性 segfault (~5-10% flake rate) | 所有返回 > 16B 结构体的函数（Vec::new/String::new/make_triple 等）的调用点 ABI 不正确 | ✅ Resolved Stage 18.332: 显式 sret via LLVMCreateTypeAttribute + LLVMAddAttributeAtIndex + LLVMAddCallSiteAttribute + entry_block_alloca 提升 alloca 到 entry 块（消除动态栈调整）+ TMPDIR fix（消除 cc /tmp 竞争）。7 回归测试 + 15/15 多线程稳定。 |
 | TD-BYVAL-LLVM-SYS | LLVMSysEmitter 缺 byval ABI 处理 — 函数参数 > 16B 结构体/数组（如 `fn foo(b: Big)` where Big > 16B）时未通过 byval 隐藏指针参数传递，违反 System V AMD64 ABI §3.2.3 | 所有接收 > 16B 结构体/数组参数的函数（如 `fn sum_big(b: Big)`）的参数 ABI 不正确 — 第三字段丢失、值截断 | ✅ Resolved Stage 18.333: 显式 byval via LLVMCreateTypeAttribute + LLVMAddAttributeAtIndex + LLVMAddCallSiteAttribute + entry_block_alloca + 函数体参数 load-then-store (从 ptr 加载 struct)。TextEmitter 镜像。7 回归测试 + 25/25 多线程稳定（ulimit -s unlimited）。同根因：Stage 18.332 sret bug 的 §20 同类审计发现。 |
-| TD-VARIADIC-DETECTION | 变长函数检测硬编码为 `name == "printf" \|\| name == "__landin_eprintf"` 名字列表，未从签名解析 `...` token | 未来添加其他变长 C 函数 (sprintf/snprintf/fprintf) 时静默生成非变长声明，导致 ABI 不匹配 | 🟡 Stage 18.334 计划: 从 emit_declare 签名字符串解析 `...`，传递给 declare_function + emit_call |
+| TD-VARIADIC-DETECTION | 变长函数检测硬编码为 `name == "printf" \|\| name == "__landin_eprintf"` 名字列表，未从签名解析 `...` token | 未来添加其他变长 C 函数 (sprintf/snprintf/fprintf) 时静默生成非变长声明，导致 ABI 不匹配 | ✅ Resolved Stage 18.334: signature_is_variadic() helper + count_args_in_signature 过滤 `...` + variadic_fns HashSet 字段 (由 emit_declare 填充) + declare_function + emit_call 用 set lookup 替代 name-list。Per §1.0 原則 6 (通解 > 特解): 变长性是签名属性, 不是函数名。 |
+| TD-TEXT-SRET-SYNTAX | TextEmitter emit_function_begin + emit_call + emit_dyn_trait_method_call 缺 `sret(<ty>)` 类型参数 — 仅 emit `ptr sret %name` 而非 `ptr sret(<ty>) %name`。LLVM 17+ opaque pointer mode 要求类型参数。 | TextEmitter IR 被 llvm-as 拒绝 ("expected '('")；但因 TextEmitter 仅用于 --emit-llvm-ir debug 路径, --run/--emit-obj 用 LLVMSysEmitter (正确), 此 bug 静默存在 Stage 18.332 → Stage 18.333 → Stage 18.334 才被发现 | ✅ Resolved Stage 18.334: 加 sret 类型参数 `format!("ptr sret({}) {}", ret_str, "%_sret")`。3 个发射站点 (text/function.rs + text/aggregate.rs x2)。+ llvm-as smoke test 防回归。 |
+| TD-TEXT-SRET-LOAD | TextEmitter emit_call + emit_dyn_trait_method_call 返回 sret alloca 指针而非 load 后的 struct — 调用方 emit_store(ty=struct, val=ptr, ptr=alloca) → 类型不匹配 | TextEmitter IR 被 llvm-as 拒绝 ("'%sret_9' defined with type 'ptr' but expected '{ i64, i64, i64 }'")；静默存在 Stage 18.332 → Stage 18.334 | ✅ Resolved Stage 18.334: 镜像 LLVMSysEmitter 的 LLVMBuildLoad2 路径 — call void 后 load struct from sret slot: `%vN = load <ret_ty>, ptr %sret_N`。2 个发射站点。 |
+| TD-TEXT-UNDEFINED-DECLS | TextEmitter IR 引用未声明的 runtime 函数 (`@__landin_dealloc`, `@__landin_alloc`, `@printf` 等) — LLVMSysEmitter 在 declare_function 中隐式创建 declaration, TextEmitter 不会 | TextEmitter IR 被 llvm-as 拒绝 ("use of undefined value '@__landin_dealloc'")；静默存在 | ✅ Resolved Stage 18.334: pipeline.rs 显式 pre-declare 6 个 runtime functions + printf。`emit_declare("ptr @__landin_alloc(i64)")` 等。 |
+| TD-TEXT-UNDEFINED-DATA-GLOBAL | TextEmitter emit_dyn_trait_const 引用 `@.data.<type>` 但未定义 — LLVMSysEmitter 在 llvm/module.rs:195-204 隐式创建 zero-initialized i8 global, TextEmitter 不会 | TextEmitter IR 被 llvm-as 拒绝 ("use of undefined value '@.data.Option'")；静默存在 | ✅ Resolved Stage 18.334: text/module.rs:108-112 在 dynptr global 之前 emit `@.data.X = internal global i8 0`。镜像 LLVMSysEmitter 行为。 |
 
 ### 2.6 Standard Library
 

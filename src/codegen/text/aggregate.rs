@@ -90,9 +90,13 @@ impl AggregateEmitter for TextEmitter {
         };
 
         // Build the byval slots and final args list.
+        // Stage 18.334 (P1 soundness fix): Use `ptr sret(<ret_ty>)` syntax
+        // (with type arg) for the sret slot — mirrors emit_function_begin.
+        // Per §20: found via audit — bare `ptr sret` was rejected by llvm-as.
         let mut all_args: Vec<String> = Vec::with_capacity(args.len() + 1);
         if let Some(ref sret) = sret_name {
-            all_args.push(format!("ptr {}", sret));
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            all_args.push(format!("ptr sret({}) {}", ret_str, sret));
         }
         for (i, (ty, a)) in args.iter().enumerate() {
             if ty.needs_byval() {
@@ -112,8 +116,22 @@ impl AggregateEmitter for TextEmitter {
                 call_target,
                 all_args.join(", ")
             ));
-            // Return the sret pointer — callers use it to access the result.
-            sret_name.unwrap()
+            // Stage 18.334 (P1 soundness fix): Load the result from the sret slot
+            // before returning. Was: returned the sret pointer directly → caller's
+            // emit_store would try to store a `ptr` as a struct → type mismatch.
+            // Mirrors LLVMSysEmitter's `LLVMBuildLoad2(builder, ret_llvm_ty,
+            // sret_slot, ...)` path in `llvm/aggregate.rs:235-245`.
+            // Per §1.0 原則 6 (通解 > 特解): same sret return path across both backends.
+            // Per §20 (iterative audit): found via §20 audit after Stage 18.333.
+            let load_r = self.fresh();
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            self.line(&format!(
+                "  %v{} = load {}, ptr {}",
+                load_r,
+                ret_str,
+                sret_name.as_ref().unwrap()
+            ));
+            format!("%v{}", load_r)
         } else if *ret_ty == EmitType::Void {
             self.line(&format!(
                 "  call void {}({})",
@@ -196,9 +214,11 @@ impl AggregateEmitter for TextEmitter {
         };
 
         // Build args list (sret pointer first, then user args with byval replacement).
+        // Stage 18.334: Use `ptr sret(<ret_ty>)` syntax for sret slot (mirrors emit_call).
         let mut all_args: Vec<String> = Vec::with_capacity(args.len() + 1);
         if let Some(ref sret) = sret_name {
-            all_args.push(format!("ptr {}", sret));
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            all_args.push(format!("ptr sret({}) {}", ret_str, sret));
         }
         for (i, (ty, a)) in args.iter().enumerate() {
             if ty.needs_byval() {
@@ -217,7 +237,16 @@ impl AggregateEmitter for TextEmitter {
                 "  call void %v{method_fn_r}({})",
                 all_args.join(", ")
             ));
-            sret_name.unwrap()
+            // Stage 18.334 (P1 soundness fix): Load the result from the sret slot
+            // before returning. Mirrors emit_call's sret load path + LLVMSysEmitter.
+            // Per §1.0 原則 6 (通解 > 特解): same sret return path for direct + indirect.
+            let load_r = self.fresh();
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            self.line(&format!(
+                "  %v{load_r} = load {ret_str}, ptr {}",
+                sret_name.as_ref().unwrap()
+            ));
+            format!("%v{load_r}")
         } else if *ret_ty == EmitType::Void {
             self.line(&format!(
                 "  call void %v{method_fn_r}({})",

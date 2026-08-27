@@ -95,6 +95,19 @@ impl ModuleEmitter for TextEmitter {
         //
         // The fat pointer is { ptr (data), ptr (vtable) } — both opaque
         // because the concrete type is erased at the `dyn` boundary.
+        //
+        // Stage 18.334 (P1 soundness fix): emit the @.data.<type> placeholder
+        // global BEFORE the dynptr global. Without this, the dynptr global
+        // references an undefined symbol → `llvm-as` rejects with
+        // "use of undefined value '@.data.Option'".
+        // Mirrors LLVMSysEmitter's emit_dyn_trait_const path
+        // (llvm/module.rs:195-204) which emits a zero-initialized i8 global
+        // as placeholder for the data symbol.
+        // Per §1.0 原則 6 (通解 > 特解): same data placeholder pattern across both backends.
+        // Per §20 (iterative audit): found via §20 audit while validating TextEmitter IR.
+        let data_global_def = format!("@{} = internal global i8 0", data_symbol);
+        self.globals.push(data_global_def);
+
         let global_def =
             crate::codegen::emit_dynptr_global_text(global_name, data_symbol, vtable_symbol);
         self.globals.push(global_def);

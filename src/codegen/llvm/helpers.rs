@@ -183,6 +183,13 @@ pub(crate) fn parse_declare_name(sig: &str) -> Option<String> {
 
 /// Count commas at the top level inside the parens of a signature.
 /// Used as a rough arg-count heuristic when no type info is available.
+///
+/// Stage 18.334 (P1 soundness fix): Filter out the `...` token (variadic
+/// indicator) from the count. Previously, `count_args_in_signature("(ptr, ...")`
+/// returned 2 — counting `...` as a regular arg, which caused the LLVM decl
+/// to have an extra `i32` param.
+/// Per §20 (iterative audit): found via §20 audit while validating TextEmitter IR.
+/// Per §1.0 原則 6 (通解 > 特解): same filter for all callers.
 pub(crate) fn count_args_in_signature(sig: &str) -> usize {
     let open = match sig.find('(') {
         Some(i) => i,
@@ -194,10 +201,40 @@ pub(crate) fn count_args_in_signature(sig: &str) -> usize {
     };
     let inside = &sig[open + 1..close];
     if inside.trim().is_empty() {
-        0
-    } else {
-        inside.split(',').count()
+        return 0;
     }
+    inside
+        .split(',')
+        .filter(|s| {
+            let s = s.trim();
+            !s.is_empty() && s != "..."
+        })
+        .count()
+}
+
+/// Stage 18.334 (P1 soundness fix): True iff the signature is variadic
+/// (contains `...` inside the parens).
+///
+/// Used by `declare_function` + `emit_call` to set `isVariadic=1` on the
+/// LLVM function type, instead of the previous hardcoded name-list
+/// (`name == "printf" || name == "__landin_eprintf"`).
+///
+/// Per §1.0 原則 6 (通解 > 特解): variadicity is a property of the signature,
+/// not the function name. The same logic now applies to ALL variadic functions
+/// (printf, sprintf, fprintf, __landin_println, __landin_eprintf, etc.).
+/// Per §1.0 原則 9 (正确 > 妥协): correct variadic detection from source-of-truth.
+/// Per §20 (iterative audit): replaces the hardcoded name-list that was a
+/// workaround for not parsing the signature.
+pub(crate) fn signature_is_variadic(sig: &str) -> bool {
+    let open = match sig.find('(') {
+        Some(i) => i,
+        None => return false,
+    };
+    let close = match sig[open..].find(')') {
+        Some(i) => open + i,
+        None => return false,
+    };
+    sig[open..close].contains("...")
 }
 
 /// Stage 18.332 (P1 soundness fix): Create an `sret` type attribute.

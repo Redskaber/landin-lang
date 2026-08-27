@@ -62,6 +62,34 @@ pub fn run_codegen_pipeline(
     // Stage 18.29: Declare non-print built-in macro runtime functions.
     emitter.emit_declare("void @__landin_assert(i1)");
     emitter.emit_declare("void @__landin_panic_msg(ptr)");
+
+    // Stage 18.334 (P1 soundness fix): Pre-declare the heap-alloc runtime
+    // functions. Without these declarations, the TextEmitter IR would emit
+    // `call @__landin_dealloc(...)` without a preceding `declare` line, and
+    // `llvm-as` would reject with "use of undefined value '@__landin_dealloc'".
+    //
+    // LLVMSysEmitter creates these declarations implicitly via LLVMAddFunction
+    // inside `declare_function` (called from `emit_call`). TextEmitter's
+    // `emit_call` writes the call text directly without creating a declaration,
+    // so we need explicit pre-declaration here.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): same set of declarations across both
+    // backends (LLVMSysEmitter's implicit declarations are equivalent to
+    // these explicit ones).
+    // Per §20 (iterative audit): found via §20 audit while validating TextEmitter
+    // IR with `llvm-as` after fixing Bug 3 + Bug 4 + Bug 5.
+    emitter.emit_declare("ptr @__landin_alloc(i64)");
+    emitter.emit_declare("void @__landin_dealloc(ptr)");
+    emitter.emit_declare("void @__landin_memcpy(ptr, ptr, i64)");
+    emitter.emit_declare("ptr @__landin_realloc(ptr, i64, i64)");
+    emitter.emit_declare("i64 @__landin_i64_to_str(ptr, i64, i64)");
+    emitter.emit_declare("i32 @__landin_str_eq(ptr, i64, ptr, i64)");
+    // Stage 18.334: Pre-declare printf (libc variadic) — called directly from
+    // codegen for println!/print! macros. Without this, TextEmitter IR is
+    // rejected by `llvm-as` with "use of undefined value '@printf'".
+    // Per §1.0 原則 4 (报错 > 静默): explicit declaration makes the IR
+    // self-validating.
+    emitter.emit_declare("i32 @printf(ptr, ...)");
     // Stage 18.27: Emit stub definitions for __landin_ print functions.
     // These are needed because MIR lowering creates `store ptr @__landin_println`
     // which references the symbol. The stubs are never called (codegen_print_call
