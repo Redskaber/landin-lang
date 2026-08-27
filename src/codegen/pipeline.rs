@@ -90,6 +90,15 @@ pub fn run_codegen_pipeline(
     // Per §1.0 原則 4 (报错 > 静默): explicit declaration makes the IR
     // self-validating.
     emitter.emit_declare("i32 @printf(ptr, ...)");
+    // Stage 18.335 (P1 soundness fix): Pre-declare __landin_eprintf (variadic)
+    // — called from eprintln!/eprint! macros via codegen_statement. Stage 18.334
+    // added printf declare but missed __landin_eprintf, causing:
+    // - TextEmitter IR: rejected by `llvm-as` with "use of undefined value".
+    // - LLVMSysEmitter: implicit non-variadic declaration → ABI mismatch
+    //   (eprintf is variadic, but AL register wasn't set for variadic floats).
+    // Per §1.0 原則 6 (通解 > 特解): same variadic pre-declaration pattern as printf.
+    // Per §20 (iterative audit): found via §20 Round 4 audit.
+    emitter.emit_declare("void @__landin_eprintf(ptr, ...)");
     // Stage 18.27: Emit stub definitions for __landin_ print functions.
     // These are needed because MIR lowering creates `store ptr @__landin_println`
     // which references the symbol. The stubs are never called (codegen_print_call

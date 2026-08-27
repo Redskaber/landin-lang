@@ -3,12 +3,118 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.496.0 |
+| **Current version** | v0.497.0 |
 | **Date** | 2026-08-27 |
-| **Test count** | 676 lib tests + 3663 integration tests = 4339 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 676 lib tests + 3671 integration tests = 4347 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (8 tests in `stage18_334_text_ir_tests.rs`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (16 tests in `stage18_334` + `stage18_335`) |
+
+---
+
+## v0.497.0 — Stage 18.335 (P1 soundness: ZST param skip + __landin_eprintf declare + drop_glue declare removal + call_dest_type Void override fix)
+
+### Overview
+
+**Stage 18.335: P1 soundness fix — Void leaking into first-class type IR positions**
+
+The §20 Round 4 iterative audit discovered 3 P1 NEW bugs + 2 P2 latent bugs
+in the codegen layer. All 3 P1 bugs are in the same family: `EmitType::Void`
+is being used in IR positions where LLVM only allows first-class types
+(function parameters, allocas). The audit also corrected the prior plan
+to replace `i8` with `{}` for ZST — this would reintroduce the UB that
+Stage 16.22 fixed (LLVM docs: size-0 allocas produce undef pointers).
+
+### Bugs fixed
+
+1. **TD-ZST-PARAM-VOID (P1 NEW)**: ZST (`()`) params produced
+   `define void @foo(void %arg0)` — `llvm-as` rejects "void type only allowed
+   for function results". Fixed by filtering Void params in `codegen_function`
+   (mirrors rustc's ZST param elision). Also skips Void args in
+   `codegen_terminator::Call` path. `params` tuple extended to
+   `(EmitType, String, u32)` to track both LLVM arg index and MIR local_idx
+   (they diverge after filtering).
+
+2. **TD-EPRINTF-UNDECLARED (P1 NEW)**: `__landin_eprintf` (used by
+   `eprintln!`/`eprint!`) was never declared. Stage 18.334 added `printf`
+   declare but missed `__landin_eprintf`. TextEmitter IR was rejected by
+   `llvm-as` with "use of undefined value". LLVMSysEmitter silently created
+   a non-variadic declaration → ABI mismatch (eprintf is variadic, AL register
+   wasn't set). Fixed by adding `emit_declare("void @__landin_eprintf(ptr, ...)")`
+   in `pipeline.rs`.
+
+3. **TD-DROP-GLUE-REDECLARE (P1 NEW)**: `drop_glue.rs:101` emitted a redundant
+   `declare` for `landin_<type>_drop` that conflicted with the later `define`
+   from `codegen_function`. `llvm-as` rejected with "invalid redefinition of
+   function" (even when signatures matched — verified empirically). Fixed by
+   removing the `emit_declare` entirely. LLVM IR allows forward references
+   to functions defined later WITHOUT a preceding `declare`.
+
+4. **TD-CALL-DEST-VOID-OVERRIDE (P2 latent)**: `call_dest_type` override
+   could produce `EmitType::Void` (if callee returns `()`), but the
+   `if ty == EmitType::Void { continue }` check was BEFORE the override →
+   `emit_alloca(&Void, ...)` would produce invalid IR. Fixed by moving
+   the check to AFTER the override.
+
+5. **TD-MISLEADING-ZST-COMMENT (P2 docs)**: Comment in
+   `mir_translation/types.rs:34-37` claimed `alloca {}` is "valid, zero-size"
+   — but per LLVM docs, size-0 allocas produce undef pointers (UB to
+   dereference). Comment corrected to reflect this; the `i8` fallback
+   (Stage 16.22) is retained as the correct workaround.
+
+### What NOT changed (per audit correction)
+
+- **Do NOT replace `i8` with `{}` for ZST** — the audit empirically verified
+  that `alloca {}` produces undef pointers (UB to dereference). Stage 16.22's
+  `i8` fallback (1-byte placeholder) is the correct workaround. Only the
+  misleading comment was fixed.
+
+### Test impact
+
+- Single-thread: **3671 tests, 0 failures** (was 3663 before Stage 18.335).
+- Multi-thread (`--test-threads=2`, `ulimit -s unlimited`): **5/5 stable**.
+- Added 8 regression tests (3 positive + 4 negative + 1 stress) in
+  `tests/v0/stage18/plan/stage18_335_zst_drop_eprintf_tests.rs`.
+- **NEW**: `llvm-as` accepts TextEmitter IR for 3 P1 bug repro programs:
+  - `fn foo(u: ())` (ZST param)
+  - `eprintln!("...")` (stderr macro)
+  - `impl Drop for X` (drop trait)
+
+### Design boundary
+
+- ZST params are elided from the LLVM signature (mirror rustc).
+- All variadic runtime functions are pre-declared in `pipeline.rs`
+  (printf + __landin_eprintf — one place, both backends).
+- Drop glue no longer emits redundant `declare` (LLVM forward-reference
+  handles it).
+- `EmitType::Void` is only used for true void returns, never in
+  first-class type positions.
+- The `i8` fallback for ZST allocas is retained (Stage 16.22 fix preserved).
+- Per §1.0 原則 6 (通解 > 特解): one ZST elision pattern for all ZST params
+  (not per-type special-casing).
+
+### Files changed
+
+- `src/codegen/function.rs` — filter Void params + move Void check after override
+- `src/codegen/terminator.rs` — skip Void args in Call path
+- `src/codegen/pipeline.rs` — add `__landin_eprintf` variadic declare
+- `src/codegen/drop_glue.rs` — remove redundant `emit_declare`
+- `src/codegen/mir_translation/types.rs` — fix misleading ZST comment
+- `tests/v0/stage18/plan/stage18_335_zst_drop_eprintf_tests.rs` — new (8 regression tests)
+- `tests/all_tests.rs` — register `stage18_335_zst_drop_eprintf_tests`
+- `docs/develop/v0/stage-18/plan-18.335.md` — new design doc
+- `docs/develop/v0/tech-debt-register.md` — 5 TDs marked Resolved
+- `Cargo.toml` — v0.496.0 → v0.497.0
+
+### Known limitations
+
+- LLVM 22 needs `ulimit -s unlimited` (or 65536) on systems with default
+  8MB stack. `scripts/run_tests.sh` handles this.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).
+- 2 negative tests (`stage18_335_zst_return_wrong_type` +
+  `stage18_335_drop_wrong_self`) skip with a warning — Landin typeck
+  doesn't yet catch all return-type/receiver mismatches. Documented as
+  known typeck gaps.
 
 ---
 

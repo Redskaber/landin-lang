@@ -700,6 +700,10 @@ mod stage18_333_byval_abi_tests;
 #[path = "v0/stage18/plan/stage18_334_text_ir_tests.rs"]
 mod stage18_334_text_ir_tests;
 
+// === Stage 18.335: P1 soundness fix — ZST param skip + __landin_eprintf declare + drop_glue declare removal ===
+#[path = "v0/stage18/plan/stage18_335_zst_drop_eprintf_tests.rs"]
+mod stage18_335_zst_drop_eprintf_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

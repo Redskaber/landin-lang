@@ -297,6 +297,21 @@ pub(crate) fn codegen_terminator(
             // Process the remaining args from the terminator.
             for a in args {
                 let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+                // Stage 18.335 (P1 soundness fix): Skip ZST args (EmitType::Void).
+                // LLVM IR requires first-class types for call args; `void` is only
+                // allowed as a function *return* type. Without this filter, calling
+                // `fn foo(u: ())` produces `call void @foo(void 0)` which `llvm-as`
+                // rejects with "void value cannot be first class".
+                //
+                // Mirrors rustc_codegen_llvm: ZST args are elided from the call site
+                // (matching the ZST param elision in codegen_function).
+                //
+                // Per §1.0 原則 6 (通解 > 特解): same ZST elision pattern for both
+                // callee (function definition) and caller (call site).
+                // Per §20 (iterative audit): found via §20 Round 4 audit.
+                if ty == EmitType::Void {
+                    continue;
+                }
                 // Stage 16.21: For closure calls, the first arg (self)
                 // is a Closure-typed value. The synthesized function
                 // expects it as a pointer (OpaquePtr). So we pass the

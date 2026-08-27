@@ -302,8 +302,8 @@ pub(crate) fn codegen_function(
         }
     };
 
-    let params: Vec<(EmitType, String)> = (0..param_count)
-        .map(|i| {
+    let params: Vec<(EmitType, String, u32)> = (0..param_count)
+        .filter_map(|i| {
             let local_idx = i + 1;
             let ty = mir
                 .local_decls
@@ -326,13 +326,33 @@ pub(crate) fn codegen_function(
                     }
                 })
                 .unwrap_or(EmitType::I32);
-            (ty, format!("%arg{}", i))
+            // Stage 18.335 (P1 soundness fix): Skip ZST params (EmitType::Void).
+            // LLVM IR requires first-class types for function parameters; `void`
+            // is only allowed as a function *return* type. Without this filter,
+            // `fn foo(u: ())` produces `define void @foo(void %arg0)` which
+            // `llvm-as` rejects with "void type only allowed for function results".
+            //
+            // Mirrors rustc_codegen_llvm: ZST params are elided from the LLVM
+            // signature entirely (Rust ABI doesn't pass them in registers/memory).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): ZST elision is the GENERIC pattern
+            // for all ZST params, not a special-case per param type.
+            // Per §1.0 原則 9 (正确 > 妥协): correct ABI > pragmatic placeholder.
+            // Per §20 (iterative audit): found via §20 Round 4 audit after
+            // Stages 18.332/18.333/18.334 fixed sret/byval/TextEmitter IR.
+            if ty == EmitType::Void {
+                return None;
+            }
+            // Keep both the LLVM arg index `i` (for arg naming) and the MIR
+            // local_idx `i + 1` (for alloca lookup). After filtering Void params,
+            // these two values can diverge — we need both.
+            Some((ty, format!("%arg{}", i), local_idx as u32))
         })
         .collect();
 
     let param_refs: Vec<(EmitType, &str)> = params
         .iter()
-        .map(|(t, n)| (t.clone(), n.as_str()))
+        .map(|(t, n, _)| (t.clone(), n.as_str()))
         .collect();
 
     // Stage 8.3: Add ABI attributes after the function definition.
@@ -356,9 +376,6 @@ pub(crate) fn codegen_function(
         } else {
             mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
         };
-        if ty == EmitType::Void {
-            continue;
-        }
         // Stage 14.36: If this local is the destination of a Call terminator,
         // override its type with the callee's return type from fn_sigs. This
         // fixes struct-returning method calls where the local's type is
@@ -368,13 +385,24 @@ pub(crate) fn codegen_function(
         } else {
             ty
         };
+        // Stage 18.335 (P1 soundness fix): Move the Void check to AFTER the
+        // call_dest_type override. Was: checked BEFORE the override, so a
+        // local whose declared type is non-void but whose callee returns
+        // `()` would still produce `emit_alloca(&Void, ...)` → invalid IR.
+        //
+        // Per §2.2 (根因思维): the root cause was the check ordering — the
+        // override can introduce Void that the original check missed.
+        // Per §20 (iterative audit): found via §20 Round 4 audit.
+        if ty == EmitType::Void {
+            continue;
+        }
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(&ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
     }
 
-    for (i, (ty, arg_name)) in params.iter().enumerate() {
-        let local_idx = (i + 1) as u32;
+    for (ty, arg_name, local_idx) in params.iter() {
+        let local_idx = *local_idx;
         if let Some(ptr) = emitter.local_ptr(local_idx).cloned() {
             // Stage 18.333 (P1 soundness fix): For byval params, the LLVM
             // param value is a `ptr` (the caller's stack slot), NOT the

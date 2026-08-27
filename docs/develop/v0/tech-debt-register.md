@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.334 — P1 soundness fix: TextEmitter sret syntax + sret load + variadic detection via signature parsing + llvm-as smoke test)
-> **Version**: v0.496.0
-> **Status**: Stage 18.334 resolved TD-TEXT-SRET-SYNTAX + TD-TEXT-SRET-LOAD + TD-VARIADIC-DETECTION (P1 soundness — TextEmitter IR silently invalid + variadic detection hardcoded). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3663 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.335 — P1 soundness fix: ZST param skip + __landin_eprintf declare + drop_glue declare removal + call_dest_type Void override fix + ZST comment correction)
+> **Version**: v0.497.0
+> **Status**: Stage 18.335 resolved TD-ZST-PARAM-VOID + TD-EPRINTF-UNDECLARED + TD-DROP-GLUE-REDECLARE + TD-CALL-DEST-VOID-OVERRIDE + TD-MISLEADING-ZST-COMMENT (P1 soundness — Void leaking into first-class type IR positions). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3671 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -91,6 +91,11 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-TEXT-SRET-LOAD | TextEmitter emit_call + emit_dyn_trait_method_call 返回 sret alloca 指针而非 load 后的 struct — 调用方 emit_store(ty=struct, val=ptr, ptr=alloca) → 类型不匹配 | TextEmitter IR 被 llvm-as 拒绝 ("'%sret_9' defined with type 'ptr' but expected '{ i64, i64, i64 }'")；静默存在 Stage 18.332 → Stage 18.334 | ✅ Resolved Stage 18.334: 镜像 LLVMSysEmitter 的 LLVMBuildLoad2 路径 — call void 后 load struct from sret slot: `%vN = load <ret_ty>, ptr %sret_N`。2 个发射站点。 |
 | TD-TEXT-UNDEFINED-DECLS | TextEmitter IR 引用未声明的 runtime 函数 (`@__landin_dealloc`, `@__landin_alloc`, `@printf` 等) — LLVMSysEmitter 在 declare_function 中隐式创建 declaration, TextEmitter 不会 | TextEmitter IR 被 llvm-as 拒绝 ("use of undefined value '@__landin_dealloc'")；静默存在 | ✅ Resolved Stage 18.334: pipeline.rs 显式 pre-declare 6 个 runtime functions + printf。`emit_declare("ptr @__landin_alloc(i64)")` 等。 |
 | TD-TEXT-UNDEFINED-DATA-GLOBAL | TextEmitter emit_dyn_trait_const 引用 `@.data.<type>` 但未定义 — LLVMSysEmitter 在 llvm/module.rs:195-204 隐式创建 zero-initialized i8 global, TextEmitter 不会 | TextEmitter IR 被 llvm-as 拒绝 ("use of undefined value '@.data.Option'")；静默存在 | ✅ Resolved Stage 18.334: text/module.rs:108-112 在 dynptr global 之前 emit `@.data.X = internal global i8 0`。镜像 LLVMSysEmitter 行为。 |
+| TD-ZST-PARAM-VOID | ZST 参数 (`()`) 映射为 EmitType::Void，但 LLVM 只允许 Void 作为函数返回类型。`fn foo(u: ())` 产生 `define void @foo(void %arg0)` — 无效 IR | 任何接收 `()` 参数的函数都编译失败 — 影响 ZST 模式 (Drop trait, marker traits, etc.) | ✅ Resolved Stage 18.335: codegen/function.rs filter_map 跳过 Void params (mirror rustc ZST elision) + codegen/terminator.rs Call path 跳过 Void args。params tuple 扩展为 (EmitType, String, u32) 保留 local_idx (因 filter 后 LLVM arg 索引和 MIR local_idx 不再对齐)。Per §1.0 原則 6 (通解 > 特解): ZST elision 是通用模式。 |
+| TD-EPRINTF-UNDECLARED | `__landin_eprintf` 在 eprintln!/eprint! 宏中被调用但未声明。Stage 18.334 加了 printf declare 但漏了 eprintf | TextEmitter IR 被 llvm-as 拒绝 ("use of undefined value '@__landin_eprintf'")；LLVMSysEmitter 隐式非变长声明 → ABI 不匹配 (eprintf 是变长, AL 寄存器未设置) | ✅ Resolved Stage 18.335: pipeline.rs:93-101 加 `emitter.emit_declare("void @__landin_eprintf(ptr, ...)")`。Per §1.0 原則 6 (通解 > 特解): 同 printf 的变长预声明模式。 |
+| TD-DROP-GLUE-REDECLARE | drop_glue.rs:101 emit_declare `landin_<type>_drop` 与 codegen_function 的 define 冲突 — llvm-as 拒绝 "invalid redefinition of function" (即使签名匹配) | 任何 `impl Drop for X` 产生无效 TextEmitter IR；LLVMSysEmitter 静默重用声明 (掩盖 bug) | ✅ Resolved Stage 18.335: drop_glue.rs:98-123 移除 emit_declare — LLVM 允许前向引用, define 自然处理符号。Per §1.0 原則 5 (去除兼容思维): 移除冗余。 |
+| TD-CALL-DEST-VOID-OVERRIDE | call_dest_type override 可能产生 EmitType::Void (callee 返回 `()`), 但 Void 检查在 override 之前 — `emit_alloca(&Void, ...)` 产生无效 IR | 潜在: 若 typeck 留下 Call 目标 local 为非 void 但 callee 返回 `()`, codegen 崩溃 | ✅ Resolved Stage 18.335: codegen/function.rs:363-399 移动 `if ty == EmitType::Void { continue }` 到 call_dest_type override 之后。Per §2.2 (根因思维): 检查顺序错误是根因。 |
+| TD-MISLEADING-ZST-COMMENT | mir_translation/types.rs:34-37 注释声称 `alloca {}` "valid, zero-size" — 但 LLVM docs 说 size-0 allocas 产生 undef 指针 (UB 解引用) | 误导未来开发者移除 i8 fallback, 重新引入 Stage 16.22 已修复的 UB | ✅ Resolved Stage 18.335: mir_translation/types.rs:25-50 纠正注释 — 说明 alloca {} 产生 undef 指针, i8 fallback 是正确变通。 |
 
 ### 2.6 Standard Library
 

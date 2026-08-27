@@ -95,10 +95,31 @@ pub(crate) fn emit_drop_glue_functions(
         // Emit the drop glue function: `drop_adt_<DefId>`.
         let drop_fn_name = format!("drop_adt_{}", def_id.0);
 
-        // Declare the user's drop method (if the type has impl Drop).
+        // Stage 18.335 (P1 soundness fix): Removed the redundant `emit_declare`
+        // for `landin_<type>_drop` that was here (was: `emitter.emit_declare(
+        // &format!("void @{}(ptr %self)", drop_method_name));`).
+        //
+        // The declare was redundant because:
+        // 1. LLVM IR allows forward references to functions defined later WITHOUT
+        //    a preceding `declare`. The `define` from `codegen_function` (via
+        //    `codegen_from_mir`) handles the symbol.
+        // 2. Having both `declare` + `define` of the same function causes
+        //    `llvm-as` to reject with "invalid redefinition of function"
+        //    (verified empirically — even when signatures match exactly).
+        //
+        // Was previously latent because:
+        // - TextEmitter IR was never validated by `llvm-as` before Stage 18.334.
+        // - LLVMSysEmitter's `emit_function_begin` detects signature mismatch
+        //   and silently reuses (or delete-and-re-add) — masking the bug.
+        //
+        // Per §1.0 原則 5 (去除兼容思维): the declare was redundant; removing
+        // it eliminates the conflict.
+        // Per §2.2 (根因思维): the root cause was the redundancy; removing it
+        // is the root-cause fix.
+        // Per §20 (iterative audit): found via §20 Round 4 audit.
         if has_drop_impl {
-            let drop_method_name = format!("landin_{}_drop", type_name);
-            emitter.emit_declare(&format!("void @{}(ptr %self)", drop_method_name));
+            let _drop_method_name = format!("landin_{}_drop", type_name);
+            // (No emit_declare — the define from codegen_function handles it.)
         }
 
         // Get the AdtLayout for this type (to know field types for recursive drop).

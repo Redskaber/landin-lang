@@ -33,11 +33,20 @@ pub fn mir_type_to_emit_type_with_layouts(
                     //
                     // With `Struct(vec![])` (LLVM `{}`):
                     // - The function signature is `{} @f()` (returns empty struct)
-                    // - The alloca is `alloca {}` (valid, zero-size)
-                    // - The receiver `&self` is the alloca pointer (valid `ptr`)
+                    //   — VALID per LLVM Language Reference.
+                    // - The alloca would be `alloca {}` — but per LLVM docs, size-0
+                    //   allocas produce undef pointers (UB to dereference). So both
+                    //   emitters (`text/mod.rs:48-57` + `llvm/mod.rs:618-620`) use
+                    //   an `i8` fallback (1-byte placeholder) for ZST allocas.
+                    //   The i8 byte is never read for true ZSTs.
+                    // - The receiver `&self` is the alloca pointer (valid `ptr`).
                     //
                     // Per §1.0 原则 6 "通用 > 特例": same code path as non-empty
                     // structs, just with zero fields.
+                    //
+                    // Stage 18.335: Comment corrected per §20 Round 4 audit —
+                    // previous comment claimed `alloca {}` is "valid, zero-size"
+                    // which was misleading (LLVM docs say size-0 allocas are UB).
                     EmitType::Struct(vec![])
                 } else {
                     // Stage 3.47: recurse with `layouts` so nested Adts
