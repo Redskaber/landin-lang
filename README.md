@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.329 — P1 codegen bug 根因修复: 15 bugs fixed — opaque pointer migration + LLVMSysEmitter typed ptr + CodeGenLevelDefault + struct return ABI + entry block br)
+> **Version**: v0.493.0 (Stage 18.331 — P1 codegen bug 根因修复: TextEmitter sret + EmitType::needs_sret() + LLVMSysEmitter sret 回退; 16 bugs fixed — both_news 100%, Vec::new multiple 95%)
 > **License**: MIT
 > **Status**: v0.4 stable. 4317 tests, 0 failures (单线程). 类 Rust 原始类型扩展模型完成. P1 codegen 根因修复.
 
@@ -291,13 +291,15 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.329) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.331) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
+| 18.331 | v0.493.0 | P1 codegen bug 根因修复: TextEmitter sret (emit_function_begin/emit_ret/emit_call) + EmitType::needs_sret() + LLVMSysEmitter sret 回退 (尝试+失败,LLVM C API sret 类型匹配问题 — 留 v0.5+) — both_news 100%, Vec::new multiple 95% |
+| 18.330 | v0.493.0 | P1 codegen bug 根因修复: TextEmitter sret for struct > 16 bytes (per Rust rustc_codegen_llvm) — emit_function_begin/emit_ret/emit_call 全部支持 sret, EmitType::needs_sret() 判断 (1 bug, 总计 16 bugs fixed) |
 | 18.329 | v0.493.0 | P1 codegen bug 根因修复: LLVMSysEmitter typed ptr store→opaque, emit_null_ptr→ConstNull, CodeGenLevel→Default (struct return ABI), entry block br (5 bugs, 总计 15 bugs fixed) |
 | 18.327 | v0.493.0 | P1 codegen bug 根因修复: opaque pointer migration — GEP typed ptr→opaque, load/store 加 ptr 前缀, entry block 加 br terminator (3 bugs, 总计 10 bugs fixed) |
 | 18.326 | v0.493.0 | P1 codegen bug 根因修复: 7 bugs (bitcast→inttoptr/null, private→internal, zeroinitializer typed, ptr %self, globals ordering, emit_null_ptr value, LLVMSysEmitter lookup) |

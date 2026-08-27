@@ -56,24 +56,53 @@ impl AggregateEmitter for TextEmitter {
         ret_ty: &EmitType,
     ) -> EmitValue {
         let r = self.fresh();
-        let ret_str = emit_type_to_llvm_str(ret_ty);
-        let args_str = args
-            .iter()
-            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-            .collect::<Vec<_>>()
-            .join(", ");
-        // For void calls we don't assign a result register.
-        // Stage 14.58: For indirect calls, fn_name may be an SSA value (%vN)
-        // or a function reference (@landin_name). Use the appropriate prefix.
         let call_target = if fn_name.starts_with('%') || fn_name.starts_with('@') {
             fn_name.to_string()
         } else {
             format!("@{}", fn_name)
         };
-        if *ret_ty == EmitType::Void {
+
+        // Stage 18.330 (P1 soundness fix): For struct return > 16 bytes,
+        // use sret calling convention: allocate result on stack, pass
+        // sret pointer as first arg, call void, return the sret pointer.
+        //
+        // **Design boundary** (per System V ABI + rustc_codegen_llvm):
+        // - ret_ty.needs_sret() → alloca result, pass ptr sret, call void
+        // - Otherwise → normal `call <ret_ty> @fn(args)`
+        //
+        // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
+        if ret_ty.needs_sret() {
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            // Allocate space for the return value.
+            let sret_name = format!("%sret_{}", r);
+            self.line(&format!("  {} = alloca {}", sret_name, ret_str));
+            // Build args: sret pointer first, then original args.
+            let mut all_args = vec![format!("ptr {}", sret_name)];
+            for (ty, a) in args {
+                all_args.push(format!("{} {}", emit_type_to_llvm_str(ty), a));
+            }
+            self.line(&format!(
+                "  call void {}({})",
+                call_target,
+                all_args.join(", ")
+            ));
+            // Return the sret pointer — callers use it to access the result.
+            sret_name
+        } else if *ret_ty == EmitType::Void {
+            let args_str = args
+                .iter()
+                .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
+                .collect::<Vec<_>>()
+                .join(", ");
             self.line(&format!("  call void {}({})", call_target, args_str));
             "0".to_string()
         } else {
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            let args_str = args
+                .iter()
+                .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
+                .collect::<Vec<_>>()
+                .join(", ");
             self.line(&format!(
                 "  %v{} = call {} {}({})",
                 r, ret_str, call_target, args_str

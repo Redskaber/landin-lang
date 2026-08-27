@@ -10,18 +10,46 @@ use super::TextEmitter;
 
 impl FunctionEmitter for TextEmitter {
     fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: &EmitType) {
-        let ret_str = emit_type_to_llvm_str(ret);
-        let param_strs: Vec<String> = params
-            .iter()
-            .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name))
-            .collect();
-        self.line(&format!(
-            "define {} @{}({}) {{",
-            ret_str,
-            name,
-            param_strs.join(", ")
-        ));
-        self.next_val = params.len() as u32 + 1;
+        // Stage 18.330 (P1 soundness fix): For struct return > 16 bytes,
+        // use sret (hidden pointer parameter) per System V ABI.
+        // Rust's rustc_codegen_llvm does this in the IR layer explicitly.
+        //
+        // **Design boundary** (per System V ABI + rustc_codegen_llvm):
+        // - ret.needs_sret() → `define void @fn(ptr sret %_0, ...)`
+        // - Otherwise → `define <ret_ty> @fn(...)`
+        //
+        // Per §2.2 (根因思维): LLVM's CodeGenPrepare should auto-convert,
+        // but LLVM 22 has intermittent issues. Explicit sret is more reliable.
+        if ret.needs_sret() {
+            // sret: void return + hidden sret pointer as first param.
+            let sret_param = format!("ptr sret {}", "%_sret");
+            let param_strs: Vec<String> = std::iter::once(sret_param)
+                .chain(
+                    params
+                        .iter()
+                        .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name)),
+                )
+                .collect();
+            self.line(&format!(
+                "define void @{}({}) {{",
+                name,
+                param_strs.join(", ")
+            ));
+            self.next_val = (params.len() + 1) as u32 + 1;
+        } else {
+            let ret_str = emit_type_to_llvm_str(ret);
+            let param_strs: Vec<String> = params
+                .iter()
+                .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name))
+                .collect();
+            self.line(&format!(
+                "define {} @{}({}) {{",
+                ret_str,
+                name,
+                param_strs.join(", ")
+            ));
+            self.next_val = params.len() as u32 + 1;
+        }
         self.locals.clear();
         self.local_ptrs.clear();
     }
@@ -32,10 +60,20 @@ impl FunctionEmitter for TextEmitter {
     }
 
     fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
-        let ty_str = emit_type_to_llvm_str(ty);
-        match val {
-            Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
-            None => self.line("  ret void"),
+        // Stage 18.330: For sret functions, store value to sret pointer + ret void.
+        if ty.needs_sret() {
+            if let Some(v) = val {
+                let ty_str = emit_type_to_llvm_str(ty);
+                // Store the return value to the sret pointer.
+                self.line(&format!("  store {} {}, ptr %_sret", ty_str, v));
+            }
+            self.line("  ret void");
+        } else {
+            let ty_str = emit_type_to_llvm_str(ty);
+            match val {
+                Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
+                None => self.line("  ret void"),
+            }
         }
     }
 
