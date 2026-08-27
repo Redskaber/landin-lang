@@ -3,12 +3,13 @@
 #
 # Auto-detects the system LLVM version and updates .cargo/config.toml + Cargo.toml
 # to use the correct llvm-sys version. Eliminates manual editing when switching
-# between build server (LLVM 19) and user environment (LLVM 21).
+# between LLVM versions (supports LLVM 18-22; default is LLVM 22.1 / llvm-sys 221
+# since Stage 18.210; LLVM 19.x is the build-server fallback).
 #
 # Usage:
 #   bash scripts/switch-llvm-version.sh          # auto-detect
-#   bash scripts/switch-llvm-version.sh 19       # force LLVM 19
-#   bash scripts/switch-llvm-version.sh 21       # force LLVM 21
+#   bash scripts/switch-llvm-version.sh 19        # force LLVM 19
+#   bash scripts/switch-llvm-version.sh 22        # force LLVM 22
 #
 # After running, build with:
 #   cargo build --lib --features llvm-backend

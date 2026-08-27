@@ -1,8 +1,8 @@
 # LLVM Integration Documentation
 
 > **Stage 13.5 MUV-1**: LLVM library integration for Landin compiler
-> **Date**: 2026-07-26
-> **Supported versions**: LLVM 19.1.7 (build server), LLVM 21.1.8 (user environment)
+> **Date**: 2026-08-26 (Stage 18.318)
+> **Supported versions**: LLVM 22.1.8 (default, llvm-sys 221) / LLVM 19.x (fallback, llvm-sys 191) / LLVM 21.1.8 (user environment)
 
 ## Overview
 
@@ -15,9 +15,9 @@ Rust bindings to the LLVM C API. This enables:
 
 ## Environment Setup
 
-### Option 1: System LLVM (LLVM 21 — user environment)
+### Option 1: System LLVM (LLVM 22 — default, Stage 18.210+)
 
-If `llvm-config` is in PATH (e.g., LLVM 21.1.8 installed via system package manager):
+If `llvm-config` is in PATH (e.g., LLVM 22.1.8 installed via system package manager):
 
 ```bash
 # Verify

@@ -3,7 +3,7 @@ name = "landin-compiler"
 version = "0.493.0"
 edition = "2021"
 license = "MIT"
-description = "Landin compiler — Rust-inspired systems language (LLVM 19 backend)"
+description = "Landin compiler — Rust-inspired systems language (LLVM 22 backend)"
 repository = "https://github.com/redskaber/landin-lang"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]
@@ -65,9 +65,10 @@ lasso = "0.7"
 unicode-xid = "0.2"
 clap = { version = "4", features = ["derive"] }
 
-# Stage 13.5 MUV-1: LLVM library integration (GAP-1 closure)
-# Supports LLVM 19 (build server) and LLVM 21 (user environment)
-# Set LLVM_SYS_191_PREFIX or LLVM_SYS_211_PREFIX + LLVM_LINK_SHARED=1
+# Stage 13.5 MUV-1: LLVM library integration (GAP-1 closure).
+# Stage 18.210: upgraded default to LLVM 22.1 (llvm-sys 221); LLVM 19.x
+# is the build-server fallback. Supports LLVM 18-22 via switch-llvm-version.sh.
+# Set LLVM_SYS_221_PREFIX (or LLVM_SYS_191_PREFIX for fallback) + LLVM_LINK_SHARED=1.
 [dependencies.llvm-sys]
 version = "221"
 features = ["prefer-dynamic"]

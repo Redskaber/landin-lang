@@ -1,8 +1,9 @@
 # Landin Stage 0 构建指南
 
-> **版本**：v0.1.2
-> **平台**：Linux / macOS / Windows（需 Rust 工具链）
-> **最后更新**：S0-REV-6（2025）
+> **版本**：v0.493.0 (Stage 18.318)
+> **平台**：Linux (x86_64 + aarch64) — Windows/macOS 待 v0.2+
+> **最后更新**：Stage 18.318 (2026-08-26)
+> **LLVM**：LLVM 22.1 (llvm-sys 221, 默认) / LLVM 19.x (fallback)
 
 ---
 
@@ -12,18 +13,18 @@
 
 | 组件 | 最低版本 | 推荐版本 |
 |---|---|---|
-| rustc | 1.70.0 | 1.75+（稳定通道） |
-| cargo | 1.70.0 | 1.75+ |
+| rustc | 1.70.0 | stable (最新稳定通道) |
+| cargo | 1.70.0 | stable |
 | Rust edition | 2021 | 2021 |
+| rustfmt | — | stable (代码格式化) |
+| clippy | — | stable (lint) |
 
 **安装 Rust**（如未安装）：
 
 ```bash
 # Unix/macOS
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Windows：下载 rustup-init.exe
-# https://win.rustup.rs/x86_64
+rustup component add rustfmt clippy
 ```
 
 验证：
@@ -47,42 +48,55 @@ la-arena = "0.3"          # Arena 分配器（用于 AST 节点 ID）
 lasso = "0.7"             # String interner（用于 Ident/StrLit）
 unicode-xid = "0.2"       # Unicode XID_Start/XID_Continue
 clap = { version = "4", features = ["derive"] }  # CLI 参数解析
+llvm-sys = { version = "221", features = ["prefer-dynamic"], optional = true }  # LLVM 22 绑定
+
+[features]
+llvm-backend = ["llvm-sys"]  # LLVM 原生后端（默认关闭，需 --features llvm-backend）
 
 [dev-dependencies]
 expect-test = "1.5"       # 期望测试（用于 snapshot testing）
 ```
 
-无 LLVM 依赖（月 7+ codegen 阶段才需要）。
+**LLVM 依赖说明**：LLVM 22.1 (llvm-sys 221) 是默认后端，通过 `--features llvm-backend` 启用。
+环境配置见 `scripts/setup-llvm-env.sh`（自动检测 LLVM 22，fallback 到 LLVM 19）。
+详见 [`docs/llvm/`](llvm/) 目录下的 LLVM 集成文档。
 
 ---
 
 ## 2. 如何构建
 
+**前提**：先设置 LLVM 环境（Stage 13.5+）：
+
+```bash
+source scripts/setup-llvm-env.sh
+# 或: source scripts/env.sh  (LLVM 22 PATH + LD_LIBRARY_PATH helper)
+```
+
 ### 2.1 Debug 构建（默认）
 
 ```bash
 cd /path/to/landin-stage0
-cargo build
+cargo build --features llvm-backend
 ```
 
 产物：
-- 二进制：`target/debug/landin-stage0`
+- 二进制：`target/debug/landin-stage0` + `target/debug/landinc`
 - 库：`target/debug/liblandin_compiler.rlib`
 
 ### 2.2 Release 构建
 
 ```bash
-cargo build --release
+cargo build --release --features llvm-backend
 ```
 
 产物：
-- 二进制：`target/release/landin-stage0`
+- 二进制：`target/release/landin-stage0` + `target/release/landinc`
 - 库：`target/release/liblandin_compiler.rlib`
 
 ### 2.3 仅构建库（不含 CLI）
 
 ```bash
-cargo build --lib
+cargo build --lib --features llvm-backend
 ```
 
 ### 2.4 仅构建 CLI 二进制
@@ -453,21 +467,25 @@ cargo build
 
 ## 7. 发布与分发
 
-### 7.1 Stage 0 不发布
+### 7.1 v0.4 当前状态 (Stage 18.318)
 
-Stage 0 是开发阶段，不发布到 crates.io 或 GitHub Releases。仅在本地构建运行。
+v0.4 已完全可交付：
+- 4203 tests (676 lib + 3527 integration), 0 failures
+- 类 Rust 原始类型扩展模型完成
+- 全量深度审查完成 (98 src files, 12 stale items fixed)
+- 文档完全同步
 
-### 7.2 v0.1 发布（月 12+）
+### 7.2 v0.5+ 路线图 (BLOCKED — 需要 language features)
 
-v0.1 = Stage 0 完整 + conformance 通过。届时会：
-- GitHub Release
-- crates.io 发布（landin-compiler + landin-stage0）
-- 预编译二进制（Linux/macOS/Windows）
+- `sizeof(T)` — 泛型类型大小计算 (解锁 Box::new + Vec::push real body)
+- fat pointer 操作语法 — 拆解 + 构造 (解锁 String::as_str real body)
+- `core::fmt` 基础设施 — Display/Debug/Formatter/Write (解锁 format! macro real body)
+- 孤儿规则 — 多 crate coherence
 
-### 7.3 自举（v0.3，月 43-64）
+### 7.3 自举（v0.3+，deferred）
 
 详见蓝图 `08-bootstrap-strategy.md`。
 
 ---
 
-**Landin Stage 0 构建指南 v0.1.2 — 完**
+**Landin Stage 0 构建指南 v0.493.0 (Stage 18.318) — 完**

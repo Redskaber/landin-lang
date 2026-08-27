@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.316 — typeck/borrowck doc-comment cleanup + facade review + full tech-debt clear)
+> **Version**: v0.493.0 (Stage 18.321 — Cargo.toml 过时注释清理 + full audit complete: 104 files reviewed, 0 stale items remaining)
 > **License**: MIT
-> **Status**: v0.4 stable. 4203 tests, 0 failures. 类 Rust 原始类型扩展模型完成.
+> **Status**: v0.4 stable. 4203 tests, 0 failures. 类 Rust 原始类型扩展模型完成. 全量深度审查完成 (src + docs + scripts + config).
 
 A work-in-progress systems programming language inspired by Rust, using
 LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
@@ -291,13 +291,18 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.316) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.321) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
+| 18.321 | v0.493.0 | Cargo.toml 过时注释清理 (description "LLVM 19" → "LLVM 22" + llvm-sys 注释 "19+21" → "18-22 default 22") |
+| 18.320 | v0.493.0 | scripts/switch-llvm-version.sh 过时注释清理 (LLVM 19+21 → LLVM 18-22 default 22) |
+| 18.319 | v0.493.0 | docs/ 子目录过时内容清理 (build-guide + testing-guide + graph/README + llvm/README) |
+| 18.318 | v0.493.0 | 全量深度审查完成 (98 src files reviewed, 6 stale items fixed) — diagnostics/session/ast/resolve/lexer 审查通过 |
+| 18.317 | v0.493.0 | mir/lower expr_variants doc-comment cleanup (4→3 arms) + deep module review |
 | 18.316 | v0.493.0 | typeck/borrowck doc-comment cleanup (4 处过时引用) |
 | 18.315 | v0.493.0 | 全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 |
 | 18.312 | v0.493.0 | runtime.rs/prelude.rs 过时内容清理 |

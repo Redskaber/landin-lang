@@ -1,8 +1,9 @@
 # Landin Stage 0 测试指南
 
-> **范围**：Stage 0 前端（Lexer + Parser + AST）测试方法论
-> **测试规模**：375 个（lexer 109 + parser 85 + ast_structure 149 + hir_structure 20 + lib 12）
-> **最后更新**：Stage 1.1（2025）
+> **范围**：全 pipeline 测试 (Lexer + Parser + AST + HIR + MIR + Typeck + Borrowck + Codegen)
+> **测试规模**：4203 个（lib 676 + integration 3527 + 2 ignored）
+> **最后更新**：Stage 18.318 (2026-08-26)
+> **版本**：v0.493.0
 
 ---
 
@@ -12,7 +13,8 @@
 
 ```bash
 cd /path/to/landin-stage0
-cargo test
+source scripts/env.sh  # 设置 LLVM 22 环境
+cargo test --release --features llvm-backend
 ```
 
 预期输出：

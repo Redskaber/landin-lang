@@ -1,8 +1,13 @@
-//! Expression variant lowering: Path, Call, For, MethodCall.
+//! Expression variant lowering: Path, Call, For.
 //!
 //! Per `docs/stage-committee-process.md` v6.4 §13.4 J1-J6 (Stage 18.133):
 //! Extracted from `expr_operand.rs` to satisfy J6 (科学合理粒度) + J2 (单一职责).
-//! This file contains the 4 largest HirExprKind match arms, extracted as functions.
+//! This file contains the 3 largest HirExprKind match arms (Path, Call, For),
+//! extracted as functions.
+//!
+//! Stage 18.309 update: the 4th variant (`MethodCall`) was extracted to
+//! `method_call_lower.rs` per §13.4 J1-J6 (LOC reduction). See
+//! `src/mir/lower/method_call_lower.rs` for the MethodCall lowering.
 //!
 //! ## Sub-responsibility
 //! Each function lowers one HirExprKind variant to a MIR LocalId.
