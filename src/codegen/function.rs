@@ -376,7 +376,27 @@ pub(crate) fn codegen_function(
     for (i, (ty, arg_name)) in params.iter().enumerate() {
         let local_idx = (i + 1) as u32;
         if let Some(ptr) = emitter.local_ptr(local_idx).cloned() {
-            emitter.emit_store(ty, arg_name, &ptr);
+            // Stage 18.333 (P1 soundness fix): For byval params, the LLVM
+            // param value is a `ptr` (the caller's stack slot), NOT the
+            // struct itself. We must LOAD the struct from the pointer first,
+            // then store it to the local alloca.
+            //
+            // Without this load, the IR would be:
+            //   store { i64, i64, i64 } %arg0, ptr %loc_1   ; %arg0 is ptr!
+            // This is invalid IR (LLVM would reject "stored value and pointer
+            // base type do not match"). The previous code "worked" only
+            // because LLVM silently truncated or coerced — producing garbage.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): emit an explicit load to make
+            // the value type match the alloca type.
+            // Per §20 (iterative audit): same root cause as sret; same fix
+            // pattern (load value from ABI pointer before storing to local).
+            if ty.needs_byval() {
+                let loaded = emitter.emit_load(ty, &arg_name.to_string());
+                emitter.emit_store(ty, &loaded, &ptr);
+            } else {
+                emitter.emit_store(ty, arg_name, &ptr);
+            }
         }
     }
 

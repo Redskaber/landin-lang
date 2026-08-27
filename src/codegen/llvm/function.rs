@@ -3,7 +3,7 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
-use super::helpers::{create_sret_attribute, cstr_owned};
+use super::helpers::{create_byval_attribute, create_sret_attribute, cstr_owned};
 use crate::codegen::emitter::FunctionEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
@@ -16,8 +16,42 @@ impl FunctionEmitter for LLVMSysEmitter {
         unsafe {
             // Build function type.
             let ret_ty = self.llvm_type(ret);
-            let param_tys: Vec<LLVMTypeRef> =
-                params.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            // Stage 18.333 (P1 soundness fix): For struct/array parameters > 16 bytes,
+            // build the byval signature: replace the param type with `ptr` and add
+            // `byval(<orig_ty>)` attribute at the param's 1-indexed position.
+            //
+            // Per System V AMD64 ABI §3.2.3: structs/arrays > 16 bytes passed as
+            // parameters must be passed via a hidden pointer parameter with the
+            // `byval` attribute (mirrors `sret` for returns).
+            //
+            // rustc_codegen_llvm emits byval explicitly via `Attribute::ByVal`;
+            // we mirror this via `LLVMCreateTypeAttribute(ctx, byval_kind, ty)`.
+            //
+            // **Design boundary** (mirrors Stage 18.332 sret):
+            // - `needs_byval()` is the SINGLE source of truth for the threshold.
+            // - Both TextEmitter and LLVMSysEmitter agree on byval emission.
+            // - Param index shifts when sret is active: user param `i` is at
+            //   LLVM index `i + 1 + (1 if use_sret else 0)` (LLVM 1-indexed).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one byval path for all > 16B struct/array params.
+            // Per §20 (iterative audit): same root cause as sret bug; same fix pattern.
+            let use_sret = ret.needs_sret();
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+
+            // Compute the LLVM param types, replacing byval-eligible types with `ptr`.
+            // Track which user params are byval so we can add attributes after fn creation.
+            let mut byval_infos: Vec<(usize, LLVMTypeRef)> = Vec::new(); // (user_idx, orig_llvm_ty)
+            let mut user_param_llvm_tys: Vec<LLVMTypeRef> = Vec::with_capacity(params.len());
+            for (i, (t, _)) in params.iter().enumerate() {
+                let orig_llvm_ty = self.llvm_type(t);
+                if t.needs_byval() {
+                    byval_infos.push((i, orig_llvm_ty));
+                    user_param_llvm_tys.push(ptr_ty);
+                } else {
+                    user_param_llvm_tys.push(orig_llvm_ty);
+                }
+            }
+
             // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
             // build the sret signature: `void (ptr sret(<ret_ty>), ...params)`.
             //
@@ -38,16 +72,13 @@ impl FunctionEmitter for LLVMSysEmitter {
             // Per §1.0 原則 6 (通解 > 特解): one sret path for all > 16B struct returns.
             // Per §12 (最优 > 最小): root-cause fix at IR level, not auto-demotion.
             // Per §2.2 原則 9 (正确 > 妥协): correct ABI > no optimization.
-            let use_sret = ret.needs_sret();
-
             let (fn_ret_ty, fn_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
                 let void_ty = LLVMVoidTypeInContext(self.ctx);
-                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                 let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
-                sret_params.extend(param_tys.iter().copied());
+                sret_params.extend(user_param_llvm_tys.iter().copied());
                 (void_ty, sret_params)
             } else {
-                (ret_ty, param_tys.clone())
+                (ret_ty, user_param_llvm_tys.clone())
             };
 
             let fty = LLVMFunctionType(
@@ -123,6 +154,19 @@ impl FunctionEmitter for LLVMSysEmitter {
                 LLVMAddAttributeAtIndex(fn_val, 1, sret_attr);
             }
 
+            // Stage 18.333: Add byval attribute to each byval-eligible user param.
+            // The LLVM param index for user param `i` is `i + 1 + (1 if use_sret else 0)`
+            // because:
+            // - LLVM uses 1-indexed params (1..N).
+            // - When use_sret, param 1 is the sret slot, so user params start at 2.
+            // - When not use_sret, user params start at 1.
+            let sret_offset: u32 = if use_sret { 1 } else { 0 };
+            for (user_idx, orig_llvm_ty) in &byval_infos {
+                let llvm_param_idx = (*user_idx as u32) + 1 + sret_offset;
+                let byval_attr = create_byval_attribute(self.ctx, *orig_llvm_ty);
+                LLVMAddAttributeAtIndex(fn_val, llvm_param_idx, byval_attr);
+            }
+
             // Register the function in the declared cache so subsequent
             // emit_call sites resolve to this same function value.
             self.declared.insert(name.to_string(), fn_val);
@@ -154,6 +198,10 @@ impl FunctionEmitter for LLVMSysEmitter {
 
             // Register each parameter under its name (e.g. "%arg0").
             // When use_sret, skip param 0 (sret pointer).
+            // For byval params, the LLVM param value is a `ptr` (the caller's
+            // stack slot pointer). We register it under the user-visible name
+            // so the function body can use it transparently (load from the ptr
+            // to access the struct value).
             let param_offset = if use_sret { 1u32 } else { 0u32 };
             for (i, (_, pname)) in params.iter().enumerate() {
                 let pval = LLVMGetParam(fn_val, (i as u32) + param_offset);

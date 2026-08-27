@@ -3,7 +3,7 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
-use super::helpers::{create_sret_attribute, cstr_owned};
+use super::helpers::{create_byval_attribute, create_sret_attribute, cstr_owned};
 use crate::codegen::emitter::AggregateEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
@@ -27,16 +27,25 @@ impl AggregateEmitter for LLVMSysEmitter {
         // - Callee writes the result to the sret pointer.
         // - Caller loads the result from the slot.
         //
+        // Stage 18.333 (P1 soundness fix): For struct/array args > 16 bytes,
+        // use byval calling convention at the call site.
+        // - Caller allocates a stack slot for the arg.
+        // - Stores the arg value to the slot.
+        // - Passes the slot pointer with `byval(<arg_ty>)` attribute.
+        // - Callee accesses the arg via the pointer (transparent to MIR).
+        //
         // **Design boundary**:
-        // - Mirrors TextEmitter's emit_call sret path (Stage 18.330).
-        // - `declare_function` and `interpret_adhoc` ALSO build sret
+        // - Mirrors TextEmitter's emit_call sret+byval paths (Stage 18.330/18.333).
+        // - `declare_function` and `interpret_adhoc` ALSO build sret+byval
         //   signatures, so the callee's function type already matches.
         // - For indirect calls (fn_name starts with %), we still build the
-        //   sret signature at the call site and add the sret attribute to
-        //   the call's first arg.
+        //   sret+byval signature at the call site and add the attributes to
+        //   the call's args.
         //
-        // Per §1.0 原則 6 (通解 > 特解): one sret call path for all > 16B struct returns.
+        // Per §1.0 原則 6 (通解 > 特解): one sret+byval call path for all > 16B
+        // struct/array returns and params.
         // Per §12 (最优 > 最小): root-cause fix at IR level.
+        // Per §20 (iterative audit): same root cause as sret; same fix pattern.
         let use_sret = ret_ty.needs_sret();
 
         let arg_tys: Vec<EmitType> = args.iter().map(|(t, _)| t.clone()).collect();
@@ -69,12 +78,12 @@ impl AggregateEmitter for LLVMSysEmitter {
             // not symptom (change function signatures or use i32 everywhere).
             // Per §1.0 原則 6 (通解>特例): one coercion path for all integer
             // arg type mismatches.
-            let user_param_tys: Vec<LLVMTypeRef> =
+            let user_param_llvm_tys: Vec<LLVMTypeRef> =
                 args.iter().map(|(t, _)| self.llvm_type(t)).collect();
             let mut user_arg_vals: Vec<LLVMValueRef> = Vec::with_capacity(args.len());
             for (i, (_, v)) in args.iter().enumerate() {
                 let raw = self.lookup(v);
-                let target_ty = user_param_tys[i];
+                let target_ty = user_param_llvm_tys[i];
                 let raw_ty = LLVMTypeOf(raw);
                 if raw_ty == target_ty {
                     user_arg_vals.push(raw);
@@ -118,17 +127,47 @@ impl AggregateEmitter for LLVMSysEmitter {
                 None
             };
 
+            // Stage 18.333: For each byval-eligible user arg, allocate a slot
+            // via entry_block_alloca, store the arg value to the slot, and
+            // pass the slot pointer instead of the value. The LLVM param
+            // type is `ptr` (not the original struct type), and a `byval(<orig_ty>)`
+            // attribute is added at the call site.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): same entry_block_alloca pattern as sret.
+            // Per §20: same root cause as sret; same fix pattern.
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let mut byval_infos: Vec<(usize, LLVMTypeRef)> = Vec::new(); // (user_idx, orig_llvm_ty)
+            let mut final_user_param_tys: Vec<LLVMTypeRef> = Vec::with_capacity(args.len());
+            let mut final_user_arg_vals: Vec<LLVMValueRef> = Vec::with_capacity(args.len());
+            for (i, (t, _)) in args.iter().enumerate() {
+                let orig_llvm_ty = user_param_llvm_tys[i];
+                if t.needs_byval() {
+                    byval_infos.push((i, orig_llvm_ty));
+                    // Allocate slot in entry block (same pattern as sret_slot).
+                    let slot_name = format!("byval_arg{}_slot", i);
+                    let slot = self.entry_block_alloca(orig_llvm_ty, &slot_name);
+                    // Store the arg value to the slot.
+                    LLVMBuildStore(self.builder, user_arg_vals[i], slot);
+                    // Pass the slot pointer instead of the value.
+                    final_user_arg_vals.push(slot);
+                    final_user_param_tys.push(ptr_ty);
+                } else {
+                    final_user_arg_vals.push(user_arg_vals[i]);
+                    final_user_param_tys.push(orig_llvm_ty);
+                }
+            }
+
             // Build the final args list (sret slot first if applicable).
             let mut all_arg_vals: Vec<LLVMValueRef> =
-                Vec::with_capacity(user_arg_vals.len() + if use_sret { 1 } else { 0 });
+                Vec::with_capacity(final_user_arg_vals.len() + if use_sret { 1 } else { 0 });
             if let Some(slot) = sret_slot {
                 all_arg_vals.push(slot);
             }
-            all_arg_vals.extend(user_arg_vals.iter().copied());
+            all_arg_vals.extend(final_user_arg_vals.iter().copied());
 
             // Build the function type matching the callee's signature.
-            // For sret: void (ptr sret, ...user_params).
-            // For non-sret: <ret_ty> (...user_params).
+            // For sret: void (ptr sret, ...user_params_with_byval_replacements).
+            // For non-sret: <ret_ty> (...user_params_with_byval_replacements).
             // For variadic printf: i32 (..., ...).
             let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
                 1
@@ -137,12 +176,11 @@ impl AggregateEmitter for LLVMSysEmitter {
             };
             let (call_ret_ty, all_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
                 let void_ty = LLVMVoidTypeInContext(self.ctx);
-                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                 let mut sret_param_tys: Vec<LLVMTypeRef> = vec![ptr_ty];
-                sret_param_tys.extend(user_param_tys.iter().copied());
+                sret_param_tys.extend(final_user_param_tys.iter().copied());
                 (void_ty, sret_param_tys)
             } else {
-                (ret_llvm_ty, user_param_tys.clone())
+                (ret_llvm_ty, final_user_param_tys.clone())
             };
             let fty = LLVMFunctionType(
                 call_ret_ty,
@@ -179,6 +217,16 @@ impl AggregateEmitter for LLVMSysEmitter {
             if use_sret {
                 let sret_attr = create_sret_attribute(self.ctx, ret_llvm_ty);
                 LLVMAddCallSiteAttribute(v, 1, sret_attr);
+            }
+
+            // Stage 18.333: Add byval attribute to each byval-eligible user arg
+            // at the call site. The LLVM arg index for user arg `i` is
+            // `i + 1 + (1 if use_sret else 0)` (LLVM 1-indexed, +1 for sret if active).
+            let sret_offset: u32 = if use_sret { 1 } else { 0 };
+            for (user_idx, orig_llvm_ty) in &byval_infos {
+                let llvm_arg_idx = (*user_idx as u32) + 1 + sret_offset;
+                let byval_attr = create_byval_attribute(self.ctx, *orig_llvm_ty);
+                LLVMAddCallSiteAttribute(v, llvm_arg_idx, byval_attr);
             }
 
             if *ret_ty == EmitType::Void {
@@ -307,22 +355,34 @@ impl AggregateEmitter for LLVMSysEmitter {
             // loaded from the vtable is `ptr` (opaque), so the call site
             // attribute is the ONLY way to convey sret to LLVM.
             //
+            // Stage 18.333 (P1 soundness fix): For struct/array args > 16 bytes,
+            // use byval at the indirect call site (same pattern as emit_call).
+            //
             // Per §20 (iterative audit): "发现一个 bug 意味着存在大量类似 bug"
             // — found via auditing all emit_call paths after the direct-call
-            // sret fix. Same root cause: missing sret ABI handling.
-            // Per §1.0 原則 6 (通解 > 特解): same sret path as emit_call.
+            // sret fix. Same root cause: missing sret+byval ABI handling.
+            // Per §1.0 原則 6 (通解 > 特解): same sret+byval path as emit_call.
             let ret_llvm_ty = self.llvm_type(ret_ty);
             let use_sret = ret_ty.needs_sret();
-            let user_param_tys: Vec<LLVMTypeRef> =
-                args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let mut byval_infos: Vec<(usize, LLVMTypeRef)> = Vec::new();
+            let mut final_user_param_tys: Vec<LLVMTypeRef> = Vec::with_capacity(args.len());
+            for (i, (t, _)) in args.iter().enumerate() {
+                let orig_llvm_ty = self.llvm_type(t);
+                if t.needs_byval() {
+                    byval_infos.push((i, orig_llvm_ty));
+                    final_user_param_tys.push(ptr_ty);
+                } else {
+                    final_user_param_tys.push(orig_llvm_ty);
+                }
+            }
             let (call_ret_ty, all_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
                 let void_ty = LLVMVoidTypeInContext(self.ctx);
-                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                 let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
-                sret_params.extend(user_param_tys.iter().copied());
+                sret_params.extend(final_user_param_tys.iter().copied());
                 (void_ty, sret_params)
             } else {
-                (ret_llvm_ty, user_param_tys.clone())
+                (ret_llvm_ty, final_user_param_tys.clone())
             };
             let fty = LLVMFunctionType(
                 call_ret_ty,
@@ -331,10 +391,12 @@ impl AggregateEmitter for LLVMSysEmitter {
                 0, // not variadic
             );
 
-            // 6. Build args list (sret slot prepended if use_sret).
+            // 6. Build args list (sret slot prepended if use_sret; byval args
+            //    replaced with their slot pointers).
             // Stage 18.332: Use entry_block_alloca (not LLVMBuildAlloca) to
             // hoist the alloca to the entry block. Same rationale as emit_call:
             // mid-function allocas produce fragile dynamic stack adjustments.
+            // Stage 18.333: Same entry_block_alloca pattern for byval slots.
             let sret_slot: Option<LLVMValueRef> = if use_sret {
                 Some(self.entry_block_alloca(ret_llvm_ty, "dyncall_sret_slot"))
             } else {
@@ -347,7 +409,31 @@ impl AggregateEmitter for LLVMSysEmitter {
             }
             let user_arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();
-            all_arg_vals.extend(user_arg_vals.iter().copied());
+            for (i, (_, _)) in args.iter().enumerate() {
+                if args[i].0.needs_byval() {
+                    // byval: store value to slot, pass slot pointer.
+                    let slot_name = format!("dyncall_byval_arg{}_slot", i);
+                    let orig_llvm_ty = final_user_param_tys[i]; // already `ptr` here; use byval_infos
+                    let _ = orig_llvm_ty;
+                    let orig_ty = byval_infos
+                        .iter()
+                        .find(|(idx, _)| *idx == i)
+                        .map(|(_, t)| *t);
+                    if let Some(orig_llvm_ty) = orig_ty {
+                        let slot = self.entry_block_alloca(orig_llvm_ty, &slot_name);
+                        LLVMBuildStore(self.builder, user_arg_vals[i], slot);
+                        all_arg_vals.push(slot);
+                    } else {
+                        // Defensive: shouldn't happen — byval_infos was built from
+                        // the same iteration. Per §1.0 原則 4 (报错 > 静默): fall
+                        // through to passing the value as-is (LLVM will catch
+                        // the type mismatch if any).
+                        all_arg_vals.push(user_arg_vals[i]);
+                    }
+                } else {
+                    all_arg_vals.push(user_arg_vals[i]);
+                }
+            }
 
             // 7. Call the loaded function pointer (indirect call).
             let call_name = if use_sret || *ret_ty == EmitType::Void {
@@ -368,6 +454,15 @@ impl AggregateEmitter for LLVMSysEmitter {
             if use_sret {
                 let sret_attr = create_sret_attribute(self.ctx, ret_llvm_ty);
                 LLVMAddCallSiteAttribute(call_val, 1, sret_attr);
+            }
+
+            // Stage 18.333: Add byval attribute to each byval-eligible user arg
+            // at the call site (mirrors emit_call's byval attribute loop).
+            let sret_offset: u32 = if use_sret { 1 } else { 0 };
+            for (user_idx, orig_llvm_ty) in &byval_infos {
+                let llvm_arg_idx = (*user_idx as u32) + 1 + sret_offset;
+                let byval_attr = create_byval_attribute(self.ctx, *orig_llvm_ty);
+                LLVMAddCallSiteAttribute(call_val, llvm_arg_idx, byval_attr);
             }
 
             if *ret_ty == EmitType::Void {

@@ -1,9 +1,112 @@
 # Landin Compiler — Release Notes
 
-**Author**: redskaber
-**Current version**: v0.494.0
-**Date**: 2026-08-27
-**Test count**: 676 lib tests + 3648 integration tests = 4325 total (100% pass rate single-thread, 0 skipped)
+| | |
+|---|---|
+| **Author** | redskaber |
+| **Current version** | v0.495.0 |
+| **Date** | 2026-08-27 |
+| **Test count** | 676 lib tests + 3655 integration tests = 4331 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Multi-thread** | 25/25 stable (4 threads, unlimited stack) via `scripts/run_tests.sh` |
+| **LLVM** | 22.1.8 (llvm-sys 221) |
+
+---
+
+## v0.495.0 — Stage 18.333 (P1 soundness: byval ABI Support for large struct/array params + LLVM stack size workaround)
+
+### Overview
+
+**Stage 18.333: P1 soundness fix — byval ABI Support**
+
+Closes the same-class bug found via §20 iterative audit after Stage 18.332
+(sret) fix. Per "finding one bug means there are many similar bugs", the
+audit uncovered 3 new same-class bugs (byval × 2 sites + variadic × 1).
+This stage resolves the byval bug.
+
+### What is byval?
+
+System V AMD64 ABI §3.2.3 requires that function parameters of type
+struct/array > 16 bytes be passed via a hidden pointer parameter with the
+`byval` attribute (mirrors `sret` for returns). Without explicit `byval`
+in IR, LLVM backend's auto-lowering is unreliable — caller/callee ABI
+mismatches produce corrupted struct values (third field lost, value
+truncated).
+
+### Changes
+
+1. **`EmitType::needs_byval()`** — single source of truth for the byval
+   threshold (size > 16 bytes, same as `needs_sret()`).
+
+2. **`create_byval_attribute(ctx, ty)` helper** in `helpers.rs` — mirrors
+   `create_sret_attribute` (Stage 18.332).
+
+3. **LLVMSysEmitter** — 5 emission sites updated:
+   - `emit_function_begin`: byval param type → `ptr`, add `byval(<ty>)` attr
+   - `declare_function`: forward decls use byval signature
+   - `interpret_adhoc` (forward decl path): same
+   - `emit_call`: per-arg alloca + store + ptr + `byval` call site attr
+   - `emit_dyn_trait_method_call`: same for vtable indirect calls
+
+4. **TextEmitter mirror** — 3 sites updated to emit `ptr byval(<ty>) %name`
+   in `emit_function_begin`, `emit_call`, `emit_dyn_trait_method_call`.
+
+5. **Param load-then-store fix** in `codegen/function.rs` — byval params
+   arrive as `ptr` (caller's slot), not struct. Function body must
+   `emit_load(ty, arg)` before `emit_store(ty, loaded, local_alloca)`.
+
+6. **`scripts/run_tests.sh` upgrade** — sets `ulimit -s unlimited` (or
+   65536) before running tests. LLVM 22's recursive optimization passes
+   need more than the default 8MB stack; without raising the limit,
+   `landin-stage0` intermittently segfaults inside `libLLVM.so.22.1`.
+   Verified: 100/100 stable `--emit-obj` runs at unlimited stack vs ~2%
+   segfault rate at default 8MB.
+
+### Test impact
+
+- Single-thread: **3655 tests, 0 failures** (was 3648 before Stage 18.333).
+- Multi-thread (`--test-threads=4`, `ulimit -s unlimited`): **25/25 stable**
+  in stress testing (15 + 10 runs).
+- Added 7 regression tests (3 positive + 3 negative + 1 stress) in
+  `tests/v0/stage18/plan/stage18_333_byval_abi_tests.rs`.
+
+### Design boundary
+
+- `EmitType::needs_byval()` shares the same threshold as `needs_sret()`
+  (size > 16). The distinction is **semantic** (return vs parameter).
+- `entry_block_alloca` (introduced in Stage 18.332 for sret slots) is
+  reused for byval arg slots — same root-cause fix pattern.
+- Param index calculation: `user_idx + 1 + (1 if use_sret else 0)` because
+  LLVM uses 1-indexed params and sret shifts user params by 1.
+
+### Files changed
+
+- `src/codegen/emitter/mod.rs` — add `needs_byval()`
+- `src/codegen/llvm/helpers.rs` — add `create_byval_attribute`
+- `src/codegen/llvm/function.rs` — byval in `emit_function_begin`
+- `src/codegen/llvm/mod.rs` — byval in `declare_function` + `interpret_adhoc`
+- `src/codegen/llvm/aggregate.rs` — byval in `emit_call` + `emit_dyn_trait_method_call`
+- `src/codegen/text/function.rs` — byval in `emit_function_begin`
+- `src/codegen/text/aggregate.rs` — byval in `emit_call` + `emit_dyn_trait_method_call`
+- `src/codegen/function.rs` — param load-then-store for byval
+- `tests/common/mod.rs` — TMPDIR isolation (Stage 18.332, retained)
+- `tests/v0/stage18/plan/stage18_333_byval_abi_tests.rs` — new (7 regression tests)
+- `tests/all_tests.rs` — register `stage18_333_byval_abi_tests`
+- `docs/develop/v0/stage-18/plan-18.333.md` — new design doc
+- `docs/develop/v0/tech-debt-register.md` — TD-BYVAL-LLVM-SYS Resolved
+- `scripts/run_tests.sh` — `ulimit -s unlimited` workaround
+- `README.md` — restructured (new TOC + ABI compliance section + roadmap)
+- `Cargo.toml` — v0.494.0 → v0.495.0
+
+### Known limitations
+
+- LLVM 22 needs `ulimit -s unlimited` (or 65536) on systems with default
+  8MB stack — without it, `landin-stage0` may segfault in `libLLVM.so.22.1`
+  during recursive optimization passes. `scripts/run_tests.sh` handles this.
+- TD-VARIADIC-DETECTION (P1) — variadic function detection still hardcoded
+  to `printf | __landin_eprintf` name-list. Plan: Stage 18.334 — parse `...`
+  from `emit_declare` signature.
+- TD-EMPTY-STRUCT-I8 (P2) — empty structs still modeled as `i8` instead of
+  LLVM `{}`. Plan: Stage 18.335.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).
 
 ---
 

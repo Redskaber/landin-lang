@@ -164,6 +164,30 @@ impl EmitType {
     pub fn needs_sret(&self) -> bool {
         self.size_bytes_x86_64() > 16
     }
+
+    /// Stage 18.333 (P1 soundness fix): Returns true if this type needs byval
+    /// when passed as a function parameter.
+    ///
+    /// Per System V AMD64 ABI §3.2.3: structs/arrays > 16 bytes passed as
+    /// parameters must be passed via a hidden pointer parameter with the
+    /// `byval` attribute (mirrors `sret` for returns).
+    ///
+    /// **Design boundary**:
+    /// - Same threshold as `needs_sret()` (size > 16) — both are driven by
+    ///   System V ABI's "size > 16 bytes → pass via pointer" rule.
+    /// - The distinction between sret and byval is **semantic** (return vs
+    ///   parameter), not threshold-based.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one threshold function for both sret
+    /// and byval — both are "size > 16" per System V ABI.
+    /// Per §1.0 原則 4 (显式 > 隐式): the threshold is explicit at IR level,
+    /// not relying on LLVM's CodeGenPrepare auto-demotion (which Stage 18.332
+    /// found unreliable across LLVM versions).
+    /// Per §20 (iterative audit): same root cause as sret bug (Stage 18.332);
+    /// byval applies the same fix pattern to the parameter side.
+    pub fn needs_byval(&self) -> bool {
+        self.size_bytes_x86_64() > 16
+    }
 }
 
 // ================================================================

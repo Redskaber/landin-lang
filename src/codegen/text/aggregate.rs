@@ -71,41 +71,64 @@ impl AggregateEmitter for TextEmitter {
         // - Otherwise → normal `call <ret_ty> @fn(args)`
         //
         // Per §2.2 (根因思维) + §12 (最优>最小): root-cause fix.
-        if ret_ty.needs_sret() {
+        //
+        // Stage 18.333 (P1 soundness fix): For struct/array args > 16 bytes,
+        // use byval: alloca a slot, store the arg, pass the slot pointer with
+        // `byval(<orig_ty>)` attribute (mirrors sret for params).
+        // Per §20 (iterative audit): same root cause as sret; same fix pattern.
+        // Per §1.0 原則 6 (通解 > 特解): one byval path for direct + indirect calls.
+        let use_sret = ret_ty.needs_sret();
+
+        // Build the sret slot if use_sret.
+        let sret_name: Option<String> = if use_sret {
             let ret_str = emit_type_to_llvm_str(ret_ty);
-            // Allocate space for the return value.
-            let sret_name = format!("%sret_{}", r);
-            self.line(&format!("  {} = alloca {}", sret_name, ret_str));
-            // Build args: sret pointer first, then original args.
-            let mut all_args = vec![format!("ptr {}", sret_name)];
-            for (ty, a) in args {
+            let name = format!("%sret_{}", r);
+            self.line(&format!("  {} = alloca {}", name, ret_str));
+            Some(name)
+        } else {
+            None
+        };
+
+        // Build the byval slots and final args list.
+        let mut all_args: Vec<String> = Vec::with_capacity(args.len() + 1);
+        if let Some(ref sret) = sret_name {
+            all_args.push(format!("ptr {}", sret));
+        }
+        for (i, (ty, a)) in args.iter().enumerate() {
+            if ty.needs_byval() {
+                let ty_str = emit_type_to_llvm_str(ty);
+                let slot_name = format!("%byval_arg{}_{}", i, r);
+                self.line(&format!("  {} = alloca {}", slot_name, ty_str));
+                self.line(&format!("  store {} {}, ptr {}", ty_str, a, slot_name));
+                all_args.push(format!("ptr byval({}) {}", ty_str, slot_name));
+            } else {
                 all_args.push(format!("{} {}", emit_type_to_llvm_str(ty), a));
             }
+        }
+
+        if use_sret {
             self.line(&format!(
                 "  call void {}({})",
                 call_target,
                 all_args.join(", ")
             ));
             // Return the sret pointer — callers use it to access the result.
-            sret_name
+            sret_name.unwrap()
         } else if *ret_ty == EmitType::Void {
-            let args_str = args
-                .iter()
-                .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-                .collect::<Vec<_>>()
-                .join(", ");
-            self.line(&format!("  call void {}({})", call_target, args_str));
+            self.line(&format!(
+                "  call void {}({})",
+                call_target,
+                all_args.join(", ")
+            ));
             "0".to_string()
         } else {
             let ret_str = emit_type_to_llvm_str(ret_ty);
-            let args_str = args
-                .iter()
-                .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-                .collect::<Vec<_>>()
-                .join(", ");
             self.line(&format!(
                 "  %v{} = call {} {}({})",
-                r, ret_str, call_target, args_str
+                r,
+                ret_str,
+                call_target,
+                all_args.join(", ")
             ));
             format!("%v{}", r)
         }
@@ -150,43 +173,63 @@ impl AggregateEmitter for TextEmitter {
             "  %v{method_fn_r} = load ptr, ptr %v{vtable_r}, i32 {slot_index}"
         ));
 
-        // 4. Call the loaded function pointer (indirect call).
-        let args_str = args
-            .iter()
-            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-            .collect::<Vec<_>>()
-            .join(", ");
-
         // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
         // use sret at the indirect call site. Mirrors TextEmitter::emit_call
         // sret path (Stage 18.330) and LLVMSysEmitter's emit_dyn_trait_method_call.
         //
-        // Per §20 (iterative audit): found via auditing all emit_call paths.
-        // Per §1.0 原則 6 (通解 > 特解): same sret path for direct + indirect calls.
-        if ret_ty.needs_sret() {
+        // Stage 18.333 (P1 soundness fix): For struct/array args > 16 bytes,
+        // use byval at the indirect call site (mirrors emit_call's byval path).
+        //
+        // Per §20 (iterative audit): same root cause as sret; same fix pattern.
+        // Per §1.0 原則 6 (通解 > 特解): same sret+byval path for direct + indirect calls.
+        let r = self.fresh();
+        let use_sret = ret_ty.needs_sret();
+
+        // Build sret slot if use_sret.
+        let sret_name: Option<String> = if use_sret {
             let ret_str = emit_type_to_llvm_str(ret_ty);
-            // Allocate space for the return value.
-            let sret_name = format!("%sret_{}", self.fresh());
-            self.line(&format!("  {} = alloca {}", sret_name, ret_str));
-            // Build args: sret pointer first, then original args.
-            let mut all_args = vec![format!("ptr {}", sret_name)];
-            for (ty, a) in args {
+            let name = format!("%sret_{}", r);
+            self.line(&format!("  {} = alloca {}", name, ret_str));
+            Some(name)
+        } else {
+            None
+        };
+
+        // Build args list (sret pointer first, then user args with byval replacement).
+        let mut all_args: Vec<String> = Vec::with_capacity(args.len() + 1);
+        if let Some(ref sret) = sret_name {
+            all_args.push(format!("ptr {}", sret));
+        }
+        for (i, (ty, a)) in args.iter().enumerate() {
+            if ty.needs_byval() {
+                let ty_str = emit_type_to_llvm_str(ty);
+                let slot_name = format!("%dyncall_byval_arg{}_{}", i, r);
+                self.line(&format!("  {} = alloca {}", slot_name, ty_str));
+                self.line(&format!("  store {} {}, ptr {}", ty_str, a, slot_name));
+                all_args.push(format!("ptr byval({}) {}", ty_str, slot_name));
+            } else {
                 all_args.push(format!("{} {}", emit_type_to_llvm_str(ty), a));
             }
+        }
+
+        if use_sret {
             self.line(&format!(
                 "  call void %v{method_fn_r}({})",
                 all_args.join(", ")
             ));
-            // Return the sret pointer — callers use it to access the result.
-            sret_name
+            sret_name.unwrap()
         } else if *ret_ty == EmitType::Void {
-            self.line(&format!("  call void %v{method_fn_r}({args_str})"));
+            self.line(&format!(
+                "  call void %v{method_fn_r}({})",
+                all_args.join(", ")
+            ));
             "0".to_string()
         } else {
             let call_r = self.fresh();
             let ret_str = emit_type_to_llvm_str(ret_ty);
             self.line(&format!(
-                "  %v{call_r} = call {ret_str} %v{method_fn_r}({args_str})"
+                "  %v{call_r} = call {ret_str} %v{method_fn_r}({})",
+                all_args.join(", ")
             ));
             format!("%v{call_r}")
         }

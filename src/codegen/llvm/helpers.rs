@@ -229,6 +229,35 @@ pub(crate) fn create_sret_attribute(
     }
 }
 
+/// Stage 18.333 (P1 soundness fix): Create a `byval` type attribute.
+///
+/// Per System V AMD64 ABI §3.2.3 + rustc_codegen_llvm:
+/// - Structs/arrays > 16 bytes passed as function parameters must be passed
+///   via a hidden pointer parameter with the `byval` attribute (mirrors
+///   `sret` for returns).
+/// - LLVM represents this as a `byval(<ty>)` type attribute on the
+///   parameter (at the parameter's 1-indexed position).
+/// - rustc emits byval explicitly via `Attribute::getWithByValType(ctx, ty)`;
+///   we mirror this via `LLVMCreateTypeAttribute(ctx, byval_kind, ty)`.
+///
+/// **Design boundary** (mirrors `create_sret_attribute`):
+/// - Same LLVM C-API pattern: fetch kind ID by name, create type attribute.
+/// - Used at all 6 emission sites (function_begin, declare_function,
+///   interpret_adhoc, emit_call, emit_dyn_trait_method_call, text equivalents).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one helper for all byval emission sites.
+/// Per §20 (iterative audit): same root cause as sret bug; same fix pattern.
+pub(crate) fn create_byval_attribute(
+    ctx: llvm_sys::prelude::LLVMContextRef,
+    ty: llvm_sys::prelude::LLVMTypeRef,
+) -> llvm_sys::prelude::LLVMAttributeRef {
+    unsafe {
+        let byval_kind =
+            llvm_sys::core::LLVMGetEnumAttributeKindForName(b"byval".as_ptr() as *const _, 5);
+        llvm_sys::core::LLVMCreateTypeAttribute(ctx, byval_kind, ty)
+    }
+}
+
 /// Copy a C string (NUL-terminated) from a `*const c_char` into an
 /// owned `String`. Does NOT free the original — the caller is
 /// responsible for `LLVMDisposeMessage` if applicable.

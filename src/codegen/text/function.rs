@@ -20,33 +20,48 @@ impl FunctionEmitter for TextEmitter {
         //
         // Per §2.2 (根因思维): LLVM's CodeGenPrepare should auto-convert,
         // but LLVM 22 has intermittent issues. Explicit sret is more reliable.
-        if ret.needs_sret() {
-            // sret: void return + hidden sret pointer as first param.
-            let sret_param = format!("ptr sret {}", "%_sret");
-            let param_strs: Vec<String> = std::iter::once(sret_param)
-                .chain(
-                    params
-                        .iter()
-                        .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name)),
-                )
-                .collect();
+        //
+        // Stage 18.333 (P1 soundness fix): For struct/array params > 16 bytes,
+        // use byval (mirrors sret for params). Each byval param is emitted as
+        // `ptr byval(<orig_ty>) %name` instead of `<orig_ty> %name`.
+        // Per §20 (iterative audit): same root cause as sret; same fix pattern.
+        // Per §1.0 原則 6 (通解 > 特解): one byval path across both backends.
+        let use_sret = ret.needs_sret();
+        let sret_param_str: Option<String> = if use_sret {
+            Some(format!("ptr sret {}", "%_sret"))
+        } else {
+            None
+        };
+
+        let user_param_strs: Vec<String> = params
+            .iter()
+            .map(|(ty, pname)| {
+                if ty.needs_byval() {
+                    let ty_str = emit_type_to_llvm_str(ty);
+                    format!("ptr byval({}) {}", ty_str, pname)
+                } else {
+                    format!("{} {}", emit_type_to_llvm_str(ty), pname)
+                }
+            })
+            .collect();
+
+        let all_param_strs: Vec<String> =
+            sret_param_str.into_iter().chain(user_param_strs).collect();
+
+        if use_sret {
             self.line(&format!(
                 "define void @{}({}) {{",
                 name,
-                param_strs.join(", ")
+                all_param_strs.join(", ")
             ));
             self.next_val = (params.len() + 1) as u32 + 1;
         } else {
             let ret_str = emit_type_to_llvm_str(ret);
-            let param_strs: Vec<String> = params
-                .iter()
-                .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name))
-                .collect();
             self.line(&format!(
                 "define {} @{}({}) {{",
                 ret_str,
                 name,
-                param_strs.join(", ")
+                all_param_strs.join(", ")
             ));
             self.next_val = params.len() as u32 + 1;
         }

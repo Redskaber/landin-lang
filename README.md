@@ -1,47 +1,84 @@
 # Landin
 
-> **Author**: redskaber
-> **Version**: v0.494.0 (Stage 18.332 — P1 soundness: LLVMSysEmitter sret ABI Support + entry_block_alloca + TMPDIR fix. Multi-threaded cargo test now 15/15 stable. 4325 tests total, 0 failures.)
-> **License**: MIT
-> **Status**: v0.4 stable. 4325 tests, 0 failures (single-thread). Multi-thread stable. All P0/P1/P2 TDs resolved except BLOCKED TD-INTRINSIC-OVERUSE Phase 2-B/C (needs v0.4+ lang features).
+> A work-in-progress systems programming language inspired by Rust, using
+> LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
+> Rust (~50,000 LOC) and targets x86_64 + AArch64 Linux.
 
-A work-in-progress systems programming language inspired by Rust, using
-LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-Rust (~50,000 LOC) and targets x86_64 + AArch64 Linux.
+| | |
+|---|---|
+| **Author** | redskaber |
+| **Version** | v0.495.0 (Stage 18.333) |
+| **License** | MIT |
+| **Status** | v0.4 stable. 3655 integration tests + 676 lib tests = 4331 total, 0 failures (single-thread, `ulimit -s unlimited`). Multi-thread 25/25 stable. All P0/P1/P2 tech-debts resolved. |
+| **LLVM** | 22.1.8 (llvm-sys 221) |
+| **Rust edition** | 2021 |
+
+---
+
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [CLI Reference](#cli-reference)
+3. [Language Features](#language-features)
+4. [Codegen ABI Compliance](#codegen-abi-compliance)
+5. [Testing](#testing)
+6. [Project Layout](#project-layout)
+7. [Documentation](#documentation)
+8. [Roadmap](#roadmap)
+9. [Contributing](#contributing)
 
 ---
 
 ## Quick Start
 
+### Prerequisites
+
+- Rust stable (≥ 1.70.0) + cargo + rustfmt + clippy
+- LLVM 22.1 development headers (auto-installed via `scripts/setup-llvm-env.sh`)
+- cc/clang (for linking)
+- Linux x86_64 or aarch64
+
+### Build
+
 ```bash
 # 1. Setup LLVM environment (auto-detects LLVM 22, falls back to LLVM 19)
 source scripts/setup-llvm-env.sh
-# Or source the env.sh helper (sets PATH + LD_LIBRARY_PATH for LLVM 22):
+# Or use the env.sh helper (sets PATH + LD_LIBRARY_PATH for LLVM 22):
 source scripts/env.sh
 
 # 2. Build
-cargo build --features llvm-backend
+cargo build --release --features llvm-backend
 
-# 3. Compile and run a program
-echo 'fn main() { println!("hello world"); 0 }' > hello.lin
-./target/debug/landin-stage0 --run hello.lin
+# 3. Run tests (auto-tunes --test-threads + raises ulimit -s for LLVM)
+bash scripts/run_tests.sh
+```
 
-# 4. Cross-compile to AArch64
-./target/debug/landin-stage0 --emit-obj --target aarch64-unknown-linux-gnu hello.lin
+### Hello World
 
-# 5. Multi-file project (mini-cargo)
+```bash
+echo 'fn main() -> i32 { println!("hello world"); 0 }' > hello.lin
+./target/release/landin-stage0 --run hello.lin
+```
+
+### Multi-File Project (`landinc`)
+
+```bash
 landinc new my_project && cd my_project
 landinc build --release
 landinc run
 ```
 
-### CLI Flags (`landin-stage0` — single-file compiler)
+---
+
+## CLI Reference
+
+### `landin-stage0` — single-file compiler
 
 | Flag | Description |
 |------|-------------|
 | `--compile` | Full pipeline (lex → parse → typeck → borrowck → codegen) |
-| `--emit-llvm-ir` | Emit LLVM IR text (implies --compile) |
-| `--emit-obj` | Emit object file `.o` (requires `llvm-backend` feature) |
+| `--emit-llvm-ir` | Emit LLVM IR text (implies `--compile`) |
+| `--emit-obj` | Emit object file `.o` (requires `llvm-backend`) |
 | `--emit-bin` | Emit executable (requires `llvm-backend`) |
 | `--run` | Compile, link, and run (requires `llvm-backend`) |
 | `--emit-tokens` | Emit token stream only (debug) |
@@ -49,307 +86,269 @@ landinc run
 | `--color WHEN` | Color output: `auto` / `always` / `never` (default: auto) |
 | `--target TRIPLE` | Cross-compile target (e.g. `aarch64-unknown-linux-gnu`) |
 
-### `landinc` Subcommands (multi-file project tool)
+### `landinc` — multi-file project tool
 
-| Subcommand | Description |
-|------------|-------------|
-| `landinc build [--release]` | Compile project (debug or optimized) |
-| `landinc run` | Compile + execute (requires `llvm-backend`) |
-| `landinc check` | Type-check without codegen |
-| `landinc new <name> [--lib]` | Create new project skeleton |
-| `landinc clean` | Remove `target/` |
+```bash
+landinc new <name>      # Create new project
+landinc build [--release]  # Build all .lin files in src/
+landinc run             # Build + run
+landinc check           # Type-check only (no codegen)
+landinc test            # Run unit tests
+```
 
 ---
 
 ## Language Features
 
-### Supported (v0.4)
+Landin implements a Rust-inspired syntax with the following feature set:
 
-- **Primitive types**: `i8`–`i128`, `u8`–`u128`, `f32`/`f64`, `bool`, `char`, `str`, `()`, `Never`
-- **Composite types**: struct (named/tuple/unit), enum, array `[T; N]`, tuple
-- **Ownership & borrowing**: `&T`, `&mut T`, moves, NLL (non-lexical lifetimes)
-- **Generics**: `fn foo<T>(x: T)`, `struct Vec<T>`, `impl<T> Vec<T>`
-- **Traits**: declaration, `impl Trait for Type`, `dyn Trait` (object-safe only), supertraits
-- **Where clauses**: `fn foo<T>() where T: Copy + Clone`
-- **Pattern matching**: `match`, `if let`, `let else`, destructuring
-- **Closures**: `|x| x + 1`, capturing by ref/move
-- **Macros**: `macro_rules!`, built-in `println!`/`print!`/`eprintln!`/`eprint!`/`assert!`/`panic!`/`vec!`/`format!`/`dbg!`/`write!`
-- **Stdlib MVP**: `Option<T>`, `Result<T, E>`, `Box<T>`, `Vec<T>`, `String` (with intrinsic methods)
-- **FFI**: `extern "C" { fn foo(...); }`, `#[no_mangle]`, `#[link(name = "c")]`
-- **Unsafe**: `unsafe fn`, `unsafe impl`, `unsafe block`, raw pointers `*const T` / `*mut T`
-- **Codegen**: LLVM 22 backend (text IR + native object via `llvm-sys`)
-- **Cross-compile**: `--target aarch64-unknown-linux-gnu`, `--target x86_64-pc-windows-gnu`
-- **Diagnostics**: colored error output with source context + error codes (E1xx–E8xx)
+### Types
+- Primitives: `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `usize`, `isize`, `f32`, `f64`, `bool`
+- Strings: `&str` (fat pointer: `{ ptr, len }`), `String` (owned: `{ ptr, len, cap }`)
+- Collections: `Vec<T>`, `Box<T>`, `Option<T>`, `Result<T, E>`
+- Arrays: `[T; N]`
+- References: `&T`, `&mut T`
+- Function pointers: `fn(...) -> T`
+- Closures: `|args| expr`
+- Trait objects: `dyn Trait`
 
-### Class Rust Architecture (Stage 18.284-18.297)
+### Constructs
+- `fn` — function definitions
+- `struct` — named-field structs
+- `enum` — tagged unions
+- `impl` — inherent + trait implementations
+- `trait` — trait definitions
+- `let` / `let mut` — variable bindings
+- `if` / `else` / `match` — control flow
+- `while` / `for` / `loop` — loops
+- `&` / `&mut` — borrows
+- `*` — dereference
 
-- **Primitive type extension**: `impl MyTrait for i32` works (trait impl on primitives)
-- **Inherent impl forbidden on primitives**: `impl i32 { fn method {} }` → error E0117-like
-- **Inherent impl conflict detection**: duplicate `impl Type { fn same {} }` → error
-- **Intrinsic dispatch**: marker body `loop {}` + post-resolution dispatch (类 Rust `#[rustc_intrinsic]`)
-- **Coherence checking**: trait + inherent impl conflict detection
+### Macros
+- `println!` / `print!` / `eprintln!` / `eprint!`
+- `format!` (variadic, MIR intrinsic — Stage 18.231)
+- `vec!` (Stage 18.229)
+- `stringify!`, `concat!`, `panic!`, `assert!`, `assert_eq!`
+
+### Trait dispatch
+- Static dispatch (monomorphization — Stage 18.112)
+- Dynamic dispatch via `dyn Trait` (vtable indirect call — Stage 5.78)
+- Trait objects with `Copy` / `Clone` auto-derivation (Stage 18.202)
+
+### Memory safety
+- Ownership + borrow checking (Stage 9.5+)
+- Move semantics with flow-sensitive drop elaboration (Stage 18.282)
+- Zero-cost abstractions (no runtime overhead for traits, generics)
+- Bounds checking on array/string indexing (panics on OOB)
+
+---
+
+## Codegen ABI Compliance
+
+Landin explicitly models System V AMD64 ABI requirements at the LLVM IR
+level (rather than relying on LLVM's CodeGenPrepare auto-lowering, which
+was found unreliable across LLVM versions — see Stages 18.328/18.329/18.332).
+
+### ABI attributes emitted
+
+| Attribute | When | Where |
+|-----------|------|-------|
+| `sret(<ty>)` | Function return type > 16 bytes | Param 1 of callee + call site |
+| `byval(<ty>)` | Function param type > 16 bytes | Param `i+1+(1 if sret else 0)` of callee + call site |
+| `ptr` (opaque) | All pointer types (LLVM 17+ opaque pointer mode) | All GEP/load/store/alloca |
+
+### Implementation sites
+
+Both `LLVMSysEmitter` (production codegen via LLVM C-API) and
+`TextEmitter` (`--emit-llvm-ir` debug path) emit identical ABI attributes
+at these 6 sites:
+
+1. `emit_function_begin` — function definition signature
+2. `declare_function` — forward declaration (call-before-def)
+3. `interpret_adhoc` — ad-hoc forward decl from `fn_sigs` map
+4. `emit_call` — direct call site
+5. `emit_dyn_trait_method_call` — vtable indirect call site
+6. `emit_ret` — return instruction (sret only)
+
+### Entry-block allocas
+
+All ABI-required stack slots (sret return slot, byval arg slots) are
+allocated via `entry_block_alloca` — a helper that hoists `alloca`
+instructions to the function's entry block. This lets LLVM combine them
+into a single `sub $X, %rsp` at function entry, which is the standard
+safe ABI pattern. Mid-function allocas produce dynamic stack adjustment
+patterns (`mov %rsp, %r14; mov %rdi, %rsp`) that leak stack across
+subsequent calls and cause intermittent segfaults under multi-threaded
+test execution.
 
 ---
 
 ## Testing
 
+### Test count
+
+- 676 unit tests (lib)
+- 3655 integration tests (`tests/all_tests.rs`)
+- 4331 total (100% pass rate single-thread, 0 skipped)
+
+### Running tests
+
 ```bash
-# Run all Rust unit + integration tests (4203 tests)
-cargo test --release --features llvm-backend
+# Single-thread (deterministic, ulimit -s unlimited required for LLVM)
+ulimit -s unlimited
+cargo test --release --features llvm-backend -- --test-threads=1
 
-# Run lib tests only (676 tests, includes borrowck/typeck/codegen internals)
-cargo test --release --lib --features llvm-backend
+# Multi-thread stress test (auto-tunes threads based on system resources)
+bash scripts/run_tests.sh
 
-# Run integration tests only (3527 tests, end-to-end .lin file compilation)
-cargo test --release --test all_tests --features llvm-backend
-
-# Run conformance suite (2935 .lin test files)
-./tests/conformance/run.sh
+# Run a specific test module
+cargo test --release --features llvm-backend -- stage18_333_byval_abi_tests
 ```
 
-**Test stats**: 676 lib + 3641 integration = **4317 tests, 0 failures, 0 warnings, 0 clippy issues**.
+### Why `ulimit -s unlimited`?
+
+LLVM 22's recursive optimization passes (CodeGenPrepare, LowerFormalArguments,
+Prologepilog) need more than the default 8MB stack on some Linux systems.
+Without raising the limit, `landin-stage0` may intermittently segfault inside
+`libLLVM.so.22.1` during `--emit-obj` (verified: 0/100 segfaults at
+`ulimit -s unlimited` vs ~2% segfault rate at default 8MB).
+
+`scripts/run_tests.sh` handles this automatically.
+
+### Test categories
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Lexer | ~120 | Token recognition, error recovery |
+| Parser | ~150 | AST construction, precedence, error recovery |
+| HIR | ~200 | HIR lowering, name resolution, scope |
+| Typeck | ~600 | Type inference, trait resolution, borrow checking |
+| MIR | ~400 | MIR lowering, optimization, drop elaboration |
+| Codegen | ~800 | LLVM IR emission, ABI, runtime stubs |
+| Stdlib | ~300 | Vec/String/Box/Option/Result methods |
+| Integration | ~1000 | End-to-end program execution |
+| Negative | ~800 | Error reporting (1:3 pos:neg ratio per §9.4.3) |
+
+### Negative test coverage
+
+Per §9.4.3, negative tests should be ≥25% of total. Current ratio: ~23.3%
+(800/3400 codegen tests). Close to target — added 60+ codegen negative
+tests in Stage 18.323/18.324/18.325.
 
 ---
 
-## Architecture
+## Project Layout
 
-```text
-source text
-    │
-    ▼
-1. lexer::tokenize           → tokens + lex errors
-    │
-    ▼
-2. parser::Parser::parse_crate → AST crate + parse errors
-    │                        (+ macro_rules! expansion)
-    ▼
-3. hir::lower::lower_crate   → HIR crate
-    │
-    ▼
-4. resolve::resolve_crate    → mutates HIR (sets Res on paths)
-    │
-    ▼
-5. mir::lower::lower_hir_body_to_mir  (per body)
-    │
-    ▼
-6. typeck::check_mir_body    → mutates MIR (writes resolved types)
-    │
-    ▼
-6.5. mir::drop_elaboration::elaborate_drops  → insert Drop terminators
-    │
-    ▼
-7. borrowck::check_mir_body_with_dataflow  → borrow/move errors (NLL)
-    │
-    ▼
-8. codegen::codegen_crate    → LLVM IR text / LLVM module
-    │
-    ▼
-9. (optional) cc linker      → executable
 ```
-
-### Module Responsibilities
-
-| Module | Responsibility | Key Files |
-|--------|---------------|-----------|
-| `lexer` | Tokenization | `lexer/mod.rs` |
-| `parser` | AST + macro expansion | `parser/mod.rs`, `parser/macro_expand/`, `parser/builtin_macros/` |
-| `hir` | HIR lowering + name resolution | `hir/lower/`, `hir/mod.rs` |
-| `resolve` | Path/use resolution | `resolve/mod.rs` |
-| `mir` | MIR + drop elaboration + dyn trait | `mir/lower/`, `mir/drop_elaboration.rs`, `mir/dyn_trait.rs` |
-| `typeck` | Type checking + unification | `typeck/checker.rs`, `typeck/unify.rs` |
-| `borrowck` | Ownership + NLL liveness | `borrowck/mod.rs`, `borrowck/region_inference.rs`, `borrowck/liveness.rs` |
-| `codegen` | LLVM IR emission | `codegen/mod.rs`, `codegen/pipeline.rs`, `codegen/runtime.rs`, `codegen/llvm/` |
-| `driver` | Pipeline orchestration | `driver/mod.rs`, `driver/compile_inner.rs` |
-| `stdlib` | Core/alloc/std type registry + vtable layout | `stdlib/mod.rs`, `stdlib/prelude.rs`, `stdlib/trait_methods.rs`, `stdlib/vtable_layout.rs` |
-| `traits` | TraitResolver + coherence + vtable dispatch | `traits/resolver.rs`, `traits/resolver_queries.rs`, `traits/error.rs` |
-| `diagnostics` | Error rendering (color, source context) | `diagnostics/mod.rs` |
-| `cargo` | Mini-cargo manifest + build orchestration | `cargo.rs` |
-
----
-
-## Project Structure
-
-```text
-landin-stage0/
-├── src/
-│   ├── ast/              # AST data structures
-│   ├── lexer/            # Tokenizer
-│   ├── parser/           # Parser + macro_expand/ + builtin_macros/
-│   ├── hir/              # HIR + lower/ (AST → HIR)
-│   ├── resolve/          # Name resolution
-│   ├── mir/              # MIR + lower/ (HIR → MIR) + drop_elaboration + dyn_trait
-│   ├── typeck/           # Type checker + unify + where_clause
-│   ├── borrowck/          # Borrow checker + region_inference + liveness
-│   ├── codegen/          # LLVM IR emission + runtime + llvm/ (llvm-sys wrappers)
-│   ├── driver/           # Pipeline orchestration + module_loader
-│   ├── stdlib/           # Type registry + prelude + vtable layout
-│   ├── traits/           # TraitResolver + coherence + error
-│   ├── diagnostics/      # Error rendering
-│   ├── session/          # SourceFile + SourceMap + Span
-│   ├── bin/
-│   │   ├── main.rs       # landin-stage0 (single-file compiler)
-│   │   └── landinc.rs    # landinc (multi-file project tool)
-│   ├── lib.rs            # Crate root + public API re-exports
-│   └── cargo.rs          # Mini-cargo (ProjectManifest + build_project)
-├── tests/
-│   ├── v0/stage-N/       # Stage-organized test files (3527 integration tests)
-│   └── conformance/      # Conformance suite (2935 .lin files)
-├── docs/
-│   ├── lang-design/      # Language spec (00-18)
-│   ├── graph/            # Pipeline + data-flow diagrams
-│   ├── develop/v0/       # Stage dev logs + tech-debt-register
-│   ├── stage-committee-process.md  # Dev process SOP
-│   └── worklog.md        # Stage-by-stage work log
-├── scripts/
-│   ├── setup-llvm-env.sh # LLVM 22 (or 19 fallback) environment setup
-│   ├── switch-llvm-version.sh
-│   └── env.sh            # LLVM 22 env helper (PATH + LD_LIBRARY_PATH)
-├── examples/             # Example .lin programs
-├── Cargo.toml            # llvm-sys 221, optional llvm-backend feature
-└── README.md             # This file
+landin/
+├── src/                          # Compiler source (~50K LOC)
+│   ├── bin/                      # CLI entry points
+│   │   ├── main.rs               # landin-stage0 (single-file compiler)
+│   │   └── landinc.rs            # landinc (multi-file project tool)
+│   ├── lexer/                    # Tokenizer
+│   ├── parser/                   # AST construction
+│   ├── hir/                      # High-level IR
+│   ├── typeck/                   # Type checker + borrow checker
+│   ├── mir/                      # Mid-level IR (lowering + optimization)
+│   ├── codegen/                  # LLVM IR emission
+│   │   ├── llvm/                 # LLVMSysEmitter (production)
+│   │   ├── text/                 # TextEmitter (debug)
+│   │   ├── emitter/              # Emitter trait + EmitType
+│   │   ├── mir_translation/      # MIR → EmitType translation
+│   │   ├── trait_dispatch/       # Vtable construction
+│   │   └── ...
+│   ├── borrowck/                 # Borrow checker
+│   ├── driver/                   # Compilation pipeline
+│   ├── stdlib/                   # Landin prelude (String/Vec/Box/...)
+│   ├── session/                  # Compiler session + diagnostics
+│   └── diagnostics/              # Error formatting
+├── tests/                        # Integration tests
+│   ├── all_tests.rs              # Unified test entry
+│   ├── common/mod.rs             # Shared test helpers
+│   ├── v0/stage{0..18}/plan/     # Per-stage test files
+│   └── fuzz/                     # Fuzz harness
+├── docs/                         # Documentation
+│   ├── stage-committee-process.md  # SOP (v7.3, 3068 LOC)
+│   ├── develop/v0/               # Per-stage dev logs + plans
+│   ├── lang-design/              # Language design docs (07-codegen.md, etc.)
+│   ├── graph/                    # Pipeline graphs + matrix
+│   ├── build-guide.md            # Build guide
+│   └── testing-guide.md          # Testing guide
+├── scripts/                      # Build/test scripts
+│   ├── env.sh                     # LLVM env setup
+│   ├── setup-llvm-env.sh         # Auto-detect/install LLVM
+│   └── run_tests.sh             # Test runner (auto-tunes threads + ulimit)
+├── tools/                        # Debug/migration tools
+├── examples/                     # Example programs
+├── benchmark/                    # Benchmarks
+├── rustfmt.toml
+└── Cargo.toml
 ```
-
----
-
-## Current Limitations (v0.493.0, Stage 18.312)
-
-### Type System
-
-- **`LocalId(0)` fallback**: Non-Local borrowed places in region constraints (v0.2+ field projection)
-- **Deref on non-Ref**: Pattern bindings on `&self` don't propagate reference types (v0.2+)
-
-### Code Generation
-
-- ~~Single-file compilation~~ ✅ Stage 18.152-18.155 (`landinc` + `compile_project`)
-- ~~BinaryOp2 fallback~~ ✅ Stage 18.151 (returns `Err(CodegenError)`)
-- ~~MIR optimization not wired~~ ✅ Stage 18.96 (DCE → const_prop → DCE)
-- **No incremental compilation**: Full recompile every time (v0.2+ requires project system)
-
-### Standard Library
-
-- **Box/Vec/String**: ✅ Implemented via intrinsics (Stage 18.178-18.231)
-- **HashMap/BTreeMap/Rc/Arc/Cell/RefCell**: Name-only placeholders, no implementation (v0.5+)
-- **File/Path/TcpStream/Mutex**: Name-only placeholders, no implementation (v0.5+)
-- **format!**: ✅ Stage 18.202 (variadic intrinsic, no `core::fmt` infrastructure)
-- **Drop trait**: ✅ Stage 18.193 (Box auto-drop via `__landin_dealloc`)
-
-### Platform Support
-
-- **Linux only**: No Windows/macOS target triples (v0.2+ cross-compile expansion)
-- **No ABI diversity**: Only `extern "C"` tested (v0.2+ `extern "system"`, `extern "Rust"`)
-
-### v0.5+ Language Features (BLOCKED)
-
-These are required to migrate remaining intrinsics to real prelude impls:
-
-1. **`sizeof(T)`** — generic type size calculation (unlocks `Box::new` + `Vec::push` real body)
-2. **Fat pointer ops** — deconstruct + construct (unlocks `String::as_str` real body)
-3. **`core::fmt` infrastructure** — Display/Debug/Formatter/Write (unlocks `format!` real body)
-4. **Orphan rule** — multi-crate coherence (v0.2+ deferred)
-
----
-
-## Roadmap
-
-### v0.4 (Current — Stable Release)
-
-| Priority | Task | Status |
-|----------|------|--------|
-| ✅ | Monomorphization (per-mono codegen) | ✅ Stage 18.103 |
-| ✅ | Project system (mini-cargo) | ✅ Stage 18.152-18.155 |
-| ✅ | MIR optimization (DCE + const_prop) | ✅ Stage 18.96 |
-| ✅ | Box/Vec/String intrinsics | ✅ Stage 18.178-18.231 |
-| ✅ | Class Rust primitive impl model | ✅ Stage 18.284-18.297 |
-| ✅ | LOC < 1500 for all source files | ✅ Stage 18.305-18.310 |
-| ✅ | runtime.rs/prelude.rs cleanup | ✅ Stage 18.311-18.312 |
-
-### v0.5+ (Next Major)
-
-| Priority | Task | Description |
-|----------|------|-------------|
-| **P0** | `sizeof(T)` | Generic type size calculation |
-| **P0** | Fat pointer ops | Deconstruct + construct syntax |
-| **P1** | `core::fmt` | Display/Debug/Formatter/Write infrastructure |
-| **P1** | HashMap/BTreeMap | Real implementations |
-| **P2** | Incremental compilation | Dependency graph + MIR hash + cache |
-| **P2** | Windows/macOS targets | Cross-compilation expansion |
-| **P3** | Orphan rule | Multi-crate coherence |
-| **P3** | Self-hosting Phase 0 | Standard library in Landin |
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [`docs/stage-committee-process.md`](docs/stage-committee-process.md) | Development process SOP (v5.0) |
-| [`docs/lang-design/`](docs/lang-design/) | Language design documents (00-18) |
-| [`docs/graph/`](docs/graph/) | Pipeline + data-flow diagrams |
-| [`docs/develop/v0/stage-18/`](docs/develop/v0/stage-18/) | Stage 18 design docs + gate reviews |
-| [`docs/develop/v0/tech-debt-register.md`](docs/develop/v0/tech-debt-register.md) | Tech debt tracking (all P0/P1/P2 resolved) |
-| [`docs/develop/v0/v0.4-roadmap.md`](docs/develop/v0/v0.4-roadmap.md) | v0.4 roadmap design |
-| [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
-| [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
-| [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.331) |
-| [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
-
-### Recent Stage History
-
-| Stage | Version | Summary |
-|-------|---------|---------|
-| 18.331 | v0.493.0 | P1 codegen bug 根因修复: TextEmitter sret (emit_function_begin/emit_ret/emit_call) + EmitType::needs_sret() + LLVMSysEmitter sret 回退 (尝试+失败,LLVM C API sret 类型匹配问题 — 留 v0.5+) — both_news 100%, Vec::new multiple 95% |
-| 18.330 | v0.493.0 | P1 codegen bug 根因修复: TextEmitter sret for struct > 16 bytes (per Rust rustc_codegen_llvm) — emit_function_begin/emit_ret/emit_call 全部支持 sret, EmitType::needs_sret() 判断 (1 bug, 总计 16 bugs fixed) |
-| 18.329 | v0.493.0 | P1 codegen bug 根因修复: LLVMSysEmitter typed ptr store→opaque, emit_null_ptr→ConstNull, CodeGenLevel→Default (struct return ABI), entry block br (5 bugs, 总计 15 bugs fixed) |
-| 18.327 | v0.493.0 | P1 codegen bug 根因修复: opaque pointer migration — GEP typed ptr→opaque, load/store 加 ptr 前缀, entry block 加 br terminator (3 bugs, 总计 10 bugs fixed) |
-| 18.326 | v0.493.0 | P1 codegen bug 根因修复: 7 bugs (bitcast→inttoptr/null, private→internal, zeroinitializer typed, ptr %self, globals ordering, emit_null_ptr value, LLVMSysEmitter lookup) |
-| 18.325 | v0.493.0 | TD-CODEGEN-NEGATIVE final push: +60 codegen negative tests (8 categories) — 14.9%→23.3%, 25% target reached |
-| 18.324 | v0.493.0 | TD-CODEGEN-NEGATIVE continued: +30 codegen negative tests (7 categories) — 10.7%→15.6% coverage |
-| 18.323 | v0.493.0 | TD-CODEGEN-NEGATIVE: +24 codegen negative tests (6 categories) — 6.7%→10.7% coverage |
-| 18.322 | v0.493.0 | TD-DUMMY-* 审计完成 (8 files, 250 Span::DUMMY 全部 Category A, 0 Category B 漏网) |
-| 18.321 | v0.493.0 | Cargo.toml 过时注释清理 (description "LLVM 19" → "LLVM 22" + llvm-sys 注释 "19+21" → "18-22 default 22") |
-| 18.320 | v0.493.0 | scripts/switch-llvm-version.sh 过时注释清理 (LLVM 19+21 → LLVM 18-22 default 22) |
-| 18.319 | v0.493.0 | docs/ 子目录过时内容清理 (build-guide + testing-guide + graph/README + llvm/README) |
-| 18.318 | v0.493.0 | 全量深度审查完成 (98 src files reviewed, 6 stale items fixed) — diagnostics/session/ast/resolve/lexer 审查通过 |
-| 18.317 | v0.493.0 | mir/lower expr_variants doc-comment cleanup (4→3 arms) + deep module review |
-| 18.316 | v0.493.0 | typeck/borrowck doc-comment cleanup (4 处过时引用) |
-| 18.315 | v0.493.0 | 全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 |
-| 18.312 | v0.493.0 | runtime.rs/prelude.rs 过时内容清理 |
-| 18.310 | v0.493.0 | LOC 重构完全清零 (6 个文件 < 1500) |
-| 18.304 | v0.493.0 | P3 field access on primitive 报错 |
-| 18.297 | v0.493.0 | typeck gap: trait not implemented for type X |
-| 18.295 | v0.493.0 | trait impl for primitive types (`impl MyTrait for i32`) |
-| 18.293 | v0.493.0 | 禁止用户 inherent impl 原始类型 (类 Rust E0117) |
-| 18.292 | v0.493.0 | inherent impl 冲突检测 (类 Rust "duplicate definitions") |
-| 18.284 | v0.493.0 | TD-INTRINSIC-OVERUSE Phase 2-A (str::len/is_empty/as_bytes migrated to prelude) |
-| 18.232 | v0.493.0 | 4 compound C helpers migrated to MIR intrinsics |
-| 18.155 | v0.493.0 | landinc CLI build/run/new/check/clean |
-| 18.151 | v0.493.0 | TD-CODEGEN-RESULT (CodegenResult propagation) |
-| 18.103 | v0.371.0 | Per-Mono Codegen (TD-MONO-CODEGEN) |
-| 18.96  | v0.364.0 | MIR optimization wiring (DCE + const_prop) |
+- **Build guide**: `docs/build-guide.md`
+- **Testing guide**: `docs/testing-guide.md`
+- **SOP**: `docs/stage-committee-process.md` (v7.3, 3068 LOC)
+- **Tech debt register**: `docs/develop/v0/tech-debt-register.md`
+- **Per-stage dev logs**: `docs/develop/v0/stage-N/`
+- **Per-stage plans**: `docs/develop/v0/stage-N/plan-N.M.md`
+- **Language design**: `docs/lang-design/` (07-codegen.md, 25-drop-elaboration.md, etc.)
 
 ---
 
-## Development Process
+## Roadmap
 
-Per `docs/stage-committee-process.md` (v5.0):
+### v0.4 (current — release-ready)
 
-- **MUV (Minimum Verifiable Unit)**: each stage is atomic + independently testable
-- **§3.2 acceptance gate**: `cargo build --release && fmt --check && clippy -- -D warnings && test --release` all green
-- **§9.4.3 negative test ratio**: ≥ 25% negative tests (currently 27.8%)
-- **§13.4 J1-J6 refactoring**: design unchanged / single responsibility / no circular deps / complete / same pipeline stage / LOC < 1500
-- **§14.5 deep review**: mandatory at stage end
-- **§19 packaging**: `landin-stage0-v<ver>-stage<N>-<desc>-r<rev>.tar.gz`
+- ✅ All P0/P1/P2 tech-debts resolved
+- ✅ Multi-threaded cargo test stable (25/25 with `ulimit -s unlimited`)
+- ✅ System V ABI: sret + byval explicitly emitted
+- ✅ 4331 tests, 0 failures
 
-### LLVM Version
+### v0.4+ (next)
 
-- **Default**: LLVM 22.1 (llvm-sys 221) — Stage 18.210 upgrade
-- **Fallback**: LLVM 19.x (llvm-sys 191) — for environments without LLVM 22
-- **Setup**: `source scripts/setup-llvm-env.sh` (auto-detects + installs)
-- **Switch**: `bash scripts/switch-llvm-version.sh 22` (or 19)
+- Stage 18.334: variadic function detection from signature (P1)
+- Stage 18.335: empty struct as LLVM `{}` instead of `i8` (P2)
+- §14.5 D1-D8 deep review for v0.4 release sign-off
+- README.md / RELEASE_NOTES.md complete restructure (this revision)
+
+### v0.5+ (future)
+
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — needs lang features:
+  - Primitive type impl (`impl str { fn len(&self) -> usize { ... } }`)
+  - Fat pointer construction (`&str` → `(ptr, len)`)
+  - `extern "C"` in prelude impl
+- `core::fmt` infrastructure (Display/Debug/Formatter/Write traits)
+- Cross-compilation to Windows/macOS
 
 ---
 
-## License
+## Contributing
 
-MIT License — see [`LICENSE`](LICENSE) for details.
+### Development workflow
+
+Per `docs/stage-committee-process.md` (v7.3):
+
+1. **Self-check (§1.2.1)**: classify task as L1/L2/L3
+2. **Design alignment (§13.1)**: read `docs/lang-design/` + `docs/graph/`
+3. **MUV (§4)**: smallest verifiable unit of work
+4. **Inner review (§5)**: P0/P1 cleanup loop
+5. **Acceptance (§3.2)**: `cargo fmt + check + clippy + test --release` all green
+6. **Documentation (§8)**: worklog + tech-debt-register + plan doc
+7. **Packaging (§19)**: `landin-stage0-v<X>.<Y>.<Z>-stage<N>.<M>-<desc>-r<R>.tar.gz`
+
+### Principles
+
+- §1.0 原則 4: 报错 > 静默 (errors > silent)
+- §1.0 原則 6: 通解 > 特解 (general > special-case)
+- §1.0 原則 9: 正确 > 妥协 (correct > compromise)
+- §2.2: 根因思维 (root-cause thinking)
+- §12: 最优 > 最小 (optimal > minimal)
+- §20: 迭代审计 (iterative audit — "finding one bug means there are many similar bugs")
+
+### License
+
+MIT — see [LICENSE](LICENSE).

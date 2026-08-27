@@ -692,6 +692,10 @@ mod stage18_325_codegen_negative_final_push_tests;
 #[path = "v0/stage18/plan/stage18_332_sret_abi_tests.rs"]
 mod stage18_332_sret_abi_tests;
 
+// === Stage 18.333: P1 soundness fix — byval ABI support for large struct/array params ===
+#[path = "v0/stage18/plan/stage18_333_byval_abi_tests.rs"]
+mod stage18_333_byval_abi_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

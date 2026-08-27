@@ -511,14 +511,27 @@ impl LLVMSysEmitter {
                     // function definition (which is also built with sret in
                     // emit_function_begin).
                     //
-                    // Per §1.0 原則 6 (通解 > 特解): single sret signature path
-                    // across emit_function_begin + declare_function + interpret_adhoc.
+                    // Stage 18.333: Also build byval signature for params > 16B.
+                    // Mirrors emit_function_begin's byval path.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): single sret+byval signature
+                    // path across emit_function_begin + declare_function + interpret_adhoc.
                     let use_sret = ret_ty.needs_sret();
-                    let user_param_llvm_tys: Vec<LLVMTypeRef> =
-                        param_tys.iter().map(|t| self.llvm_type(t)).collect();
+                    let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                    let mut byval_infos: Vec<(usize, LLVMTypeRef)> = Vec::new();
+                    let mut user_param_llvm_tys: Vec<LLVMTypeRef> =
+                        Vec::with_capacity(param_tys.len());
+                    for (i, t) in param_tys.iter().enumerate() {
+                        let orig_llvm_ty = self.llvm_type(t);
+                        if t.needs_byval() {
+                            byval_infos.push((i, orig_llvm_ty));
+                            user_param_llvm_tys.push(ptr_ty);
+                        } else {
+                            user_param_llvm_tys.push(orig_llvm_ty);
+                        }
+                    }
                     let (fwd_ret_ty, fwd_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
                         let void_ty = LLVMVoidTypeInContext(self.ctx);
-                        let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                         let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
                         sret_params.extend(user_param_llvm_tys.iter().copied());
                         (void_ty, sret_params)
@@ -540,6 +553,16 @@ impl LLVMSysEmitter {
                             ret_llvm_ty,
                         );
                         LLVMAddAttributeAtIndex(fwd, 1, sret_attr);
+                    }
+                    // Stage 18.333: Add byval attribute to each byval-eligible user param.
+                    let sret_offset: u32 = if use_sret { 1 } else { 0 };
+                    for (user_idx, orig_llvm_ty) in &byval_infos {
+                        let llvm_param_idx = (*user_idx as u32) + 1 + sret_offset;
+                        let byval_attr = crate::codegen::llvm::helpers::create_byval_attribute(
+                            self.ctx,
+                            *orig_llvm_ty,
+                        );
+                        LLVMAddAttributeAtIndex(fwd, llvm_param_idx, byval_attr);
                     }
                     self.declared.insert(func_name, fwd);
                     return fwd;
@@ -653,12 +676,27 @@ impl LLVMSysEmitter {
             // Per §20 (iterative audit): Stage 18.188's "delete + re-add"
             // hack in emit_function_begin handled the symptom but introduced
             // races — the proper fix is forward decls use sret from the start.
+            //
+            // Stage 18.333 (P1 soundness fix): Also build byval signature
+            // for params > 16B. Mirrors emit_function_begin's byval path:
+            // replace param type with `ptr`, add `byval(<orig_ty>)` attribute
+            // at the correct LLVM param index.
+            // Per §20: same root cause as sret; same fix pattern.
             let use_sret = ret_ty.needs_sret();
-            let user_param_tys: Vec<LLVMTypeRef> =
-                arg_tys.iter().map(|t| self.llvm_type(t)).collect();
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let mut byval_infos: Vec<(usize, LLVMTypeRef)> = Vec::new();
+            let mut user_param_tys: Vec<LLVMTypeRef> = Vec::with_capacity(arg_tys.len());
+            for (i, t) in arg_tys.iter().enumerate() {
+                let orig_llvm_ty = self.llvm_type(t);
+                if t.needs_byval() {
+                    byval_infos.push((i, orig_llvm_ty));
+                    user_param_tys.push(ptr_ty);
+                } else {
+                    user_param_tys.push(orig_llvm_ty);
+                }
+            }
             let (fn_ret_ty, fn_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
                 let void_ty = LLVMVoidTypeInContext(self.ctx);
-                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                 let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
                 sret_params.extend(user_param_tys.iter().copied());
                 (void_ty, sret_params)
@@ -688,6 +726,15 @@ impl LLVMSysEmitter {
                 let sret_attr =
                     crate::codegen::llvm::helpers::create_sret_attribute(self.ctx, ret_llvm_ty);
                 LLVMAddAttributeAtIndex(f, 1, sret_attr);
+            }
+            // Stage 18.333: Add byval attribute to each byval-eligible user param.
+            // Mirrors emit_function_begin's byval index calculation.
+            let sret_offset: u32 = if use_sret { 1 } else { 0 };
+            for (user_idx, orig_llvm_ty) in &byval_infos {
+                let llvm_param_idx = (*user_idx as u32) + 1 + sret_offset;
+                let byval_attr =
+                    crate::codegen::llvm::helpers::create_byval_attribute(self.ctx, *orig_llvm_ty);
+                LLVMAddAttributeAtIndex(f, llvm_param_idx, byval_attr);
             }
             self.declared.insert(name.to_string(), f);
             f

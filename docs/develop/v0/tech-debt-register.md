@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.332 — P1 soundness fix: LLVMSysEmitter sret ABI Support + entry_block_alloca + TMPDIR fix)
-> **Version**: v0.494.0
-> **Status**: Stage 18.332 resolved TD-SRET-LLVM-SYS (P1 soundness — multi-threaded cargo test intermittent segfault). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features: fat pointer construction + extern "C" in prelude). 3648 tests, 0 failures (single-thread). Multi-thread 15/15 stable. v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.333 — P1 soundness fix: byval ABI Support for large struct/array params + LLVM stack size workaround)
+> **Version**: v0.495.0
+> **Status**: Stage 18.333 resolved TD-BYVAL-LLVM-SYS (P1 soundness — large struct/array params missing byval ABI). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features: fat pointer construction + extern "C" in prelude). 3655 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 25/25 stable. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -85,6 +85,8 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-LINUX-ONLY | No Windows/macOS target triples | Cannot cross-compile to non-Linux platforms | v0.2 P2: cross-compile expansion |
 | TD-ABI-DIVERSITY | Only `extern "C"` tested | No `extern "system"`, `extern "Rust"` | v0.2 P2: ABI diversity |
 | TD-SRET-LLVM-SYS | LLVMSysEmitter 缺 sret ABI 处理 — 函数返回 > 16B 结构体（如 Vec::new 返回 {ptr, i64, i64} = 24B）时未通过 sret 隐藏指针参数传递，导致多线程 cargo test 间歇性 segfault (~5-10% flake rate) | 所有返回 > 16B 结构体的函数（Vec::new/String::new/make_triple 等）的调用点 ABI 不正确 | ✅ Resolved Stage 18.332: 显式 sret via LLVMCreateTypeAttribute + LLVMAddAttributeAtIndex + LLVMAddCallSiteAttribute + entry_block_alloca 提升 alloca 到 entry 块（消除动态栈调整）+ TMPDIR fix（消除 cc /tmp 竞争）。7 回归测试 + 15/15 多线程稳定。 |
+| TD-BYVAL-LLVM-SYS | LLVMSysEmitter 缺 byval ABI 处理 — 函数参数 > 16B 结构体/数组（如 `fn foo(b: Big)` where Big > 16B）时未通过 byval 隐藏指针参数传递，违反 System V AMD64 ABI §3.2.3 | 所有接收 > 16B 结构体/数组参数的函数（如 `fn sum_big(b: Big)`）的参数 ABI 不正确 — 第三字段丢失、值截断 | ✅ Resolved Stage 18.333: 显式 byval via LLVMCreateTypeAttribute + LLVMAddAttributeAtIndex + LLVMAddCallSiteAttribute + entry_block_alloca + 函数体参数 load-then-store (从 ptr 加载 struct)。TextEmitter 镜像。7 回归测试 + 25/25 多线程稳定（ulimit -s unlimited）。同根因：Stage 18.332 sret bug 的 §20 同类审计发现。 |
+| TD-VARIADIC-DETECTION | 变长函数检测硬编码为 `name == "printf" \|\| name == "__landin_eprintf"` 名字列表，未从签名解析 `...` token | 未来添加其他变长 C 函数 (sprintf/snprintf/fprintf) 时静默生成非变长声明，导致 ABI 不匹配 | 🟡 Stage 18.334 计划: 从 emit_declare 签名字符串解析 `...`，传递给 declare_function + emit_call |
 
 ### 2.6 Standard Library
 
