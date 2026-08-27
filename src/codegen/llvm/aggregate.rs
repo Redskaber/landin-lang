@@ -3,7 +3,7 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
-use super::helpers::cstr_owned;
+use super::helpers::{create_sret_attribute, cstr_owned};
 use crate::codegen::emitter::AggregateEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
@@ -18,6 +18,27 @@ impl AggregateEmitter for LLVMSysEmitter {
         args: &[(EmitType, &EmitValue)],
         ret_ty: &EmitType,
     ) -> EmitValue {
+        // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
+        // use sret calling convention at the call site.
+        //
+        // Per System V AMD64 ABI §3.2.3 + rustc_codegen_llvm:
+        // - Caller allocates a stack slot for the result.
+        // - Pass the slot's pointer as the first arg with `sret(<ret_ty>)`.
+        // - Callee writes the result to the sret pointer.
+        // - Caller loads the result from the slot.
+        //
+        // **Design boundary**:
+        // - Mirrors TextEmitter's emit_call sret path (Stage 18.330).
+        // - `declare_function` and `interpret_adhoc` ALSO build sret
+        //   signatures, so the callee's function type already matches.
+        // - For indirect calls (fn_name starts with %), we still build the
+        //   sret signature at the call site and add the sret attribute to
+        //   the call's first arg.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one sret call path for all > 16B struct returns.
+        // Per §12 (最优 > 最小): root-cause fix at IR level.
+        let use_sret = ret_ty.needs_sret();
+
         let arg_tys: Vec<EmitType> = args.iter().map(|(t, _)| t.clone()).collect();
         // Stage 14.58: Support indirect calls through function pointers.
         // When fn_name is an SSA value (starts with %), look it up as a
@@ -29,8 +50,8 @@ impl AggregateEmitter for LLVMSysEmitter {
         };
         if crate::session::debug_codegen_enabled() {
             eprintln!(
-                "[CODEGEN] emit_call: fn_name={} callee={:?}",
-                fn_name, callee
+                "[CODEGEN] emit_call: fn_name={} callee={:?} use_sret={}",
+                fn_name, callee, use_sret
             );
         }
         unsafe {
@@ -48,14 +69,15 @@ impl AggregateEmitter for LLVMSysEmitter {
             // not symptom (change function signatures or use i32 everywhere).
             // Per §1.0 原則 6 (通解>特例): one coercion path for all integer
             // arg type mismatches.
-            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
-            let mut arg_vals: Vec<LLVMValueRef> = Vec::with_capacity(args.len());
+            let user_param_tys: Vec<LLVMTypeRef> =
+                args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let mut user_arg_vals: Vec<LLVMValueRef> = Vec::with_capacity(args.len());
             for (i, (_, v)) in args.iter().enumerate() {
                 let raw = self.lookup(v);
-                let target_ty = param_tys[i];
+                let target_ty = user_param_tys[i];
                 let raw_ty = LLVMTypeOf(raw);
                 if raw_ty == target_ty {
-                    arg_vals.push(raw);
+                    user_arg_vals.push(raw);
                 } else {
                     let raw_kind = LLVMGetTypeKind(raw_ty);
                     let target_kind = LLVMGetTypeKind(target_ty);
@@ -70,38 +92,70 @@ impl AggregateEmitter for LLVMSysEmitter {
                             1, // signed
                             name_c.as_ptr(),
                         );
-                        arg_vals.push(coerced);
+                        user_arg_vals.push(coerced);
                     } else {
                         // Non-integer type mismatch — pass as-is (LLVM will
                         // catch the error if it's truly invalid).
-                        arg_vals.push(raw);
+                        user_arg_vals.push(raw);
                     }
                 }
             }
-            // Build function type — assume same signature.
+
+            // Stage 18.332: When use_sret, allocate the sret slot and
+            // prepend it to the args list. The function type is also
+            // built with the sret signature (void return + ptr param 0).
+            //
+            // **Critical**: Use `entry_block_alloca` instead of `LLVMBuildAlloca`
+            // to ensure the alloca is hoisted to the entry block. Mid-function
+            // allocas cause LLVM to emit dynamic stack adjustment patterns
+            // (`mov %rsp, %r14; mov %rdi, %rsp`) that leak stack across
+            // subsequent calls — causing intermittent segfaults under
+            // multi-threaded test execution.
             let ret_llvm_ty = self.llvm_type(ret_ty);
-            // Stage 13.16: printf and __landin_eprintf are variadic — declare
-            // them with isVariadic=1 so LLVM doesn't complain about arg count
-            // mismatches when the call site has more args than the declaration.
-            // (The actual libc printf is variadic; our auto-declaration with
-            // fixed args would cause LLVM verifier errors for variadic calls.)
-            // Stage 18.232: __landin_format_variadic removed (migrated to MIR).
+            let sret_slot: Option<LLVMValueRef> = if use_sret {
+                Some(self.entry_block_alloca(ret_llvm_ty, "sret_slot"))
+            } else {
+                None
+            };
+
+            // Build the final args list (sret slot first if applicable).
+            let mut all_arg_vals: Vec<LLVMValueRef> =
+                Vec::with_capacity(user_arg_vals.len() + if use_sret { 1 } else { 0 });
+            if let Some(slot) = sret_slot {
+                all_arg_vals.push(slot);
+            }
+            all_arg_vals.extend(user_arg_vals.iter().copied());
+
+            // Build the function type matching the callee's signature.
+            // For sret: void (ptr sret, ...user_params).
+            // For non-sret: <ret_ty> (...user_params).
+            // For variadic printf: i32 (..., ...).
             let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
                 1
             } else {
                 0
             };
+            let (call_ret_ty, all_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
+                let void_ty = LLVMVoidTypeInContext(self.ctx);
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                let mut sret_param_tys: Vec<LLVMTypeRef> = vec![ptr_ty];
+                sret_param_tys.extend(user_param_tys.iter().copied());
+                (void_ty, sret_param_tys)
+            } else {
+                (ret_llvm_ty, user_param_tys.clone())
+            };
             let fty = LLVMFunctionType(
-                ret_llvm_ty,
-                param_tys.as_ptr() as *mut LLVMTypeRef,
-                param_tys.len() as u32,
+                call_ret_ty,
+                all_param_tys.as_ptr() as *mut LLVMTypeRef,
+                all_param_tys.len() as u32,
                 is_variadic,
             );
-            // Stage 14.44: For void-returning calls, pass an EMPTY name string
-            // to LLVMBuildCall2. Was: always passed "call" as the name, which
-            // caused "Instruction has a name, but provides a void value" verifier
+            // Stage 14.44: For void-returning calls (including sret calls,
+            // which return void), pass an EMPTY name string to LLVMBuildCall2.
+            // Was: always passed "call" as the name, which caused
+            // "Instruction has a name, but provides a void value" verifier
             // error for calls to void functions (e.g., __landin_panic_overflow).
-            let name_c = if *ret_ty == EmitType::Void {
+            let name_c = if *ret_ty == EmitType::Void || use_sret {
                 cstr_owned("")
             } else {
                 cstr_owned("call")
@@ -110,13 +164,37 @@ impl AggregateEmitter for LLVMSysEmitter {
                 self.builder,
                 fty,
                 callee,
-                arg_vals.as_mut_ptr(),
-                arg_vals.len() as u32,
+                all_arg_vals.as_mut_ptr(),
+                all_arg_vals.len() as u32,
                 name_c.as_ptr(),
             );
+
+            // Stage 18.332: Add sret attribute to the call site's first arg.
+            // This is required for LLVM to know that the first arg is a sret
+            // pointer (not a regular ptr). Without this, the call site ABI
+            // mismatches the function declaration's ABI.
+            // For indirect calls (function pointer), the call site attribute
+            // is the ONLY way to convey sret (the function pointer type itself
+            // doesn't carry attribute info in opaque pointer mode).
+            if use_sret {
+                let sret_attr = create_sret_attribute(self.ctx, ret_llvm_ty);
+                LLVMAddCallSiteAttribute(v, 1, sret_attr);
+            }
+
             if *ret_ty == EmitType::Void {
                 // Don't register a name for void calls — return "0" sentinel.
                 "0".to_string()
+            } else if use_sret {
+                // Load the result from the sret slot. The callee has written
+                // the struct value to `sret_slot` (param 0 of the call).
+                let load_name = cstr_owned("sret_load");
+                let loaded = LLVMBuildLoad2(
+                    self.builder,
+                    ret_llvm_ty,
+                    sret_slot.unwrap(),
+                    load_name.as_ptr(),
+                );
+                self.fresh_named(loaded)
             } else {
                 self.fresh_named(v)
             }
@@ -223,31 +301,88 @@ impl AggregateEmitter for LLVMSysEmitter {
             );
 
             // 5. Build the function type from arg types + return type.
+            //
+            // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
+            // use sret at the indirect call site. The method function pointer
+            // loaded from the vtable is `ptr` (opaque), so the call site
+            // attribute is the ONLY way to convey sret to LLVM.
+            //
+            // Per §20 (iterative audit): "发现一个 bug 意味着存在大量类似 bug"
+            // — found via auditing all emit_call paths after the direct-call
+            // sret fix. Same root cause: missing sret ABI handling.
+            // Per §1.0 原則 6 (通解 > 特解): same sret path as emit_call.
             let ret_llvm_ty = self.llvm_type(ret_ty);
-            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let use_sret = ret_ty.needs_sret();
+            let user_param_tys: Vec<LLVMTypeRef> =
+                args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let (call_ret_ty, all_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
+                let void_ty = LLVMVoidTypeInContext(self.ctx);
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
+                sret_params.extend(user_param_tys.iter().copied());
+                (void_ty, sret_params)
+            } else {
+                (ret_llvm_ty, user_param_tys.clone())
+            };
             let fty = LLVMFunctionType(
-                ret_llvm_ty,
-                param_tys.as_ptr() as *mut LLVMTypeRef,
-                param_tys.len() as u32,
+                call_ret_ty,
+                all_param_tys.as_ptr() as *mut LLVMTypeRef,
+                all_param_tys.len() as u32,
                 0, // not variadic
             );
 
-            // 6. Call the loaded function pointer (indirect call).
-            let mut arg_vals: Vec<LLVMValueRef> =
+            // 6. Build args list (sret slot prepended if use_sret).
+            // Stage 18.332: Use entry_block_alloca (not LLVMBuildAlloca) to
+            // hoist the alloca to the entry block. Same rationale as emit_call:
+            // mid-function allocas produce fragile dynamic stack adjustments.
+            let sret_slot: Option<LLVMValueRef> = if use_sret {
+                Some(self.entry_block_alloca(ret_llvm_ty, "dyncall_sret_slot"))
+            } else {
+                None
+            };
+            let mut all_arg_vals: Vec<LLVMValueRef> =
+                Vec::with_capacity(args.len() + if use_sret { 1 } else { 0 });
+            if let Some(slot) = sret_slot {
+                all_arg_vals.push(slot);
+            }
+            let user_arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();
-            let call_name = cstr_owned("dyncall");
+            all_arg_vals.extend(user_arg_vals.iter().copied());
+
+            // 7. Call the loaded function pointer (indirect call).
+            let call_name = if use_sret || *ret_ty == EmitType::Void {
+                cstr_owned("")
+            } else {
+                cstr_owned("dyncall")
+            };
             let call_val = LLVMBuildCall2(
                 self.builder,
                 fty,
                 method_fn,
-                arg_vals.as_mut_ptr(),
-                arg_vals.len() as u32,
+                all_arg_vals.as_mut_ptr(),
+                all_arg_vals.len() as u32,
                 call_name.as_ptr(),
             );
+
+            // 8. Add sret attribute to call site param 1 (the sret slot).
+            if use_sret {
+                let sret_attr = create_sret_attribute(self.ctx, ret_llvm_ty);
+                LLVMAddCallSiteAttribute(call_val, 1, sret_attr);
+            }
 
             if *ret_ty == EmitType::Void {
                 // Don't register a name for void calls — return "0" sentinel.
                 "0".to_string()
+            } else if use_sret {
+                // Load the result from the sret slot.
+                let load_name = cstr_owned("dyncall_sret_load");
+                let loaded = LLVMBuildLoad2(
+                    self.builder,
+                    ret_llvm_ty,
+                    sret_slot.unwrap(),
+                    load_name.as_ptr(),
+                );
+                self.fresh_named(loaded)
             } else {
                 self.fresh_named(call_val)
             }

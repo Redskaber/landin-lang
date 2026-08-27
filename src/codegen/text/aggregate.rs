@@ -157,7 +157,29 @@ impl AggregateEmitter for TextEmitter {
             .collect::<Vec<_>>()
             .join(", ");
 
-        if *ret_ty == EmitType::Void {
+        // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
+        // use sret at the indirect call site. Mirrors TextEmitter::emit_call
+        // sret path (Stage 18.330) and LLVMSysEmitter's emit_dyn_trait_method_call.
+        //
+        // Per §20 (iterative audit): found via auditing all emit_call paths.
+        // Per §1.0 原則 6 (通解 > 特解): same sret path for direct + indirect calls.
+        if ret_ty.needs_sret() {
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            // Allocate space for the return value.
+            let sret_name = format!("%sret_{}", self.fresh());
+            self.line(&format!("  {} = alloca {}", sret_name, ret_str));
+            // Build args: sret pointer first, then original args.
+            let mut all_args = vec![format!("ptr {}", sret_name)];
+            for (ty, a) in args {
+                all_args.push(format!("{} {}", emit_type_to_llvm_str(ty), a));
+            }
+            self.line(&format!(
+                "  call void %v{method_fn_r}({})",
+                all_args.join(", ")
+            ));
+            // Return the sret pointer — callers use it to access the result.
+            sret_name
+        } else if *ret_ty == EmitType::Void {
             self.line(&format!("  call void %v{method_fn_r}({args_str})"));
             "0".to_string()
         } else {

@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.331 — P1 codegen bug 根因修复: TextEmitter sret + EmitType::needs_sret() + LLVMSysEmitter sret 回退; 16 bugs fixed — both_news 100%, Vec::new multiple 95%)
+> **Version**: v0.494.0 (Stage 18.332 — P1 soundness: LLVMSysEmitter sret ABI Support + entry_block_alloca + TMPDIR fix. Multi-threaded cargo test now 15/15 stable. 4325 tests total, 0 failures.)
 > **License**: MIT
-> **Status**: v0.4 stable. 4317 tests, 0 failures (单线程). 类 Rust 原始类型扩展模型完成. P1 codegen 根因修复.
+> **Status**: v0.4 stable. 4325 tests, 0 failures (single-thread). Multi-thread stable. All P0/P1/P2 TDs resolved except BLOCKED TD-INTRINSIC-OVERUSE Phase 2-B/C (needs v0.4+ lang features).
 
 A work-in-progress systems programming language inspired by Rust, using
 LLVM 22 (llvm-sys 221) for code generation. The compiler is written in

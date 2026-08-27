@@ -200,6 +200,35 @@ pub(crate) fn count_args_in_signature(sig: &str) -> usize {
     }
 }
 
+/// Stage 18.332 (P1 soundness fix): Create an `sret` type attribute.
+///
+/// Per System V AMD64 ABI §3.2.3 + rustc_codegen_llvm:
+/// - Structs > 16 bytes returned from functions must be passed via a hidden
+///   `sret` pointer parameter (held in `%rdi` on x86-64).
+/// - LLVM represents this as a `sret(<ty>)` type attribute on the first
+///   function parameter (index 1 in LLVM's 1-indexed attribute scheme).
+/// - rustc emits sret explicitly via `Attribute::getWithStructRetType(ctx, ty)`;
+///   we mirror this via `LLVMCreateTypeAttribute(ctx, sret_kind, ty)`.
+///
+/// The kind ID is fetched at runtime via `LLVMGetEnumAttributeKindForName`
+/// because LLVM doesn't expose the enum value as a stable public constant
+/// (the enum may shift across LLVM versions — the name "sret" is stable).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one helper used by all 4 sret emission sites
+/// (emit_function_begin, declare_function, interpret_adhoc, emit_call).
+/// Per §12 (最优 > 最小): explicit sret at IR level is the architectural fix;
+///   relying on LLVM's CodeGenPrepare auto-demotion was a workaround.
+pub(crate) fn create_sret_attribute(
+    ctx: llvm_sys::prelude::LLVMContextRef,
+    ret_llvm_ty: llvm_sys::prelude::LLVMTypeRef,
+) -> llvm_sys::prelude::LLVMAttributeRef {
+    unsafe {
+        let sret_kind =
+            llvm_sys::core::LLVMGetEnumAttributeKindForName(b"sret".as_ptr() as *const _, 4);
+        llvm_sys::core::LLVMCreateTypeAttribute(ctx, sret_kind, ret_llvm_ty)
+    }
+}
+
 /// Copy a C string (NUL-terminated) from a `*const c_char` into an
 /// owned `String`. Does NOT free the original — the caller is
 /// responsible for `LLVMDisposeMessage` if applicable.

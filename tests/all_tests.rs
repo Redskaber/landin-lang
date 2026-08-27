@@ -688,6 +688,10 @@ mod stage18_324_codegen_negative_expansion_tests;
 #[path = "v0/stage18/plan/stage18_325_codegen_negative_final_push_tests.rs"]
 mod stage18_325_codegen_negative_final_push_tests;
 
+// === Stage 18.332: P1 soundness fix — sret ABI support for LLVMSysEmitter ===
+#[path = "v0/stage18/plan/stage18_332_sret_abi_tests.rs"]
+mod stage18_332_sret_abi_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

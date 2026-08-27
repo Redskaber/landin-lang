@@ -340,6 +340,53 @@ impl LLVMSysEmitter {
         }
     }
 
+    /// Stage 18.332 (P1 soundness fix): Build an alloca AT THE ENTRY BLOCK
+    /// of the current function, then return to the current builder position.
+    ///
+    /// **Why this matters**: When `LLVMBuildAlloca` is called mid-function
+    /// (after non-alloca instructions), LLVM treats it as a DYNAMIC stack
+    /// allocation — generating `mov %rsp, %r14; lea -0x20(%r14), %rdi;
+    /// mov %rdi, %rsp` patterns that leak stack across calls.
+    ///
+    /// Under multi-threaded cargo test execution, the dynamic stack
+    /// adjustment pattern causes intermittent crashes when many tests
+    /// run in parallel (the red zone can be corrupted by signal handlers
+    /// or by other threads' stack operations).
+    ///
+    /// By hoisting the alloca to the entry block, LLVM combines it with
+    /// other entry-block allocas into a single `sub $X, %rsp` instruction
+    /// at function entry — the standard, safe ABI pattern.
+    ///
+    /// Per §2.2 (根因思维): root-cause fix at IR-emission time, not at
+    /// machine-code level. Per §12 (最优 > 最小): the proper fix is to
+    /// follow LLVM's recommended pattern (allocas in entry block).
+    /// Per §1.0 原則 6 (通解 > 特解): one helper used by all sret
+    /// alloca sites (emit_call + emit_dyn_trait_method_call).
+    pub(crate) fn entry_block_alloca(&mut self, ty: LLVMTypeRef, name: &str) -> LLVMValueRef {
+        unsafe {
+            let cur_bb = LLVMGetInsertBlock(self.builder);
+            let cur_fn = self
+                .cur_fn
+                .expect("entry_block_alloca: no current function");
+            let entry_bb = LLVMGetEntryBasicBlock(cur_fn);
+            let first_instr = LLVMGetFirstInstruction(entry_bb);
+            let name_c = cstr_owned(name);
+            let alloca = if first_instr.is_null() {
+                // Empty entry block — position at end and build.
+                LLVMPositionBuilderAtEnd(self.builder, entry_bb);
+                LLVMBuildAlloca(self.builder, ty, name_c.as_ptr())
+            } else {
+                // Position before first instruction, build alloca, then
+                // restore to original position.
+                LLVMPositionBuilderBefore(self.builder, first_instr);
+                LLVMBuildAlloca(self.builder, ty, name_c.as_ptr())
+            };
+            // Restore builder to the original basic block.
+            LLVMPositionBuilderAtEnd(self.builder, cur_bb);
+            alloca
+        }
+    }
+
     /// Resolve a `&EmitValue` (LLVM-side SSA name) to its `LLVMValueRef`.
     ///
     /// Falls back to ad-hoc constant construction for non-registered
@@ -458,16 +505,42 @@ impl LLVMSysEmitter {
                             param_tys.len()
                         );
                     }
-                    let ret_llvm_ty = self.llvm_type(ret_ty);
-                    let param_llvm_tys: Vec<LLVMTypeRef> =
+                    // Stage 18.332: Build forward decl with sret signature
+                    // when ret_ty.needs_sret(). Mirrors declare_function's
+                    // path — keeps the decl ABI-compatible with the eventual
+                    // function definition (which is also built with sret in
+                    // emit_function_begin).
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): single sret signature path
+                    // across emit_function_begin + declare_function + interpret_adhoc.
+                    let use_sret = ret_ty.needs_sret();
+                    let user_param_llvm_tys: Vec<LLVMTypeRef> =
                         param_tys.iter().map(|t| self.llvm_type(t)).collect();
+                    let (fwd_ret_ty, fwd_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
+                        let void_ty = LLVMVoidTypeInContext(self.ctx);
+                        let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                        let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
+                        sret_params.extend(user_param_llvm_tys.iter().copied());
+                        (void_ty, sret_params)
+                    } else {
+                        (self.llvm_type(ret_ty), user_param_llvm_tys.clone())
+                    };
                     let fty = LLVMFunctionType(
-                        ret_llvm_ty,
-                        param_llvm_tys.as_ptr() as *mut LLVMTypeRef,
-                        param_llvm_tys.len() as u32,
+                        fwd_ret_ty,
+                        fwd_param_tys.as_ptr() as *mut LLVMTypeRef,
+                        fwd_param_tys.len() as u32,
                         0,
                     );
                     let fwd = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+                    // Stage 18.332: Add sret attribute to forward decl param 1.
+                    if use_sret {
+                        let ret_llvm_ty = self.llvm_type(ret_ty);
+                        let sret_attr = crate::codegen::llvm::helpers::create_sret_attribute(
+                            self.ctx,
+                            ret_llvm_ty,
+                        );
+                        LLVMAddAttributeAtIndex(fwd, 1, sret_attr);
+                    }
                     self.declared.insert(func_name, fwd);
                     return fwd;
                 }
@@ -566,9 +639,32 @@ impl LLVMSysEmitter {
                 self.declared.insert(name.to_string(), existing);
                 return existing;
             }
-            // Build a function type.
-            let ret = self.llvm_type(ret_ty);
-            let params: Vec<LLVMTypeRef> = arg_tys.iter().map(|t| self.llvm_type(t)).collect();
+            // Stage 18.332 (P1 soundness fix): Build the sret signature
+            // when ret_ty.needs_sret(). This ensures forward declarations
+            // match the actual function definition's signature (which is
+            // also built with sret in emit_function_begin).
+            //
+            // Without this, the forward decl has signature `<ret_ty> (...)`
+            // while the definition has signature `void (ptr sret, ...)`.
+            // When LLVM reuses the decl, it produces invalid IR.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): single sret signature path
+            // used by emit_function_begin + declare_function + interpret_adhoc.
+            // Per §20 (iterative audit): Stage 18.188's "delete + re-add"
+            // hack in emit_function_begin handled the symptom but introduced
+            // races — the proper fix is forward decls use sret from the start.
+            let use_sret = ret_ty.needs_sret();
+            let user_param_tys: Vec<LLVMTypeRef> =
+                arg_tys.iter().map(|t| self.llvm_type(t)).collect();
+            let (fn_ret_ty, fn_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
+                let void_ty = LLVMVoidTypeInContext(self.ctx);
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
+                sret_params.extend(user_param_tys.iter().copied());
+                (void_ty, sret_params)
+            } else {
+                (self.llvm_type(ret_ty), user_param_tys.clone())
+            };
             // Stage 13.16: printf and __landin_eprintf are variadic — declare
             // them with isVariadic=1 so the LLVM module declaration matches
             // the variadic call sites in emit_call.
@@ -579,12 +675,20 @@ impl LLVMSysEmitter {
                 0
             };
             let fty = LLVMFunctionType(
-                ret,
-                params.as_ptr() as *mut LLVMTypeRef,
-                params.len() as u32,
+                fn_ret_ty,
+                fn_param_tys.as_ptr() as *mut LLVMTypeRef,
+                fn_param_tys.len() as u32,
                 is_variadic,
             );
             let f = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+            // Stage 18.332: Add sret attribute to forward decl param 1.
+            // This makes the decl ABI-compatible with the eventual definition.
+            if use_sret {
+                let ret_llvm_ty = self.llvm_type(ret_ty);
+                let sret_attr =
+                    crate::codegen::llvm::helpers::create_sret_attribute(self.ctx, ret_llvm_ty);
+                LLVMAddAttributeAtIndex(f, 1, sret_attr);
+            }
             self.declared.insert(name.to_string(), f);
             f
         }

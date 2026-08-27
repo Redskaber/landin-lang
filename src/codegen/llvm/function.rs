@@ -3,7 +3,7 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
-use super::helpers::cstr_owned;
+use super::helpers::{create_sret_attribute, cstr_owned};
 use crate::codegen::emitter::FunctionEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
@@ -18,10 +18,42 @@ impl FunctionEmitter for LLVMSysEmitter {
             let ret_ty = self.llvm_type(ret);
             let param_tys: Vec<LLVMTypeRef> =
                 params.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            // Stage 18.332 (P1 soundness fix): For struct return > 16 bytes,
+            // build the sret signature: `void (ptr sret(<ret_ty>), ...params)`.
+            //
+            // Per System V AMD64 ABI §3.2.3: structs > 16 bytes must be returned
+            // via a hidden sret pointer parameter. Without this, the generated
+            // machine code corrupts the stack when the caller's return-value
+            // slot is smaller than the actual struct size.
+            //
+            // rustc_codegen_llvm emits sret explicitly via `Attribute::StructRet`;
+            // we mirror this via `LLVMCreateTypeAttribute(ctx, sret_kind, ret_ty)`
+            // added at parameter index 1 (LLVM uses 1-indexed param attributes).
+            //
+            // **Design boundary** (per Stage 18.330 TextEmitter + rustc reference):
+            // - `needs_sret()` is the SINGLE source of truth for the sret threshold.
+            // - Both TextEmitter and LLVMSysEmitter agree on sret emission.
+            // - The sret pointer is registered under "%_sret" — same name as TextEmitter.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one sret path for all > 16B struct returns.
+            // Per §12 (最优 > 最小): root-cause fix at IR level, not auto-demotion.
+            // Per §2.2 原則 9 (正确 > 妥协): correct ABI > no optimization.
+            let use_sret = ret.needs_sret();
+
+            let (fn_ret_ty, fn_param_tys): (LLVMTypeRef, Vec<LLVMTypeRef>) = if use_sret {
+                let void_ty = LLVMVoidTypeInContext(self.ctx);
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                let mut sret_params: Vec<LLVMTypeRef> = vec![ptr_ty];
+                sret_params.extend(param_tys.iter().copied());
+                (void_ty, sret_params)
+            } else {
+                (ret_ty, param_tys.clone())
+            };
+
             let fty = LLVMFunctionType(
-                ret_ty,
-                param_tys.as_ptr() as *mut LLVMTypeRef,
-                param_tys.len() as u32,
+                fn_ret_ty,
+                fn_param_tys.as_ptr() as *mut LLVMTypeRef,
+                fn_param_tys.len() as u32,
                 0,
             );
             let name_c = cstr_owned(name);
@@ -60,18 +92,13 @@ impl FunctionEmitter for LLVMSysEmitter {
                 // "Function return type does not match operand type of return inst"
                 // verification errors.
                 //
-                // Fix: Delete the existing declaration's body (if any) and let
-                // LLVMAddFunction create a new one. But LLVM doesn't allow
-                // re-adding a function with the same name — it silently renames
-                // (.1 suffix). So instead, we delete the existing function and
-                // re-add with the correct type.
-                //
-                // Per §1.0 原則 4 (报错>静默): the old code silently reused
-                // wrong-typed declarations, producing invalid IR.
-                // Per §1.0 原則 9 (正确>妥协): fix the root cause (delete + re-add)
-                // rather than the symptom (skip verification).
+                // Stage 18.332: Now that declare_function + interpret_adhoc
+                // BOTH build sret signatures when needs_sret(), forward decls
+                // already have the correct signature. The delete + re-add
+                // fallback below remains as a safety net for any legacy callers
+                // that still produce mismatched decls.
                 let existing_ret_ty = LLVMGetReturnType(LLVMGlobalGetValueType(existing));
-                if existing_ret_ty != ret_ty {
+                if existing_ret_ty != fn_ret_ty {
                     // Type mismatch — delete the old declaration and re-add.
                     // This is safe because the old declaration has no body (just
                     // a forward decl from get_or_declare_function).
@@ -84,6 +111,18 @@ impl FunctionEmitter for LLVMSysEmitter {
             } else {
                 LLVMAddFunction(self.module, name_c.as_ptr(), fty)
             };
+
+            // Stage 18.332: Add sret attribute to parameter 1 (the hidden
+            // sret pointer) when use_sret is true. This must be applied
+            // regardless of whether the function was newly created or
+            // reused from a forward declaration (forward decls also add
+            // sret via declare_function / interpret_adhoc, but applying
+            // it again is idempotent in LLVM — same attribute, no effect).
+            if use_sret {
+                let sret_attr = create_sret_attribute(self.ctx, ret_ty);
+                LLVMAddAttributeAtIndex(fn_val, 1, sret_attr);
+            }
+
             // Register the function in the declared cache so subsequent
             // emit_call sites resolve to this same function value.
             self.declared.insert(name.to_string(), fn_val);
@@ -93,16 +132,31 @@ impl FunctionEmitter for LLVMSysEmitter {
             self.locals.clear();
             self.local_ptrs.clear();
             self.blocks.clear();
-            self.next_val = params.len() as u32 + 1;
+            self.next_val = if use_sret {
+                params.len() as u32 + 2 // +1 for sret, +1 for 1-indexed
+            } else {
+                params.len() as u32 + 1
+            };
 
             // Create entry block and position builder there.
             let entry_name = cstr_owned("entry");
             let entry_bb = LLVMAppendBasicBlockInContext(self.ctx, fn_val, entry_name.as_ptr());
             LLVMPositionBuilderAtEnd(self.builder, entry_bb);
 
+            // Stage 18.332: When use_sret, register the sret pointer under
+            // "%_sret" (same name as TextEmitter). Param 0 is the sret slot;
+            // user-visible params start at index 1.
+            if use_sret {
+                let sret_param = LLVMGetParam(fn_val, 0);
+                self.set_value_name(sret_param, "_sret");
+                self.values.insert("%_sret".to_string(), sret_param);
+            }
+
             // Register each parameter under its name (e.g. "%arg0").
+            // When use_sret, skip param 0 (sret pointer).
+            let param_offset = if use_sret { 1u32 } else { 0u32 };
             for (i, (_, pname)) in params.iter().enumerate() {
-                let pval = LLVMGetParam(fn_val, i as u32);
+                let pval = LLVMGetParam(fn_val, (i as u32) + param_offset);
                 self.set_value_name(pval, pname);
                 self.values.insert(pname.to_string(), pval);
             }
@@ -120,14 +174,50 @@ impl FunctionEmitter for LLVMSysEmitter {
 
     fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
         unsafe {
-            match val {
-                Some(v) => {
-                    let _ = ty;
+            // Stage 18.332 (P1 soundness fix): For sret functions, store the
+            // return value to the sret pointer (registered as "%_sret" in
+            // emit_function_begin), then build `ret void`.
+            //
+            // Per System V AMD64 ABI §3.2.3 + rustc_codegen_llvm:
+            // - sret functions return void; the result is written to the
+            //   caller-provided sret pointer (passed as the first parameter).
+            // - The store instruction writes the struct value to memory at
+            //   the sret pointer's location.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one sret return path for all
+            // > 16B struct returns. Matches TextEmitter's emit_ret.
+            // Per §1.0 原則 4 (报错 > 静默): if val is None for an sret fn,
+            // emit only `ret void` (the sret slot is uninitialized — UB but
+            // better than crashing). This case should never happen in
+            // practice (MIR Return terminator always has a value for non-void
+            // return types — see codegen/terminator.rs).
+            if ty.needs_sret() {
+                if let Some(v) = val {
                     let v_ref = self.lookup(v);
-                    LLVMBuildRet(self.builder, v_ref);
+                    if let Some(&sret_ptr) = self.values.get("%_sret") {
+                        LLVMBuildStore(self.builder, v_ref, sret_ptr);
+                    } else {
+                        // Defensive: %_sret should always be present for sret
+                        // functions. If not, the function signature was built
+                        // incorrectly. Emit a no-op (the sret slot remains
+                        // uninitialized) and continue with ret void.
+                        // Per §1.0 原則 4 (报错 > 静默): eprintln for debugging.
+                        if crate::session::debug_codegen_enabled() {
+                            eprintln!("[CODEGEN] emit_ret: sret fn but %_sret not registered");
+                        }
+                    }
                 }
-                None => {
-                    LLVMBuildRetVoid(self.builder);
+                LLVMBuildRetVoid(self.builder);
+            } else {
+                match val {
+                    Some(v) => {
+                        let _ = ty;
+                        let v_ref = self.lookup(v);
+                        LLVMBuildRet(self.builder, v_ref);
+                    }
+                    None => {
+                        LLVMBuildRetVoid(self.builder);
+                    }
                 }
             }
         }

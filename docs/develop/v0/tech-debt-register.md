@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-25 (last updated Stage 18.288 — §17.6 audit: TD-DIVZERO-CONST-TYPE + TD-SHIFTOVERFLOW-CONST-TYPE)
-> **Version**: v0.493.0
-> **Status**: Stage 18.288 §17.6 audit found + resolved 2 more same-class TDs (TD-DIVZERO-CONST-TYPE + TD-SHIFTOVERFLOW-CONST-TYPE). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features: fat pointer construction + extern "C" in prelude). 4082 tests, 0 failures. v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.332 — P1 soundness fix: LLVMSysEmitter sret ABI Support + entry_block_alloca + TMPDIR fix)
+> **Version**: v0.494.0
+> **Status**: Stage 18.332 resolved TD-SRET-LLVM-SYS (P1 soundness — multi-threaded cargo test intermittent segfault). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features: fat pointer construction + extern "C" in prelude). 3648 tests, 0 failures (single-thread). Multi-thread 15/15 stable. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -84,6 +84,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 |----|-------------|--------|----------|
 | TD-LINUX-ONLY | No Windows/macOS target triples | Cannot cross-compile to non-Linux platforms | v0.2 P2: cross-compile expansion |
 | TD-ABI-DIVERSITY | Only `extern "C"` tested | No `extern "system"`, `extern "Rust"` | v0.2 P2: ABI diversity |
+| TD-SRET-LLVM-SYS | LLVMSysEmitter 缺 sret ABI 处理 — 函数返回 > 16B 结构体（如 Vec::new 返回 {ptr, i64, i64} = 24B）时未通过 sret 隐藏指针参数传递，导致多线程 cargo test 间歇性 segfault (~5-10% flake rate) | 所有返回 > 16B 结构体的函数（Vec::new/String::new/make_triple 等）的调用点 ABI 不正确 | ✅ Resolved Stage 18.332: 显式 sret via LLVMCreateTypeAttribute + LLVMAddAttributeAtIndex + LLVMAddCallSiteAttribute + entry_block_alloca 提升 alloca 到 entry 块（消除动态栈调整）+ TMPDIR fix（消除 cc /tmp 竞争）。7 回归测试 + 15/15 多线程稳定。 |
 
 ### 2.6 Standard Library
 

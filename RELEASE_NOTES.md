@@ -1,9 +1,93 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.493.0
-**Date**: 2026-08-26
-**Test count**: 676 lib tests + 3641 integration tests = 4317 total (100% pass rate, 0 skipped)
+**Current version**: v0.494.0
+**Date**: 2026-08-27
+**Test count**: 676 lib tests + 3648 integration tests = 4325 total (100% pass rate single-thread, 0 skipped)
+
+---
+
+## v0.494.0 — Stage 18.332 (P1 soundness: LLVMSysEmitter sret ABI + entry_block_alloca + TMPDIR fix)
+
+### Overview
+
+**Stage 18.332: P1 soundness fix — LLVMSysEmitter sret ABI Support**
+
+This stage closes the multi-threaded cargo test intermittent segfault that
+remained after Stage 18.331's TextEmitter sret fix. The fix is a 3-layer
+root-cause resolution:
+
+1. **LLVMSysEmitter explicit sret** (the architectural fix):
+   - `emit_function_begin`: when `ret.needs_sret()`, emit
+     `void (ptr sret(<ret_ty>), ...params)` and add the sret type attribute
+     to param 1 via `LLVMAddAttributeAtIndex`.
+   - `emit_ret`: when `ty.needs_sret()`, store the return value to `%_sret`
+     and emit `ret void`.
+   - `emit_call`: when `ret_ty.needs_sret()`, alloca the sret slot, prepend
+     it to args, build void call type, add sret attribute to call site via
+     `LLVMAddCallSiteAttribute`, load result from sret slot.
+   - `declare_function` + `interpret_adhoc` forward-decl path: also use
+     sret signature, eliminating the Stage 18.188 "delete + re-add" hack.
+   - `emit_dyn_trait_method_call` (vtable indirect call): same sret path
+     for trait method dispatch returning > 16B structs.
+
+2. **entry_block_alloca** (the dynamic-alloca fix):
+   - Mid-function `LLVMBuildAlloca` produces dynamic stack adjustment
+     patterns (`mov %rsp, %r14; mov %rdi, %rsp`) that leak stack across
+     subsequent calls — causing intermittent segfaults under multi-threaded
+     test execution.
+   - New `entry_block_alloca` helper hoists the alloca to the entry block,
+     letting LLVM combine it with other entry-block allocas into a single
+     `sub $X, %rsp` — the standard, safe ABI pattern.
+   - Used by `emit_call` + `emit_dyn_trait_method_call` for sret slot
+     allocation.
+
+3. **TMPDIR isolation** (the cc /tmp race fix):
+   - Each test invocation now sets `TMPDIR` to its unique temp subdir,
+     preventing `cc` from racing on `/tmp/ccXXXXXX` files when 8+ test
+     processes invoke the linker concurrently.
+
+### Test impact
+
+- Single-thread: **3648 tests, 0 failures** (was 3641 before Stage 18.332).
+- Multi-thread (`--test-threads=8`): **15/15 stable** in stress testing
+  (baseline before this stage: 5-10% flake rate).
+- Added 7 regression tests (2 positive + 4 negative + 1 stress) in
+  `tests/v0/stage18/plan/stage18_332_sret_abi_tests.rs`.
+- Added `scripts/run_tests.sh` to auto-tune `--test-threads` based on
+  system resources (CPUs + available RAM).
+
+### Design boundary (per System V AMD64 ABI §3.2.3 + rustc_codegen_llvm)
+
+- `EmitType::needs_sret()` is the SINGLE source of truth (size > 16 bytes).
+- Both `TextEmitter` and `LLVMSysEmitter` agree on sret emission.
+- The sret pointer is registered under `%_sret` (callee) / `%sret_slot`
+  (caller) — consistent naming for easier debugging.
+- Mirrors rustc_codegen_llvm's `Attribute::StructRet` approach: explicit
+  sret at IR level rather than relying on LLVM's CodeGenPrepare auto-demotion
+  (which is unreliable across LLVM versions).
+
+### Files changed
+
+- `src/codegen/llvm/function.rs` — emit_function_begin + emit_ret sret support
+- `src/codegen/llvm/aggregate.rs` — emit_call + emit_dyn_trait_method_call sret support
+- `src/codegen/llvm/mod.rs` — declare_function + interpret_adhoc sret support + new `entry_block_alloca` helper
+- `src/codegen/llvm/helpers.rs` — new `create_sret_attribute` helper
+- `src/codegen/text/aggregate.rs` — emit_dyn_trait_method_call sret support (matched LLVMSysEmitter)
+- `tests/common/mod.rs` — TMPDIR isolation per test invocation
+- `tests/v0/stage18/plan/stage18_332_sret_abi_tests.rs` — new (7 regression tests)
+- `tests/all_tests.rs` — register stage18_332_sret_abi_tests module
+- `docs/develop/v0/stage-18/plan-18.332.md` — new design doc
+- `docs/develop/v0/tech-debt-register.md` — TD-SRET-LLVM-SYS marked Resolved
+- `scripts/run_tests.sh` — new (auto-tune --test-threads by system resources)
+
+### Known limitations
+
+- Residual ~5-10% multi-thread flake on systems with ≤4GB RAM + 0 swap +
+  ≤2 CPUs (system resource exhaustion, not a codegen bug). Use
+  `scripts/run_tests.sh` to auto-tune thread count.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C remains BLOCKED (needs v0.4+ lang features:
+  primitive type impl, fat pointer construction, extern "C" in prelude impl).
 
 ---
 

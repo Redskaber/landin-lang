@@ -89,18 +89,28 @@ pub fn run_program(code: &str) -> (String, i32) {
     let lin_file = temp_dir.join("input.lin");
     std::fs::write(&lin_file, code).expect("write .lin file");
 
+    // Stage 18.332 (P1 soundness fix): Set TMPDIR to the unique temp subdir
+    // for this test invocation. This ensures cc's own temp files (assembler
+    // output, etc.) live in the same unique subdir, eliminating /tmp races
+    // when 8+ concurrent `landin-stage0 --run` processes invoke cc.
+    //
+    // Per §2.2 (根因思维): root-cause fix — cc inherits TMPDIR from env,
+    // so setting it per-process prevents /tmp races at the cc level.
+    // Per §1.0 原則 6 (通解 > 特解): one fix for all test invocations.
     let output = Command::new(&bin)
         .arg("--run")
         .arg(&lin_file)
+        .env("TMPDIR", &temp_dir)
         .output()
         .expect("failed to execute landin-stage0");
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let exit = output.status.code().unwrap_or(-1);
 
     // Cleanup: remove the entire temp subdirectory (input.lin + any artifacts).
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    (stdout, output.status.code().unwrap_or(-1))
+    (stdout, exit)
 }
 
 /// Assert that a Landin program produces the expected stdout and exits 0.
