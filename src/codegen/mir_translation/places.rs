@@ -12,7 +12,7 @@
 //!
 //! Per §16: reads MIR data (Place, MirBody) — no HIR.
 
-use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts;
+use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts_and_mono;
 use crate::codegen::{EmitType, EmitValue, Emitter};
 use crate::mir::body::*;
 use crate::mir::place::*;
@@ -38,7 +38,7 @@ pub(crate) fn detect_place_storage_type(
                     if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
                         let fields: Vec<EmitType> = substs
                             .iter()
-                            .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                            .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, None))
                             .collect();
                         return EmitType::Struct(fields);
                     }
@@ -72,9 +72,9 @@ pub(crate) fn detect_place_storage_type(
                     | crate::mir::ty::TyKind::RawPtr(_, inner)
                         if matches!(inner.kind, crate::mir::ty::TyKind::Adt(_, _)) =>
                     {
-                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
                     }
-                    _ => mir_type_to_emit_type_with_layouts(&ld.ty, layouts),
+                    _ => mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None),
                 }
             } else {
                 EmitType::I32
@@ -88,7 +88,7 @@ pub(crate) fn detect_place_storage_type(
         // slice/array.
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Field(_, field_ty) => {
-                mir_type_to_emit_type_with_layouts(field_ty, layouts)
+                mir_type_to_emit_type_with_layouts_and_mono(field_ty, layouts, None)
             }
             // Stage 14.19 (GAP-31): For Deref, the storage type is the
             // pointee type (what the reference points to), not the reference
@@ -120,7 +120,7 @@ pub(crate) fn detect_place_storage_type(
                     if let PlaceKind::Local(id) = &base.kind {
                         if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                             if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                let inner_emit = mir_type_to_emit_type_with_layouts(inner, layouts);
+                                let inner_emit = mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None);
                                 if !matches!(inner_emit, EmitType::I32) {
                                     inner_emit
                                 } else {
@@ -173,7 +173,7 @@ pub(crate) fn detect_place_type(
                 {
                     return EmitType::OpaquePtr;
                 }
-                mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+                mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None)
             } else {
                 EmitType::I32
             }
@@ -193,7 +193,7 @@ pub(crate) fn detect_place_type(
                 // nested tuple destructure where the projection's field_ty
                 // was set to Infer at MIR-lower time but the base's type was
                 // resolved by the post-typeck writeback.
-                let emit_ty = mir_type_to_emit_type_with_layouts(field_ty, layouts);
+                let emit_ty = mir_type_to_emit_type_with_layouts_and_mono(field_ty, layouts, None);
                 if matches!(emit_ty, EmitType::I32)
                     && matches!(&field_ty.kind, crate::mir::ty::TyKind::Infer(_))
                 {
@@ -202,7 +202,7 @@ pub(crate) fn detect_place_type(
                         if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
                             if let crate::mir::ty::TyKind::Tuple(field_tys) = &base_ld.ty.kind {
                                 if let Some(resolved) = field_tys.get(field_id.0 as usize) {
-                                    return mir_type_to_emit_type_with_layouts(resolved, layouts);
+                                    return mir_type_to_emit_type_with_layouts_and_mono(resolved, layouts, None);
                                 }
                             }
                             // Stage 14.84 (audit fix #3): Also handle Closure
@@ -214,7 +214,7 @@ pub(crate) fn detect_place_type(
                             // are now resolved to [Adt(Point)].
                             if let crate::mir::ty::TyKind::Closure(_, substs) = &base_ld.ty.kind {
                                 if let Some(resolved) = substs.get(field_id.0 as usize) {
-                                    return mir_type_to_emit_type_with_layouts(resolved, layouts);
+                                    return mir_type_to_emit_type_with_layouts_and_mono(resolved, layouts, None);
                                 }
                             }
                         }
@@ -321,7 +321,7 @@ pub(crate) fn compute_place_address(
                         if let PlaceKind::Local(id) = &base.kind {
                             if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                    mir_type_to_emit_type_with_layouts(inner, layouts)
+                                    mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
                                 } else {
                                     pointee_ty
                                 }
@@ -390,7 +390,7 @@ pub(crate) fn compute_place_address(
                             if let PlaceKind::Local(id) = &base.kind {
                                 if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                     if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
                                     } else {
                                         raw_ty
                                     }
@@ -689,7 +689,7 @@ pub(crate) fn codegen_place_load_typed(
                                 // Stage 16.28: Handle Ref types — resolve pointee
                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
                                     let resolved =
-                                        mir_type_to_emit_type_with_layouts(inner, layouts);
+                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None);
                                     if matches!(resolved, EmitType::Struct(_)) {
                                         struct_ty = resolved;
                                     }
@@ -701,7 +701,7 @@ pub(crate) fn codegen_place_load_typed(
                                 if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
                                     let fields: Vec<EmitType> = substs
                                         .iter()
-                                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                                        .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, None))
                                         .collect();
                                     struct_ty = EmitType::Struct(fields);
                                 }
@@ -807,7 +807,7 @@ pub(crate) fn codegen_place_load_typed(
                             if let PlaceKind::Local(id) = &base.kind {
                                 if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                     if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
                                     } else {
                                         raw_ty
                                     }
@@ -942,7 +942,7 @@ pub(crate) fn detect_operand_type(
         Operand::Constant(c) => {
             // Stage 3.46: use the constant's declared type if it's concrete
             // (not Infer). This ensures e.g. i16 constants use i16 ops.
-            let from_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+            let from_ty = mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, None);
             if from_ty != EmitType::I32 {
                 Some(from_ty)
             } else {
@@ -968,7 +968,7 @@ pub(crate) fn detect_operand_type(
                     {
                         EmitType::OpaquePtr
                     } else {
-                        mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None)
                     }
                 })
             } else {

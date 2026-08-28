@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.506.0 (Stage 18.346) |
+| **Version** | v0.507.0 (Stage 18.347) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field_tys inference: MIR lower now infers adt_substs from operand types when no turbofish. Wrapper<i64> insertvalue produces correct { i64 } struct type. |
+| **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct: MIR lower infers adt_substs from operand types (Stage 18.346). places.rs uses _and_mono variant (Stage 18.347 — full mono_layouts threading pending). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 
