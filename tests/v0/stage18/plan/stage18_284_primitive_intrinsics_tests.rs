@@ -143,9 +143,9 @@ fn stage18_284_user_impl_str_method() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -166,9 +166,9 @@ fn stage18_284_user_impl_str_overrides_len_not() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -406,9 +406,9 @@ fn stage18_284_neg_user_impl_value_self_called_on_ref() {
         fn main() -> i32 { let s = "hi"; println!("{}", s.by_ref_only()); 0 }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 

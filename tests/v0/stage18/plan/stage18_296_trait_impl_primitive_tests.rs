@@ -194,7 +194,10 @@ fn stage18_296_neg_inherent_impl_on_i32() {
         r#"impl i32 { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { 0 }"#,
     );
-    assert_ne!(exit, 0, "user inherent impl on primitive forbidden (E0117)");
+    assert_eq!(
+        exit, 0,
+        "user inherent impl on primitive now allowed (Stage 18.341)"
+    );
 }
 
 #[test]
@@ -203,7 +206,11 @@ fn stage18_296_neg_inherent_impl_on_bool() {
         r#"impl bool { fn m(self) -> i32 { 0 } }
            fn main() -> i32 { 0 }"#,
     );
-    assert_ne!(exit, 0, "user inherent impl on bool forbidden");
+    // Stage 18.341: user inherent impl on primitive types is now ALLOWED.
+    assert_eq!(
+        exit, 0,
+        "user inherent impl on bool now allowed (Stage 18.341)"
+    );
 }
 
 // Category 2: Wrong arg type (4 cases)

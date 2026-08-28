@@ -124,9 +124,9 @@ fn stage18_285_user_impl_i32_real_body() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -146,9 +146,9 @@ fn stage18_285_user_impl_bool_real_body() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -168,9 +168,9 @@ fn stage18_285_user_impl_i64_real_body() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -190,9 +190,9 @@ fn stage18_285_chained_primitive_methods() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 
@@ -465,9 +465,9 @@ fn stage18_285_neg_user_impl_value_self_called_on_ref() {
         }
         "#,
     );
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
+        "user inherent impl on primitive now allowed (Stage 18.341)"
     );
 }
 

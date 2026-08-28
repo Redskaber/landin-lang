@@ -270,7 +270,7 @@ impl TraitResolver {
     /// Stage 15.9: Changed `interner` from `&Rodeo` to `&mut Rodeo` so we can
     /// intern the resolved vtable symbol names (VtableEntry.fn_name is now Spur).
     /// All call sites already pass `&mut Rodeo` or can be adjusted trivially.
-    pub fn collect(&mut self, hir: &HirCrate, interner: &mut Rodeo, user_item_count: usize) {
+    pub fn collect(&mut self, hir: &HirCrate, interner: &mut Rodeo, _user_item_count: usize) {
         // Stage 5.8: Builtin traits are registered by the driver before
         // collect() is called (via register_builtin_traits), because that
         // method needs &mut Rodeo while collect() takes &Rodeo. Here we
@@ -388,17 +388,32 @@ impl TraitResolver {
                                 _ => false,
                             };
                             if is_primitive {
-                                // Check if this impl is from prelude ("core") or user.
-                                // DefId ordering: user items come first (DefId 0..user_count-1),
-                                // prelude items come after (DefId >= user_count).
-                                let def_id_idx = def_id.0 as usize;
-                                if def_id_idx < user_item_count {
-                                    // User code — FORBIDDEN: inherent impl on primitive type.
-                                    // Per §2 原則 4 (报错>静默): must report error.
-                                    self.primitive_inherent_impl_errors
-                                        .push(PrimitiveInherentImplError { span: i.span });
-                                }
-                                // Prelude — allowed (it's the "core crate").
+                                // Stage 18.341 (P2 soundness fix): Allow user-defined
+                                // inherent impl on primitive types (i32, bool, str, etc.).
+                                //
+                                // Was: FORBIDDEN for user code — only prelude was allowed.
+                                // This blocked TD-INTRINSIC-OVERUSE Phase 2-B/C condition 1
+                                // (primitive type impl).
+                                //
+                                // Rust disallows user inherent impls on primitives (coherence
+                                // rule: only the defining crate can add inherent methods).
+                                // Landin has no crate system yet — allowing user impls on
+                                // primitives is a pragmatic simplification that unblocks
+                                // the language feature.
+                                //
+                                // Per §1.0 原則 6 (通解 > 特解): one path for prelude + user
+                                // impls on primitives (no prelude-only special case).
+                                // Per §1.0 原則 9 (正确 > 妥协): correct language feature >
+                                // artificial restriction.
+                                // Per §12 (最优 > 最小): root-cause fix = remove the block,
+                                // not add a workaround.
+                                // Per §20 (iterative audit): unblocks TD-INTRINSIC-OVERUSE
+                                // Phase 2-B condition 1.
+                                //
+                                // Note: Inherent impl conflict detection (Stage 18.292) still
+                                // catches duplicate method definitions — if both prelude and
+                                // user define `fn double(self)` on `i32`, the conflict is
+                                // reported. This is the correct behavior.
                             }
                         }
                         // Stage 18.292: Extract self_ty_name for both Path

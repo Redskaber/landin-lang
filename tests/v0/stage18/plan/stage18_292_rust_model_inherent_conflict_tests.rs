@@ -75,10 +75,7 @@ fn stage18_292_user_new_str_method() {
     let exit = compile_only(
         r#"impl str { fn my_method(&self) -> i64 { 99 } } fn main() -> i32 { println!("{}", "hi".my_method()); 0 }"#,
     );
-    assert_ne!(
-        exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
-    );
+    assert_eq!(exit, 0, "user inherent impl now allowed (Stage 18.341)");
 }
 
 #[test]
@@ -86,10 +83,7 @@ fn stage18_292_user_new_i32_method() {
     let exit = compile_only(
         r#"impl i32 { fn double(self) -> i32 { self + self } } fn main() -> i32 { println!("{}", 21i32.double()); 0 }"#,
     );
-    assert_ne!(
-        exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
-    );
+    assert_eq!(exit, 0, "user inherent impl now allowed (Stage 18.341)");
 }
 
 #[test]
@@ -97,10 +91,7 @@ fn stage18_292_user_new_bool_method() {
     let exit = compile_only(
         r#"impl bool { fn to_str_val(self) -> i32 { match self { true => 1i32, false => 0i32 } } } fn main() -> i32 { println!("{}", true.to_str_val()); 0 }"#,
     );
-    assert_ne!(
-        exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
-    );
+    assert_eq!(exit, 0, "user inherent impl now allowed (Stage 18.341)");
 }
 
 #[test]
@@ -108,10 +99,7 @@ fn stage18_292_two_different_methods_same_type() {
     let exit = compile_only(
         r#"impl i32 { fn a(self) -> i32 { self } } impl i32 { fn b(self) -> i32 { self } } fn main() -> i32 { println!("{} {}", 5i32.a(), 5i32.b()); 0 }"#,
     );
-    assert_ne!(
-        exit, 0,
-        "user inherent impl on primitive type should be forbidden (类 Rust E0117)"
-    );
+    assert_eq!(exit, 0, "user inherent impl now allowed (Stage 18.341)");
 }
 
 // =============================================================================
