@@ -26438,3 +26438,128 @@ Work Log:
 - 残留: Holder<T> { ptr: *mut T } field access 仍受限 (driver 顺序) — v0.5+ lazy monomorphization
 - v0.4 已完全可交付: 4403 tests, 0 failures (单线程), LLVM 22.1.8
 
+
+---
+Task ID: stage18.352
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.352 — §20 iterative audit: scan for temporary stubs (None/default/fallback/loop{}/deferred) per user instruction. L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档审计 — 扫描代码中的临时桩, 添加 tech-debt 条例)
+- 对齐: 用户明确指令 "如果存在传递 None/默认值/临时桩, 需在 tech-debt 中添加条例并说明缘由"
+- 阻断: 无 P0/P1, 4403 tests passing
+
+决策点 (为何选此路):
+- 为什么扫描临时桩而非继续修代码?
+  → 引用用户指令: "在开发过程中, 如果存在传递 None/默认值/临时桩, 需在 tech-debt 中添加条例"
+  → 引用 §1.0 原則 4 (报错 > 静默): 临时桩应显式标记, 不应静默降级
+  → 引用 §20 (迭代审计): 扫描所有同类临时桩, 一次性记录
+- 为什么用 L2 而非 L3?
+  → 引用 §1.2.1: L2 (50-500 行, 文档审计, 无代码变更)
+  → 裁剪: 跳过 §14.5 深度审查 (无代码变更, 风险低)
+
+裁剪点:
+- L2 跳过 §14.5 深度审查 (无代码变更, 风险低). 安全理由: 仅添加文档条目, 不改变代码行为.
+
+5W2H:
+- WHAT: 扫描代码中的临时桩 (传递 None / 默认值 / hardcoded fallback / loop {} marker body / deferred fix), 在 tech-debt-register 添加 §2.5.1 "Temporary Stubs & Deferred Fixes"
+- WHY: 用户指令 — 避免埋雷和 bug 生产, 规划及时修复
+- WHO: ARCH-A (审计) + REV-A (文档审查)
+- WHEN: §3.2 全绿后停止 (无代码变更, 测试不受影响)
+- WHERE: docs/develop/v0/tech-debt-register.md (§2.5.1 新增)
+- HOW:
+  (1) 5W2H 剖析: 哪些是临时桩? 哪些是设计决策?
+  (2) 扫描: grep "loop {}\|Region::Erased\|fallback\|None.*placeholder\|fresh_infer_ty\|deferred" src/
+  (3) 分类: marker body (prelude) / silent fallback (i32/Region) / no-op (drop/lifetime elision) / driver order (typeck before writeback) / design choice (default int i32)
+  (4) 记录: 8 个 stub 添加到 §2.5.1, 每个含 Location + Stub Type + Fix Plan
+- HOW MUCH: 无代码变更, 4403 tests 不受影响
+
+Work Log:
+- 扫描结果 (8 个临时桩):
+  1. TD-STUB-PRELUDE-LOOP-BODY — prelude 中 4 个方法用 `loop {}` marker body (as_str, str::len/is_empty/as_bytes)
+  2. TD-STUB-REGION-ERASED — Region::Erased 被视为 'static, region inference 是 no-op
+  3. TD-STUB-EMIT-TYPE-I32-FALLBACK — mir_type_to_emit_type 的 `_ => EmitType::I32` fallback (Stage 18.348 param_check 部分缓解)
+  4. TD-STUB-TYPECK-BEFORE-WRITEBACK — typeck 在 writeback 之前运行 (Stage 18.351 skip-on-Param 部分缓解)
+  5. TD-STUB-DEFAULT-INT-I32 — unsuffixed int 默认 i32 (设计决策, 非 stub)
+  6. TD-STUB-DROP-ELABORATION-NOOP — elaborate_drops 是 no-op (Box auto-drop 部分工作)
+  7. TD-STUB-LIFETIME-ELISION-NOOP — lifetime elision 是 no-op (regions 都 Erased, 不影响语义)
+  8. TD-STUB-PROJECTION-RESOLVER — projection_resolver 只解析 Projection (associated types), 不完整
+- 分类:
+  - marker body (1) — prelude 设计, TD-INTRINSIC-OVERUSE Phase 2-B/C BLOCKED
+  - silent fallback (2) — Region::Erased + i32 fallback, 已有 param_check 缓解
+  - no-op (2) — drop/lifetime elision, v0.2+ 工作
+  - driver order (1) — typeck before writeback, v0.5+ 架构变更
+  - design choice (1) — default int i32, 非 stub
+  - partial impl (1) — projection resolver, v0.2+ 工作
+- §3.2 全校验流:
+  → 无代码变更, 测试不受影响
+  → 4403 tests (682 lib + 3721 integration), 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (§2.5.1 新增 8 个 stub 条例) + README.md (版本号不变) + RELEASE_NOTES.md (Stage 18.352 审计记录)
+
+下一步:
+- 8 个临时桩已记录, 大部分是 v0.2+/v0.5+ 工作 (BLOCKED by language features)
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+- 未来修复优先级: TD-STUB-TYPECK-BEFORE-WRITEBACK (v0.5+ driver 重排) → TD-STUB-PRELUDE-LOOP-BODY (v0.5+ fat pointer) → TD-STUB-DROP-ELABORATION-NOOP (v0.2+ Drop::drop) → TD-STUB-LIFETIME-ELISION-NOOP (v0.2+ 3-rule elision)
+
+
+---
+Task ID: stage18.353
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.353 — TD-STUB-TYPECK-BEFORE-WRITEBACK 根因修复: Phase 0 pre-writeback in typeck. L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck + writeback — 新增 Phase 0 pre-writeback in check_mir_body_with_tables)
+- 对齐: Stage 18.352 §2.5.1 TD-STUB-TYPECK-BEFORE-WRITEBACK 优先级最高
+- 阻断: typeck 在 writeback 之前运行, 导致 local_decl.ty 含 Param
+
+决策点 (为何选此路):
+- 为什么在 typeck 内部加 Phase 0 而非重排 driver?
+  → 引用 §1.0 原則 9 (正确 > 妥协): Phase 0 比 driver 重排风险低 (writeback 是幂等的, 重复运行不破坏)
+  → 引用 §1.0 原則 6 (通解 > 特解): 一个 pre-writeback pass 覆盖所有 Param 泄漏路径
+  → 引用 §12 (最优 > 最小): 根因修复在 typeck 边界, 非 per-case skip-on-Param hack
+- 为什么 Holder bug 仍未完全修复?
+  → 引用 §20 (迭代审计): Phase 0 正确运行了 writeback_type_propagation, 但 h 的 local_decl.ty 在 lower 时 substs 为空 (Holder { ptr: ... } 结构体字面量未正确推断 adt_substs)
+  → 根因在 lower 层的 let-binding struct literal adt_substs 推断 — Stage 18.346 部分修复了 Aggregate path 但 let-binding path 仍有 gap
+  → Per §3.2 (硬性红线): 不能引入回归; Phase 0 是安全的 (4403 tests 全绿)
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5 (无跨阶段变更, Phase 0 是 typeck 内部增强).
+
+5W2H:
+- WHAT: 在 check_mir_body_with_tables 的 Phase 1 之前添加 Phase 0 pre-writeback
+- WHY: typeck 在 writeback 之前运行, local_decl.ty 含 Param → false type mismatch errors
+- WHO: ARCH-A (Phase 0 设计) + DEV-A (实施) + REV-A (4403 tests 验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/checker.rs:check_mir_body_with_tables (Phase 0 新增)
+- HOW:
+  (1) 5W2H 剖析: TD-STUB-TYPECK-BEFORE-WRITEBACK 根因是 typeck/writeback 顺序
+  (2) Rust rustc: typeck 和 type propagation 交织 (边走边解析类型)
+  (3) 实施: 在 Phase 1 之前调用 writeback_type_propagation(mir, &self.fn_sigs)
+  (4) 验证: 4403 tests 全绿, Phase 0 是幂等安全的 (writeback 重复运行不破坏)
+  (5) 已知限制: Holder<T> { ptr: *mut T } field access 仍报 false error — 根因在 lower 层 let-binding struct literal adt_substs 推断 (Stage 18.346 部分修复)
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- 实施 Phase 0 pre-writeback:
+  - 在 check_mir_body_with_tables 的 Phase 1 之前调用 writeback_type_propagation
+  - 这是 typeck 的 pre-pass, 让 local_decls 中的 Param 在 typeck 看到之前被解析
+  - writeback 是幂等的 — 重复运行不破坏 (driver 在 typeck 后再运行一次 writeback_type_propagation, 结果一致)
+- 调试发现: Phase 0 正确运行了 writeback, 但 h 的 local_decl.ty 在 lower 时 substs 为空
+  - Holder { ptr: 0 as *mut i64 } 结构体字面量未正确推断 adt_substs (let-binding path)
+  - Stage 18.346 部分修复了 Aggregate path (直接 struct literal), 但 let-binding path 仍有 gap
+  - 这是更深层 lower 问题, 需 v0.5+ 修复 (expected_ty 在 let-binding 中的传播)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed, 0 failed
+  → cargo test --release --test all_tests (单线程) ✅ 3721 passed, 0 failed
+  → 总计 4403 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-STUB-TYPECK-BEFORE-WRITEBACK 更新为 Partial Stage 18.353) + README.md + RELEASE_NOTES.md
+
+下一步:
+- TD-STUB-TYPECK-BEFORE-WRITEBACK 部分修复 ✅ — Phase 0 pre-writeback 是架构正确的基础
+- 残留: Holder<T> { ptr: *mut T } field access — 根因在 lower 层 let-binding struct literal adt_substs 推断
+- v0.5+ 路线图: 修复 let-binding struct literal 的 expected_ty 传播 (unblocks Holder bug)
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+

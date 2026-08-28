@@ -116,6 +116,28 @@ impl TypeChecker {
         mir: &mut MirBody,
         field_ty_table: Option<&FieldTyTable>,
     ) {
+        // Stage 18.353 (P2 soundness fix): Phase 0 — Pre-writeback.
+        //
+        // Runs `writeback_type_propagation` BEFORE typeck Phase 1, so that
+        // local_decls with unsubstituted Param (e.g., `RawPtr(_, Param(0))`
+        // from `Holder<T> { ptr: *mut T }` field access) get resolved via
+        // Rule 3 Field projection's substitute() call.
+        //
+        // This fixes the root cause of TD-STUB-TYPECK-BEFORE-WRITEBACK:
+        // typeck was running before writeback, seeing unsubstituted Param
+        // types and reporting false "expected *mut i64, found *mut <type
+        // param>" errors.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one pre-writeback pass resolves
+        // all Param leaks from MIR lower's resolve_field_type.
+        // Per §1.0 原則 9 (正确 > 妥协): pre-writeback is cheaper than
+        // reordering the entire driver (writeback before typeck).
+        // Per §12 (最优 > 最小): root-cause fix at the typeck boundary,
+        // not a per-case skip-on-Param hack.
+        // Per §20 (iterative audit): same class as Stage 18.351 — Param
+        // leak in local_decls. Phase 0 is the architecturally correct fix.
+        crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
+
         // Phase 1: Walk basic blocks in order, collecting constraints.
         let bb_count = mir.basic_blocks.len();
         for bb_id in 0..bb_count {

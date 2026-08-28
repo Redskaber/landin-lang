@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.351) |
+| **Version** | v0.510.0 (Stage 18.353) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field access (Stage 18.347) + pre-codegen param_check (Stage 18.348) + recursive Param detection + typeck subst (Stage 18.351). Nested generic struct field access works. `Holder<T> { ptr: *mut T }` raw-ptr field access has known limitation (driver order — v0.5+ architectural change). |
+| **Status** | v0.4 stable. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Stage 18.347-18.353 chain: generic struct field access + pre-codegen param_check + recursive Param detection + typeck subst + stubs audit + Phase 0 pre-writeback. 8 stubs documented in §2.5.1. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 

@@ -12,7 +12,7 @@
 
 ---
 
-## v0.510.0 — Stage 18.349 + 18.350 + 18.351 (Typeck strictness investigation + recursive Param)
+## v0.510.0 — Stage 18.349 + 18.350 + 18.351 + 18.352 (Typeck strictness + recursive Param + stubs audit)
 
 ### Stage 18.351: Recursive Param detection + typeck subst (§20 iterative audit)
 
@@ -62,6 +62,30 @@ Investigated two typeck strictness gaps:
 - §12 (最优 > 最小): 3-layer fix to prevent sibling bugs
 - §20 (iterative audit): same class as Stage 18.347 — Param leak in
   nested types was missed
+
+### Stage 18.352: Temporary stubs & deferred fixes audit (per user instruction)
+
+**What**: Scanned the codebase for temporary stubs (passing None, default
+values, hardcoded fallbacks, `loop {}` marker bodies, deferred fixes) per
+user instruction. Documented 8 stubs in tech-debt-register §2.5.1.
+
+**Why**: Per §1.0 原則 4 (报错 > 静默), temporary stubs should be
+explicitly marked, not silently degraded. Per user instruction: "if
+temporary stubs exist, add them to tech-debt with rationale to avoid
+burying mines and producing bugs."
+
+**8 stubs documented**:
+1. `TD-STUB-PRELUDE-LOOP-BODY` — prelude `loop {}` marker bodies (4 methods)
+2. `TD-STUB-REGION-ERASED` — Region::Erased as 'static (region inference no-op)
+3. `TD-STUB-EMIT-TYPE-I32-FALLBACK` — `_ => EmitType::I32` fallback (Stage 18.348 mitigates)
+4. `TD-STUB-TYPECK-BEFORE-WRITEBACK` — typeck before writeback (Stage 18.351 mitigates)
+5. `TD-STUB-DEFAULT-INT-I32` — unsuffixed int defaults to i32 (design choice, not stub)
+6. `TD-STUB-DROP-ELABORATION-NOOP` — elaborate_drops no-op (Box auto-drop partial)
+7. `TD-STUB-LIFETIME-ELISION-NOOP` — lifetime elision no-op (regions all Erased)
+8. `TD-STUB-PROJECTION-RESOLVER` — projection_resolver partial (associated types only)
+
+**Fix priorities**: Most stubs are v0.2+/v0.5+ work (BLOCKED by language
+features). Current v0.4 is fully deliverable with documented limitations.
 
 ---
 
