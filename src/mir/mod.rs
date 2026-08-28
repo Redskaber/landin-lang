@@ -14,6 +14,10 @@ pub mod lower;
 // Stage 16.54 (Task 11 Phase 3): Monomorphization collection — walk MIR
 // bodies and collect MonoItem { def_id, substs } pairs for codegen.
 pub mod monomorphize;
+// Stage 18.348 (P2 soundness fix): Pre-codegen diagnostic pass that
+// reports unresolved type kinds (Param/Infer/Error/Projection) instead
+// of silently mapping them to EmitType::I32 in codegen.
+pub mod param_check;
 // Stage 17.10: MIR optimization passes (DCE, const propagation).
 pub mod optimization;
 pub mod place;

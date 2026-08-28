@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.508.0 (Stage 18.347) |
+| **Version** | v0.509.0 (Stage 18.348) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 676 lib tests + 3705 integration tests = 4381 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field access fully works (Stage 18.347 — codegen threads `mono_layouts` through 6 place functions + writeback applies `substitute(field_ty, substs)` for Param resolution). Nested generics (`Wrapper<Pair<i32,i64>>.inner.first`) work correctly. |
+| **Status** | v0.4 stable. 682 lib tests + 3713 integration tests = 4395 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field access fully works (Stage 18.347). Pre-codegen param_check diagnostic pass reports unresolved type kinds (Param/Infer/Error/Projection) instead of silently mapping to i32 (Stage 18.348). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 
@@ -216,9 +216,9 @@ This catches the entire class of "TextEmitter IR silently invalid" bugs.
 
 ### Test count
 
-- 676 unit tests (lib)
-- 3705 integration tests (`tests/all_tests.rs`)
-- 4381 total (100% pass rate single-thread, 0 skipped)
+- 682 unit tests (lib)
+- 3713 integration tests (`tests/all_tests.rs`)
+- 4395 total (100% pass rate single-thread, 0 skipped)
 
 ### Running tests
 
@@ -231,7 +231,7 @@ cargo test --release --features llvm-backend -- --test-threads=1
 bash scripts/run_tests.sh
 
 # Run a specific test module
-cargo test --release --features llvm-backend -- stage18_347_generic_struct_field_access_tests
+cargo test --release --features llvm-backend -- stage18_348_param_check_tests
 ```
 
 ### Why `ulimit -s unlimited`?
@@ -250,7 +250,7 @@ Without raising the limit, `landin-stage0` may intermittently segfault inside
 |-----------|--------|---------|
 | D1 Architecture | ✅ | 176 files, 81,573 LOC, no circular deps, all LOC TDs resolved |
 | D2 Tech Debt | ✅ | All P0/P1/P2 resolved (114 TDs). Only BLOCKED: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs v0.4+ lang features) |
-| D3 Test Coverage | ✅ | 4381 tests (676 lib + 3705 integration), 1:3+ pos:neg ratio |
+| D3 Test Coverage | ✅ | 4395 tests (682 lib + 3713 integration), 1:3+ pos:neg ratio |
 | D4 Next Stage Readiness | ✅ | v0.4 release-ready, all features complete |
 | D5 Design Soundness | ✅ | sret+byval explicit, ZST elision, recursive struct cycle break, TextEmitter IR validated |
 | D6 Performance | ✅ | ~30s build, ~24s test single-thread, no O(n²) known |

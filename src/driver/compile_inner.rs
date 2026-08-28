@@ -911,6 +911,20 @@ pub(crate) fn compile_inner(
             crate::mir::optimization::run_mir_optimizations(&mut mir);
         }
 
+        // Stage 18.348 (P2 soundness fix): Pre-codegen diagnostic pass —
+        // scan MirBody for unresolved type kinds (Param/Infer/Error/
+        // Projection) in type-relevant positions and report them as
+        // type errors.
+        //
+        // NOTE: This pass is intentionally NOT run here in `compile()`
+        // because `compile()` doesn't run monomorphization — generic
+        // function MIRs legitimately contain `Param` types until
+        // monomorphization substitutes them during codegen.
+        //
+        // The pass is run inside the codegen pipeline (after
+        // monomorphization) where `Param` types are real errors.
+        // See `src/codegen/pipeline.rs` for the integration point.
+
         mirs.push(mir);
     }
 

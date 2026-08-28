@@ -716,6 +716,10 @@ mod stage18_337_recursive_struct_tests;
 #[path = "v0/stage18/plan/stage18_347_generic_struct_field_access_tests.rs"]
 mod stage18_347_generic_struct_field_access_tests;
 
+// === Stage 18.348: P2 soundness fix — Pre-codegen param_check diagnostic pass ===
+#[path = "v0/stage18/plan/stage18_348_param_check_tests.rs"]
+mod stage18_348_param_check_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

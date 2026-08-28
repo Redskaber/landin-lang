@@ -26131,3 +26131,76 @@ Work Log:
 - 残留: TD-INTRINSIC-OVERUSE Phase 2-B/C (as_str 等 fat pointer 构造) — 仍 BLOCKED (需 lang features)
 - v0.4 可交付: 4381 tests, 0 failures (单线程), LLVM 22.1.8
 
+
+---
+Task ID: stage18.348
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.348 — TD-SILENT-PARAM-FALLBACK 根因修复: pre-codegen param_check 诊断 pass 报告未解析类型 (Param/Infer/Error/Projection). L3. v0.508.0 → v0.509.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 P2 soundness — 新增 src/mir/param_check.rs + codegen pipeline 集成)
+- 对齐: Stage 18.347 worklog 下一步 "Param 报错而非静默降级 — 当前 codegen 仍把 Param 映射到 I32"
+- 阻断: 无 P0/P1, 但 §20 迭代审计发现 Stage 18.347 的根因 (Param 静默映射到 I32) 仍未解决
+
+决策点 (为何选此路):
+- 为什么新增 param_check pass 而不是修改 mir_type_to_emit_type 返回 Result?
+  → 引用 §12 (最优 > 最小): 修改 mir_type_to_emit_type 返回 Result 需要 thread Result<> 贯穿所有 codegen 函数 — 巨大重构
+  → 引用 §1.0 原則 6 (通解 > 特解): 独立的诊断 pass 是单一职责, 可组合, O(N) walk, 不改变 codegen 语义
+  → 引用 §1.0 原則 4 (报错 > 静默): 让用户看到未解析类型, 而不是静默生成错误 IR
+- 为什么 param_check 只检查 type-relevant positions (Rvalue/Operand) 而非 local_decls?
+  → 引用 §12 (最优 > 最小): local_decls 中 ~70 个 Param/Infer/Error 是合法 placeholder (返回槽, 未用临时变量) — 全部报告会产生大量 false positive
+  → 引用 §1.0 原則 4 (报错 > 静默): 仅在影响 codegen 的位置 (Cast target, Aggregate field_tys, projection field_ty, Constant type) 报告
+  → 引用 §20 (迭代审计): 通过实测发现 local_decls 的 Param 是合法的, type-relevant positions 的 Param 才是真正 bug
+- 为什么 param_check 在 codegen_from_mir 中运行 (而非 compile_inner)?
+  → 引用 §18 (依赖审查): compile() 不运行 monomorphization — 泛型函数 MIR 合法地包含 Param (待 codegen 时 substitute)
+  → 引用 §12 (最优 > 最小): 在 monomorphization 之后运行, Param 类型才是真正错误 (非泛型函数中)
+  → 引用 §1.0 原則 3 (显式 > 隐式): param_check 在 codegen pipeline 中的位置是显式的
+
+裁剪点:
+- L3 执行 §3.2 全校验流 + §20 迭代审计. 跳过 §14.6 (无跨阶段变更).
+
+5W2H:
+- WHAT: 新增 src/mir/param_check.rs 诊断 pass, 在 codegen_from_mir 中对每个 MirBody 扫描 type-relevant positions 的未解析类型
+- WHY: Stage 18.347 的 bug 之所以能潜伏, 正是因为 mir_type_to_emit_type 的 `_ => EmitType::I32` fallback 静默把 Param 映射到 I32 — 必须让这类 bug 显式报错
+- WHO: ARCH-A (诊断 pass 边界设计) + DEV-A (实施) + REV-A (14 测试验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/param_check.rs (新文件) + src/mir/mod.rs (注册) + src/codegen/function.rs:codegen_from_mir (集成)
+- HOW:
+  (1) 5W2H 剖析: Stage 18.347 修复了 Pair<i32,i64>.second 但根因 (Param 静默降级) 未解决
+  (2) Rust rustc_codegen_llvm: rustc 在 typeck 后所有 Param 都被替换, codegen 不应见到 Param
+  (3) Rust 哲学: 显式 > 隐式 — Param 到达 codegen 应报错, 不静默映射
+  (4) 实施:
+    - 新建 src/mir/param_check.rs, 含 check_unresolved_types(MirBody) → Vec<TypeError>
+    - 检查 Rvalue::Cast target type, Aggregate::Adt substs/field_tys, Aggregate::Array elem_ty, Load pointee, GetElementPtr result_ty
+    - 检查 Operand::Constant ty + Operand::Copy/Move projection field_ty
+    - 检查 Terminator::Call func/args, SwitchInt discr, Assert cond
+    - 6 个 lib 单元测试 (Param/Infer/Error 在 Cast target + concrete + nested Adt + empty MirBody)
+    - 集成到 codegen_from_mir — 每个非泛型 MirBody 在 codegen_function 前检查
+    - 不集成到 compile_inner — 因为 compile() 不运行 monomorphization, 泛型 MIR 合法包含 Param
+  (5) 验证: 4395 tests (682 lib + 3713 integration) 全部通过, 14 新增测试 (6 lib unit + 8 integration regression)
+- HOW MUCH: §3.2 单线程全绿 (4395 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- Bug 清单 (1 个根因, Stage 18.348):
+  - B1: mir_type_to_emit_type 的 `_ => EmitType::I32` fallback 静默处理 Param/Infer/Error/Projection
+    → Stage 18.347 的 bug 之所以能潜伏, 正是因为这个 fallback
+    → 修复: 新增 param_check pass, 在 codegen_from_mir 中报告未解析类型
+- 能力/设计/职责边界 (per Rust rustc_codegen_llvm):
+  - Param 类型应在 MIR 层完全替换 (rustc 在 typeck 后所有 Param 都被替换)
+  - Landin v0.4 简化: compile() 不运行 monomorphization, 所以泛型 MIR 合法包含 Param
+  - param_check 在 codegen_from_mir (非泛型函数) 中运行 — 此时 Param 是真正错误
+  - 泛型函数通过 codegen_mono_functions substitute_mir_body 后再 codegen — Param 已被替换
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed (was 676, +6 param_check unit tests)
+  → cargo test --release --test all_tests (单线程) ✅ 3713 passed (was 3705, +8 stage18_348 regression tests)
+  → 总计 4395 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-SILENT-PARAM-FALLBACK 添加) + README.md (版本号 + Stage History +18.348) + RELEASE_NOTES.md (Stage 18.348 详细记录)
+
+下一步:
+- TD-SILENT-PARAM-FALLBACK 根因修复完成 ✅ — Param/Infer/Error/Projection 在 type-relevant positions 报告, 不再静默映射到 I32
+- 残留: TD-INTRINSIC-OVERUSE Phase 2-B/C (as_str 等 fat pointer 构造) — 仍 BLOCKED (需 lang features)
+- v0.4 可交付: 4395 tests, 0 failures (单线程), LLVM 22.1.8, param_check diagnostic pass 已集成
+

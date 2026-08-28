@@ -3,12 +3,100 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.508.0 |
+| **Current version** | v0.509.0 |
 | **Date** | 2026-08-28 |
-| **Test count** | 676 lib tests + 3705 integration tests = 4381 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 682 lib tests + 3713 integration tests = 4395 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (34 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (42 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348`) |
+
+---
+
+## v0.509.0 — Stage 18.348 (P2 soundness: Pre-codegen param_check diagnostic pass)
+
+### Overview
+
+**Stage 18.348: P2 soundness fix — Pre-codegen param_check diagnostic pass**
+
+The §20 iterative audit (continuing from Stage 18.347) discovered that
+`mir_type_to_emit_type`'s default fallback `_ => EmitType::I32` silently
+treated unresolved type kinds (`Param`, `Infer`, `Error`, `Projection`)
+as `i32`. This is the root-cause class that allowed Stage 18.347's bug
+(`Pair<i32, i64>.second` returning 173 instead of 99) to go undetected —
+the `Param` was silently mapped to `i32`, producing wrong-but-compilable
+LLVM IR.
+
+### Root cause
+
+`mir_type_to_emit_type` (in `src/codegen/emitter/mod.rs`) has a default
+fallback:
+
+```rust
+// ADTs and other complex types — Stage 3 treats as opaque i32 placeholder.
+_ => EmitType::I32,
+```
+
+This silently handles:
+- `TyKind::Param(N)` (unsubstituted generic placeholder) → silent i32
+- `TyKind::Infer(_)` (unresolved inference variable) → silent i32
+- `TyKind::Error` (propagated type error) → silent i32
+- `TyKind::Projection(_, _)` (unresolved associated type) → silent i32
+
+### Fix
+
+Added `src/mir/param_check.rs` — a pre-codegen diagnostic pass that
+scans each non-generic MirBody for unresolved type kinds in
+**type-relevant positions** and reports them as `TypeError`s.
+
+**What it checks** (type-relevant positions):
+- `Rvalue::Cast` target type
+- `Rvalue::Aggregate::Adt` substs + field_tys
+- `Rvalue::Aggregate::Array` element type
+- `Rvalue::Load` pointee type
+- `Rvalue::GetElementPtr` result type
+- `Operand::Constant` type
+- `Operand::Copy/Move` projection field_ty
+- `Terminator::Call` func/args
+- `Terminator::SwitchInt` discr
+- `Terminator::Assert` cond
+
+**What it does NOT check** (intentional, per §12 最优 > 最小):
+- `local_decl.ty` — many locals are placeholders (return slot, unused
+  temporaries) whose types don't affect codegen. Reporting these would
+  generate ~70 false positives per crate.
+
+**Where it runs**:
+- Integrated into `codegen_from_mir` (NOT `compile_inner`) because
+  `compile()` doesn't run monomorphization — generic function MIRs
+  legitimately contain `Param` types until monomorphization substitutes
+  them during codegen.
+
+### Why a separate pass (per §1.0 原則 6 通解 > 特解)
+
+Adding error checks inside `mir_type_to_emit_type` would require threading
+`Result<>` through every codegen function — a massive refactor. A separate
+diagnostic pass is:
+- **Single responsibility**: only checks for unresolved types
+- **Composable**: runs alongside other diagnostic passes
+- **Cheap**: O(N) walk over statements
+- **Doesn't change codegen semantics**: codegen still produces IR
+  (potentially wrong), but the user sees the error
+
+### Verification
+
+- 6 lib unit tests (param_check.rs internal tests)
+- 8 integration regression tests (stage18_348_param_check_tests.rs)
+- 4395 tests total (682 lib + 3713 integration), 0 failures
+
+### Principles applied
+
+- §1.0 原則 4 (报错 > 静默): unresolved types MUST be reported, not silently
+  mapped to i32
+- §1.0 原則 6 (通解 > 特解): one walker handles all type kinds
+- §12 (最优 > 最小): independent diagnostic pass (not modifying
+  `mir_type_to_emit_type` to return `Result`)
+- §20 (iterative audit): same class as Stage 18.347 (Param leak) — the
+  root cause was the silent fallback; the fix is explicit reporting
 
 ---
 

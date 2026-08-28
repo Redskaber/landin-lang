@@ -139,6 +139,30 @@ pub fn codegen_from_mir(
     emitter: &mut dyn Emitter,
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
+        // Stage 18.348 (P2 soundness fix): Pre-codegen diagnostic —
+        // check for unresolved type kinds (Param/Infer/Error/Projection)
+        // in type-relevant positions. For non-generic functions (handled
+        // here in codegen_from_mir), Param types are real errors because
+        // monomorphization doesn't substitute them (they're already
+        // supposed to be concrete).
+        //
+        // Per §1.0 原則 4 (报错 > 静默): report unresolved types instead of
+        // silently mapping them to EmitType::I32.
+        // Per §1.0 原則 6 (通解 > 特解): one param_check for all functions.
+        // Per §20 (iterative audit): same class as Stage 18.347 (Param leak).
+        let type_errors = crate::mir::param_check::check_unresolved_types(mir);
+        if !type_errors.is_empty() {
+            // Emit a warning to stderr (non-fatal — codegen continues
+            // with potentially wrong types, but the user sees the error).
+            // Per §1.0 原則 4 (报错 > 静默): user MUST see the error.
+            for err in &type_errors {
+                eprintln!(
+                    "warning: unresolved type in `{}`: {}",
+                    meta.fn_name, err.message
+                );
+            }
+        }
+
         codegen_function(
             emitter,
             &meta.fn_name,
