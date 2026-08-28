@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.337 — P1 soundness fix: Recursive struct stack overflow + pointer-to-Adt GEP)
-> **Version**: v0.499.0
-> **Status**: Stage 18.337 resolved TD-RECURSIVE-STRUCT-OVERFLOW (P1 — recursive struct `struct Node { next: *mut Node }` caused stack overflow in type resolution). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3689 tests, 0 failures (single-thread, ulimit -s unlimited). v0.4 release-ready.
+> **Date**: 2026-08-28 (last updated Stage 18.347 — P2 soundness fix: Generic struct field access type substitution)
+> **Version**: v0.508.0
+> **Status**: Stage 18.347 resolved TD-GENERIC-STRUCT-FIELD-ACCESS (P2 — `Pair<i32, i64>.second` returned wrong value because codegen treated i64 field as i32 via Param→I32 fallback). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 4381 tests (676 lib + 3705 integration), 0 failures (single-thread, ulimit -s unlimited). v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -106,6 +106,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-TYPECK-TRAIT-RECEIVER | `trait T { fn f(&self); } impl T for X { fn f(self) {} }` 不报错 — 同 TD-TYPECK-DROP-SELF | 静默接受 trait impl 错误 self receiver | ✅ Resolved Stage 18.336: 同 TD-TYPECK-DROP-SELF (self_kind 比较). |
 | TD-TYPECK-TRAIT-RET-INT-WIDTH | `trait T { fn f() -> i32; } impl T for X { fn f() -> i64 {} }` 不报错 — mir_ty_kinds_compatible 把 Int↔Int 视为兼容 (regardless of width) | 静默接受 trait impl 错误返回类型宽度 | ✅ Resolved Stage 18.336: mir_ty_kinds_compatible 收紧 — Int/Uint/Float 要求 exact match (a_i == b_i); Int↔Uint 视为不兼容. Per §1.0 原則 9 (正确 > 妥协): trait impls 必须精确匹配声明签名. |
 | TD-RECURSIVE-STRUCT-OVERFLOW | 递归结构体 (`struct Node { next: *mut Node }`) 导致 `mir_type_to_emit_type_with_layouts` 无限递归 → stack overflow crash | 任何递归类型 (链表/树/图) 编译器崩溃 | ✅ Resolved Stage 18.337: Ref/RawPtr to Adt → EmitType::OpaquePtr (不递归 pointee). 打破循环. detect_place_storage_type 对 Ref/RawPtr to Adt 解析 pointee 结构体类型供 GEP 使用. Per §1.0 原則 6 (通解 > 特解): opaque ptr 是 LLVM 17+ 正确语义. Per §1.0 原則 9 (正确 > 妥协): 正确 opaque pointer semantics > 递归深度限制. |
+| TD-GENERIC-STRUCT-FIELD-ACCESS | 泛型结构体非首字段访问返回错误值 (`Pair<i32, i64> { first: 42, second: 99 }.second` 返回 173 而非 99). 嵌套泛型 (`Wrapper<Pair<i32,i64>>.inner.first`) 触发 LLVM verify fail "Invalid indices for GEP pointer type". | (1) MIR lower `resolve_field_type` 存储未替换的 `Param(N)` 在 `ProjectionElem::Field(_, field_ty)`; (2) writeback Rule 3 Field projection 不处理 Param (直接返回); (3) `needs_writeback` 不含 Param, fixpoint 跳过 Param 局部; (4) codegen `detect_place_type`/`detect_place_storage_type` 用 `mono_layouts=None` 调用, `lookup_mono_layout` 返回 None, 回退到 AdtLayouts (未替换); (5) `mir_type_to_emit_type` 默认 fallback `Param → EmitType::I32` (静默错误). | ✅ Resolved Stage 18.347: 三层根因修复 — (1) `needs_writeback` 包含 Param (让 fixpoint 尝试解析); (2) writeback Rule 3 Field projection: 当 `field_ty` 含 Param 且 base 为 `Adt(_, substs)` 时, 调用 `substitute(field_ty, substs)`; (3) codegen 6 个 place 函数 (`detect_place_type` + `detect_place_storage_type` + `compute_place_address` + `codegen_place_load_typed` + `codegen_place_load` + `detect_operand_type`) 添加 `mono_layouts: Option<&MonoLayoutMap>` 参数, 49 个调用点更新, 让 `lookup_mono_layout` 工作解析泛型实例. Per §1.0 原則 3 (显式 > 隐式): 显式 subst, 不静默 i32 fallback. Per §1.0 原則 6 (通解 > 特解): 一条 substitute 路径覆盖所有泛型结构体. Per §12 (最优 > 最小): 拒绝只在 codegen 层 hack, writeback 层也修复. Per §20 (iterative audit): same class as Stage 18.346 (Aggregate path) — Field projection path was missed. 16 regression tests (4 positive + 12 negative). |
 
 ### 2.6 Standard Library
 

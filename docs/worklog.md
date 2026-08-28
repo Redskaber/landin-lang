@@ -26039,3 +26039,95 @@ Work Log:
 - P1 codegen bug 根因修复完成 ✅ — 10 个 bug 全部修复, 单线程全绿, 多线程 18/20
 - 残留: 多线程 2/20 偶发 failure — 可能是 /tmp 文件竞争 (common/mod.rs run_program), 不是 codegen bug
 - v0.4 可交付: 4317 tests, 0 failures (单线程), P1 codegen 根因修复完成 (10 bugs)
+
+---
+Task ID: stage18.347
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.347 — TD-GENERIC-STRUCT-FIELD-ACCESS 根因修复: 泛型结构体字段访问类型替换 + LLVM 22.1 环境部署. L3. v0.507.0 → v0.508.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 P2 soundness bug — codegen places.rs + writeback.rs + LLVM 22.1 环境部署)
+- 对齐: tech-debt-register Stage 18.346 部分修复 (insertvalue struct type 正确), 残留 Field projection GEP path
+- 阻断: 用户明确要求 "只允许使用 llvm 22.1" — 当前 LLVM 19 不符合, 必须切换
+
+决策点 (为何选此路):
+- 为什么用 apt.llvm.org/trixie 的 .deb 包部署 LLVM 22.1?
+  → 引用 §1.1 (环境工具自助准备): 工具缺失时主动查找+安装
+  → 引用 §18 (依赖与基础设施审查): 依赖缺失立即执行
+  → 引用 §1.0 原則 6 (通解 > 特解): 从官方源下载 .deb 是通解, 不依赖特定机器预装
+- 为什么用 codegen 层 + writeback 层 双重修复?
+  → 引用 §2.2 (根因思维): 根因在 MIR lower 存储未替换 Param(N), 但 codegen 跑在 typeck writeback 之后, 所以 codegen 是正确的修复点
+  → 引用 §12 (最优 > 最小): 拒绝只在 codegen 层 hack, writeback 层也修复防止 Param 泄漏到 codegen
+  → 引用 §1.0 原則 6 (通解 > 特解): 一条 substitute 路径覆盖所有泛型结构体 (非 per-struct 特例)
+- 为什么 thread mono_layouts through detect_place_type/detect_place_storage_type?
+  → 引用 §1.0 原則 3 (显式 > 隐式): 显式传递 mono_layouts, 不用 thread_local 隐式访问
+  → 引用 §1.0 原則 6 (通解 > 特解): 一个 mono_layouts 参数贯穿所有 place 函数, 让 lookup_mono_layout 工作
+  → 引用 §13.4 (重构判据): 函数签名添加参数是单一职责重构, 不是 hack
+- 为什么 needs_writeback 包含 Param?
+  → 引用 §1.0 原則 4 (报错 > 静默): Param 不应静默映射到 i32, 必须被 writeback 解析
+  → 引用 §1.0 原則 6 (通解 > 特解): 一个 needs_writeback 谓词处理 Infer + Param (两种 "需要替换" 情况)
+
+裁剪点:
+- L3 执行 §3.2 全校验流 + §20 迭代审计. 跳过 §14.6 (无跨阶段变更).
+
+5W2H:
+- WHAT: 修复 TD-GENERIC-STRUCT-FIELD-ACCESS (Pair<i32,i64>.second 返回 173 而非 99)
+- WHY: codegen detect_place_type/detect_place_storage_type 用 mono_layouts=None 调用, lookup_mono_layout 返回 None, 回退到 AdtLayouts (未替换) → Param(N) → EmitType::I32 默认
+- WHO: ARCH-A (LLVM IR mono_layouts 边界) + DEV-A (实施) + REV-A (16 测试验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/codegen/mir_translation/places.rs + src/mir/lower/writeback.rs
+- HOW:
+  (1) §18 依赖审查: 下载 llvm-22 + llvm-22-dev + libllvm22 .deb 包到 /tmp/llvm-22-prefix
+  (2) LLVM IR 规范边界: mono_layouts 必须贯穿到 detect_place_type 才能让 lookup_mono_layout 解析泛型实例
+  (3) Rust rustc_codegen_llvm: codegen 不接受未替换的 Param 类型 — 应在 MIR 层完全替换
+  (4) 实施:
+    - 添加 mono_layouts 参数到 detect_place_type + detect_place_storage_type + compute_place_address + codegen_place_load_typed + codegen_place_load + detect_operand_type (49 个调用点更新)
+    - writeback.rs Rule 3 Field projection: 当 field_ty 含 Param 且 base 为 Adt 时, 调用 substitute(field_ty, substs)
+    - needs_writeback 包含 Param, 让 fixpoint 不跳过 Param 类型
+    - 添加 type_contains_param 辅助谓词 (places.rs + writeback.rs 各一)
+  (5) 验证: 4381 tests (676 lib + 3705 integration) 全部通过, 16 新增回归测试 (4 正 + 12 负)
+- HOW MUCH: §3.2 单线程全绿 (4381 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- 环境部署 (§18 依赖审查):
+  → 用户明确要求 LLVM 22.1 (不允许 19)
+  → 下载 llvm-22_22.1.8 + llvm-22-dev_22.1.8 + libllvm22_22.1.8 .deb 包 from apt.llvm.org/trixie
+  → 组装 /tmp/llvm-22-prefix (bin + include + lib)
+  → patch llvm-config 用 LLVM_LINK_SHARED=1 返回 libLLVM-22.so
+  → 系统无 libLLVM-22.so, 用 LD_LIBRARY_PATH 解决运行时链接
+  → cargo build --release --features llvm-backend ✅ (LLVM 22.1.8)
+  → cargo test --release --lib ✅ 676 passed
+  → cargo test --release --test all_tests ✅ 3689 passed (单线程, ulimit -s unlimited)
+- Bug 清单 (3 个根因, Stage 18.347):
+  - B1: detect_place_type/detect_place_storage_type 调用 mir_type_to_emit_type_with_layouts_and_mono(..., None)
+    → mono_layouts=None → lookup_mono_layout 返回 None → 回退到 AdtLayouts (未替换)
+    → Param(N) → EmitType::I32 默认 → 错误的 struct layout
+    → Pair<i32, i64> 的 second 字段 GEP 用 { i32, i32 } 而非 { i32, i64 } → 偏移 4 (i64 起始) 而非 8
+    → 修复: 添加 mono_layouts 参数贯穿所有 place 函数 (49 调用点更新)
+  - B2: writeback Rule 3 Field projection 不处理 Param
+    → field_ty 含 Param(N) 时直接返回 Param (未替换)
+    → loc_X 的 local_decl.ty 被设置为 Param
+    → codegen 把 Param 映射到 EmitType::I32 → 错误的 alloca 类型
+    → 修复: 在 needs_writeback 检查前, 如果 field_ty 含 Param 且 base 为 Adt, 调用 substitute
+  - B3: needs_writeback 不包含 Param
+    → Param 被视为 "concrete" 跳过 writeback fixpoint
+    → Param 永远不会被解析
+    → 修复: needs_writeback 包含 Param, 让 fixpoint 尝试解析
+- 能力/设计/职责边界 (per Rust rustc_codegen_llvm):
+  - Param 类型应在 MIR 层完全替换 (rustc 在 typeck 后所有 Param 都被替换)
+  - Landin v0.4 简化: Param 可以到达 codegen, 但 codegen 应通过 mono_layouts 解析
+  - 若 Param 无法解析: 应报错 (§1.0 原則 4), 而非静默映射到 i32 (后续 v0.5 改进)
+- §3.2 全校验流:
+  → cargo build --release ✅ (LLVM 22.1.8)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 676 passed, 0 failed
+  → cargo test --release --test all_tests (单线程) ✅ 3705 passed, 0 failed (3689 + 16 new)
+  → 总计 4381 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-GENERIC-STRUCT-FIELD-TYS-ACCESS 添加) + README.md (版本号 + Stage History +18.347) + RELEASE_NOTES.md (Stage 18.347 详细记录)
+
+下一步:
+- TD-GENERIC-STRUCT-FIELD-ACCESS 根因修复完成 ✅ — Pair<i32,i64>.second / 嵌套 Wrapper<Pair<i32,i64>>.inner.first 均正确
+- 残留: TD-INTRINSIC-OVERUSE Phase 2-B/C (as_str 等 fat pointer 构造) — 仍 BLOCKED (需 lang features)
+- v0.4 可交付: 4381 tests, 0 failures (单线程), LLVM 22.1.8
+

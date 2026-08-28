@@ -19,10 +19,116 @@ use crate::mir::place::*;
 use crate::mir::ty::*;
 use lasso::Rodeo;
 
+/// Stage 18.347 (P2 soundness fix): Resolve a field's MIR type by applying
+/// the base struct's generic substs to the (possibly unsubstituted) field_ty.
+///
+/// # Root cause (per §2.2 根因思维)
+///
+/// MIR lower (`field_resolution::resolve_field_type`) stores the
+/// **unsubstituted** field_ty in `ProjectionElem::Field(_, field_ty)` when
+/// the receiver's substs are not directly available at lower time. The
+/// field_ty then contains `Param(N)` placeholders (e.g., for
+/// `struct Pair<A, B> { first: A, second: B }`, field 1's type is
+/// `Param(1)` meaning "B"). The post-typeck writeback pass
+/// (`writeback_type_propagation`) resolves `local_decl.ty` from `Infer`
+/// to `Adt(def_id, substs)`, but does NOT propagate into
+/// `ProjectionElem::Field` — so the field_ty stays unsubstituted.
+///
+/// # Fix (per §1.0 原則 3 显式 > 隐式 + 原則 6 通解 > 特解)
+///
+/// When codegen encounters `ProjectionElem::Field(field_id, field_ty)`
+/// whose `field_ty` contains `Param(N)`, look up the **base place's**
+/// resolved `Adt(def_id, substs)` type and apply `substitute(field_ty,
+/// substs)` to get the concrete field type. This is a single,
+/// general-purpose mechanism that works for any generic struct field
+/// access, regardless of how the field_ty was stored at lower time.
+///
+/// # Why codegen, not MIR lower? (per §12 最优 > 最小)
+///
+/// MIR lower's `resolve_field_type` already tries to substitute when
+/// receiver substs are available, but the post-typeck writeback resolves
+/// types AFTER MIR lower runs. Codegen runs after writeback, so it sees
+/// the resolved base type. Fixing at codegen means the fix applies
+/// regardless of which lower path produced the projection.
+///
+/// # Why not also propagate in writeback? (per §13.4 重构判据)
+///
+/// The writeback pass is a fixpoint that updates `local_decl.ty` from
+/// `Infer` to concrete. Propagating into `ProjectionElem::Field(_, ty)`
+/// would require walking every projection in every statement — a
+/// potentially expensive O(N) pass. The codegen fix is O(1) per field
+/// access (the substitute call), and only runs when the field is
+/// actually loaded. This is the architecturally correct boundary.
+///
+/// # Parameters
+///
+/// - `mir`: the MIR body (for local_decl lookups)
+/// - `base`: the base Place of the projection (e.g., the struct local)
+/// - `field_ty`: the (possibly unsubstituted) field type from
+///   `ProjectionElem::Field(_, field_ty)`
+///
+/// # Returns
+///
+/// - If `field_ty` has no `Param`: returns `field_ty` unchanged (fast path).
+/// - If `field_ty` has `Param(N)` and base's local_decl.ty is
+///   `Adt(def_id, substs)` with non-empty substs: returns
+///   `substitute(field_ty, substs)`.
+/// - Otherwise: returns `field_ty` unchanged (caller's existing fallback
+///   applies — e.g., the Stage 14.49 Infer handling in detect_place_type).
+///
+/// Per §23 (API Naming): `resolve_field_ty_with_substs` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: reads MIR data only (no HIR).
+fn resolve_field_ty_with_substs(mir: &MirBody, base: &Place, field_ty: &Ty) -> Ty {
+    // Fast path: if field_ty has no Param, return as-is.
+    if !type_contains_param(field_ty) {
+        return field_ty.clone();
+    }
+    // Slow path: extract substs from base's local_decl.
+    if let PlaceKind::Local(base_id) = &base.kind {
+        if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
+            let base_ty = match &base_ld.ty.kind {
+                // Auto-deref Ref to get the Adt inside.
+                TyKind::Ref(_, _, inner) => inner.as_ref(),
+                _ => &base_ld.ty,
+            };
+            if let TyKind::Adt(_, substs) = &base_ty.kind {
+                if !substs.is_empty() {
+                    return crate::mir::substitute::substitute(field_ty, substs);
+                }
+            }
+        }
+    }
+    field_ty.clone()
+}
+
+/// Stage 18.347: Helper — does a Ty (recursively) contain any Param?
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
+/// "needs substitution" check visible at every callsite.
+fn type_contains_param(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_param(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param),
+        _ => false,
+    }
+}
+
 pub(crate) fn detect_place_storage_type(
     mir: &MirBody,
     lv: &Place,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: Threaded through so generic Adt types resolve via
+    // lookup_mono_layout instead of falling back to the unsubstituted
+    // AdtLayouts entry (which would produce wrong struct field types).
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> EmitType {
     match &lv.kind {
         PlaceKind::Local(id) => {
@@ -38,7 +144,13 @@ pub(crate) fn detect_place_storage_type(
                     if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
                         let fields: Vec<EmitType> = substs
                             .iter()
-                            .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, None))
+                            .map(|t| {
+                                mir_type_to_emit_type_with_layouts_and_mono(
+                                    t,
+                                    layouts,
+                                    mono_layouts,
+                                )
+                            })
                             .collect();
                         return EmitType::Struct(fields);
                     }
@@ -72,9 +184,9 @@ pub(crate) fn detect_place_storage_type(
                     | crate::mir::ty::TyKind::RawPtr(_, inner)
                         if matches!(inner.kind, crate::mir::ty::TyKind::Adt(_, _)) =>
                     {
-                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
+                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, mono_layouts)
                     }
-                    _ => mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None),
+                    _ => mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts),
                 }
             } else {
                 EmitType::I32
@@ -88,7 +200,30 @@ pub(crate) fn detect_place_storage_type(
         // slice/array.
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Field(_, field_ty) => {
-                mir_type_to_emit_type_with_layouts_and_mono(field_ty, layouts, None)
+                // Stage 18.347 (P2 soundness fix): Apply generic substs
+                // from the base struct's resolved type to the field_ty.
+                // Was: passed `field_ty` directly, which contained
+                // unsubstituted `Param(N)` placeholders → fell through
+                // to `EmitType::I32` (mir_type_to_emit_type's default
+                // for unknown TyKind) → wrong struct layout in load/GEP.
+                //
+                // Concrete bug: `Pair<i32, i64> { first: 42i32, second: 99i64 }.second`
+                // loaded `{ i32, i32 }` (instead of `{ i32, i64 }`),
+                // then GEP'd field 1 of `{ i32, i32 }` (offset 4) instead
+                // of `{ i32, i64 }` (offset 8) → loaded wrong bytes as i32.
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): explicit subst, not silent
+                // i32 fallback.
+                // Per §1.0 原則 6 (通解 > 特解): one subst path for all
+                // generic structs (no per-struct special cases).
+                // Per §20 (iterative audit): same class as Stage 18.346
+                // (Aggregate path) — Field projection path was missed.
+                let resolved_field_ty = resolve_field_ty_with_substs(mir, base, field_ty);
+                mir_type_to_emit_type_with_layouts_and_mono(
+                    &resolved_field_ty,
+                    layouts,
+                    mono_layouts,
+                )
             }
             // Stage 14.19 (GAP-31): For Deref, the storage type is the
             // pointee type (what the reference points to), not the reference
@@ -96,7 +231,7 @@ pub(crate) fn detect_place_storage_type(
             // Was: recursed into base, returning the Ref type (pointer) instead
             // of the pointee, causing GEP to use the wrong type.
             ProjectionElem::Deref => {
-                let base_ty = detect_place_storage_type(mir, base, layouts);
+                let base_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 if base_ty.is_ptr() {
                     base_ty.pointee()
                 } else {
@@ -110,7 +245,7 @@ pub(crate) fn detect_place_storage_type(
             // emit_gep_field to use the array type instead of the element type
             // for `arr[i].field` patterns → GEP with wrong indices.
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
-                let array_ty = detect_place_storage_type(mir, base, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 // Stage 14.61: If the base is a Ref to an array (e.g., `&[i32; 3]`),
                 // detect_place_storage_type returns the Ref type (Ptr/OpaquePtr).
                 // We need to check the MIR type for Ref(_, _, Array) and extract
@@ -120,7 +255,9 @@ pub(crate) fn detect_place_storage_type(
                     if let PlaceKind::Local(id) = &base.kind {
                         if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                             if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                let inner_emit = mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None);
+                                let inner_emit = mir_type_to_emit_type_with_layouts_and_mono(
+                                    inner, layouts, None,
+                                );
                                 if !matches!(inner_emit, EmitType::I32) {
                                     inner_emit
                                 } else {
@@ -147,7 +284,9 @@ pub(crate) fn detect_place_storage_type(
                     array_ty
                 }
             }
-            ProjectionElem::Subslice { .. } => detect_place_storage_type(mir, base, layouts),
+            ProjectionElem::Subslice { .. } => {
+                detect_place_storage_type(mir, base, layouts, mono_layouts)
+            }
         },
         PlaceKind::Static(_) => EmitType::I32,
     }
@@ -157,6 +296,10 @@ pub(crate) fn detect_place_type(
     mir: &MirBody,
     lv: &Place,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: Threaded through so generic Adt types resolve via
+    // lookup_mono_layout instead of falling back to the unsubstituted
+    // AdtLayouts entry (which would produce wrong struct field types).
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> EmitType {
     match &lv.kind {
         PlaceKind::Local(id) => {
@@ -173,14 +316,14 @@ pub(crate) fn detect_place_type(
                 {
                     return EmitType::OpaquePtr;
                 }
-                mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None)
+                mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
             } else {
                 EmitType::I32
             }
         }
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let base_ty = detect_place_type(mir, base, layouts);
+                let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
                 if base_ty.is_ptr() {
                     base_ty.pointee()
                 } else {
@@ -188,12 +331,28 @@ pub(crate) fn detect_place_type(
                 }
             }
             ProjectionElem::Field(field_id, field_ty) => {
+                // Stage 18.347 (P2 soundness fix): Apply generic substs
+                // from the base struct's resolved type to the field_ty.
+                // Was: passed `field_ty` directly, which contained
+                // unsubstituted `Param(N)` placeholders → fell through to
+                // `EmitType::I32` (mir_type_to_emit_type's default for
+                // unknown TyKind) → wrong field type in load.
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): explicit subst, not silent
+                // i32 fallback. Same fix as detect_place_storage_type
+                // (both must agree on the field's resolved type).
+                // Per §1.0 原則 6 (通解 > 特解): one subst path for all
+                // generic structs.
+                // Per §20 (iterative audit): same class as Stage 18.346
+                // (Aggregate path) — Field projection path was missed.
+                let field_ty = resolve_field_ty_with_substs(mir, base, field_ty);
                 // Stage 14.49: If field_ty is Infer, try to resolve it from
                 // the base's type (e.g., Tuple field types). This handles
                 // nested tuple destructure where the projection's field_ty
                 // was set to Infer at MIR-lower time but the base's type was
                 // resolved by the post-typeck writeback.
-                let emit_ty = mir_type_to_emit_type_with_layouts_and_mono(field_ty, layouts, None);
+                let emit_ty =
+                    mir_type_to_emit_type_with_layouts_and_mono(&field_ty, layouts, mono_layouts);
                 if matches!(emit_ty, EmitType::I32)
                     && matches!(&field_ty.kind, crate::mir::ty::TyKind::Infer(_))
                 {
@@ -202,7 +361,9 @@ pub(crate) fn detect_place_type(
                         if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
                             if let crate::mir::ty::TyKind::Tuple(field_tys) = &base_ld.ty.kind {
                                 if let Some(resolved) = field_tys.get(field_id.0 as usize) {
-                                    return mir_type_to_emit_type_with_layouts_and_mono(resolved, layouts, None);
+                                    return mir_type_to_emit_type_with_layouts_and_mono(
+                                        resolved, layouts, None,
+                                    );
                                 }
                             }
                             // Stage 14.84 (audit fix #3): Also handle Closure
@@ -214,7 +375,9 @@ pub(crate) fn detect_place_type(
                             // are now resolved to [Adt(Point)].
                             if let crate::mir::ty::TyKind::Closure(_, substs) = &base_ld.ty.kind {
                                 if let Some(resolved) = substs.get(field_id.0 as usize) {
-                                    return mir_type_to_emit_type_with_layouts_and_mono(resolved, layouts, None);
+                                    return mir_type_to_emit_type_with_layouts_and_mono(
+                                        resolved, layouts, None,
+                                    );
                                 }
                             }
                         }
@@ -223,7 +386,7 @@ pub(crate) fn detect_place_type(
                 emit_ty
             }
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
-                let storage = detect_place_storage_type(mir, base, layouts);
+                let storage = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 match storage {
                     EmitType::Array(elem, _) => *elem,
                     // Stage 3.52: fat pointer (&[T] slice) — extract the
@@ -262,6 +425,9 @@ pub(crate) fn compute_place_address(
     lv: &Place,
     _interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: threaded through so detect_place_type calls inside
+    // can resolve generic Adt layouts via lookup_mono_layout.
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> String {
     match &lv.kind {
         PlaceKind::Local(id) => emitter
@@ -273,14 +439,21 @@ pub(crate) fn compute_place_address(
                 // Stage 14.19 (GAP-31): Handle Deref+Field for store path.
                 // When base is a Deref (e.g. `(*self).field`), load the pointer
                 // from the inner base, then GEP through it.
-                let base_addr = if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) =
-                    &base.kind
-                {
-                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
-                    codegen_place_load_typed(emitter, mir, inner_base, ptr_ty, _interner, layouts)
-                } else {
-                    compute_place_address(emitter, mir, base, _interner, layouts)
-                };
+                let base_addr =
+                    if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind {
+                        let ptr_ty = detect_place_type(mir, inner_base, layouts, mono_layouts);
+                        codegen_place_load_typed(
+                            emitter,
+                            mir,
+                            inner_base,
+                            ptr_ty,
+                            _interner,
+                            layouts,
+                            mono_layouts,
+                        )
+                    } else {
+                        compute_place_address(emitter, mir, base, _interner, layouts, mono_layouts)
+                    };
                 // Stage 14.66: Handle `self.field` where `self` is `&self` (Ref).
                 //
                 // When the base is a Local whose type is Ref(_, _, Adt) (i.e.,
@@ -295,7 +468,7 @@ pub(crate) fn compute_place_address(
                 //
                 // Per §1.0 原则 6 "通用 > 特例": one rule handles all Ref-based
                 // field accesses (not just &self methods).
-                let struct_ty = detect_place_storage_type(mir, base, layouts);
+                let struct_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 // Stage 14.66: Handle `self.field` where `self` is `&self` (Ref).
                 //
                 // When the base is a Local whose type is Ref(_, _, Adt) (i.e.,
@@ -321,7 +494,9 @@ pub(crate) fn compute_place_address(
                         if let PlaceKind::Local(id) = &base.kind {
                             if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                    mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
+                                    mir_type_to_emit_type_with_layouts_and_mono(
+                                        inner, layouts, None,
+                                    )
                                 } else {
                                     pointee_ty
                                 }
@@ -345,6 +520,7 @@ pub(crate) fn compute_place_address(
                             struct_ty.clone(),
                             _interner,
                             layouts,
+                            mono_layouts,
                         );
                         (loaded_ptr, pointee_ty)
                     } else {
@@ -364,7 +540,7 @@ pub(crate) fn compute_place_address(
                 // Stage 14.61: When the base is a Ref (e.g., `&[i32; 3]`),
                 // we need to dereference the reference first to get the array
                 // pointer, then GEP into the array.
-                let base_ty = detect_place_type(mir, base, layouts);
+                let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
                 let base_ptr = if base_ty.is_ptr() {
                     // Ref to array — load the pointer value from the alloca
                     codegen_place_load_typed(
@@ -374,15 +550,16 @@ pub(crate) fn compute_place_address(
                         base_ty.clone(),
                         _interner,
                         layouts,
+                        mono_layouts,
                     )
                 } else {
-                    compute_place_address(emitter, mir, base, _interner, layouts)
+                    compute_place_address(emitter, mir, base, _interner, layouts, mono_layouts)
                 };
                 // Stage 14.61: For Ref to Array, extract the Array type from the
                 // Ref's inner type for the GEP. detect_place_storage_type returns
                 // Ptr(Array) which is wrong for GEP — we need Array itself.
                 let array_ty = {
-                    let raw_ty = detect_place_storage_type(mir, base, layouts);
+                    let raw_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                     match &raw_ty {
                         EmitType::Ptr(inner) => *inner.clone(),
                         EmitType::OpaquePtr => {
@@ -390,7 +567,9 @@ pub(crate) fn compute_place_address(
                             if let PlaceKind::Local(id) = &base.kind {
                                 if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                     if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
+                                        mir_type_to_emit_type_with_layouts_and_mono(
+                                            inner, layouts, None,
+                                        )
                                     } else {
                                         raw_ty
                                     }
@@ -419,8 +598,9 @@ pub(crate) fn compute_place_address(
                 }
             }
             ProjectionElem::ConstantIndex { offset, .. } => {
-                let base_ptr = compute_place_address(emitter, mir, base, _interner, layouts);
-                let array_ty = detect_place_storage_type(mir, base, layouts);
+                let base_ptr =
+                    compute_place_address(emitter, mir, base, _interner, layouts, mono_layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
                 match pointee_opt {
@@ -434,8 +614,8 @@ pub(crate) fn compute_place_address(
             // (loads the value — old behavior, may not work for fat pointers
             // in store position, but preserves existing behavior for non-fat-ptr cases).
             _ => {
-                let ptr_ty = detect_place_type(mir, lv, layouts);
-                codegen_place_load_typed(emitter, mir, lv, ptr_ty, _interner, layouts)
+                let ptr_ty = detect_place_type(mir, lv, layouts, mono_layouts);
+                codegen_place_load_typed(emitter, mir, lv, ptr_ty, _interner, layouts, mono_layouts)
             }
         },
         PlaceKind::Static(_) => "0".to_string(),
@@ -505,6 +685,8 @@ pub(crate) fn codegen_place_load_typed(
     ty: EmitType,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: threaded through for detect_place_type calls.
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> EmitValue {
     match &lv.kind {
         PlaceKind::Local(id) => {
@@ -558,16 +740,24 @@ pub(crate) fn codegen_place_load_typed(
                         .unwrap_or(false)
                 } else {
                     // For projections, check the place type
-                    let base_ty = detect_place_type(mir, base, layouts);
+                    let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
                     base_ty.is_ptr()
                 };
                 if !base_is_ptr {
                     // Base is not a pointer — `*v` on a value is a no-op.
                     // Return the value directly.
-                    let val_ty = detect_place_type(mir, base, layouts);
-                    codegen_place_load_typed(emitter, mir, base, val_ty, interner, layouts)
+                    let val_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        val_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
                 } else {
-                    let ptr_ty = detect_place_type(mir, base, layouts);
+                    let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
                     let ptr_val = codegen_place_load_typed(
                         emitter,
                         mir,
@@ -575,6 +765,7 @@ pub(crate) fn codegen_place_load_typed(
                         ptr_ty.clone(),
                         interner,
                         layouts,
+                        mono_layouts,
                     );
                     emitter.emit_load(&ty, &ptr_val)
                 }
@@ -633,8 +824,16 @@ pub(crate) fn codegen_place_load_typed(
                                 && matches!(&ty.kind, crate::mir::ty::TyKind::Closure(_, _)))
                         {
                             // Ref or Closure — load the pointer value
-                            let ptr_ty = detect_place_type(mir, base, layouts);
-                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                            let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                            codegen_place_load_typed(
+                                emitter,
+                                mir,
+                                base,
+                                ptr_ty,
+                                interner,
+                                layouts,
+                                mono_layouts,
+                            )
                         } else {
                             // Stage 18.174: For all other types (including
                             // fat pointers like Str), use the alloca pointer
@@ -656,7 +855,7 @@ pub(crate) fn codegen_place_load_typed(
                 {
                     // base is (*inner).field — load the pointer from inner_base,
                     // then GEP through it.
-                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
+                    let ptr_ty = detect_place_type(mir, inner_base, layouts, mono_layouts);
                     let ptr_val = codegen_place_load_typed(
                         emitter,
                         mir,
@@ -664,18 +863,27 @@ pub(crate) fn codegen_place_load_typed(
                         ptr_ty.clone(),
                         interner,
                         layouts,
+                        mono_layouts,
                     );
                     // The pointer value IS the base address for GEP
                     ptr_val
                 } else if let PlaceKind::Projection(_, ProjectionElem::Field(_, _)) = &base.kind {
                     // Stage 14.43: base is a nested Field projection (e.g., self.inner).
                     // Compute its ADDRESS (GEP to the inner field), don't load the value.
-                    compute_place_address(emitter, mir, base, interner, layouts)
+                    compute_place_address(emitter, mir, base, interner, layouts, mono_layouts)
                 } else {
-                    let ptr_ty = detect_place_type(mir, base, layouts);
-                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        ptr_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
                 };
-                let mut struct_ty = detect_place_storage_type(mir, base, layouts);
+                let mut struct_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 // Stage 14.66: If base is a Ref, the storage type is a pointer.
                 // Use the pointee type (the actual struct) for GEP.
                 if struct_ty.is_ptr() {
@@ -688,8 +896,9 @@ pub(crate) fn codegen_place_load_typed(
                             if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                 // Stage 16.28: Handle Ref types — resolve pointee
                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                    let resolved =
-                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None);
+                                    let resolved = mir_type_to_emit_type_with_layouts_and_mono(
+                                        inner, layouts, None,
+                                    );
                                     if matches!(resolved, EmitType::Struct(_)) {
                                         struct_ty = resolved;
                                     }
@@ -701,7 +910,11 @@ pub(crate) fn codegen_place_load_typed(
                                 if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
                                     let fields: Vec<EmitType> = substs
                                         .iter()
-                                        .map(|t| mir_type_to_emit_type_with_layouts_and_mono(t, layouts, None))
+                                        .map(|t| {
+                                            mir_type_to_emit_type_with_layouts_and_mono(
+                                                t, layouts, None,
+                                            )
+                                        })
                                         .collect();
                                     struct_ty = EmitType::Struct(fields);
                                 }
@@ -717,8 +930,9 @@ pub(crate) fn codegen_place_load_typed(
                     // SSA value instead of the alloca pointer.
                     // Per §1.0 原則 6 (通解>特例): one path for all
                     // Local-based Field projections.
-                    let addr = compute_place_address(emitter, mir, base, interner, layouts);
-                    let struct_ty = detect_place_storage_type(mir, base, layouts);
+                    let addr =
+                        compute_place_address(emitter, mir, base, interner, layouts, mono_layouts);
+                    let struct_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                     emitter.emit_gep_field(&addr, &struct_ty, field_id.0)
                 } else {
                     emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0)
@@ -773,8 +987,16 @@ pub(crate) fn codegen_place_load_typed(
                                 .unwrap_or_else(|| "0".to_string())
                         } else if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
                             // Thin pointer Ref: load the pointer value (unchanged)
-                            let ptr_ty = detect_place_type(mir, base, layouts);
-                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                            let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                            codegen_place_load_typed(
+                                emitter,
+                                mir,
+                                base,
+                                ptr_ty,
+                                interner,
+                                layouts,
+                                mono_layouts,
+                            )
                         } else {
                             // Non-Ref: use alloca pointer (unchanged)
                             emitter
@@ -791,23 +1013,33 @@ pub(crate) fn codegen_place_load_typed(
                 } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind
                 {
                     // base is (*inner) — load the pointer from inner_base
-                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
-                    codegen_place_load_typed(emitter, mir, inner_base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, inner_base, layouts, mono_layouts);
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        inner_base,
+                        ptr_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
                 } else {
                     // base is a Field projection (e.g. self.data) — compute its
                     // ADDRESS (GEP to the field), don't load the value.
-                    compute_place_address(emitter, mir, base, interner, layouts)
+                    compute_place_address(emitter, mir, base, interner, layouts, mono_layouts)
                 };
                 // Stage 14.61: Extract Array type from Ref for GEP.
                 let array_ty = {
-                    let raw_ty = detect_place_storage_type(mir, base, layouts);
+                    let raw_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                     match &raw_ty {
                         EmitType::Ptr(inner) => *inner.clone(),
                         EmitType::OpaquePtr => {
                             if let PlaceKind::Local(id) = &base.kind {
                                 if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                     if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
-                                        mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, None)
+                                        mir_type_to_emit_type_with_layouts_and_mono(
+                                            inner, layouts, None,
+                                        )
                                     } else {
                                         raw_ty
                                     }
@@ -894,10 +1126,18 @@ pub(crate) fn codegen_place_load_typed(
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_place_type(mir, base, layouts);
-                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        ptr_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
                 };
-                let array_ty = detect_place_storage_type(mir, base, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 // Stage 3.51: same fat pointer unwrap as Index.
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
@@ -921,6 +1161,8 @@ pub(crate) fn codegen_place_load(
     lv: &Place,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: threaded through for codegen_place_load_typed.
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> EmitValue {
     // Stage 3.47 (L-PIPE-1 closure): previously this fabricated a fake
     // `MirBody::new(Span::DUMMY)` to satisfy `codegen_place_load_typed`'s
@@ -930,19 +1172,29 @@ pub(crate) fn codegen_place_load(
     // historical default for untyped place loads (used when the caller
     // doesn't know the type ahead of time). The typed path
     // (`codegen_place_load_typed`) is preferred when the type is known.
-    codegen_place_load_typed(emitter, mir, lv, EmitType::I32, interner, layouts)
+    codegen_place_load_typed(
+        emitter,
+        mir,
+        lv,
+        EmitType::I32,
+        interner,
+        layouts,
+        mono_layouts,
+    )
 }
 
 pub(crate) fn detect_operand_type(
     mir: &MirBody,
     op: &Operand,
     layouts: &crate::mir::body::AdtLayouts,
+    // Stage 18.347: threaded through for mir_type_to_emit_type_with_layouts_and_mono.
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> Option<EmitType> {
     match op {
         Operand::Constant(c) => {
             // Stage 3.46: use the constant's declared type if it's concrete
             // (not Infer). This ensures e.g. i16 constants use i16 ops.
-            let from_ty = mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, None);
+            let from_ty = mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, mono_layouts);
             if from_ty != EmitType::I32 {
                 Some(from_ty)
             } else {
@@ -968,11 +1220,11 @@ pub(crate) fn detect_operand_type(
                     {
                         EmitType::OpaquePtr
                     } else {
-                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, None)
+                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
                     }
                 })
             } else {
-                Some(detect_place_type(mir, lv, layouts))
+                Some(detect_place_type(mir, lv, layouts, mono_layouts))
             }
         }
     }

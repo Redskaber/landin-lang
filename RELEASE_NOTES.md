@@ -3,12 +3,82 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.499.0 |
-| **Date** | 2026-08-27 |
-| **Test count** | 676 lib tests + 3689 integration tests = 4365 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Current version** | v0.508.0 |
+| **Date** | 2026-08-28 |
+| **Test count** | 676 lib tests + 3705 integration tests = 4381 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (34 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (34 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347`) |
+
+---
+
+## v0.508.0 — Stage 18.347 (P2 soundness: Generic struct field access type substitution)
+
+### Overview
+
+**Stage 18.347: P2 soundness fix — Generic struct field access type substitution**
+
+The §20 iterative audit discovered that accessing a non-first field of a
+generic struct with different type parameters returned wrong values:
+
+```landin
+struct Pair<A, B> { first: A, second: B }
+let p: Pair<i32, i64> = Pair { first: 42i32, second: 99i64 };
+println!("{}", p.second);  // Before: 173 (or garbage). After: 99 ✓
+```
+
+Nested generics (`Wrapper<Pair<i32,i64>>.inner.first`) caused LLVM verify
+failure: "Invalid indices for GEP pointer type".
+
+### Root cause (5 layers)
+
+1. **MIR lower** (`resolve_field_type`) stored **unsubstituted** `Param(N)` in
+   `ProjectionElem::Field(_, field_ty)` when receiver substs weren't directly
+   available at lower time.
+2. **Writeback Rule 3** (Field projection) didn't handle `Param` — returned
+   `field_ty.clone()` directly, leaving the local_decl with a `Param` type.
+3. **`needs_writeback`** didn't include `Param`, so the fixpoint skipped
+   `Param`-typed locals entirely.
+4. **Codegen** `detect_place_type`/`detect_place_storage_type` called
+   `mir_type_to_emit_type_with_layouts_and_mono(..., None)` — passing `None`
+   for `mono_layouts`, so `lookup_mono_layout` returned `None`, falling back
+   to the unsubstituted `AdtLayouts` entry.
+5. **`mir_type_to_emit_type`** default fallback for unknown `TyKind::Param`
+   was `EmitType::I32` — silent wrong type.
+
+### Fix (3-layer root cause fix)
+
+1. **`needs_writeback` now includes `Param`** — the writeback fixpoint
+   attempts to resolve `Param`-typed locals (instead of skipping them).
+2. **Writeback Rule 3 Field projection** now applies
+   `substitute(field_ty, substs)` when `field_ty` contains `Param` and
+   the base's local_decl type is `Adt(def_id, substs)`.
+3. **Codegen 6 place functions** (`detect_place_type`,
+   `detect_place_storage_type`, `compute_place_address`,
+   `codegen_place_load_typed`, `codegen_place_load`, `detect_operand_type`)
+   now take `mono_layouts: Option<&MonoLayoutMap>` as an explicit
+   parameter, threaded through 49 call sites — so `lookup_mono_layout`
+   can resolve generic instantiations correctly.
+
+### Verification
+
+- `Pair<i32, i64> { first: 42, second: 99 }.second` → 99 ✓ (was 173)
+- `Wrapper<Pair<i32,i64>>.inner.first` → 42 ✓ (was LLVM verify fail)
+- `p.second = 100i64; p.second` → 100 ✓ (mutation path also fixed)
+- 16 regression tests added (4 positive + 12 negative, 1:3 ratio per §9.4.3)
+- 4381 tests total (676 lib + 3705 integration), 0 failures
+
+### Principles applied
+
+- §1.0 原則 3 (显式 > 隐式): explicit `substitute()` call, not silent i32 fallback
+- §1.0 原則 6 (通解 > 特解): one substitution path for all generic structs
+- §12 (最优 > 最小): fix at 3 layers (writeback + codegen + needs_writeback), not just codegen
+- §20 (iterative audit): same class as Stage 18.346 (Aggregate path) — Field projection path was missed
+
+### Environment
+
+- LLVM 22.1.8 deployed via apt.llvm.org/trixie .deb packages
+- `mono_layouts` parameter added to 6 place functions (49 call sites updated)
 
 ---
 

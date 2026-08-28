@@ -712,6 +712,10 @@ mod stage18_336_zst_aggregate_typeck_tests;
 #[path = "v0/stage18/plan/stage18_337_recursive_struct_tests.rs"]
 mod stage18_337_recursive_struct_tests;
 
+// === Stage 18.347: P2 soundness fix — Generic struct field access type substitution ===
+#[path = "v0/stage18/plan/stage18_347_generic_struct_field_access_tests.rs"]
+mod stage18_347_generic_struct_field_access_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

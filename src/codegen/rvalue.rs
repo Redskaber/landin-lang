@@ -71,8 +71,8 @@ pub(crate) fn codegen_rvalue(
                 store_operand_to_local(emitter, mir, a, &a_val, layouts, mono_layouts);
                 store_operand_to_local(emitter, mir, b, &b_val, layouts, mono_layouts);
             }
-            let ty = detect_operand_type(mir, a, layouts)
-                .or(detect_operand_type(mir, b, layouts))
+            let ty = detect_operand_type(mir, a, layouts, mono_layouts)
+                .or(detect_operand_type(mir, b, layouts, mono_layouts))
                 .unwrap_or(EmitType::I32);
 
             // Stage 3.49 (L13 closure): fat pointers (`{ ptr, len }`) cannot
@@ -243,7 +243,8 @@ pub(crate) fn codegen_rvalue(
                 mono_layouts,
                 fn_name_by_def_id,
             );
-            let ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
+            let ty =
+                detect_operand_type(mir, operand, layouts, mono_layouts).unwrap_or(EmitType::I32);
             emitter.emit_unop(*op, &ty, &val)
         }
         Rvalue::Ref(_, _borrow_kind, lv) => {
@@ -270,7 +271,9 @@ pub(crate) fn codegen_rvalue(
             } else {
                 let field_tys: Vec<EmitType> = operands
                     .iter()
-                    .map(|op| detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32))
+                    .map(|op| {
+                        detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32)
+                    })
                     .collect();
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
@@ -311,7 +314,9 @@ pub(crate) fn codegen_rvalue(
                     mir_type_to_emit_type_with_layouts_and_mono(elem_ty, layouts, mono_layouts);
                 if matches!(from_elem_ty, EmitType::I32) && !operands.is_empty() {
                     // elem_ty might be Infer → try detecting from first operand
-                    if let Some(detected) = detect_operand_type(mir, &operands[0], layouts) {
+                    if let Some(detected) =
+                        detect_operand_type(mir, &operands[0], layouts, mono_layouts)
+                    {
                         detected
                     } else {
                         from_elem_ty
@@ -405,7 +410,8 @@ pub(crate) fn codegen_rvalue(
                     mono_layouts,
                     fn_name_by_def_id,
                 );
-                let discr_ty = detect_operand_type(mir, discr_op, layouts).unwrap_or(EmitType::I32);
+                let discr_ty = detect_operand_type(mir, discr_op, layouts, mono_layouts)
+                    .unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&storage_ty, &agg, &discr_ty, &discr_val, 0);
 
                 // Remaining operands are the variant's payload fields, inserted
@@ -429,7 +435,8 @@ pub(crate) fn codegen_rvalue(
                         .get(i)
                         .map(mir_type_to_emit_type)
                         .unwrap_or_else(|| {
-                            detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32)
+                            detect_operand_type(mir, op, layouts, mono_layouts)
+                                .unwrap_or(EmitType::I32)
                         });
                     let target_idx = starting_field_idx + (i as u32 - 1);
                     agg = emitter.emit_insertvalue(&storage_ty, &agg, &val_ty, &val, target_idx);
@@ -452,7 +459,10 @@ pub(crate) fn codegen_rvalue(
                 let field_tys: Vec<EmitType> = if field_tys.is_empty() {
                     operands
                         .iter()
-                        .map(|op| detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32))
+                        .map(|op| {
+                            detect_operand_type(mir, op, layouts, mono_layouts)
+                                .unwrap_or(EmitType::I32)
+                        })
                         .collect()
                 } else if let Some(mono_layout) =
                     crate::mir::monomorphize::lookup_mono_layout(*def_id, adt_substs, mono_layouts)
@@ -583,7 +593,8 @@ pub(crate) fn codegen_rvalue(
                 mono_layouts,
                 fn_name_by_def_id,
             );
-            let src_ty = detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32);
+            let src_ty =
+                detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
 
             // Stage 18.326 B1 (P1 soundness fix): When casting integer to

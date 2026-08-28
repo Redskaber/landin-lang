@@ -43,7 +43,51 @@ use std::collections::HashMap;
 /// Per §1.0 原则 3 "显式 > 隐式": the helper makes the "needs writeback"
 /// predicate explicit at every callsite.
 fn needs_writeback(ty: &Ty) -> bool {
-    matches!(&ty.kind, TyKind::Infer(_) | TyKind::Error)
+    // Stage 18.347 (P2 soundness fix): Also treat Param as "needs writeback".
+    //
+    // Was: only Infer(_) and Error were treated as needing writeback. But
+    // Param(N) (unsubstituted generic placeholder) can leak into local_decls
+    // when resolve_field_type returns the unsubstituted field type (because
+    // the receiver's substs weren't available at lower time). Without
+    // including Param in needs_writeback, the writeback fixpoint would
+    // skip these locals — leaving them as Param, which codegen then
+    // silently maps to EmitType::I32 (the default fallback for unknown
+    // TyKind in mir_type_to_emit_type).
+    //
+    // Per §1.0 原則 3 (显式 > 隐式): Param should be resolved to concrete,
+    // not silently mapped to i32.
+    // Per §1.0 原則 4 (报错 > 静默): if a Param can't be resolved by
+    // writeback, codegen should fail with "unresolved generic type" error,
+    // not silently produce wrong code.
+    // Per §1.0 原則 6 (通解 > 特解): one needs_writeback predicate handles
+    // both Infer and Param (the two "needs substitution" cases).
+    matches!(
+        &ty.kind,
+        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_)
+    )
+}
+
+/// Stage 18.347: Helper — does a Ty (recursively) contain any Param?
+///
+/// Used by Rule 3 (Field projection) to decide whether to apply
+/// `substitute(field_ty, base_substs)` for unsubstituted generic placeholders.
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
+/// "needs substitution" check visible at every callsite.
+/// Per §16: pure MIR data predicate, no HIR access.
+fn type_contains_param(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_param(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param),
+        _ => false,
+    }
 }
 
 /// Stage 15.7: Consolidated type-propagation writeback (passes 1-5).
@@ -196,6 +240,38 @@ fn compute_use_writeback_ty(src_place: &crate::mir::place::Place, mir: &MirBody)
             match elem {
                 // Rule 3: Field projection — resolve field ty from base Tuple.
                 ProjectionElem::Field(field_id, field_ty) => {
+                    // Stage 18.347 (P2 soundness fix): Apply generic substs
+                    // from the base struct's resolved type to the field_ty.
+                    //
+                    // Was: only handled Infer field_ty via the Tuple branch
+                    // below. But Param field_ty (unsubstituted generic
+                    // placeholder) was treated as "concrete" and returned
+                    // as-is, leaving the local_decl with a Param type that
+                    // codegen silently maps to i32.
+                    //
+                    // Per §1.0 原則 3 (显式 > 隐式): explicit subst, not
+                    // silent i32 fallback.
+                    // Per §1.0 原則 6 (通解 > 特解): one subst path for all
+                    // generic struct field accesses in writeback.
+                    // Per §20 (iterative audit): same class as Stage 18.346
+                    // (Aggregate path) — Field projection path was missed.
+                    if type_contains_param(field_ty) {
+                        if let TyKind::Adt(_, substs) = &base_ld.ty.kind {
+                            if !substs.is_empty() {
+                                return Some(crate::mir::substitute::substitute(field_ty, substs));
+                            }
+                        }
+                        // Also handle Ref-to-Adt base (e.g., `&self.field`).
+                        if let TyKind::Ref(_, _, inner) = &base_ld.ty.kind {
+                            if let TyKind::Adt(_, substs) = &inner.kind {
+                                if !substs.is_empty() {
+                                    return Some(crate::mir::substitute::substitute(
+                                        field_ty, substs,
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     if !needs_writeback(field_ty) {
                         // Field ty is already concrete — use it.
                         return Some(field_ty.clone());

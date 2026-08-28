@@ -125,8 +125,13 @@ pub(crate) fn codegen_statement(
                     }
                 }
                 PlaceKind::Projection(base, elem) => {
-                    let ty = detect_operand_type(mir, &Operand::Copy(place.clone()), layouts)
-                        .unwrap_or(EmitType::I32);
+                    let ty = detect_operand_type(
+                        mir,
+                        &Operand::Copy(place.clone()),
+                        layouts,
+                        mono_layouts,
+                    )
+                    .unwrap_or(EmitType::I32);
                     match elem {
                         ProjectionElem::Deref => {
                             // Stage 14.27: For `*ptr = val`, we need to load the
@@ -135,9 +140,15 @@ pub(crate) fn codegen_statement(
                             // (e.g. i32) instead of the pointer (e.g. i32*), causing
                             // `store i32 20, i32 %v2` (storing to a non-pointer).
                             // Fix: use codegen_place_load_typed with the pointer type.
-                            let ptr_ty = detect_place_type(mir, base, layouts);
+                            let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
                             let ptr_val = codegen_place_load_typed(
-                                emitter, mir, base, ptr_ty, interner, layouts,
+                                emitter,
+                                mir,
+                                base,
+                                ptr_ty,
+                                interner,
+                                layouts,
+                                mono_layouts,
                             );
                             emitter.emit_store(&ty, &val, &ptr_val);
                         }
@@ -163,20 +174,42 @@ pub(crate) fn codegen_statement(
                                 &base.kind
                             {
                                 // base is (*inner).field — load the pointer from inner_base
-                                let ptr_ty = detect_place_type(mir, inner_base, layouts);
+                                let ptr_ty =
+                                    detect_place_type(mir, inner_base, layouts, mono_layouts);
                                 codegen_place_load_typed(
-                                    emitter, mir, inner_base, ptr_ty, interner, layouts,
+                                    emitter,
+                                    mir,
+                                    inner_base,
+                                    ptr_ty,
+                                    interner,
+                                    layouts,
+                                    mono_layouts,
                                 )
                             } else if let PlaceKind::Projection(_, ProjectionElem::Field(_, _)) =
                                 &base.kind
                             {
                                 // Stage 14.43: base is a nested Field projection
                                 // (e.g., self.inner). Compute its address recursively.
-                                compute_place_address(emitter, mir, base, interner, layouts)
+                                compute_place_address(
+                                    emitter,
+                                    mir,
+                                    base,
+                                    interner,
+                                    layouts,
+                                    mono_layouts,
+                                )
                             } else {
-                                codegen_place_load(emitter, mir, base, interner, layouts)
+                                codegen_place_load(
+                                    emitter,
+                                    mir,
+                                    base,
+                                    interner,
+                                    layouts,
+                                    mono_layouts,
+                                )
                             };
-                            let struct_ty = detect_place_storage_type(mir, base, layouts);
+                            let struct_ty =
+                                detect_place_storage_type(mir, base, layouts, mono_layouts);
                             let field_ptr =
                                 emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                             emitter.emit_store(&ty, &val, &field_ptr);
@@ -186,18 +219,32 @@ pub(crate) fn codegen_statement(
                             // load the reference value (the array pointer) instead of using
                             // the alloca pointer. Also extract Array type from Ref for GEP.
                             // Mirrors the load path fix from Stage 14.61.
-                            let base_ty = detect_place_type(mir, base, layouts);
+                            let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
                             let base_ptr = if base_ty.is_ptr() {
                                 // Ref to array — load the pointer value
                                 codegen_place_load_typed(
-                                    emitter, mir, base, base_ty, interner, layouts,
+                                    emitter,
+                                    mir,
+                                    base,
+                                    base_ty,
+                                    interner,
+                                    layouts,
+                                    mono_layouts,
                                 )
                             } else {
-                                compute_place_address(emitter, mir, base, interner, layouts)
+                                compute_place_address(
+                                    emitter,
+                                    mir,
+                                    base,
+                                    interner,
+                                    layouts,
+                                    mono_layouts,
+                                )
                             };
                             // Extract Array type from Ptr(Array) or Ref for GEP
                             let array_ty = {
-                                let raw_ty = detect_place_storage_type(mir, base, layouts);
+                                let raw_ty =
+                                    detect_place_storage_type(mir, base, layouts, mono_layouts);
                                 match &raw_ty {
                                     EmitType::Ptr(inner) => *inner.clone(),
                                     EmitType::OpaquePtr => {
@@ -319,13 +366,27 @@ pub(crate) fn codegen_statement(
                     PlaceKind::Projection(base, ProjectionElem::Deref) => {
                         // Load the POINTER from base, then store through it.
                         // Mirrors Assign's Deref handling (Stage 14.27).
-                        let ptr_ty = detect_place_type(mir, base, layouts);
-                        let ptr_val =
-                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts);
+                        let ptr_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                        let ptr_val = codegen_place_load_typed(
+                            emitter,
+                            mir,
+                            base,
+                            ptr_ty,
+                            interner,
+                            layouts,
+                            mono_layouts,
+                        );
                         emitter.emit_store(&val_emit_ty, &val_emit, &ptr_val);
                     }
                     _ => {
-                        let ptr_addr = compute_place_address(emitter, mir, ptr, interner, layouts);
+                        let ptr_addr = compute_place_address(
+                            emitter,
+                            mir,
+                            ptr,
+                            interner,
+                            layouts,
+                            mono_layouts,
+                        );
                         emitter.emit_store(&val_emit_ty, &val_emit, &ptr_addr);
                     }
                 }
@@ -400,7 +461,8 @@ pub(crate) fn emit_printf_call(
                 let arg = &args[arg_idx];
                 arg_idx += 1;
                 // Detect the arg's type
-                let arg_ty = detect_operand_type(mir, arg, layouts).unwrap_or(EmitType::I32);
+                let arg_ty =
+                    detect_operand_type(mir, arg, layouts, mono_layouts).unwrap_or(EmitType::I32);
                 // Codegen the operand to get its LLVM value
                 let arg_val = codegen_operand(
                     emitter,

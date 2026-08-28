@@ -232,8 +232,8 @@ pub(crate) fn codegen_operand(
             }
         },
         Operand::Copy(lv) | Operand::Move(lv) => {
-            let ty = detect_place_type(mir, lv, layouts);
-            codegen_place_load_typed(emitter, mir, lv, ty, interner, layouts)
+            let ty = detect_place_type(mir, lv, layouts, mono_layouts);
+            codegen_place_load_typed(emitter, mir, lv, ty, interner, layouts, mono_layouts)
         }
     }
 }

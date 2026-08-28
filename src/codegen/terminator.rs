@@ -120,7 +120,8 @@ pub(crate) fn codegen_terminator(
                     &format!("bb{}", false_bb),
                 );
             } else {
-                let discr_ty = detect_operand_type(mir, discr, layouts).unwrap_or(EmitType::I32);
+                let discr_ty =
+                    detect_operand_type(mir, discr, layouts, mono_layouts).unwrap_or(EmitType::I32);
                 let cases: Vec<(i128, String)> = targets
                     .iter()
                     .filter_map(|(val, bb)| match val {
@@ -296,7 +297,8 @@ pub(crate) fn codegen_terminator(
 
             // Process the remaining args from the terminator.
             for a in args {
-                let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+                let ty =
+                    detect_operand_type(mir, a, layouts, mono_layouts).unwrap_or(EmitType::I32);
                 // Stage 18.335 (P1 soundness fix): Skip ZST args (EmitType::Void).
                 // LLVM IR requires first-class types for call args; `void` is only
                 // allowed as a function *return* type. Without this filter, calling
@@ -519,8 +521,8 @@ pub(crate) fn codegen_terminator(
             let panic_label = format!("panic_assert_{}", target.0);
             match msg {
                 crate::mir::body::AssertMessage::Overflow(op, lhs, rhs) => {
-                    let op_ty = detect_operand_type(mir, lhs, layouts)
-                        .or(detect_operand_type(mir, rhs, layouts))
+                    let op_ty = detect_operand_type(mir, lhs, layouts, mono_layouts)
+                        .or(detect_operand_type(mir, rhs, layouts, mono_layouts))
                         .unwrap_or(EmitType::I32);
                     let lhs_val = codegen_operand(
                         emitter,
@@ -622,8 +624,8 @@ pub(crate) fn codegen_terminator(
                             mono_layouts,
                             fn_name_by_def_id,
                         );
-                        let rhs_ty =
-                            detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
+                        let rhs_ty = detect_operand_type(mir, rhs, layouts, mono_layouts)
+                            .unwrap_or(EmitType::I32);
                         // Stage 18.288 (TD-DIVZERO-CONST-TYPE fix): Use
                         // `emit_const_typed` instead of `"0".to_string()` for
                         // the zero constant. The old code passed a raw "0"
@@ -659,7 +661,8 @@ pub(crate) fn codegen_terminator(
                         mono_layouts,
                         fn_name_by_def_id,
                     );
-                    let op_ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
+                    let op_ty = detect_operand_type(mir, operand, layouts, mono_layouts)
+                        .unwrap_or(EmitType::I32);
                     // Reuse emit_checked_binop with Sub to get {result, overflow}.
                     // Per §1.0 原則 6 "通用 > 特例": reuse existing infrastructure.
                     //
@@ -776,7 +779,12 @@ pub(crate) fn codegen_terminator(
         TerminatorKind::Drop { place, target, .. } => {
             // Compute the place's address (pointer to the value to drop).
             let place_addr = crate::codegen::mir_translation::compute_place_address(
-                emitter, mir, place, interner, layouts,
+                emitter,
+                mir,
+                place,
+                interner,
+                layouts,
+                mono_layouts,
             );
 
             // Call the drop glue function.
