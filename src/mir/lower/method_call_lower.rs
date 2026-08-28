@@ -190,6 +190,123 @@ pub(super) fn lower_method_call_expr(
     // If not found (unknown method or non-ADT receiver), fall back to
     // the Error placeholder (graceful degradation).
 
+    // Stage 18.343 (P1 soundness fix): String::as_str() intrinsic —
+    // intercept BEFORE method_def_id resolution.
+    //
+    // Root cause (per §2.2 根因思维): as_str is declared in prelude as
+    // `fn as_str(&self) -> &str { loop {} }`. `resolve_inherent_method`
+    // finds this DefId → method_def_id = Some(DefId(19)). Then
+    // `lookup_primitive_intrinsic(DefId(19), "as_str")` returns None
+    // (as_str is NOT in the str/i32/bool intrinsic table — it's a String
+    // method). So codegen falls through to the normal method call path
+    // → calls `landin_String_as_str` → runs `loop {}` → infinite loop.
+    //
+    // Fix: intercept as_str BEFORE method_def_id resolution. When
+    // `method_name == "as_str"` AND the receiver is a String, construct
+    // the &str fat pointer directly and return — never reaching the
+    // method_def_id path. This mirrors the pre-Stage-18.284 pattern for
+    // str::len/is_empty/as_bytes (they were early-intercepted before
+    // being migrated to `lookup_primitive_intrinsic`).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one early-interception pattern for all
+    // methods needing MIR-level construction (as_str constructs a fat pointer).
+    // Per §1.0 原則 4 (报错 > 静默): prelude declaration provides typeck
+    // visibility; intrinsic provides the real implementation.
+    // Per §12 (最优 > 最小): root-cause fix = intercept before resolution.
+    // Per §20 (iterative audit): found by tracing IR — `landin_String_as_str`
+    // was called with `loop {}` body instead of being intercepted.
+    {
+        let early_method_name = cx.interner.resolve(&method.name);
+        if early_method_name == "as_str" && args.is_empty() {
+            let early_recv_ty = cx.mir.local(recv_local).ty.clone();
+            let early_is_string = cx.hir.is_some_and(|hir| {
+                if let crate::mir::ty::TyKind::Adt(did, _) = &early_recv_ty.kind {
+                    if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                        hir.find_owner(*did)
+                    {
+                        return cx.interner.resolve(&s.ident.name) == "String";
+                    }
+                }
+                false
+            });
+            if early_is_string {
+                // Construct &str fat pointer { ptr, len } from String fields.
+                use crate::mir::place::AggregateKind;
+                let u8_ptr_ty = Ty::new(
+                    TyKind::RawPtr(
+                        crate::mir::ty::Mutability::Mutable,
+                        Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+                    ),
+                    expr.span,
+                );
+                let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
+                let str_ty = Ty::new(
+                    TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        crate::mir::ty::Mutability::Immutable,
+                        Box::new(Ty::new(TyKind::Str, expr.span)),
+                    ),
+                    expr.span,
+                );
+
+                // Extract ptr (field 0) and len (field 1) from String.
+                let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(ptr_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(len_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(1), usize_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+
+                // Build Tuple { ptr, len } then Cast to &str.
+                let tuple_ty = Ty::new(
+                    TyKind::Tuple(vec![u8_ptr_ty.clone(), usize_ty.clone()]),
+                    expr.span,
+                );
+                let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(tuple_local, expr.span),
+                    Rvalue::Aggregate(
+                        AggregateKind::Tuple,
+                        vec![
+                            Operand::Copy(Place::local(ptr_local, expr.span)),
+                            Operand::Copy(Place::local(len_local, expr.span)),
+                        ],
+                    ),
+                    expr.span,
+                );
+                let str_local = cx.mir.new_local(str_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(str_local, expr.span),
+                    Rvalue::Cast(
+                        crate::mir::place::CastKind::Unsize,
+                        Operand::Copy(Place::local(tuple_local, expr.span)),
+                        str_ty.clone(),
+                    ),
+                    expr.span,
+                );
+                return str_local;
+            }
+        }
+    }
+
     // Try to resolve the method to a DefId via HIR impl lookup.
     // Stage 13.17: We try multiple strategies to find the receiver's ADT type:
     //   1. Check the MIR local's type (works if typeck has resolved it)
