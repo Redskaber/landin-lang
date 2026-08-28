@@ -313,6 +313,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         crate::mir::ty::Mutability::Mutable,
     );
     debug_assert_eq!(return_local, LocalId(0));
+    // TEMP DEBUG 18.350 — removed (MirBody has no fn_name field)
     // StorageLive for the return local at function entry.
     cx.mir
         .block_mut(cx.current_block)

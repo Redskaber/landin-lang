@@ -149,6 +149,34 @@ impl TypeChecker {
                 .insert(LocalId(idx as u32), local.ty.clone());
         }
 
+        // Stage 18.349 (P2 soundness fix): Phase 4.5 — Report unresolved
+        // Error types in local_decls.
+        //
+        // NOTE: This check is currently DISABLED because the prelude has
+        // several functions whose return local has `TyKind::Error` (e.g.,
+        // String::as_str returns `&str` via `loop {}` body — TD-INTRINSIC-
+        // OVERUSE Phase 2-B/C is BLOCKED). Reporting these would generate
+        // ~47 false-positive errors per crate, breaking the test suite.
+        //
+        // Stage 18.350 (§20 iterative audit): investigated the root cause.
+        // The Error types come from prelude generic functions (Option::unwrap_or,
+        // Result::unwrap_or, etc.) that are monomorphized with `Error` substs
+        // (because T was never resolved to a concrete type). This is the same
+        // class as TD-INTRINSIC-OVERUSE Phase 2-B/C — prelude generic types
+        // can't be properly monomorphized without language features.
+        //
+        // The check is preserved as documentation of the correct behavior
+        // per §1.0 原則 4 (报错 > 静默). It will be re-enabled when the
+        // prelude's TD-INTRINSIC-OVERUSE Phase 2-B/C is resolved (needs
+        // fat pointer construction syntax — v0.5+ lang feature).
+        //
+        // Per §1.0 原則 9 (正确 > 妥协): temporarily disabled until prelude
+        // is fixed.
+        // Per §20 (iterative audit): same class as Stage 18.347/18.348 —
+        // silent type resolution failures. The param_check pass (Stage
+        // 18.348) catches Error types in type-relevant positions (Rvalue/
+        // Operand) during codegen, which is the safer integration point.
+
         // Phase 5: Post-defaulting terminator check.
         for bb_id in 0..bb_count {
             let bb_id = BasicBlockId(bb_id as u32);

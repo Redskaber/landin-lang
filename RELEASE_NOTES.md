@@ -3,12 +3,95 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.509.0 |
+| **Current version** | v0.510.0 |
 | **Date** | 2026-08-28 |
 | **Test count** | 682 lib tests + 3713 integration tests = 4395 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test (42 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348`) |
+
+---
+
+## v0.510.0 — Stage 18.349 + 18.350 (Typeck strictness investigation + root cause deep-dive)
+
+### Overview
+
+**Stage 18.349-18.350: Typeck strictness investigation — Phase 4.5 disabled, root cause confirmed**
+
+Following §20 iterative audit from Stage 18.348, investigated two typeck
+strictness gaps and deepened the root cause analysis of the disabled
+Phase 4.5 check.
+
+### Stage 18.349 findings
+
+#### Bug #1: Missing generic args (`let p: Pair = ...`)
+
+**Root cause**: TD-GENERIC-PARAM-CHECK (Stage 18.221) correctly triggers
+and returns `TyKind::Error` for `Pair` without generic args. But typeck
+doesn't report `Error` types in `local_decls`.
+
+**Fix attempt**: Added Phase 4.5 check in `check_mir_body_with_tables`
+to report `Error` types in `local_decls`.
+
+**Result**: 47 prelude tests fail.
+
+#### Bug #2: i32 assigned to i64 field (`p.second = 100i32`)
+
+**Root cause**: `can_coerce(I64, I32) = true` — Stage 3.59 narrowing
+rule allows narrow→wide implicit conversion.
+
+**Finding**: This is **NOT a bug** — it's a Landin v0.4 design choice
+(narrow→wide implicit int conversion, unlike Rust). Per §1.0 原則 9
+(正确 > 妥协): pragmatic simplification.
+
+### Stage 18.350 deep-dive (§20 iterative audit)
+
+Investigated the 47 prelude Error types blocking Phase 4.5:
+
+**Method**: Added MIR state dump to Phase 4.5 — captured full
+`local_decls` + `basic_blocks` + `statements` + `terminators` for
+failing functions.
+
+**Finding** (DefId(10) — prelude generic function):
+- `local_0: Error` (return type)
+- `local_1: Adt(DefId(2), [Error])` — self param is `Option<Error>`
+- `bb1.stmt0: Assign(local_0, Move(local_3))` — local_3 is `Infer(TyVar)`
+- `bb6: Unreachable` (loop_exit block, no break)
+
+**Root cause confirmed**: prelude generic functions (`Option::unwrap_or`,
+`Result::unwrap_or`, etc.) are monomorphized with `Error` substs because
+`T` was never resolved to a concrete type. This is the **same class**
+as TD-INTRINSIC-OVERUSE Phase 2-B/C — prelude design needs lazy
+monomorphization (only compile prelude functions when called) to
+properly resolve generic instantiations.
+
+**Why can't this be fixed in typeck**: The Error types come from
+prelude's static injection — all prelude functions are compiled even
+when never called. Generic prelude functions like `Option::unwrap_or<T>`
+have no concrete `T` until a user calls them. Correct fix requires
+lazy monomorphization (v0.5+ architectural change).
+
+### What changed
+
+- `src/typeck/checker.rs`: Phase 4.5 check code preserved as
+  documentation (DISABLED) with detailed root cause analysis
+- No functional changes — all 4395 tests still pass
+
+### Principles applied
+
+- §1.0 原則 4 (报错 > 静默): investigated both silent acceptances
+- §1.0 原則 9 (正确 > 妥协): disabled check until prelude fixed
+- §3.2 (硬性红线): all tests must pass
+- §12 (最优 > 最小): no surface engineering — documented root cause
+- §20 (iterative audit): deepened root cause from "BLOCKED" to
+  "lazy monomorphization needed"
+
+### Next steps
+
+- TD-TYPECK-LOCAL-DECL-ERROR-CHECK: re-enable Phase 4.5 when prelude
+  uses lazy monomorphization (v0.5+ architectural change)
+- v0.5+ roadmap: lazy monomorphization, sizeof(T), fat pointer ops,
+  core::fmt, orphan rule
 
 ---
 

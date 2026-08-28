@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.509.0 (Stage 18.348) |
+| **Version** | v0.510.0 (Stage 18.349) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 682 lib tests + 3713 integration tests = 4395 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field access fully works (Stage 18.347). Pre-codegen param_check diagnostic pass reports unresolved type kinds (Param/Infer/Error/Projection) instead of silently mapping to i32 (Stage 18.348). |
+| **Status** | v0.4 stable. 682 lib tests + 3713 integration tests = 4395 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field access fully works (Stage 18.347). Pre-codegen param_check diagnostic pass reports unresolved type kinds (Stage 18.348). Typeck strictness investigated — Phase 4.5 check disabled until prelude TD-INTRINSIC-OVERUSE Phase 2-B/C is fixed (Stage 18.349). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 
