@@ -26563,3 +26563,135 @@ Work Log:
 - v0.5+ 路线图: 修复 let-binding struct literal 的 expected_ty 传播 (unblocks Holder bug)
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
 
+
+---
+Task ID: stage18.354
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.354 — §20 iterative audit: investigate why Phase 0 pre-writeback doesn't fully fix Holder<T> { ptr: *mut T } field access. L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck + writeback + unify — deep investigation)
+- 对齐: Stage 18.353 Phase 0 pre-writeback added, but Holder bug persists
+- 阻断: 4403 tests passing, Phase 0 is non-breaking
+
+决策点 (为何选此路):
+- 为什么深入调查 Phase 0 + Phase 3 交互?
+  → 引用 §20 (直到审查不出问题为止): Phase 0 正确运行但 bug 仍存在 — 必须深挖
+  → 引用用户指令: "发现一个 bug 必须顺着同类路径深挖到底"
+- 为什么最终保留 Phase 0 + 记录调查发现?
+  → 引用 §3.2 (硬性红线): 4403 tests 全绿 — Phase 0 是非破坏性的
+  → 引用 §1.0 原則 9 (正确 > 妥协): Phase 0 是架构正确的基础, 即使 Holder bug 未完全修复
+  → 调查发现: Phase 0 正确解析了 RawPtr+Param, 但 Phase 5.5 (post_check) 仍看到 Param — 根因可能在 Phase 3 (unify.resolve) 或迭代 typeck 的交互
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5 (无跨阶段变更).
+
+5W2H:
+- WHAT: 深入调查 Phase 0 pre-writeback 为什么没有完全修复 Holder bug
+- WHY: Phase 0 正确运行 (debug 确认 main 中无 RawPtr+Param), 但 post_check_statement 仍看到 Param
+- WHO: ARCH-A (根因分析) + DEV-A (调试) + REV-A (验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/checker.rs (Phase 0 + Phase 3 + Phase 5.5) + src/typeck/check.rs (check_statement + post_check_statement) + src/typeck/infer.rs (infer_projection)
+- HOW:
+  (1) 添加 Phase 0 debug: 确认 main (DefId(1)) 中无 RawPtr+Param — Phase 0 正确解析
+  (2) 添加 check_statement debug: Phase 1 中 place_ty 和 rvalue_ty 都是 RawPtr(Mutable, Int(I64)) — 匹配
+  (3) 添加 post_check_statement debug: Phase 5.5 中 place_ty=RawPtr(Mutable, Int(I64)) rvalue_ty=RawPtr(Mutable, Param(0)) — 不匹配!
+  (4) 分析: Phase 0 → Phase 5.5 之间, result.local_decl.ty 从 RawPtr(Mutable, Int(I64)) 变为 RawPtr(Mutable, Param(0))
+  (5) 根因推测: Phase 3 (unify.resolve) 可能通过递归 RawPtr 解析内部类型时, 如果 unify 表中有绑定, 可能改变类型
+  (6) 验证: 4403 tests 全绿 — Phase 0 是非破坏性的, Holder bug 是已知限制
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- 调查发现:
+  - Phase 0 writeback 正确解析了 main 中所有 RawPtr+Param (debug 确认)
+  - Phase 1 check_statement 中 place_ty 和 rvalue_ty 都正确 (RawPtr(Mutable, Int(I64)))
+  - Phase 5.5 post_check_statement 中 rvalue_ty 退化为 RawPtr(Mutable, Param(0))
+  - 根因: Phase 3 (unify.resolve) 与 Phase 1 (unify.unify) 之间的交互导致类型退化
+  - 具体机制未完全确定 — 可能是 unify 表在 Phase 1 中绑定了 TyVar, Phase 3 resolve 时通过 RawPtr 递归解析内部类型
+- 决策: 保留 Phase 0 (架构正确基础), 记录调查发现, 等 v0.5+ 深入修复
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed, 0 failed
+  → cargo test --release --test all_tests ✅ 3721 passed, 0 failed
+  → 总计 4403 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-STUB-TYPECK-BEFORE-WRITEBACK 更新调查发现) + README.md + RELEASE_NOTES.md
+
+下一步:
+- Phase 0 pre-writeback 保留 ✅ — 架构正确基础, 4403 tests 全绿
+- Holder bug 深入调查: Phase 3 unify.resolve 退化机制 — 需追踪 unify 表状态
+- v0.5+ 修复方向: (1) 修复 unify.resolve 对 RawPtr 的递归解析; (2) 或在 Phase 3 后重新运行 writeback_type_propagation
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+
+
+---
+Task ID: stage18.355
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.355 — TD-STUB-TYPECK-BEFORE-WRITEBACK 完全修复: Phase 3.7 post-table re-writeback. L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck — Phase 3.5 regression 根因定位 + Phase 3.7 修复)
+- 对齐: Stage 18.354 调查发现 Phase 5.5 中 rvalue_ty 退化为 RawPtr(Mutable, Param(0)), 但根因未确定
+- 阻断: 4403 tests passing, Phase 0 已建立正确基础
+
+决策点 (为何选此路):
+- 为什么定位到 Phase 3.5 是退化根因?
+  → 引用 §20 (直到审查不出问题为止): Stage 18.354 发现 Phase 0 正确但 Phase 5.5 退化 — 必须逐 phase 追踪
+  → 添加 debug dump 到 Phase 0 / Phase 3 / Phase 3.5 后, 发现 Phase 3.5 后 local_5 从 RawPtr(Mutable, Int(I64)) 退化为 RawPtr(Mutable, Param(0))
+  → 根因: Phase 3.5 writeback_field_types_with_table 用 FieldTyTable 中的未替换 HIR 类型覆盖了 Phase 0 的 substitute() 结果
+- 为什么用 Phase 3.7 re-writeback 而非修改 Phase 3.5?
+  → 引用 §1.0 原則 6 (通解 > 特解): Phase 3.7 是通解 — 一个 re-writeback 覆盖所有 Phase 3.5 regression
+  → 引用 §12 (最优 > 最小): 修改 Phase 3.5 需要在 writeback_field_types_in_place_with_table 中追踪 base_ty substs — 复杂且易错
+  → 引用 §1.0 原則 9 (正确 > 妥协): Phase 3.7 re-writeback 是幂等安全的 (writeback 重复运行不破坏)
+- 为什么 Phase 0 + Phase 3.7 双重 writeback?
+  → Phase 0 (before Phase 1): 让 typeck Phase 1 看到正确类型 (避免 false mismatch)
+  → Phase 3.7 (after Phase 3.5): 修复 Phase 3.5 的 regression (让 Phase 5.5 看到正确类型)
+  → 两者互补: Phase 0 处理 lower 层 Param 泄漏, Phase 3.7 处理 Phase 3.5 table 回写 regression
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5 (typeck 内部增强, 无跨阶段变更).
+
+5W2H:
+- WHAT: 在 Phase 3.5 之后添加 Phase 3.7 re-writeback (调用 writeback_type_propagation)
+- WHY: Phase 3.5 writeback_field_types_with_table 用未替换的 HIR 类型覆盖了 Phase 0 的 substitute() 结果, 导致 Param regression
+- WHO: ARCH-A (Phase 3.5 regression 根因定位) + DEV-A (Phase 3.7 实施) + REV-A (4403 tests 验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/checker.rs:check_mir_body_with_tables (Phase 3.7 新增)
+- HOW:
+  (1) 5W2H 剖析: Phase 0 正确 → Phase 1 正确 → Phase 3 正确 → Phase 3.5 退化 → Phase 5.5 误报
+  (2) debug dump 定位: 在 Phase 0 / Phase 3 / Phase 3.5 后 dump local_decls, 发现 Phase 3.5 后 local_5 退化
+  (3) 根因: writeback_field_types_with_table 用 FieldTyTable 中的 RawPtr(Mutable, Param(0)) 覆盖了 Phase 0 的 RawPtr(Mutable, Int(I64))
+  (4) 修复: 在 Phase 3.5 后调用 writeback_type_propagation(mir, &self.fn_sigs) 重新解析 Param
+  (5) 验证: Holder<T> { ptr: *mut T } field access 完全工作! `let p = h.ptr` 编译通过, 运行通过
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- Phase 3.5 regression 根因定位:
+  - Phase 0: local_5 = RawPtr(Mutable, Int(I64)) ✓ (writeback_type_propagation 正确解析)
+  - Phase 3: local_5 = RawPtr(Mutable, Int(I64)) ✓ (unify.resolve 不改变)
+  - Phase 3.5: local_5 = RawPtr(Mutable, Param(0)) ✗ (writeback_field_types_with_table 退化!)
+  - Phase 5.5: post_check_statement 看到 RawPtr(Mutable, Param(0)) → 误报 mismatch
+- Phase 3.7 修复:
+  - 在 Phase 3.5 后调用 writeback_type_propagation(mir, &self.fn_sigs)
+  - writeback Rule 3 Field projection 重新应用 substitute(field_ty, substs) 解析 Param
+  - Phase 3.7 后: local_5 = RawPtr(Mutable, Int(I64)) ✓ (re-resolved)
+- 验证:
+  - `let p = h.ptr` (h: Holder<i64>, ptr: *mut T) — 编译通过 ✓ (was: false "expected *mut i64, found *mut <type param>")
+  - `let p: *mut i64 = h.ptr` — 编译通过 ✓
+  - 4403 tests (682 lib + 3721 integration), 0 failures ✓
+  - fmt clean, 0 clippy warnings ✓
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed, 0 failed
+  → cargo test --release --test all_tests ✅ 3721 passed, 0 failed
+  → 总计 4403 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-STUB-TYPECK-BEFORE-WRITEBACK 更新为 ✅ Resolved Stage 18.355) + README.md + RELEASE_NOTES.md
+
+下一步:
+- TD-STUB-TYPECK-BEFORE-WRITEBACK 完全修复 ✅ — Phase 0 (pre-writeback) + Phase 3.7 (post-table re-writeback) 双重修复
+- Holder<T> { ptr: *mut T } field access 完全工作 — `let p = h.ptr` 编译运行通过
+- v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+

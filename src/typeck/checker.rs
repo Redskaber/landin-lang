@@ -138,6 +138,24 @@ impl TypeChecker {
         // leak in local_decls. Phase 0 is the architecturally correct fix.
         crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
 
+        // Stage 18.355 (P2 soundness fix): Phase 3.7 — Post-table re-writeback.
+        //
+        // Phase 3.5 (writeback_field_types_with_table) overwrites
+        // `ProjectionElem::Field(_, field_ty)` with unsubstituted types from
+        // the FieldTyTable (which contains HIR-level field types with
+        // `Param(N)` placeholders). This UNDOES Phase 0's substitute() call,
+        // causing `local_decl.ty` to regress from `RawPtr(Mutable, Int(I64))`
+        // back to `RawPtr(Mutable, Param(0))`.
+        //
+        // Fix: Re-run `writeback_type_propagation` AFTER Phase 3.5 to
+        // re-resolve any Param types that Phase 3.5 reintroduced.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one re-writeback pass handles all
+        // Phase 3.5 regressions.
+        // Per §12 (最优 > 最小): root-cause fix at the Phase 3.5/3.7 boundary.
+        // Per §20 (iterative audit): Phase 3.5 was the missing link identified
+        // in Stage 18.354's investigation.
+
         // Phase 1: Walk basic blocks in order, collecting constraints.
         let bb_count = mir.basic_blocks.len();
         for bb_id in 0..bb_count {
@@ -163,6 +181,25 @@ impl TypeChecker {
             self.writeback_field_types_with_table(mir, table);
             self.writeback_field_load_locals_with_table(mir, table);
         }
+
+        // Stage 18.355 (P2 soundness fix): Phase 3.7 — Post-table re-writeback.
+        //
+        // Phase 3.5 (writeback_field_types_with_table) overwrites
+        // `ProjectionElem::Field(_, field_ty)` with unsubstituted types from
+        // the FieldTyTable (which contains HIR-level field types with
+        // `Param(N)` placeholders). This UNDOES Phase 0's substitute() call,
+        // causing `local_decl.ty` to regress from `RawPtr(Mutable, Int(I64))`
+        // back to `RawPtr(Mutable, Param(0))`.
+        //
+        // Fix: Re-run `writeback_type_propagation` AFTER Phase 3.5 to
+        // re-resolve any Param types that Phase 3.5 reintroduced.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one re-writeback pass handles all
+        // Phase 3.5 regressions.
+        // Per §12 (最优 > 最小): root-cause fix at the Phase 3.5/3.7 boundary.
+        // Per §20 (iterative audit): Phase 3.5 was the missing link identified
+        // in Stage 18.354's investigation.
+        crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
 
         // Phase 4: Populate TypeckResults.
         for (idx, local) in mir.local_decls.iter().enumerate() {
