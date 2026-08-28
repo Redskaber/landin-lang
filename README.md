@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.499.0 (Stage 18.337) |
+| **Version** | v0.500.0 (Stage 18.338) |
 | **License** | MIT |
 | **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |

@@ -42,6 +42,7 @@
 //! Per §1.0 原則 6 "通用 > 特例": one substitute function for all type
 //! kinds, dispatched via match.
 
+use crate::mir::place::AggregateKind;
 use crate::mir::ty::{Const, Sig, Ty, TyKind};
 use crate::session::Span;
 
@@ -275,9 +276,36 @@ fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]
         Rvalue::UnaryOp(_, op) => {
             substitute_operand_type(op, substs);
         }
-        Rvalue::Ref(_, _, _) | Rvalue::Aggregate(_, _) => {
-            // S3: Ref and Aggregate don't carry standalone types that need
-            // substitution (their types derive from operands/local_decls).
+        Rvalue::Ref(_, _, _) => {
+            // S3: Ref doesn't carry standalone types that need substitution
+            // (its type derives from the referenced place).
+        }
+        Rvalue::Aggregate(AggregateKind::Adt(_, _, _adt_substs, field_tys), _) => {
+            // Stage 18.338 (P2 soundness fix): Substitute generic type params
+            // in field_tys. Was: Aggregate was explicitly skipped (comment said
+            // "types derive from operands/local_decls") — but field_tys contains
+            // unsubstituted generic params (e.g., `T` for `Wrapper<T>`).
+            //
+            // Without this substitution, `Wrapper<i64> { inner: 42i64 }` would
+            // have field_tys=[T] (not [i64]), causing `insertvalue { i32 } undef,
+            // i32 %v1, 0` (wrong struct type → invalid IR).
+            //
+            // Note: adt_substs (SubstsRef = Rc<Vec<Ty>>) is NOT substituted here
+            // because it's an immutable Rc used as a mono layout lookup key.
+            // The field_tys are the ones used directly by codegen for insertvalue.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): the substitution was silently skipped,
+            // producing invalid IR that LLVM happened to accept (with type
+            // coercion) but `llvm-as` rejected.
+            // Per §20 (iterative audit): found via §20 Round 7 audit — generic
+            // struct instantiation with non-i32 types.
+            for ft in field_tys.iter_mut() {
+                *ft = substitute(ft, substs);
+            }
+        }
+        Rvalue::Aggregate(_, _) => {
+            // Tuple/Array aggregates: types derive from operands/local_decls.
+            // No substitution needed (no generic params in tuple/array types).
         }
     }
 }
