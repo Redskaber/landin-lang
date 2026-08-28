@@ -368,6 +368,124 @@ pub(super) fn lower_method_call_expr(
         .chain(remaining_arg_operands)
         .collect();
 
+    // Stage 18.342 (P2 soundness fix): String::as_str intrinsic — moved
+    // BEFORE the method_def_id check. Was: only intercepted when method_def_id
+    // was None (method not found in prelude). Now that as_str is declared in
+    // prelude (Stage 18.342), method_def_id is Some — the normal path would
+    // call the `loop {}` body → infinite loop.
+    //
+    // Fix: intercept as_str BEFORE checking method_def_id. The intrinsic
+    // constructs the &str fat pointer from String's fields; the prelude
+    // declaration is only for typeck visibility (so users can call s.as_str()).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one early-interception point for all
+    // methods that need intrinsic implementation (as_str, from_str, push_str).
+    // Per §1.0 原則 4 (报错 > 静默): the prelude declaration makes the method
+    // visible; the intrinsic provides the real implementation.
+    // Per §18 (依赖审查): unblocks TD-INTRINSIC-OVERUSE Phase 2-B condition 2.
+    let method_name_str = cx.interner.resolve(&method.name);
+    let recv_ty = cx.mir.local(recv_local).ty.clone();
+
+    // Stage 18.189 (TD-STRING-INTRINSICS): String::as_str() intrinsic.
+    // `s.as_str()` → construct &str fat pointer { ptr, len } from String fields.
+    if method_name_str == "as_str" && args.is_empty() {
+        let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+            && cx.hir.is_some_and(|hir| {
+                if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                    if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                        hir.find_owner(*did)
+                    {
+                        let name = cx.interner.resolve(&s.ident.name);
+                        return name == "String";
+                    }
+                }
+                false
+            });
+        if is_string {
+            use crate::mir::place::AggregateKind;
+            let u8_ptr_ty = Ty::new(
+                TyKind::RawPtr(
+                    crate::mir::ty::Mutability::Mutable,
+                    Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+                ),
+                expr.span,
+            );
+            let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
+            let str_ty = Ty::new(
+                TyKind::Ref(
+                    crate::mir::ty::Region::Erased,
+                    crate::mir::ty::Mutability::Immutable,
+                    Box::new(Ty::new(TyKind::Str, expr.span)),
+                ),
+                expr.span,
+            );
+
+            // Extract ptr (field 0) and len (field 1) from String.
+            let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+            cx.push_assign(
+                Place::local(ptr_local, expr.span),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(recv_local, receiver.span)),
+                        ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+                    ),
+                    span: expr.span,
+                })),
+                expr.span,
+            );
+            let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
+            cx.push_assign(
+                Place::local(len_local, expr.span),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(recv_local, receiver.span)),
+                        ProjectionElem::Field(FieldId(1), usize_ty.clone()),
+                    ),
+                    span: expr.span,
+                })),
+                expr.span,
+            );
+
+            // Construct &str fat pointer { ptr, len } via Aggregate.
+            // Stage 18.342: Use the &str Ref type (not Tuple) for the local,
+            // so the MIR type matches what typeck expects.
+            let str_local = cx.mir.new_local(str_ty.clone(), None, expr.span);
+
+            // Build the fat pointer as a Tuple first (same LLVM layout as &str),
+            // then assign to the &str-typed local. The codegen handles both
+            // types identically (both are {ptr, len}).
+            let tuple_ty = Ty::new(
+                TyKind::Tuple(vec![u8_ptr_ty.clone(), usize_ty.clone()]),
+                expr.span,
+            );
+            let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
+            cx.push_assign(
+                Place::local(tuple_local, expr.span),
+                Rvalue::Aggregate(
+                    AggregateKind::Tuple,
+                    vec![
+                        Operand::Copy(Place::local(ptr_local, expr.span)),
+                        Operand::Copy(Place::local(len_local, expr.span)),
+                    ],
+                ),
+                expr.span,
+            );
+            // Cast the Tuple to &str (same layout, different MIR type).
+            cx.push_assign(
+                Place::local(str_local, expr.span),
+                Rvalue::Cast(
+                    crate::mir::place::CastKind::Unsize,
+                    Operand::Copy(Place::local(tuple_local, expr.span)),
+                    str_ty.clone(),
+                ),
+                expr.span,
+            );
+
+            // Return the &str local.
+            return str_local;
+        }
+    }
+
     // Stage 14.29: Resolve the method's return type from HIR so that
     // chained method calls can resolve methods on the result type.
     // Was: fresh_infer_ty (which meant resolve_inherent_method couldn't
@@ -410,120 +528,19 @@ pub(super) fn lower_method_call_expr(
         // str::is_empty, str::as_bytes early interception has been removed.
         // These methods now resolve through the prelude `impl str { ... }`
         // block and dispatch via `lookup_primitive_intrinsic` (called above
-        // after method_def_id resolution). Remaining intrinsics below
-        // (String::as_str, String::from_str, Vec::push, etc.) still use
-        // early interception because they need language features not yet
-        // implemented (fat pointer construction, extern "C" in prelude impl
-        // bodies). Phase 2-B/C will migrate them when those features land.
+        // after method_def_id resolution).
+        //
+        // Stage 18.342: String::as_str early interception has been moved
+        // BEFORE the method_def_id check (above). The old interception here
+        // is removed — it was only reached when method_def_id was None, but
+        // now that as_str is declared in prelude, method_def_id is always
+        // Some, so this code was unreachable (dead code).
+        //
+        // Remaining intrinsics below (String::push_str, Vec::push, etc.)
+        // still use early interception in this else branch because they
+        // haven't been migrated to prelude declarations yet.
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
-
-        // Stage 18.189 (TD-STRING-INTRINSICS): String::as_str() intrinsic.
-        // `s.as_str()` → construct &str fat pointer { ptr, len } from String fields.
-        // String.ptr (field 0) is the data pointer, String.len (field 1) is the length.
-        // Per §1.0 原則 6 (通解>特例): one intrinsic for all String::as_str calls.
-        if method_name_str == "as_str" && args.is_empty() {
-            let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
-                && cx.hir.is_some_and(|hir| {
-                    // Check if the Adt is the String struct by looking up its DefId.
-                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.find_owner(*did)
-                        {
-                            let name = cx.interner.resolve(&s.ident.name);
-                            return name == "String";
-                        }
-                    }
-                    false
-                });
-            if is_string {
-                use crate::mir::place::AggregateKind;
-                let u8_ptr_ty = Ty::new(
-                    TyKind::RawPtr(
-                        crate::mir::ty::Mutability::Mutable,
-                        Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
-                    ),
-                    expr.span,
-                );
-                let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
-
-                // Extract ptr (field 0) and len (field 1) from String.
-                let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-                cx.push_assign(
-                    Place::local(ptr_local, expr.span),
-                    Rvalue::Use(Operand::Copy(Place {
-                        kind: PlaceKind::Projection(
-                            Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
-                        ),
-                        span: expr.span,
-                    })),
-                    expr.span,
-                );
-                let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
-                cx.push_assign(
-                    Place::local(len_local, expr.span),
-                    Rvalue::Use(Operand::Copy(Place {
-                        kind: PlaceKind::Projection(
-                            Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(1), usize_ty.clone()),
-                        ),
-                        span: expr.span,
-                    })),
-                    expr.span,
-                );
-
-                // Construct &str fat pointer { ptr, usize }.
-                // Stage 18.189: We build a Tuple first, then Cast it to &str.
-                // The Tuple and &str have the same LLVM layout ({ ptr, usize }),
-                // so the cast is a no-op at codegen level, but it makes the
-                // MIR type correct for typeck.
-                let str_ty = Ty::new(
-                    TyKind::Ref(
-                        crate::mir::ty::Region::Erased,
-                        crate::mir::ty::Mutability::Immutable,
-                        Box::new(Ty::new(TyKind::Str, expr.span)),
-                    ),
-                    expr.span,
-                );
-                let tuple_ty = Ty::new(
-                    TyKind::Tuple(vec![u8_ptr_ty.clone(), usize_ty.clone()]),
-                    expr.span,
-                );
-                let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
-                cx.push_assign(
-                    Place::local(tuple_local, expr.span),
-                    Rvalue::Aggregate(
-                        AggregateKind::Tuple,
-                        vec![
-                            Operand::Copy(Place::local(ptr_local, expr.span)),
-                            Operand::Copy(Place::local(len_local, expr.span)),
-                        ],
-                    ),
-                    expr.span,
-                );
-                // Cast the Tuple to &str (same layout, different MIR type).
-                let dest = cx.mir.new_local(str_ty.clone(), None, expr.span);
-                let cont = cx.new_block();
-                cx.push_assign(
-                    Place::local(dest, expr.span),
-                    Rvalue::Cast(
-                        crate::mir::place::CastKind::Unsize,
-                        Operand::Copy(Place::local(tuple_local, expr.span)),
-                        str_ty.clone(),
-                    ),
-                    expr.span,
-                );
-                cx.terminate_and_goto(
-                    Terminator {
-                        kind: TerminatorKind::Goto(cont),
-                        span: expr.span,
-                    },
-                    cont,
-                );
-                return dest;
-            }
-        }
 
         // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::len() removed.
         // Now handled by prelude impl: `impl<T> Vec<T> { fn len(&self) -> i64 { self.len } }`
