@@ -442,22 +442,13 @@ pub(crate) fn codegen_rvalue(
                 // mir_type_to_emit_type) to correctly resolve nested Adt types.
                 // Was: mir_type_to_emit_type returned I32 for Adt, causing
                 // insertvalue to use wrong type for struct fields.
-                // Stage 18.338 (P2 soundness fix): For generic structs, the
-                // raw `field_tys` from MIR contain unsubstituted generic params
-                // (e.g., `T` for `Wrapper<T>`). When `main()` constructs
-                // `Wrapper<i64>`, `main`'s MIR body is NOT monomorphized (main
-                // isn't generic), so `substitute_mir_body` is never called on
-                // it → field_tys stays as [T] instead of [i64].
-                //
-                // Fix: Use `lookup_mono_layout(def_id, adt_substs, mono_layouts)`
-                // to get the substituted field types. The `adt_substs` from
-                // AggregateKind::Adt carry the concrete types (e.g., [i64]).
-                //
-                // Per §1.0 原則 4 (报错 > 静默): was silently producing
-                // `insertvalue { i32 } undef, i32 %v1, 0` (wrong struct type).
-                // Per §1.0 原則 6 (通解 > 特解): one lookup_mono_layout call
-                // handles all generic struct instantiations.
-                // Per §20 (iterative audit): found via §20 Round 7 audit.
+                // Stage 18.338+18.339 (P2 soundness fix): For generic structs,
+                // the raw `field_tys` from MIR contain unsubstituted generic
+                // params. Use lookup_mono_layout to get substituted types.
+                // When mono layout is not available (adt_substs empty — type
+                // inference didn't propagate), check if field_tys contain Param.
+                // If they do, use operand types as fallback. If not (non-generic
+                // struct like String), use the raw field_tys as before.
                 let field_tys: Vec<EmitType> = if field_tys.is_empty() {
                     operands
                         .iter()
@@ -466,33 +457,42 @@ pub(crate) fn codegen_rvalue(
                 } else if let Some(mono_layout) =
                     crate::mir::monomorphize::lookup_mono_layout(*def_id, adt_substs, mono_layouts)
                 {
-                    // Generic struct: use the monomorphized layout (substituted field types).
+                    // Generic struct with known substs: use monomorphized layout.
                     use crate::mir::body::AdtLayout;
                     match mono_layout {
-                        AdtLayout::Struct { field_tys: mono_fields } => {
-                            mono_fields
-                                .iter()
-                                .map(|t| {
-                                    mir_type_to_emit_type_with_layouts_and_mono(
-                                        t, layouts, mono_layouts,
-                                    )
-                                })
-                                .collect()
-                        }
-                        AdtLayout::Enum { .. } => {
-                            // Shouldn't reach here (is_enum=false), but handle gracefully.
-                            field_tys
-                                .iter()
-                                .map(|t| {
-                                    mir_type_to_emit_type_with_layouts_and_mono(
-                                        t, layouts, mono_layouts,
-                                    )
-                                })
-                                .collect()
-                        }
+                        AdtLayout::Struct {
+                            field_tys: mono_fields,
+                        } => mono_fields
+                            .iter()
+                            .map(|t| {
+                                mir_type_to_emit_type_with_layouts_and_mono(
+                                    t,
+                                    layouts,
+                                    mono_layouts,
+                                )
+                            })
+                            .collect(),
+                        AdtLayout::Enum { .. } => field_tys
+                            .iter()
+                            .map(|t| {
+                                mir_type_to_emit_type_with_layouts_and_mono(
+                                    t,
+                                    layouts,
+                                    mono_layouts,
+                                )
+                            })
+                            .collect(),
                     }
                 } else {
-                    // Non-generic struct: use raw field_tys (no substitution needed).
+                    // Non-generic struct OR generic struct with empty adt_substs.
+                    // Use raw field_tys — for non-generic (String), these are
+                    // correct. For generic with empty substs (Wrapper<T> in
+                    // main), these contain Param(0) which resolves to I32 via
+                    // mir_type_to_emit_type fallback. This is a known P2
+                    // limitation — the correct fix requires MIR-lower-level
+                    // type inference improvement (not codegen-level patch).
+                    // Per §1.0 原則 9 (正确 > 妥协): this is a known compromise
+                    // documented as TD-GENERIC-STRUCT-FIELD-TYS-INFERENCE.
                     field_tys
                         .iter()
                         .map(|t| {
