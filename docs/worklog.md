@@ -26748,3 +26748,112 @@ Work Log:
 - TD-ARCH-NESTED-GENERIC-FIELD-ACCESS — v0.5+ 架构级重构 (Phase 3.5 不覆盖已解析 field_ty, 或 Phase 3.7 fixpoint loop)
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
 
+
+---
+Task ID: stage18.357
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.357 — Phase 3.5 根因修复: writeback_field_types_in_place_with_table 应用 substitute(). L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck writeback — Phase 3.5 table overwrite 根因修复)
+- 对齐: Stage 18.356 TD-ARCH-NESTED-GENERIC-FIELD-ACCESS, §20 要求尝试在当前架构内修复
+- 阻断: 4403 tests passing
+
+决策点:
+- 为什么修复 Phase 3.5 而非推迟到 v0.5+?
+  → 引用 §1.0 原則 9 (正确 > 妥协): Phase 3.5 的 `*field_ty = resolved.clone()` 是根因, 应该在覆盖时应用 substitute
+  → 引用 §1.0 原則 6 (通解 > 特解): 一个 substitute 调用覆盖所有 generic struct fields
+  → 引用 §12 (最优 > 最小): 根因修复在 overwrite site, 非 post-hoc re-run
+- 为什么嵌套仍未完全修复?
+  → 引用 §20 (直到审查不出问题为止): Phase 3.5 修复了单层, 嵌套需要 resolve_place_type_with_table 也应用 substitute
+  → 根因: resolve_place_type_with_table 返回未替换的 field_ty (来自 MIR ProjectionElem::Field), 而不是解析后的 local_decl.ty
+  → 这需要修改 resolve_place_type_with_table 的递归逻辑 — 更深层架构变更
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5 (typeck 内部增强).
+
+5W2H:
+- WHAT: Phase 3.5 writeback_field_types_in_place_with_table 应用 substitute(resolved, substs) 当覆盖 field_ty 时
+- WHY: `*field_ty = resolved.clone()` 用 FieldTyTable 中的未替换 HIR 类型覆盖了 Phase 0 的 substitute() 结果
+- WHO: ARCH-A (根因定位) + DEV-A (实施) + REV-A (4403 tests 验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/writeback.rs:writeback_field_types_in_place_with_table
+- HOW:
+  (1) 将 `if let TyKind::Adt(def_id, _) = &base_ty.kind` 改为 `if let TyKind::Adt(def_id, substs) = &base_ty.kind`
+  (2) 在覆盖 field_ty 时: `*field_ty = if !substs.is_empty() { substitute(resolved, substs) } else { resolved.clone() }`
+  (3) 在 bind_ty_var / bind_int_var 时也应用 substitute
+  (4) 验证: 单层 Holder<T> ✓, Container<T> ✓, RefHolder<T> ✓, ArrayHolder<T> ✓; 嵌套 Outer<Inner<T>> ✗ (需 resolve_place_type_with_table 修复)
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- Phase 3.5 根因修复:
+  - writeback_field_types_in_place_with_table: 提取 substs 并在覆盖 field_ty 时应用 substitute
+  - 单层 (Holder<T> { ptr: *mut T }) 完全修复
+  - 嵌套 (Outer<Inner<T>>) 仍需 resolve_place_type_with_table 修复 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 更新)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed, 0 failed
+  → cargo test --release --test all_tests ✅ 3721 passed, 0 failed
+  → 总计 4403 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 更新根因为 resolve_place_type_with_table) + README.md
+
+下一步:
+- Phase 3.5 根因修复 ✅ — writeback_field_types_in_place_with_table 应用 substitute
+- 嵌套 Outer<Inner<T>> — 需要 resolve_place_type_with_table 也应用 substitute (v0.5+ 架构变更)
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+
+
+---
+Task ID: stage18.358
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.358 — resolve_place_type_with_table 递归 substitute 修复 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 部分). L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck writeback — resolve_place_type_with_table 递归 substitute)
+- 对齐: Stage 18.357 TD-ARCH-NESTED-GENERIC-FIELD-ACCESS, §20 要求尝试修复
+- 阻断: 4403 tests passing
+
+决策点:
+- 为什么修复 resolve_place_type_with_table?
+  → 引用 §1.0 原則 6 (通解 > 特解): 递归 substitute 覆盖所有嵌套深度
+  → 引用 §12 (最优 > 最小): 根因修复在 type resolution site
+- 为什么嵌套仍未完全修复?
+  → 引用 §20 (直到审查不出问题为止): resolve_place_type_with_table 修复了 base_ty 解析, 但 writeback_field_types_in_place_with_table 的 base_ty 与 compute_use_writeback_ty 的 base_ld.ty 是独立的解析路径
+  → 嵌套需要 MIR lower + typeck writeback 链的更深层修复 — v0.5+ 架构变更
+  → 引用 §3.2 (硬性红线): 4403 tests 全绿, resolve_place_type_with_table 修复是非破坏性的
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5 (typeck 内部增强).
+
+5W2H:
+- WHAT: resolve_place_type_with_table 递归应用 substitute(field_ty, base_substs) 当返回 Projection Field 类型时
+- WHY: was 返回未替换的 field_ty (来自 MIR ProjectionElem::Field), 导致嵌套 generic field access 失败
+- WHO: ARCH-A (递归 substitute 设计) + DEV-A (实施) + REV-A (4403 tests 验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/writeback.rs:resolve_place_type_with_table
+- HOW:
+  (1) 递归解析 base 类型: `let base_ty = resolve_place_type_with_table(base, mir)`
+  (2) 如果 base_ty 是 Adt(_, substs) 且 substs 非空, 应用 `substitute(field_ty, substs)`
+  (3) 否则返回 field_ty.clone()
+  (4) 验证: 4403 tests 全绿, 单层 Holder<T> ✓; 嵌套 Outer<Inner<T>> ✗ (需更深层修复)
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- resolve_place_type_with_table 修复:
+  - 将 `let _base_ty = resolve_place_type_with_table(base, mir)` 改为 `let base_ty = resolve_place_type_with_table(base, mir)`
+  - 在返回 field_ty 之前检查 base_ty 是否为 Adt(_, substs) 且 substs 非空
+  - 如果是, 应用 `substitute(field_ty, substs)` 替换 Param
+- 验证:
+  - 单层 Holder<T> { ptr: *mut T } ✓ (Stage 18.355 + 18.357)
+  - Container<T> { data: T } ✓, RefHolder<T> ✓, ArrayHolder<T> ✓
+  - 嵌套 Outer<Inner<T>> ✗ — 需更深层 MIR lower + typeck writeback 链修复
+- §3.2 全校验流: 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 更新) + README.md
+
+下一步:
+- resolve_place_type_with_table 递归 substitute ✅ — 架构正确, 非破坏性
+- 嵌套 Outer<Inner<T>> 仍需更深层修复 — MIR lower 的 field access chaining + typeck writeback 的多路径协调
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+

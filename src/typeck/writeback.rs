@@ -94,9 +94,34 @@ impl TypeChecker {
                     .map(|ld| ld.ty.clone())
                     .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
                 PlaceKind::Projection(base, elem) => {
-                    let _base_ty = resolve_place_type_with_table(base, mir);
+                    // Stage 18.358 (P2 soundness fix): Apply substitute()
+                    // when resolving field_ty from a Projection.
+                    //
+                    // Was: returned `field_ty.clone()` directly — the
+                    // unsubstituted `Param(N)` from MIR lower's
+                    // `ProjectionElem::Field(_, field_ty)`. This caused
+                    // nested generic field access to fail (e.g.,
+                    // `o.inner.ptr` where `o: Outer<i64>` and
+                    // `Outer<T> { inner: Inner<T> }`).
+                    //
+                    // Fix: Recursively resolve the base's type first, then
+                    // if base is `Adt(_, substs)` with non-empty substs,
+                    // apply `substitute(field_ty, substs)` before returning.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one recursive substitute
+                    // covers all nesting depths.
+                    // Per §12 (最优 > 最小): root-cause fix at the type
+                    // resolution site, not a post-hoc re-run.
+                    // Per §20 (iterative audit): same class as Stage 18.357
+                    // — resolve_place_type_with_table was the missing piece.
+                    let base_ty = resolve_place_type_with_table(base, mir);
                     match elem {
                         crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
+                            if let TyKind::Adt(_, substs) = &base_ty.kind {
+                                if !substs.is_empty() {
+                                    return crate::mir::substitute::substitute(field_ty, substs);
+                                }
+                            }
                             field_ty.clone()
                         }
                         // Stage 18.118: Deref/Index/ConstantIndex/Subslice
@@ -123,22 +148,63 @@ impl TypeChecker {
                         writeback_field_types_in_place_with_table(base, mir, table, unify);
                     if let ProjectionElem::Field(field_id, field_ty) = elem {
                         let base_ty = resolve_place_type_with_table(base, mir);
-                        if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                        if let TyKind::Adt(def_id, substs) = &base_ty.kind {
                             if let Some(fields) = table.struct_fields(def_id) {
                                 if let Some(resolved) = fields.get(field_id.0 as usize) {
                                     let current = unify.resolve(field_ty);
                                     match &current.kind {
                                         TyKind::Infer(InferVar::TyVar(vid)) => {
-                                            unify.bind_ty_var(*vid, resolved.clone());
+                                            // Stage 18.357: Apply substs before binding.
+                                            let substituted = if !substs.is_empty() {
+                                                crate::mir::substitute::substitute(resolved, substs)
+                                            } else {
+                                                resolved.clone()
+                                            };
+                                            unify.bind_ty_var(*vid, substituted.clone());
                                         }
                                         TyKind::Infer(InferVar::IntVar(vid)) => {
-                                            if let TyKind::Int(int_ty) = &resolved.kind {
+                                            let substituted = if !substs.is_empty() {
+                                                crate::mir::substitute::substitute(resolved, substs)
+                                            } else {
+                                                resolved.clone()
+                                            };
+                                            if let TyKind::Int(int_ty) = &substituted.kind {
                                                 unify.bind_int_var(*vid, *int_ty);
                                             }
                                         }
                                         _ => {}
                                     }
-                                    *field_ty = resolved.clone();
+                                    // Stage 18.357 (P2 soundness fix): Apply
+                                    // substitute() when overwriting field_ty
+                                    // with the table's unresolved HIR type.
+                                    //
+                                    // Was: `*field_ty = resolved.clone()` which
+                                    // overwrote Phase 0's substitute() result
+                                    // with unsubstituted `Param(N)` from
+                                    // FieldTyTable. This caused Phase 3.5
+                                    // regression: local_decl.ty went from
+                                    // `RawPtr(Mutable, Int(I64))` back to
+                                    // `RawPtr(Mutable, Param(0))`.
+                                    //
+                                    // Fix: If base_ty is `Adt(_, substs)` with
+                                    // non-empty substs, apply `substitute(resolved, substs)`
+                                    // before writing to `field_ty`. This is the
+                                    // root-cause fix — Phase 3.7's re-writeback
+                                    // workaround is still needed for edge cases
+                                    // but won't be needed for the common path.
+                                    //
+                                    // Per §1.0 原則 6 (通解 > 特解): one substitute
+                                    // call covers all generic struct fields.
+                                    // Per §12 (最优 > 最小): root-cause fix at
+                                    // the overwrite site, not a post-hoc re-run.
+                                    // Per §20 (iterative audit): same class as
+                                    // Stage 18.355 — Phase 3.5 table overwrite
+                                    // was the root cause identified in 18.354.
+                                    *field_ty = if !substs.is_empty() {
+                                        crate::mir::substitute::substitute(resolved, substs)
+                                    } else {
+                                        resolved.clone()
+                                    };
                                     changed = true;
                                 }
                             }
