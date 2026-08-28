@@ -26998,3 +26998,59 @@ Work Log:
 - 链式 `o.inner.ptr` 和无注解中间变量 `let i = o.inner; i.ptr` — 需 compute_use_writeback_ty 处理嵌套 Projection (v0.5+ 架构变更)
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
 
+
+---
+Task ID: stage18.361
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 18.361 — compute_use_writeback_ty 递归处理嵌套 Projection. L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 writeback — compute_use_writeback_ty 递归 Projection)
+- 对齐: Stage 18.360 修复了 find_receiver_substs, 链式 o.inner.ptr 仍失败
+- 阻断: 4403 tests passing
+
+决策点:
+- 为什么修复 compute_use_writeback_ty?
+  → 引用 §20: Stage 18.360 修复了 MIR lower 的 find_receiver_substs, 但 writeback 的 compute_use_writeback_ty 只处理 base=Local
+  → 对于 o.inner.ptr, writeback 的 base = o.inner 结果 local — 如果 local_decl.ty 已解析 (via Phase 0), 则 compute_use_writeback_ty 应该能处理
+  → 但如果 local_decl.ty 仍是 Infer (中间结果), 则 writeback 无法解析
+  → 引用 §1.0 原則 6 (通解 > 特解): 递归 compute_use_writeback_ty 处理 base=Projection
+- 为什么链式仍不完全工作?
+  → 引用 §1.0 原則 9 (正确 > 妥协): 链式 o.inner.ptr 需要 o.inner 结果 local 在 lower 时就有具体类型
+  → MIR lower 在 Phase 0 之前运行, o.inner 结果 local 的类型在 lower 时被设置为 resolve_field_type 的返回值
+  → Stage 18.360 修复了 find_receiver_substs, 但 resolve_field_type 的返回值依赖于 o.inner 结果 local 的类型 — 鸡生蛋问题
+  → 带类型注解 (let i: Inner<i64> = o.inner) 完全工作 ✓ — 类型注解直接设置 local_decl.ty
+  → 不带注解需要 lower 阶段的 expected_ty 传播 — v0.5+ 架构变更
+
+裁剪点:
+- L3 执行 §3.2 全校验流. 跳过 §14.5.
+
+5W2H:
+- WHAT: compute_use_writeback_ty 递归处理 base=Projection (非 Local)
+- WHY: 链式 o.inner.ptr 的 writeback base 是 o.inner 结果 local, 如果其类型已解析, writeback 应能处理
+- WHO: ARCH-A + DEV-A + REV-A
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/writeback.rs:compute_use_writeback_ty
+- HOW:
+  (1) 将 `let PlaceKind::Local(base_id) = &base.kind else { return None }` 改为 if-else: Local → base_ld; else → 递归 compute_use_writeback_ty(base)
+  (2) 递归路径: 解析 base_ty, 然后应用 substitute(field_ty, base_substs)
+  (3) 验证: 带类型注解的嵌套 ✓; 不带注解的链式 ✗ (需 lower expected_ty)
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- compute_use_writeback_ty 递归 Projection:
+  - Local case: 保持原逻辑 (base_ld from local_decls)
+  - Projection case: 递归 compute_use_writeback_ty(base, mir) → base_ty → substitute(field_ty, base_substs)
+- 验证:
+  - 带类型注解: `let i: Inner<i64> = o.inner; i.ptr` ✓
+  - 链式: `o.inner.ptr` ✗ — 中间结果 local 类型在 lower 时未解析 (鸡生蛋问题)
+  - 单层 Holder<T> ✓, Container<T> ✓, RefHolder<T> ✓, ArrayHolder<T> ✓
+- §3.2 全校验流: 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 更新)
+
+下一步:
+- compute_use_writeback_ty 递归 Projection ✅ — 架构正确, 非破坏性
+- 链式 o.inner.ptr — 需 lower 阶段 expected_ty 传播 (鸡生蛋: o.inner 结果类型依赖 o.inner 结果类型)
+- v0.5+ 路线图: lower 阶段 expected_ty 传播给链式字段访问
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+

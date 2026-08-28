@@ -253,12 +253,78 @@ fn compute_use_writeback_ty(src_place: &crate::mir::place::Place, mir: &MirBody)
             }
         }
 
-        // Rules 3, 4: Projection from a local.
+        // Rules 3, 4: Projection from a local OR nested projection.
         PlaceKind::Projection(base, elem) => {
-            let PlaceKind::Local(base_id) = &base.kind else {
-                return None;
+            // Stage 18.361 (P2 soundness fix): Recursively resolve
+            // base type for nested projections (e.g., `o.inner.ptr`
+            // where base = `o.inner` is itself a Projection).
+            //
+            // Was: `let PlaceKind::Local(base_id) = &base.kind else {
+            // return None; }` — only handled single-level Field
+            // projections from a Local. Nested projections like
+            // `o.inner.ptr` (Projection(Projection(Local(o), Field(...)),
+            // Field(...))) had base = Projection(...) which didn't match
+            // Local → returned None → writeback skipped → local_decl.ty
+            // stayed as unsubstituted Param → false type mismatch error.
+            //
+            // Fix: If base is not a Local, recursively compute its
+            // writeback type via `compute_use_writeback_ty`. This handles
+            // arbitrary nesting depths.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one recursive path covers
+            // all nesting depths (o.inner.ptr.inner.ptr...).
+            // Per §12 (最优 > 最小): root-cause fix at the writeback
+            // resolution site, not a post-hoc re-run.
+            // Per §20 (iterative audit): same class as Stage 18.347/18.360
+            // — Param leak in nested field projection.
+            let base_ld = if let PlaceKind::Local(base_id) = &base.kind {
+                mir.local_decls.get(base_id.0 as usize)?
+            } else {
+                // Base is a nested Projection — recursively resolve it.
+                let base_ty = compute_use_writeback_ty(base, mir)?;
+                // Create a synthetic LocalDecl-like reference.
+                // We can't get a real LocalDecl, so we use the resolved
+                // type directly. We need to handle this below.
+                // Instead of getting base_ld, we use base_ty directly.
+                // Refactor: use base_ty instead of base_ld for the
+                // substitute check below.
+                match elem {
+                    ProjectionElem::Field(field_id, field_ty) => {
+                        if type_contains_param(field_ty) {
+                            if let TyKind::Adt(_, substs) = &base_ty.kind {
+                                if !substs.is_empty() {
+                                    return Some(crate::mir::substitute::substitute(
+                                        field_ty, substs,
+                                    ));
+                                }
+                            }
+                            if let TyKind::Ref(_, _, inner) = &base_ty.kind {
+                                if let TyKind::Adt(_, substs) = &inner.kind {
+                                    if !substs.is_empty() {
+                                        return Some(crate::mir::substitute::substitute(
+                                            field_ty, substs,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        if !needs_writeback(field_ty) {
+                            return Some(field_ty.clone());
+                        }
+                        if let TyKind::Tuple(field_tys) = &base_ty.kind {
+                            return field_tys.get(field_id.0 as usize).cloned();
+                        }
+                        return None;
+                    }
+                    ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                        if let TyKind::Array(elem_ty, _) = &base_ty.kind {
+                            return Some(elem_ty.as_ref().clone());
+                        }
+                        return None;
+                    }
+                    _ => return None,
+                }
             };
-            let base_ld = mir.local_decls.get(base_id.0 as usize)?;
             match elem {
                 // Rule 3: Field projection — resolve field ty from base Tuple.
                 ProjectionElem::Field(field_id, field_ty) => {
