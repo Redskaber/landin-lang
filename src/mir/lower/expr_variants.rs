@@ -708,6 +708,83 @@ pub(super) fn lower_call_expr(
         } else {
             adt_substs_from_func.clone()
         };
+        // Stage 18.346 (P2 soundness fix): If adt_substs is still empty
+        // (no turbofish, no expected_ty), infer substs from operand types.
+        //
+        // Root cause (per §2.2 根因思维 + Stage 18.345 analysis):
+        // When `let w = Wrapper { inner: 42i64 }` is lowered without
+        // turbofish, Path resolution returns empty adt_substs. This
+        // causes codegen to use raw field_tys (containing Param(0))
+        // instead of monomorphized types (containing i64).
+        //
+        // Fix: After computing adt_substs from Path/expected_ty, if
+        // still empty, infer substs by matching field_tys (which
+        // contain Param(N)) against operand types (which are concrete).
+        //
+        // Algorithm:
+        // 1. Resolve field_tys (unsubstituted — contain Param(N))
+        // 2. For each field_ty[i] that is Param(N), look at operand[i]'s type
+        // 3. Build substitution: Param(N) → operand_type
+        // 4. Convert to Vec<Ty> indexed by Param index
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one inference path for all
+        // generic structs without turbofish.
+        // Per §12 (最优 > 最小): root-cause fix at MIR lower, not codegen.
+        // Per §20 (iterative audit): Stage 18.345 root cause verified.
+        let adt_substs = if adt_substs.is_empty() {
+            // Infer substs from operand types + field_tys.
+            // First resolve field_tys (unsubstituted — contain Param(N)).
+            let unresolved_field_tys = field_resolution::resolve_adt_field_tys(cx, adt_def_id);
+            // Count generic params from HIR.
+            let generic_params = cx
+                .hir
+                .map(|h| crate::hir::generics::find_generics(adt_def_id, h))
+                .unwrap_or_default();
+            if generic_params.is_empty() {
+                // Non-generic struct — no substs needed.
+                adt_substs
+            } else {
+                // Generic struct — infer substs from operands.
+                // For each field_ty that is Param(N), the operand's type
+                // tells us what T should be.
+                let mut inferred_substs: Vec<Ty> = Vec::with_capacity(generic_params.len());
+                for _ in 0..generic_params.len() {
+                    inferred_substs.push(Ty::new(TyKind::Error, expr.span));
+                }
+                for (i, field_ty) in unresolved_field_tys.iter().enumerate() {
+                    if let TyKind::Param(param) = &field_ty.kind {
+                        let param_idx = param.index as usize;
+                        if param_idx < inferred_substs.len() {
+                            // Get the operand's type for this field.
+                            // arg_operands are the lowered operand LocalIds.
+                            // We need to read the local's type from MIR.
+                            if i < arg_locals.len() {
+                                let op_local = arg_locals[i];
+                                if let Some(ld) = cx.mir.local_decls.get(op_local.0 as usize) {
+                                    let op_ty = ld.ty.clone();
+                                    // Only use concrete types (not Infer/Error).
+                                    if !matches!(op_ty.kind, TyKind::Infer(_) | TyKind::Error) {
+                                        inferred_substs[param_idx] = op_ty;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Check if all substs were inferred (no Error remaining).
+                if inferred_substs
+                    .iter()
+                    .all(|t| !matches!(t.kind, TyKind::Error))
+                {
+                    inferred_substs.into()
+                } else {
+                    // Couldn't infer all substs — keep empty.
+                    adt_substs
+                }
+            }
+        } else {
+            adt_substs
+        };
         // Stage 3.38 (L-ENUM): For enum variant ctors (e.g.,
         // `Opt::Some(42)`), resolve the variant index and field
         // types from the HIR enum definition. The func expression

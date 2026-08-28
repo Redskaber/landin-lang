@@ -1127,6 +1127,44 @@ pub(crate) fn lower_expr_to_operand(
             // so generic struct fields get substituted with the Adt's substs.
             if let Res::Def(def_id, DefKind::Struct) = path.res {
                 let substs = lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
+                // Stage 18.346 (P2 soundness fix): If substs is empty (no
+                // turbofish), infer from field operand types. Mirrors the
+                // fix in expr_variants.rs lower_call_expr.
+                let substs = if substs.is_empty() {
+                    let unresolved_field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
+                    let generic_params = cx
+                        .hir
+                        .map(|h| crate::hir::generics::find_generics(def_id, h))
+                        .unwrap_or_default();
+                    if generic_params.is_empty() {
+                        substs
+                    } else {
+                        let mut inferred: Vec<Ty> = (0..generic_params.len())
+                            .map(|_| Ty::new(TyKind::Error, expr.span))
+                            .collect();
+                        for (i, field_ty) in unresolved_field_tys.iter().enumerate() {
+                            if let TyKind::Param(param) = &field_ty.kind {
+                                let idx = param.index as usize;
+                                if idx < inferred.len() && i < field_locals.len() {
+                                    if let Some(ld) =
+                                        cx.mir.local_decls.get(field_locals[i].0 as usize)
+                                    {
+                                        if !matches!(ld.ty.kind, TyKind::Infer(_) | TyKind::Error) {
+                                            inferred[idx] = ld.ty.clone();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if inferred.iter().all(|t| !matches!(t.kind, TyKind::Error)) {
+                            inferred.into()
+                        } else {
+                            substs
+                        }
+                    }
+                } else {
+                    substs
+                };
                 let field_tys = if substs.is_empty() {
                     field_resolution::resolve_adt_field_tys(cx, def_id)
                 } else {

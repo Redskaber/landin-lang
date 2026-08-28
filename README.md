@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.503.0 (Stage 18.343) |
+| **Version** | v0.506.0 (Stage 18.346) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. User-defined inherent impl on primitive types ALLOWED. String::as_str early interception refactored (needs type inference improvement for full runtime support — TD-GENERIC-STRUCT-FIELD-TYS-INFERENCE). |
+| **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Generic struct field_tys inference: MIR lower now infers adt_substs from operand types when no turbofish. Wrapper<i64> insertvalue produces correct { i64 } struct type. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 
