@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.355) |
+| **Version** | v0.510.0 (Stage 18.356) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Stage 18.347-18.355 chain: generic struct field access + pre-codegen param_check + recursive Param detection + typeck subst + stubs audit + Phase 0 pre-writeback + Phase 3.7 post-table re-writeback. `Holder<T> { ptr: *mut T }` raw-ptr field access now fully works. 8 stubs documented in §2.5.1. |
+| **Status** | v0.4 stable. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. §14.5 D1-D8 deep review PASSED. Stage 18.347-18.356 chain: generic struct field access + pre-codegen param_check + recursive Param detection + typeck subst + stubs audit + double writeback + nested generic audit. `Holder<T> { ptr: *mut T }` raw-ptr field access fully works. Nested `Outer<Inner<T>>` has known architecture limitation (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS — v0.5+ refactor). 9 stubs/limitations documented in §2.5.1. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 

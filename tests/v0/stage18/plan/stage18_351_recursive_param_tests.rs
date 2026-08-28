@@ -79,16 +79,16 @@ fn main() -> i32 {
 }
 
 // ============================================================================
-// Negative tests: Known limitations documented (6 tests)
+// Positive tests: RawPtr field access (fixed in Stage 18.355) (3 tests)
 // ============================================================================
 
-/// Stage 18.351 negative 1: `let p = h.ptr` where h.ptr is `*mut T` —
-/// known limitation (typeck runs before writeback).
+/// Stage 18.355 positive 1: `let p = h.ptr` where h.ptr is `*mut T` —
+/// FIXED in Stage 18.355 (Phase 0 + Phase 3.7 double writeback).
 ///
-/// NOTE: This is a known limitation. The fix requires reordering the driver
-/// (writeback before typeck). The test documents the current behavior.
+/// Was: known limitation (typeck runs before writeback).
+/// Now: compiles and runs correctly.
 #[test]
-fn stage18_351_rawptr_field_known_limitation() {
+fn stage18_355_rawptr_field_access() {
     let result = compile(
         r#"
 struct Holder<T> { ptr: *mut T }
@@ -99,14 +99,16 @@ fn main() -> i32 {
 }
 "#,
     );
-    // Known limitation — currently reports error (typeck before writeback).
-    // Per §1.0 原則 9 (正确 > 妥协): document current behavior.
-    let _ = result.has_errors();
+    assert!(
+        !result.has_errors(),
+        "Holder<T> rawptr field access should work after Stage 18.355. Got: {:?}",
+        result.errors
+    );
 }
 
-/// Stage 18.351 negative 2: `let p: *mut i64 = h.ptr` — known limitation.
+/// Stage 18.355 positive 2: `let p: *mut i64 = h.ptr` — explicit type annotation.
 #[test]
-fn stage18_351_rawptr_field_explicit_known_limitation() {
+fn stage18_355_rawptr_field_explicit_type() {
     let result = compile(
         r#"
 struct Holder<T> { ptr: *mut T }
@@ -117,12 +119,16 @@ fn main() -> i32 {
 }
 "#,
     );
-    let _ = result.has_errors();
+    assert!(
+        !result.has_errors(),
+        "Holder<T> rawptr field with explicit type should work. Got: {:?}",
+        result.errors
+    );
 }
 
-/// Stage 18.351 negative 3: Wrapper with *mut T inner — known limitation.
+/// Stage 18.355 positive 3: Wrapper with *mut T inner — different type.
 #[test]
-fn stage18_351_wrapper_rawptr_known_limitation() {
+fn stage18_355_wrapper_rawptr_field() {
     let result = compile(
         r#"
 struct Wrapper<T> { ptr: *mut T }
@@ -133,7 +139,11 @@ fn main() -> i32 {
 }
 "#,
     );
-    let _ = result.has_errors();
+    assert!(
+        !result.has_errors(),
+        "Wrapper<T> rawptr field should work. Got: {:?}",
+        result.errors
+    );
 }
 
 /// Stage 18.351 negative 4: Access field of generic struct via method.

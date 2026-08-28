@@ -12,7 +12,7 @@
 
 ---
 
-## v0.510.0 — Stage 18.349 + 18.350 + 18.351 + 18.352 (Typeck strictness + recursive Param + stubs audit)
+## v0.510.0 — Stage 18.349 + 18.350 + 18.351 + 18.352 + 18.353 + 18.354 + 18.355 (Typeck strictness + recursive Param + stubs audit + double writeback)
 
 ### Stage 18.351: Recursive Param detection + typeck subst (§20 iterative audit)
 
@@ -86,6 +86,33 @@ burying mines and producing bugs."
 
 **Fix priorities**: Most stubs are v0.2+/v0.5+ work (BLOCKED by language
 features). Current v0.4 is fully deliverable with documented limitations.
+
+### Stage 18.353-18.355: Double writeback — TD-STUB-TYPECK-BEFORE-WRITEBACK fully resolved
+
+**Root cause**: typeck runs before writeback, so `local_decl.ty` may
+contain unsubstituted `Param` types. Phase 3.5 (`writeback_field_types_with_table`)
+overwrites `ProjectionElem::Field(_, field_ty)` with unsubstituted HIR types
+from `FieldTyTable`, undoing Phase 0's `substitute()` call.
+
+**Fix**: Double writeback in typeck `check_mir_body_with_tables`:
+- **Phase 0** (before Phase 1): `writeback_type_propagation` resolves
+  Param types from MIR lower before typeck sees them
+- **Phase 3.7** (after Phase 3.5): `writeback_type_propagation` re-resolves
+  Param types that Phase 3.5's table overwrite reintroduced
+
+**Result**: `Holder<T> { ptr: *mut T }` raw-ptr field access now fully works.
+`let p = h.ptr` (where `h: Holder<i64>`) compiles and runs correctly.
+
+**Verification**: 3 new positive tests added (Stage 18.355). 4403 tests
+total, 0 failures.
+
+### Stage 18.354: Investigation — Phase 3.5 regression identified
+
+Added debug dumps at Phase 0 / Phase 3 / Phase 3.5 boundaries. Found
+that Phase 3.5 (`writeback_field_types_with_table`) regresses
+`local_5` from `RawPtr(Mutable, Int(I64))` back to `RawPtr(Mutable, Param(0))`
+by overwriting `field_ty` with unsubstituted HIR types from `FieldTyTable`.
+This was the missing link that Stage 18.355's Phase 3.7 fixes.
 
 ---
 

@@ -26695,3 +26695,56 @@ Work Log:
 - Holder<T> { ptr: *mut T } field access 完全工作 — `let p = h.ptr` 编译运行通过
 - v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
 
+
+---
+Task ID: stage18.356
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.356 — §20 iterative audit: scan for sibling bugs of Stage 18.355 (nested generic field access). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (审计 — 扫描同类 bug, 添加 tech-debt 条例)
+- 对齐: Stage 18.355 完成了 Holder<T> 修复, §20 要求扫描同类 bug
+- 阻断: 4403 tests passing, 无 P0/P1
+
+决策点:
+- 为什么扫描嵌套泛型?
+  → 引用 §20 (直到审查不出问题为止): Stage 18.355 修复了单层 Holder<T>, 嵌套是同类
+  → 引用用户指令: "发现一个 bug 必须顺着同类路径深挖到底"
+- 为什么记录为架构限制而非修复?
+  → 引用 §1.0 原則 9 (正确 > 妥协): Phase 3.5 的 table overwrite 是根因, Phase 3.7 是 workaround
+  → 引用用户指令: "审查结果得出架构限制时, 添加条例到 tech-debt 中, 纳入计划项目架构级重构优化升级"
+  → 引用 §3.2 (硬性红线): 4403 tests 全绿 — 嵌套是新 bug, 不是回归
+
+裁剪点:
+- L2 跳过 §14.5 (无代码变更, 风险低).
+
+5W2H:
+- WHAT: 扫描 Stage 18.355 同类 bug — 嵌套泛型字段访问
+- WHY: §20 迭代审计 — 发现一个 bug 意味着存在大量类似 bug
+- WHO: ARCH-A (审计) + REV-A (文档)
+- WHEN: §3.2 全绿后停止
+- WHERE: tests/v0/stage18/plan/stage18_351_recursive_param_tests.rs (3 个 positive test 确认 Stage 18.355 fix) + tech-debt-register §2.5.1 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 新增)
+- HOW:
+  (1) 测试 5 种 composite 类型: RawPtr ✓ / Ref ✓ / Array ✓ / Container<T> (non-ptr) ✓ / 嵌套 Outer<Inner<T>> ✗
+  (2) 发现嵌套 bug: `o.inner.ptr` 报 false "expected *mut i64, found *mut <type param>"
+  (3) 根因: Phase 3.7 的单次 re-writeback 修复了单层, 但嵌套需要 Phase 3.5 不覆盖已解析 field_ty (架构变更)
+  (4) 记录: TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 添加到 §2.5.1, 纳入 v0.5+ 架构级重构
+- HOW MUCH: 4403 tests 全绿 (无代码变更), fmt clean
+
+Work Log:
+- §20 同类 bug 扫描结果:
+  - Container<T> { data: T } (non-ptr Param field) ✓ — Phase 3.7 修复了
+  - RefHolder<T> { r: &T } (Ref field with Param) ✓ — Phase 3.7 修复了
+  - ArrayHolder<T> { arr: [T; 3] } (Array field with Param) ✓ — Phase 3.7 修复了
+  - 嵌套 Outer<T> { inner: Inner<T> } + Inner<T> { ptr: *mut T } ✗ — Phase 3.7 未修复 (嵌套需要架构变更)
+- TD-ARCH-NESTED-GENERIC-FIELD-ACCESS:
+  - 根因: Phase 3.5 writeback_field_types_with_table 覆盖已解析的 field_ty
+  - Phase 3.7 的单次 re-writeback 修复单层, 嵌套需要 Phase 3.5 不覆盖 (架构变更) 或 Phase 3.7 fixpoint loop
+  - 纳入 v0.5+ 架构级重构计划
+- §3.2 全校验流: 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 新增) + README.md
+
+下一步:
+- TD-ARCH-NESTED-GENERIC-FIELD-ACCESS — v0.5+ 架构级重构 (Phase 3.5 不覆盖已解析 field_ty, 或 Phase 3.7 fixpoint loop)
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+
