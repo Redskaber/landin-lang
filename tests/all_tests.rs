@@ -708,6 +708,10 @@ mod stage18_335_zst_drop_eprintf_tests;
 #[path = "v0/stage18/plan/stage18_336_zst_aggregate_typeck_tests.rs"]
 mod stage18_336_zst_aggregate_typeck_tests;
 
+// === Stage 18.337: P1 soundness fix — Recursive struct stack overflow + pointer-to-Adt GEP ===
+#[path = "v0/stage18/plan/stage18_337_recursive_struct_tests.rs"]
+mod stage18_337_recursive_struct_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

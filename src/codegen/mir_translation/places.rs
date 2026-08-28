@@ -43,7 +43,39 @@ pub(crate) fn detect_place_storage_type(
                         return EmitType::Struct(fields);
                     }
                 }
-                mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+                // Stage 18.337 (P1 soundness fix): For Ref/RawPtr to an Adt,
+                // `detect_place_storage_type` is used by `emit_gep_field` to
+                // determine the GEP's element type. If we return `OpaquePtr`
+                // (from the Stage 18.337 fix in types.rs), the GEP uses `ptr`
+                // as the element type → `getelementptr ptr, ptr %base, ...`
+                // → llvm-as rejects "invalid getelementptr indices".
+                //
+                // Fix: For Ref/RawPtr to an Adt, resolve the pointee's struct
+                // type (not the pointer type). The pointee's layout is safe to
+                // resolve here because it's used for GEP field access (not for
+                // the pointer's LLVM type — that's still `ptr` per Stage 18.337).
+                //
+                // This does NOT reintroduce the recursive struct stack overflow
+                // because:
+                // - The pointee is resolved only when the pointer is USED for
+                //   field access (not when the pointer type itself is computed).
+                // - The recursive struct's pointer field `*mut Node` uses
+                //   `OpaquePtr` (no recursion), but when `n.val` is accessed,
+                //   `Node`'s layout is resolved (with `*mut Node` → OpaquePtr
+                //   for the `next` field — one level of recursion, then stops).
+                //
+                // Per §1.0 原則 4 (报错 > 静默): GEP must use correct struct type.
+                // Per §1.0 原則 6 (通解 > 特解): one fix in detect_place_storage_type
+                // covers all emit_gep_field call sites.
+                match &ld.ty.kind {
+                    crate::mir::ty::TyKind::Ref(_, _, inner)
+                    | crate::mir::ty::TyKind::RawPtr(_, inner)
+                        if matches!(inner.kind, crate::mir::ty::TyKind::Adt(_, _)) =>
+                    {
+                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                    }
+                    _ => mir_type_to_emit_type_with_layouts(&ld.ty, layouts),
+                }
             } else {
                 EmitType::I32
             }

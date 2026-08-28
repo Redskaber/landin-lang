@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-27 (last updated Stage 18.336 — P1 soundness fix: ZST nested aggregate Void leak (A1-A4) + typeck return/trait gaps (B1-B4, C1-C3))
-> **Version**: v0.498.0
-> **Status**: Stage 18.336 resolved TD-CODEGEN-ZST-STRUCT-FIELD + TD-CODEGEN-ZST-TUPLE-ELEM + TD-CODEGEN-ZST-ENUM-PAYLOAD + TD-CODEGEN-ZST-ARRAY-ELEM + TD-TYPECK-ZST-RETURN + TD-TYPECK-STRUCT-RETURN-INFER + TD-TYPECK-DROP-SELF + TD-TYPECK-TRAIT-RECEIVER + TD-TYPECK-TRAIT-RET-INT-WIDTH (P1+P2 — Void leak in nested aggregates + typeck silently accepts incorrect code). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3683 tests, 0 failures (single-thread, ulimit -s unlimited). Multi-thread 5/5 stable (2 threads). v0.4 release-ready.
+> **Date**: 2026-08-27 (last updated Stage 18.337 — P1 soundness fix: Recursive struct stack overflow + pointer-to-Adt GEP)
+> **Version**: v0.499.0
+> **Status**: Stage 18.337 resolved TD-RECURSIVE-STRUCT-OVERFLOW (P1 — recursive struct `struct Node { next: *mut Node }` caused stack overflow in type resolution). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 3689 tests, 0 failures (single-thread, ulimit -s unlimited). v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -105,6 +105,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-TYPECK-DROP-SELF | `impl Drop for Foo { fn drop(self) {} }` 不报错 — driver_validations.rs:110-125 过滤 self_kind, 不比较 | 静默接受 Drop impl 错误 self receiver (应为 &mut self) | ✅ Resolved Stage 18.336: 新增 self_kind 比较 (trait vs impl). 不匹配时 push TypeError. Per §1.0 原則 4 (报错 > 静默): self receiver 必须匹配. |
 | TD-TYPECK-TRAIT-RECEIVER | `trait T { fn f(&self); } impl T for X { fn f(self) {} }` 不报错 — 同 TD-TYPECK-DROP-SELF | 静默接受 trait impl 错误 self receiver | ✅ Resolved Stage 18.336: 同 TD-TYPECK-DROP-SELF (self_kind 比较). |
 | TD-TYPECK-TRAIT-RET-INT-WIDTH | `trait T { fn f() -> i32; } impl T for X { fn f() -> i64 {} }` 不报错 — mir_ty_kinds_compatible 把 Int↔Int 视为兼容 (regardless of width) | 静默接受 trait impl 错误返回类型宽度 | ✅ Resolved Stage 18.336: mir_ty_kinds_compatible 收紧 — Int/Uint/Float 要求 exact match (a_i == b_i); Int↔Uint 视为不兼容. Per §1.0 原則 9 (正确 > 妥协): trait impls 必须精确匹配声明签名. |
+| TD-RECURSIVE-STRUCT-OVERFLOW | 递归结构体 (`struct Node { next: *mut Node }`) 导致 `mir_type_to_emit_type_with_layouts` 无限递归 → stack overflow crash | 任何递归类型 (链表/树/图) 编译器崩溃 | ✅ Resolved Stage 18.337: Ref/RawPtr to Adt → EmitType::OpaquePtr (不递归 pointee). 打破循环. detect_place_storage_type 对 Ref/RawPtr to Adt 解析 pointee 结构体类型供 GEP 使用. Per §1.0 原則 6 (通解 > 特解): opaque ptr 是 LLVM 17+ 正确语义. Per §1.0 原則 9 (正确 > 妥协): 正确 opaque pointer semantics > 递归深度限制. |
 
 ### 2.6 Standard Library
 

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.498.0 (Stage 18.336) |
+| **Version** | v0.499.0 (Stage 18.337) |
 | **License** | MIT |
-| **Status** | v0.4 stable. 676 lib tests + 3683 integration tests = 4359 total, 0 failures (single-thread, `ulimit -s unlimited`). Multi-thread 5/5 stable (2 threads). All P0/P1/P2 tech-debts resolved. |
+| **Status** | v0.4 stable. 676 lib tests + 3689 integration tests = 4365 total, 0 failures (single-thread, `ulimit -s unlimited`). All P0/P1/P2 tech-debts resolved. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 

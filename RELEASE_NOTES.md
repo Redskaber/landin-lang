@@ -3,12 +3,100 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.498.0 |
+| **Current version** | v0.499.0 |
 | **Date** | 2026-08-27 |
-| **Test count** | 676 lib tests + 3683 integration tests = 4359 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 676 lib tests + 3689 integration tests = 4365 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (28 tests in `stage18_334` + `stage18_335` + `stage18_336`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (34 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337`) |
+
+---
+
+## v0.499.0 — Stage 18.337 (P1 soundness: Recursive struct stack overflow + pointer-to-Adt GEP)
+
+### Overview
+
+**Stage 18.337: P1 soundness fix — Recursive struct stack overflow**
+
+The §20 Round 6 iterative audit discovered that recursive structs
+(`struct Node { next: *mut Node }`) cause a **stack overflow crash** in
+`mir_type_to_emit_type_with_layouts` — infinite recursion through the
+pointer's pointee type.
+
+### Root cause
+
+`mir_type_to_emit_type_with_layouts` (and `_and_mono`) recursed into
+the pointee type for `Ref`/`RawPtr`:
+```rust
+_ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
+```
+For `*mut Node`, `inner = Node` → recurse into `Node`'s layout →
+`Node`'s `next` field is `*mut Node` → recurse into `Node` again →
+infinite loop → stack overflow.
+
+### Fix
+
+1. **`mir_translation/types.rs`**: For `Ref`/`RawPtr` to an `Adt`,
+   use `EmitType::OpaquePtr` — do NOT recurse into the pointee type.
+   In LLVM 17+ opaque pointer mode, the pointer's LLVM type is just `ptr`
+   — the pointee type is only needed at dereference sites (load/store/GEP),
+   which is resolved separately via `detect_place_storage_type`.
+
+   Mirrors rustc_codegen_llvm: pointers to structs are `ptr` in LLVM IR;
+   the struct type is only used at dereference sites.
+
+2. **`mir_translation/places.rs`**: `detect_place_storage_type` now
+   resolves the pointee's struct type for `Ref`/`RawPtr` to `Adt` locals
+   — so GEP field access (`n.val` where `n` is `*mut Node`) uses the
+   correct struct type (`{ i32, ptr }`) instead of the pointer type
+   (`OpaquePtr` → `ptr` → `getelementptr ptr, ...` → invalid).
+
+   This does NOT reintroduce the stack overflow because the pointee is
+   resolved only when the pointer is USED for field access — the recursive
+   struct's pointer field uses `OpaquePtr` (no recursion), and `Node`'s
+   layout resolution stops at one level (the `next` field is `OpaquePtr`).
+
+### Knowledge search validation (per "知识搜索 > 猜测" principle)
+
+Web-searched Rust official docs + Stack Overflow:
+- SO: "LLVM does not handle zero-sized stack allocations. When an empty
+  struct is being alloca'd, LLVM rounds it up to size of one."
+  (validates the `i8` fallback for ZST allocas — Stage 16.22)
+- LLVM Language Reference: opaque pointer mode (LLVM 17+) — pointers are
+  `ptr`, pointee type not needed for the pointer's LLVM type
+- rustc_codegen_llvm: pointers to structs are `ptr` in LLVM IR; struct
+  type is only used at dereference sites
+
+### Test impact
+
+- Single-thread: **3689 tests, 0 failures** (was 3683 before Stage 18.337).
+- Added 6 regression tests (3 positive + 3 negative) in
+  `tests/v0/stage18/plan/stage18_337_recursive_struct_tests.rs`.
+- `llvm-as` accepts TextEmitter IR for recursive struct programs.
+- Runtime verification: recursive struct program correctly outputs `42`.
+
+### Files changed
+
+- `src/codegen/mir_translation/types.rs` — Ref/RawPtr to Adt → OpaquePtr (both variants)
+- `src/codegen/mir_translation/places.rs` — detect_place_storage_type resolves pointee for GEP
+- `tests/v0/stage18/plan/stage18_337_recursive_struct_tests.rs` — new (6 regression tests)
+- `tests/all_tests.rs` — register `stage18_337_recursive_struct_tests`
+- `docs/develop/v0/tech-debt-register.md` — TD-RECURSIVE-STRUCT-OVERFLOW Resolved
+- `Cargo.toml` — v0.498.0 → v0.499.0
+
+### Design boundary
+
+- Pointers to structs are `ptr` (opaque) — no pointee type recursion.
+- GEP field access on pointer-to-struct uses the pointee's struct layout
+  (resolved via `detect_place_storage_type`, not the pointer's EmitType).
+- Recursive struct cycles are broken at the pointer level — the pointer
+  type is `ptr`, and the struct layout is resolved only at dereference.
+
+### Known limitations
+
+- LLVM 22 needs `ulimit -s unlimited` (or 65536) on systems with default
+  8MB stack. `scripts/run_tests.sh` handles this.
+- TD-INTRINSIC-OVERUSE Phase 2-B/C — BLOCKED (needs v0.4+ lang features).
 
 ---
 

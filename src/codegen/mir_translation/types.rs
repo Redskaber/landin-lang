@@ -160,13 +160,40 @@ pub fn mir_type_to_emit_type_with_layouts(
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
             // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
             // `{ ptr, len }`. Other references remain thin pointers.
-            // Recurse with `_with_layouts` so the pointee (if it's an Adt)
-            // resolves its layout correctly.
+            //
+            // Stage 18.337 (P1 soundness fix): For Ref/RawPtr to an Adt
+            // (struct/enum), use opaque `ptr` WITHOUT recursing into the
+            // pointee type. This breaks recursive struct cycles (e.g.,
+            // `struct Node { next: *mut Node }`) that caused infinite
+            // recursion + stack overflow.
+            //
+            // In LLVM 17+ opaque pointer mode, all pointers are `ptr` —
+            // the pointee type is NOT needed for the pointer's LLVM type.
+            // The pointee's layout is only needed when the pointer is
+            // dereferenced (load/store/GEP), which happens separately in
+            // codegen_statement/codegen_rvalue with the correct type from
+            // local_decls.
+            //
+            // Mirrors rustc_codegen_llvm: pointers to structs are `ptr`
+            // in LLVM IR; the struct type is only used at dereference sites.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one opaque-ptr rule for all
+            // Ref/RawPtr to Adt — no special-casing per recursion depth.
+            // Per §1.0 原則 9 (正确 > 妥协): correct opaque pointer semantics
+            // > matching the pointee's LLVM type (which isn't needed).
+            // Per §20 (iterative audit): found via §20 Round 6 audit —
+            // recursive struct caused stack overflow.
             match &inner.kind {
                 TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
                 TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
                     mir_type_to_emit_type_with_layouts(elem, layouts),
                 ),
+                // Stage 18.337: For Adt pointee, use opaque ptr — do NOT
+                // recurse into the Adt's layout (would infinite-loop on
+                // recursive types like `struct Node { next: *mut Node }`).
+                TyKind::Adt(_, _) => EmitType::OpaquePtr,
+                // For non-Adt, non-Slice, non-Str pointee (primitives, tuples,
+                // arrays, closures): recurse is safe (no cycle possible).
                 _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
             }
         }
@@ -283,17 +310,23 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
             };
             EmitType::array_of(elem_ty, n)
         }
-        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => match &inner.kind {
-            TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
-            TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
-                mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
-            ),
-            _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(
-                inner,
-                layouts,
-                mono_layouts,
-            )),
-        },
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
+            // Stage 18.337 (P1 soundness fix): Same Adt→OpaquePtr fix as
+            // `_with_layouts` variant. Breaks recursive struct cycles.
+            match &inner.kind {
+                TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
+                TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
+                    mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
+                ),
+                // Stage 18.337: For Adt pointee, use opaque ptr — do NOT recurse.
+                TyKind::Adt(_, _) => EmitType::OpaquePtr,
+                _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(
+                    inner,
+                    layouts,
+                    mono_layouts,
+                )),
+            }
+        }
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(
             elem,
             layouts,
