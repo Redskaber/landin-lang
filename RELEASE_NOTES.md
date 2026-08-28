@@ -5,14 +5,67 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-28 |
-| **Test count** | 682 lib tests + 3713 integration tests = 4395 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 682 lib tests + 3721 integration tests = 4403 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (42 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test (50 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348` + `stage18_351`) |
 
 ---
 
-## v0.510.0 — Stage 18.349 + 18.350 (Typeck strictness investigation + root cause deep-dive)
+## v0.510.0 — Stage 18.349 + 18.350 + 18.351 (Typeck strictness investigation + recursive Param)
+
+### Stage 18.351: Recursive Param detection + typeck subst (§20 iterative audit)
+
+**Root cause**: Following §20 from Stage 18.350, investigated the
+`Holder<T> { ptr: *mut T }` field access bug — `let p = h.ptr` reported
+false "expected *mut i64, found *mut <type param>".
+
+**3-layer fix**:
+1. `needs_writeback` made **recursive** — `type_needs_writeback` helper
+   detects `Param` nested in `RawPtr`/`Ref`/`Slice`/`Array`/`Tuple`/
+   `Adt`/`Closure`/`FnDef` (was: only checked outer kind, missing
+   `RawPtr(_, Param(0))`)
+2. `infer_projection` Field arm: applies `substitute(field_ty, substs)`
+   when field_ty contains Param and base is `Adt(_, substs)` (was:
+   returned unsubstituted field_ty)
+3. `check_statement` + `post_check_statement`: skip mismatch check
+   when place or rvalue contains Param (defer to writeback + param_check)
+   (was: reported false mismatches on unsubstituted Param types)
+
+**Known limitation**: `let p = h.ptr` where `h.ptr` has type `*mut T`
+still reports false error — root cause is typeck running before writeback
+(driver order). Fix requires reordering driver (writeback before typeck)
+— v0.5+ architectural change.
+
+### Stage 18.349-18.350: Typeck strictness investigation (Phase 4.5 disabled)
+
+Investigated two typeck strictness gaps:
+1. `let p: Pair = ...` (missing generic args) — TD-GENERIC-PARAM-CHECK
+   triggers, returns `TyKind::Error`, but typeck doesn't report Error in
+   local_decls. Phase 4.5 check added but disabled (47 prelude false-
+   positives — prelude generic functions monomorphized with Error substs).
+2. `p.second = 100i32` (i64 field assigned i32) — NOT a bug, it's
+   Landin v0.4 design choice (narrow→wide implicit int conversion).
+
+### Verification
+
+- 4403 tests (682 lib + 3721 integration), 0 failures
+- 8 new regression tests (Stage 18.351)
+- fmt clean, 0 clippy warnings
+
+### Principles applied
+
+- §1.0 原則 4 (报错 > 静默): investigated all silent acceptances
+- §1.0 原則 6 (通解 > 特解): one recursive check for all composite types
+- §1.0 原則 9 (正确 > 妥协): deferred to writeback + param_check where
+  typeck can't fix (runs before writeback)
+- §12 (最优 > 最小): 3-layer fix to prevent sibling bugs
+- §20 (iterative audit): same class as Stage 18.347 — Param leak in
+  nested types was missed
+
+---
+
+## v0.509.0 — Stage 18.348 (P2 soundness: Pre-codegen param_check diagnostic pass)
 
 ### Overview
 

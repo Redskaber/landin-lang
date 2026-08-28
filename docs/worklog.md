@@ -26367,3 +26367,74 @@ Work Log:
   - 孤儿规则 — 多 crate coherence
 - v0.4 已完全可交付: 4395 tests, 0 failures (单线程), LLVM 22.1.8
 
+
+---
+Task ID: stage18.351
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.351 — §20 iterative audit: Recursive Param detection + typeck subst propagation (same class as Stage 18.347). L3. v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck + writeback + codegen — Param leak in nested types)
+- 对齐: Stage 18.350 worklog 下一步 "v0.5+ lazy monomorphization" — 但发现可修复的同类 bug
+- 阻断: 用户提示 "store ptr ptr null — double ptr" 示例暗示 codegen 层有 silent fallback; 调查发现 Holder<T> { ptr: *mut T } field access bug
+
+决策点 (为何选此路):
+- 为什么调查 Holder<T> { ptr: *mut T } field access?
+  → 引用 §20 (直到审查不出问题为止): Stage 18.347 修复了 Pair<A,B> 但未覆盖 *mut T 嵌套 Param
+  → 引用用户指令: "发现一个 bug 必须顺着同类路径深挖到底"
+  → 引用 §1.0 原則 4 (报错 > 静默): `let p = h.ptr` 报 false "expected *mut i64, found *mut <type param>"
+- 为什么 3 层修复 (needs_writeback recursive + infer_projection subst + skip-on-Param)?
+  → 引用 §2.2 (根因思维): 根因在多处 — needs_writeback 不递归 + infer_projection 不 subst + check_statement 不 skip
+  → 引用 §1.0 原則 6 (通解 > 特解): 一条 recursive 检查覆盖所有 composite types
+  → 引用 §12 (最优 > 最小): 拒绝只修一处, 3 层都修防止同类 bug
+- 为什么 Holder bug 仍未完全修复?
+  → 引用 §1.0 原則 9 (正确 > 妥协): typeck 在 writeback 之前运行, local_decl.ty 仍含 Param
+  → 引用 §3.2 (硬性红线): 重排 driver 顺序 (writeback before typeck) 是 v0.5+ 架构变更, 风险大
+  → 引用 §20 (迭代审计): 根因在 driver 顺序, typeck 层已尽力
+
+裁剪点:
+- L3 执行 §3.2 全校验流 + §20 迭代审计. 跳过 §14.6 (无跨阶段变更).
+
+5W2H:
+- WHAT: 修复 TD-NESTED-PARAM-WRITEBACK — `Holder<T> { ptr: *mut T }` field access 因 Param 嵌套未解析而报 false error
+- WHY: needs_writeback 只检查 outer kind, RawPtr(_, Param(0)) 被视为 concrete 跳过 writeback
+- WHO: ARCH-A (recursive 设计) + DEV-A (3 层修复) + REV-A (8 测试验证)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/writeback.rs (needs_writeback recursive) + src/typeck/infer.rs (infer_projection subst) + src/typeck/check.rs (skip-on-Param)
+- HOW:
+  (1) 5W2H 剖析: Holder<T> { ptr: *mut T } — T 在 lower 时未被替换, local_decl.ty = RawPtr(_, Param(0))
+  (2) Rust rustc: typeck 后所有 Param 都被替换, codegen 不应见到 Param
+  (3) 3 层修复:
+    - needs_writeback 改为 recursive (type_needs_writeback helper) — 检测 RawPtr(_, Param(0))
+    - infer_projection Field arm: 当 field_ty 含 Param 且 base 为 Adt(_, substs) 时, 调用 substitute
+    - check_statement + post_check_statement: 当 place 或 rvalue 含 Param 时跳过 mismatch (defer to writeback + param_check)
+  (4) 验证: 4403 tests (682 lib + 3721 integration) 全部通过, 8 新增回归测试
+- HOW MUCH: §3.2 单线程全绿 (4403 tests, 0 failures), fmt clean, 0 clippy warnings
+
+Work Log:
+- Bug 清单 (3 个根因, Stage 18.351):
+  - B1: needs_writeback 只检查 outer kind, RawPtr(_, Param(0)) 被视为 concrete
+    → 修复: 添加 type_needs_writeback recursive helper
+  - B2: infer_projection 不应用 substitute, rvalue field_ty 保持 Param
+    → 修复: 当 field_ty 含 Param 且 base 为 Adt 时, 调用 substitute(field_ty, substs)
+  - B3: check_statement + post_check_statement 在 Param 存在时报 false mismatch
+    → 修复: 当 place 或 rvalue 含 Param 时跳过 mismatch (defer to writeback + param_check)
+- 已知限制 (文档记录, 未修复):
+  - `let p = h.ptr` (h.ptr 类型 *mut T) 仍报 false error
+  - 根因: typeck 在 writeback 之前运行, local_decl.ty 仍含 Param
+  - 修复需要: 重排 driver 顺序 (writeback before typeck) — v0.5+ 架构变更
+  - 当前: param_check (Stage 18.348) 在 codegen 时报告未解析类型
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend --release -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 682 passed, 0 failed
+  → cargo test --release --test all_tests (单线程) ✅ 3721 passed (was 3713, +8 stage18_351)
+  → 总计 4403 tests, 0 failures ✅
+- 文档: worklog.md (本条) + tech-debt-register.md (TD-NESTED-PARAM-WRITEBACK 添加) + README.md (版本号 + Stage History +18.351) + RELEASE_NOTES.md (Stage 18.351 详细记录)
+
+下一步:
+- TD-NESTED-PARAM-WRITEBACK 部分修复 ✅ — needs_writeback recursive + infer_projection subst + skip-on-Param
+- 残留: Holder<T> { ptr: *mut T } field access 仍受限 (driver 顺序) — v0.5+ lazy monomorphization
+- v0.4 已完全可交付: 4403 tests, 0 failures (单线程), LLVM 22.1.8
+

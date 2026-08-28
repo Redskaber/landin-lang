@@ -720,6 +720,10 @@ mod stage18_347_generic_struct_field_access_tests;
 #[path = "v0/stage18/plan/stage18_348_param_check_tests.rs"]
 mod stage18_348_param_check_tests;
 
+// === Stage 18.351: P2 soundness fix — Recursive Param detection + typeck subst ===
+#[path = "v0/stage18/plan/stage18_351_recursive_param_tests.rs"]
+mod stage18_351_recursive_param_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

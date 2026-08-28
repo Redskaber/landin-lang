@@ -54,17 +54,39 @@ fn needs_writeback(ty: &Ty) -> bool {
     // silently maps to EmitType::I32 (the default fallback for unknown
     // TyKind in mir_type_to_emit_type).
     //
-    // Per §1.0 原則 3 (显式 > 隐式): Param should be resolved to concrete,
-    // not silently mapped to i32.
-    // Per §1.0 原則 4 (报错 > 静默): if a Param can't be resolved by
-    // writeback, codegen should fail with "unresolved generic type" error,
-    // not silently produce wrong code.
-    // Per §1.0 原則 6 (通解 > 特解): one needs_writeback predicate handles
-    // both Infer and Param (the two "needs substitution" cases).
-    matches!(
-        &ty.kind,
-        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_)
-    )
+    // Stage 18.351 (P2 soundness fix): Make needs_writeback RECURSIVE.
+    // Was: only checked the OUTER kind (e.g., `RawPtr(_, Param(0))` →
+    // outer is RawPtr → returned false → writeback skipped). This left
+    // `p.local_decl.ty = RawPtr(Mutable, Param(0))` unresolved, causing
+    // false "expected *mut <type param>, found *mut i64" errors in
+    // post_check_statement.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one recursive check handles all
+    // composite types (RawPtr/Ref/Slice/Array/Tuple/Adt/Closure/FnDef
+    // with nested Param/Infer/Error).
+    // Per §20 (iterative audit): same class as Stage 18.347 — Param leak
+    // in nested types was missed by the outer-only check.
+    type_needs_writeback(ty)
+}
+
+/// Stage 18.351: Recursive helper — does a Ty (recursively) contain
+/// any Infer/Error/Param?
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate.
+/// Per §16: pure MIR data predicate.
+fn type_needs_writeback(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_needs_writeback(inner)
+        }
+        TyKind::Array(elem, _) => type_needs_writeback(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_needs_writeback),
+        TyKind::Adt(_, substs) => substs.iter().any(type_needs_writeback),
+        TyKind::Closure(_, substs) => substs.iter().any(type_needs_writeback),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_needs_writeback),
+        _ => false,
+    }
 }
 
 /// Stage 18.347: Helper — does a Ty (recursively) contain any Param?

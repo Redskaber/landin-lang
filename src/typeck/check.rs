@@ -25,6 +25,29 @@ use crate::typeck::error::TypeError;
 use super::checker::{type_has_unresolved_substs, types_match_loose, TypeChecker};
 use super::predicates::can_coerce;
 
+/// Stage 18.351: Helper — does a Ty (recursively) contain any Param?
+///
+/// Used by `post_check_statement` to decide whether to skip the type
+/// mismatch check (because the place_ty has an unresolved Param that
+/// writeback will resolve after typeck completes).
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate.
+/// Per §16: pure MIR data predicate.
+fn type_contains_param_recursive(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param_recursive(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_param_recursive(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param_recursive),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param_recursive),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_param_recursive),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param_recursive),
+        _ => false,
+    }
+}
+
 impl TypeChecker {
     pub(super) fn post_check_statement(&mut self, mir: &MirBody, stmt: &Statement) {
         if let StatementKind::Assign(boxed) = &stmt.kind {
@@ -36,6 +59,26 @@ impl TypeChecker {
             let resolved_place = self.unify.resolve(&place_ty);
             let resolved_rvalue = self.unify.resolve(&rvalue_ty);
 
+            // Stage 18.351 (P2 soundness fix): Skip mismatch check if
+            // place_ty contains Param. typeck runs BEFORE writeback, so
+            // the local_decl.ty may still have unsubstituted Param (e.g.,
+            // `RawPtr(_, Param(0))` for `*mut T` where T wasn't resolved
+            // at lower time). Reporting a mismatch here would produce
+            // false "expected *mut <type param>, found *mut i64" errors.
+            //
+            // The writeback pass (which runs AFTER typeck) will resolve
+            // the Param via Rule 3 Field projection's substitute() call.
+            // If the resolved type still mismatches, the codegen param_check
+            // pass (Stage 18.348) will catch it as an unresolved type error.
+            //
+            // Per §1.0 原則 9 (正确 > 妥协): defer to writeback + param_check.
+            // Per §1.0 原則 4 (报错 > 静默): unresolved Param types ARE
+            // reported by param_check (Stage 18.348) at codegen time.
+            // Per §20 (iterative audit): same class as Stage 18.347 —
+            // Param leak in local_decls. typeck can't fix it (runs before
+            // writeback), but param_check catches it.
+            let place_has_param = type_contains_param_recursive(&resolved_place);
+
             let place_is_concrete =
                 !matches!(resolved_place.kind, TyKind::Infer(_) | TyKind::Error)
                     && !type_has_unresolved_substs(&resolved_place);
@@ -46,7 +89,9 @@ impl TypeChecker {
             // Stage 18.71: Only fire if BOTH are concrete AND can't coerce
             // AND can't loose-match. Per §1.0 原則 9 "正确 > 妥协": avoid
             // false positives on generic/unresolved types.
-            if place_is_concrete
+            // Stage 18.351: Also skip if place has Param (defer to writeback).
+            if !place_has_param
+                && place_is_concrete
                 && rvalue_is_concrete
                 && !can_coerce(&resolved_place, &resolved_rvalue)
                 && !types_match_loose(&resolved_place, &resolved_rvalue)
@@ -185,6 +230,19 @@ impl TypeChecker {
                 let resolved_place = self.unify.resolve(&place_ty);
                 let resolved_rvalue = self.unify.resolve(&rvalue_ty);
 
+                // Stage 18.351: Skip mismatch check if either type contains
+                // Param (unsubstituted generic placeholder). typeck runs
+                // BEFORE writeback, so the local_decl.ty may still have
+                // unsubstituted Param. Reporting a mismatch here would
+                // produce false errors. Writeback + param_check (Stage
+                // 18.348) catch unresolved types at codegen time.
+                //
+                // Per §1.0 原則 9 (正确 > 妥协): defer to writeback + param_check.
+                // Per §1.0 原則 4 (报错 > 静默): unresolved Param types ARE
+                // reported by param_check (Stage 18.348) at codegen time.
+                let place_or_rvalue_has_param = type_contains_param_recursive(&resolved_place)
+                    || type_contains_param_recursive(&resolved_rvalue);
+
                 let place_is_concrete =
                     !matches!(resolved_place.kind, TyKind::Infer(_) | TyKind::Error)
                         && !type_has_unresolved_substs(&resolved_place);
@@ -192,7 +250,8 @@ impl TypeChecker {
                     !matches!(resolved_rvalue.kind, TyKind::Infer(_) | TyKind::Error)
                         && !type_has_unresolved_substs(&resolved_rvalue);
 
-                if place_is_concrete
+                if !place_or_rvalue_has_param
+                    && place_is_concrete
                     && rvalue_is_concrete
                     && !can_coerce(&resolved_place, &resolved_rvalue)
                     && !types_match_loose(&resolved_place, &resolved_rvalue)
@@ -255,13 +314,17 @@ impl TypeChecker {
                     } else {
                         let _ = self.unify.unify(&place_ty, &rvalue_ty, stmt.span);
                     }
-                } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
-                    // Stage 15.82: use stmt.span for unify errors (was:
-                    // Span::DUMMY from mismatch(), producing "1:1").
-                    if stmt.span != Span::DUMMY {
-                        e.span = stmt.span;
+                } else if !place_or_rvalue_has_param {
+                    // Stage 18.351: Skip unify if either type has Param
+                    // (defer to writeback + param_check).
+                    if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
+                        // Stage 15.82: use stmt.span for unify errors (was:
+                        // Span::DUMMY from mismatch(), producing "1:1").
+                        if stmt.span != Span::DUMMY {
+                            e.span = stmt.span;
+                        }
+                        self.errors.push(*e);
                     }
-                    self.errors.push(*e);
                 }
                 // The resolved type will be written back to local_decls
                 // in Phase 3 of check_mir_body (after all constraints

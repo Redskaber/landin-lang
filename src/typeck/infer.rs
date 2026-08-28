@@ -26,6 +26,29 @@ use crate::typeck::error::TypeError;
 use super::checker::TypeChecker;
 use super::predicates::{is_arithmetic_ty, is_negatable_ty, is_notable_ty, is_shift_count_ty};
 
+/// Stage 18.351: Helper — does a Ty (recursively) contain any Param?
+///
+/// Used by `infer_projection` Field arm to decide whether to apply
+/// `substitute(field_ty, base_substs)` for unsubstituted generic placeholders.
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
+/// "needs substitution" check visible at every callsite.
+/// Per §16: pure MIR data predicate, no HIR access.
+fn type_contains_param(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_param(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param),
+        _ => false,
+    }
+}
+
 impl TypeChecker {
     pub(super) fn infer_rvalue_type_only(&mut self, mir: &MirBody, rv: &Rvalue) -> Ty {
         use crate::mir::place::Rvalue;
@@ -213,6 +236,42 @@ impl TypeChecker {
                                 place_span,
                             ));
                             return Ty::from_kind(TyKind::Error);
+                        }
+                    }
+                }
+                // Stage 18.351 (P2 soundness fix): Apply generic substs from
+                // the base struct's resolved type to the field_ty.
+                //
+                // Why this is needed in typeck (not just writeback):
+                // typeck runs BEFORE writeback (driver order: typeck →
+                // writeback_type_propagation). At typeck time, the
+                // `field_ty` stored in `ProjectionElem::Field(_, field_ty)`
+                // may still contain unsubstituted `Param(N)` placeholders
+                // (because MIR lower's `resolve_field_type` couldn't
+                // resolve substs at lower time). Without applying substs
+                // here, typeck sees `*mut Param(0)` instead of `*mut i64`,
+                // producing false "expected *mut i64, found *mut <type param>"
+                // errors.
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): explicit subst in typeck.
+                // Per §1.0 原則 6 (通解 > 特解): one subst path for all
+                // generic struct field accesses in typeck (mirrors
+                // writeback Rule 3 + codegen detect_place_type fix from
+                // Stage 18.347).
+                // Per §20 (iterative audit): same class as Stage 18.347
+                // (Param leak in field projection) — typeck path was missed.
+                if type_contains_param(field_ty) {
+                    if let TyKind::Adt(_, substs) = &base_ty.kind {
+                        if !substs.is_empty() {
+                            return crate::mir::substitute::substitute(field_ty, substs);
+                        }
+                    }
+                    // Also handle Ref-to-Adt base (e.g., `&self.field`).
+                    if let TyKind::Ref(_, _, inner) = &base_ty.kind {
+                        if let TyKind::Adt(_, substs) = &inner.kind {
+                            if !substs.is_empty() {
+                                return crate::mir::substitute::substitute(field_ty, substs);
+                            }
                         }
                     }
                 }
