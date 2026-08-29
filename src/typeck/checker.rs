@@ -192,23 +192,16 @@ impl TypeChecker {
 
         // Phase 3.5: Writeback field types using the pre-computed table.
         if let Some(table) = field_ty_table {
-            // Stage 18.388 (v0.5+ Phase 3 step 5): Phase 3.5 step 1 REMOVED!
-            // `writeback_field_types_with_table` was substituting field_ty in
-            // `ProjectionElem::Field(_, field_ty)` because codegen couldn't
-            // resolve field types when local_decl.ty was Infer.
-            //
-            // Fix: Stage 18.388 added `try_resolve_field_from_adt_layouts`
-            // in codegen (places.rs) — when field_ty is Infer, codegen now
-            // resolves the field type from AdtLayouts (which has pre-computed
-            // field types for all structs). This makes step 1 redundant.
-            //
-            // Writeback phases: 8 → 7 (Phase 1, 2, 3, 3.5-step2, 4, 5 + closures)
-            //
-            // Per §1.0 原則 5 (去除兼容思维): removed the workaround.
-            // Per §12 (最优 > 最小): root-cause fix in codegen, not typeck.
-            // Per §1.6 终极检验: this is the root-cause fix for codegen dependency.
-            // Per §20: same class as Stage 18.380/18.381 — removing workaround phases.
+            // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
+
+            // Stage 18.389 (v0.5+ Phase 3 step 6): Phase 3.5 step 2 STILL required.
+            // Disabling causes 5 test failures — step 2 writes dest_local.ty for
+            // field-load locals (e.g., `let p = b.a`). codegen's detect_place_type
+            // can resolve field types from AdtLayouts (Stage 18.388), but dest_local.ty
+            // stays Infer when step 2 is disabled — affects codegen paths that read
+            // local_decl.ty directly (not via detect_place_type).
+            // v0.5+ Phase 3 step 7: refactor codegen to always use detect_place_type.
             self.writeback_field_load_locals_with_table(mir, table);
         }
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.

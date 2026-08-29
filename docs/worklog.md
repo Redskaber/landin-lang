@@ -29514,3 +29514,51 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 3 step 6: 尝试移除 Phase 3.5 step 2 (writeback_field_load_locals_with_table) — 用类似 AdtLayouts fallback
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.389
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.389 — v0.5+ Phase 3 step 6: Phase 3.5 step 2 redundancy test (5 failures — step 2 still required). L2 (实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (实验性 — 注释 1 行 + 验证)
+- 对齐: Stage 18.388 成功移除 Phase 3.5 step 1; §20 顺路径验证 step 2
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §20: Stage 18.388 成功用 try_resolve_field_from_adt_layouts 移除 step 1 — 同类验证 step 2
+- 引用 §1.0 原則 11: 实验验证边界
+
+裁剪点:
+- L2 实验 — 注释 1 行 + 验证; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 验证 Phase 3.5 step 2 (writeback_field_load_locals_with_table) 是否可移除
+- WHY: Stage 18.388 的 AdtLayouts fallback 可能也覆盖 step 2 的路径
+- HOW: 禁用 step 2 → 5 失败 → 恢复
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures (恢复后)
+
+Work Log:
+- 实验: 禁用 Phase 3.5 step 2 → 5 失败
+  - stage18_288_audit_div_shl_const_type_tests::stage18_288_neg_shl_on_str
+  - stage18_288_audit_div_shl_const_type_tests::stage18_288_neg_shl_on_unit
+  - stage18_332_sret_abi_tests::stage18_332_sret_invalid_field_access
+  - stage18_334_text_ir_tests::stage18_334_text_ir_byval_sret_combined
+  - stage18_334_text_ir_tests::stage18_334_text_ir_deterministic
+- 根因: step 2 写 dest_local.ty; codegen 某些路径直接读 local_decl.ty (不经过 detect_place_type)
+- 恢复 step 2 + 添加 Stage 18.389 注释
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Stage Summary:
+- Phase 3.5 step 2 confirmed NOT redundant (5 failures)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用: §20 (同类路径深挖), §1.0 原則 11 (确定性边界)
+- 架构洞察:
+  * Phase 3.5 step 1 REMOVED (Stage 18.388) — codegen 从 AdtLayouts 解析 field_ty
+  * Phase 3.5 step 2 STILL required — codegen 某些路径读 local_decl.ty (不经过 detect_place_type)
+  * v0.5+ Phase 3 step 7: 重构 codegen 始终用 detect_place_type (而非直接读 local_decl.ty)
+
+下一步:
+- v0.5+ Phase 3 step 7: 重构 codegen 消除直接读 local_decl.ty 的路径 → 让 step 2 可移除
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
