@@ -372,7 +372,9 @@ pub fn run_const_prop(mir: &mut MirBody) {
                 HashMap::new()
             } else if bb_preds.len() == 1 {
                 // Single predecessor — inherit its outgoing map.
-                bb_outgoing[bb_preds.iter().next().unwrap().0 as usize].clone()
+                // Guarded by `bb_preds.len() == 1`: iter().next() always Some.
+                bb_outgoing[bb_preds.iter().next().expect("preds non-empty (len==1)").0 as usize]
+                    .clone()
             } else {
                 // Merge point — intersect all predecessors' outgoing maps.
                 intersect_const_maps(bb_preds, &bb_outgoing)
@@ -494,7 +496,11 @@ fn intersect_const_maps(
         return HashMap::new();
     }
     // Start with the first predecessor's outgoing map as the candidate set.
-    let first_pred = preds.iter().next().unwrap();
+    // Guarded by `preds.is_empty()` early-return above: iter().next() always Some.
+    let first_pred = preds
+        .iter()
+        .next()
+        .expect("preds non-empty (early-return above)");
     let first_map = &bb_outgoing[first_pred.0 as usize];
     let mut result: HashMap<crate::mir::place::LocalId, Const> = first_map.clone();
     // For each other predecessor, keep only locals that agree on value.

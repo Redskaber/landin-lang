@@ -44,7 +44,8 @@ impl<'a> Lexer<'a> {
                 Some(_) => {
                     // Read full UTF-8 char
                     let rest = &self.src[self.pos as usize..];
-                    let c = rest.chars().next().unwrap();
+                    // Guarded by `Some(_)` arm: rest has at least one char.
+                    let c = rest.chars().next().expect("Some(_) arm => rest non-empty");
                     buf.push(c);
                     self.pos += c.len_utf8() as u32;
                 }
@@ -426,7 +427,8 @@ impl<'a> Lexer<'a> {
             // Regular char: 'a'
             Some(_) => {
                 let rest = &self.src[self.pos as usize..];
-                let c = rest.chars().next().unwrap();
+                // Guarded by `Some(_)` arm: rest has at least one char.
+                let c = rest.chars().next().expect("Some(_) arm => rest non-empty");
                 self.pos += c.len_utf8() as u32;
                 if self.peek() == Some(b'\'') {
                     self.bump();

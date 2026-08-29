@@ -4,11 +4,67 @@
 |---|---|
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
-| **Date** | 2026-08-28 |
+| **Date** | 2026-08-29 |
 | **Test count** | 682 lib tests + 3721 integration tests = 4403 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test (50 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348` + `stage18_351`) |
+
+---
+
+## v0.510.0 — Stage 18.372 (TD-UNWRAP-GUARDED-EXPECT audit + TD-EXPECT-* reclassification)
+
+### Stage 18.372: 15 production guarded unwraps → expect with invariant docs
+
+**Background**: Following §20 (Bug probability distribution reasoning)
+from Stage 18.127 (which closed TD-UNWRAP-DRIVER + TD-UNWRAP-BORROWCK-REGION),
+this stage audits the entire codebase for remaining guarded `.unwrap()`
+calls that lack explicit invariant documentation.
+
+**Audit method**: `find src -name '*.rs' ! -name '*_tests.rs' ! -name '*_test*.rs'`
++ awk state machine to skip `#[cfg(test)]` blocks + filter comment lines.
+
+**Result**: 15 production guarded unwraps found across 9 files, all
+converted to `.expect("invariant doc")` with `// Guarded by` comments
+explaining the assumption. No control flow changes; pure documentation
+of invariants for future reviewers.
+
+**Files touched (9)**:
+- `src/parser/expr.rs` (3): `Self::binop_bp(self.peek()).unwrap()` → expect,
+  guarded by `while matches!` arm (Shl/Shr, Plus/Minus, Star/Slash/Percent)
+- `src/mir/optimization.rs` (2): `preds.iter().next().unwrap()` → expect,
+  guarded by `len()==1` arm and `is_empty()` early-return
+- `src/mir/lower/pattern_lower.rs` (1): `arm.guard.as_ref().unwrap()` → expect,
+  guarded by `has_guard` flag
+- `src/lexer/token.rs` (1): `kw.keyword_str().unwrap()` → expect,
+  guarded by `is_keyword()` guard arm
+- `src/lexer/string.rs` (2): `rest.chars().next().unwrap()` → expect,
+  guarded by `Some(_)` arm
+- `src/resolve/module_build.rs` (1): `path.segments.last().unwrap()` → expect,
+  guarded by `is_empty()` early-return
+- `src/codegen/text/aggregate.rs` (2): `sret_name.as_ref().unwrap()` → expect,
+  guarded by `use_sret` branch
+- `src/codegen/llvm/aggregate.rs` (2): `sret_slot.unwrap()` → expect,
+  guarded by `use_sret` branch
+- `src/codegen/llvm/helpers.rs` (1): defensive `CString::new("").unwrap()` → expect,
+  inside `unwrap_or_else` fallback (empty CString always valid)
+
+**Reclassification**: TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS
+were marked "Open — v0.2 P2" in §4.1/§4.5 but already resolved in
+§2.11 at Stage 18.251 (37 expect() all in test code with messages;
+36 expect() all are Parser::expect method calls with messages). Status
+propagated to §4.1 + §4.5.
+
+**Design principles cited**:
+- §1.0 原則 3 (显式 > 隐式): guarded unwrap should still document the invariant
+- §1.0 原則 4 (报错 > 静默): `.expect("...")` shows reason on panic vs `.unwrap()` silent
+- §2 原则 3 + §2 原则 4: same as above (file-level principles)
+- §20 (Bug probability distribution reasoning): Stage 18.127 fixed 7 unwraps;
+  Stage 18.372 audits the rest of the codebase for the same class
+
+**Validation**: §3.2 full green — 4403 tests (682 lib + 3721 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
 
 ---
 

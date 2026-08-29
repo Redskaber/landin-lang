@@ -244,7 +244,8 @@ impl AggregateEmitter for LLVMSysEmitter {
                 let loaded = LLVMBuildLoad2(
                     self.builder,
                     ret_llvm_ty,
-                    sret_slot.unwrap(),
+                    // Guarded by `use_sret` branch: sret_slot is Some.
+                    sret_slot.expect("use_sret => sret_slot is Some"),
                     load_name.as_ptr(),
                 );
                 self.fresh_named(loaded)
@@ -479,7 +480,8 @@ impl AggregateEmitter for LLVMSysEmitter {
                 let loaded = LLVMBuildLoad2(
                     self.builder,
                     ret_llvm_ty,
-                    sret_slot.unwrap(),
+                    // Guarded by `use_sret` branch: sret_slot is Some.
+                    sret_slot.expect("use_sret => sret_slot is Some"),
                     load_name.as_ptr(),
                 );
                 self.fresh_named(loaded)

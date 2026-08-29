@@ -262,7 +262,8 @@ impl<'a> Parser<'a> {
             return lhs;
         }
         while matches!(self.peek(), TokenKind::Shl | TokenKind::Shr) {
-            let (op, _) = Self::binop_bp(self.peek()).unwrap();
+            // Guarded by `matches!`: peek is Shl/Shr, both mapped by binop_bp.
+            let (op, _) = Self::binop_bp(self.peek()).expect("Shl/Shr always map to binop");
             let span = lhs.span();
             self.bump();
             let rhs = self.parse_add_expr();
@@ -282,7 +283,8 @@ impl<'a> Parser<'a> {
             return lhs;
         }
         while matches!(self.peek(), TokenKind::Plus | TokenKind::Minus) {
-            let (op, _) = Self::binop_bp(self.peek()).unwrap();
+            // Guarded by `matches!`: peek is Plus/Minus, both mapped by binop_bp.
+            let (op, _) = Self::binop_bp(self.peek()).expect("Plus/Minus always map to binop");
             let span = lhs.span();
             self.bump();
             let rhs = self.parse_mul_expr();
@@ -302,7 +304,9 @@ impl<'a> Parser<'a> {
             self.peek(),
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent
         ) {
-            let (op, _) = Self::binop_bp(self.peek()).unwrap();
+            // Guarded by `matches!`: peek is Star/Slash/Percent, all mapped by binop_bp.
+            let (op, _) =
+                Self::binop_bp(self.peek()).expect("Star/Slash/Percent always map to binop");
             let span = lhs.span();
             self.bump();
             let rhs = self.parse_cast_expr();

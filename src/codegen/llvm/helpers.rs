@@ -112,9 +112,13 @@ pub(crate) fn cstr_owned(s: &str) -> CString {
                 Err(_) => {
                     // This should never happen for hardcoded literals.
                     // If it does, fall back to an empty CString (safe default).
+                    // Empty CString always succeeds (no interior nul bytes).
                     cache.insert(
                         s.to_string(),
-                        CString::new("").unwrap_or_else(|_| CString::new("").unwrap()),
+                        CString::new("").unwrap_or_else(|_| {
+                            CString::new("")
+                                .expect("empty CString is always valid (no interior nul bytes)")
+                        }),
                     );
                 }
             }

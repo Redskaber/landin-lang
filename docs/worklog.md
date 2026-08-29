@@ -27901,3 +27901,99 @@ Work Log:
 - README.md 完全重构重排完成 ✅
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8, README v0.510.0
 
+
+
+---
+Task ID: stage18.372
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.372 — TD-UNWRAP-GUARDED-EXPECT 修复 (15 production guarded unwraps → expect with invariant docs) + TD-EXPECT-* 重分类. L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (15 个 unwrap → expect 改造, 跨 7 文件, ≤500 行总变更)
+- 对齐: tech-debt-register.md §4.5 列 TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS 为 Open P2; §20 Bug 概率分布推理 → 应审计同类
+- 阻断: 4403 tests 全绿基线已确认 (跑 fmt + clippy + test --release 三件套)
+
+决策点 (为何选此路):
+- 为什么选 unwrap→expect 而非其他 TD?
+  → 引用用户指令: "推进任务（修复技术债务（tech-debt）等）"
+  → 引用 §20 (Bug 概率分布推理): Stage 18.127 已修复 driver.rs 4 unwrap + borrowck 3 unwrap; 同类技术债 (guarded unwrap lacking invariant doc) 必然散布在代码库其他位置
+  → 引用 §1.0 原則 3 (显式 > 隐式): guarded unwrap 虽然安全, 但隐含 invariant 应显式化以便审查
+  → 引用 §2 原則 4 (报错 > 静默): .unwrap() 静默吞错; .expect("invariant") 至少在 panic 时显示原因
+- 为什么同时重分类 TD-EXPECT-*?
+  → §4.5 列两条 TD 为 "Open — v0.2 P2", 但 §2.11 已在 Stage 18.251 标记为 ✅ Resolved
+  → 引用 §1.0 原則 4 (报错 > 静默): 文档状态不一致是隐性技术债, 必须修正
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅 unwrap→expect 文本改造, 不改变控制流; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响错误处理路径, 现有 4403 测试已覆盖
+
+5W2H:
+- WHAT: 全代码库审计 + 修复 15 个生产代码 guarded unwrap() (排除 #[cfg(test)] 与 *_tests.rs 测试基础设施文件)
+- WHY: 显式化 invariant 假设, 让未来 panic 至少带上下文 (§2 原则 4)
+- WHO: ARCH-A (审计分类) + DEV-A (改造) + REV-A (校验) + QA-A (§3.2 全绿)
+- WHEN: §3.2 全绿后停止
+- WHERE: 7 文件 — src/parser/expr.rs (3 binop_bp), src/mir/optimization.rs (2 preds.next), src/mir/lower/pattern_lower.rs (1 arm.guard), src/lexer/token.rs (1 kw.keyword_str), src/lexer/string.rs (2 rest.chars().next), src/resolve/module_build.rs (1 path.segments.last), src/codegen/text/aggregate.rs (2 sret_name), src/codegen/llvm/aggregate.rs (2 sret_slot), src/codegen/llvm/helpers.rs (1 defensive CString fallback)
+- HOW: 5 步流程
+  (1) 全代码库扫描: find src -name '*.rs' ! -name '*_tests.rs' -exec awk '/^#\[cfg\(test\)\]/{intest=1} intest==0 && /\.unwrap\(\)/ && !/^[[:space:]]*\/\//' {} \;
+  (2) 上下文阅读: 对每个 unwrap 读 ±10 行确认守护条件 (matches! / early-return / is_some check / arm guard)
+  (3) 改造: unwrap() → expect("invariant doc") + 添加 // Guarded by 注释
+  (4) fmt 自动修正长行 (3 处需重排)
+  (5) §3.2 三件套验证
+- HOW MUCH: §3.2 硬性红线全绿 — 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 Bug 概率分布推理审计:
+  - 扫描源: find src -name '*.rs' ! -name '*_tests.rs' ! -name '*_test*.rs' 排除测试基础设施
+  - 排除 #[cfg(test)] mod tests 块 (使用 awk 状态机)
+  - 排除注释行 (line !~ /^[[:space:]]*\/\//)
+  - 找到 15 个真实生产 unwrap() (排除 4 个 driver_validations.rs 的注释引用 + 2 个 helpers.rs 的文档注释)
+- 文件分布 (7 files):
+  1. src/parser/expr.rs:265,285,305 — Self::binop_bp(self.peek()).unwrap() in while matches! arm
+  2. src/mir/optimization.rs:375 — bb_preds.iter().next().unwrap() in len()==1 arm
+  3. src/mir/optimization.rs:497 — preds.iter().next().unwrap() after is_empty early-return
+  4. src/mir/lower/pattern_lower.rs:660 — arm.guard.as_ref().unwrap() in has_guard arm
+  5. src/lexer/token.rs:293 — kw.keyword_str().unwrap() in is_keyword() guard arm
+  6. src/lexer/string.rs:47,429 — rest.chars().next().unwrap() in Some(_) arm
+  7. src/resolve/module_build.rs:527 — path.segments.last().unwrap() after is_empty early-return
+  8. src/codegen/text/aggregate.rs:132,247 — sret_name.as_ref().unwrap() in use_sret branch
+  9. src/codegen/llvm/aggregate.rs:247,482 — sret_slot.unwrap() in use_sret branch
+  10. src/codegen/llvm/helpers.rs:117 — CString::new("").unwrap() inside unwrap_or_else defensive fallback
+- 改造原则:
+  - 每个 expect("...") 消息描述守护条件 (e.g., "Shl/Shr always map to binop", "preds non-empty (early-return above)")
+  - 添加 // Guarded by `XXX` 注释让代码审查时一目了然
+  - 不改变控制流 (仅 .unwrap() → .expect("...") + 注释)
+- fmt 自动修正: cargo fmt 修正了 3 处长行 (token.rs:293, optimization.rs:375, helpers.rs:117)
+- §3.2 全校验流 (Stage 18.372 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4403 tests (682 lib + 3721 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md:
+    * Header 更新: "last updated Stage 18.372 — TD-UNWRAP-GUARDED-EXPECT audit + TD-EXPECT-* reclassification"
+    * §4.1 By Severity: P2 count 26→24 (移除 TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS); 新增 "✅ Reclassified in 18.251" 行; 新增 "✅ Resolved in 18.372" 行
+    * §4.5 By §2 Principle Violations: TD-EXPECT-* 状态从 "Open — v0.2 P2" 更新为 "✅ Resolved Stage 18.251"; 新增 TD-UNWRAP-GUARDED-EXPECT 行 (✅ Resolved Stage 18.372, 详细描述 7 文件 + 15 unwrap + 设计原则引用)
+  - README.md:
+    * Header 版本: Stage 18.370 → 18.372
+    * Header status: 新增 "TD-UNWRAP-GUARDED-EXPECT closed Stage 18.372 — 15 production guarded unwraps → expect-with-invariant"
+    * Tech Debt & Known Limitations 表: 新增 TD-UNWRAP-GUARDED-EXPECT 行
+    * Documentation 章节 tech-debt-register 描述: "10 stubs/limitations documented" → "10 stubs/limitations + 4 structural unwrap/expect TDs resolved Stage 18.127-18.372"
+  - worklog.md: 本条 (Stage 18.372)
+
+Stage Summary:
+- TD-UNWRAP-GUARDED-EXPECT CLOSED ✅ — 15 production guarded .unwrap() → .expect("invariant doc") across 7 files
+- TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS 重分类同步到 §4.1 + §4.5 (状态早已在 §2.11 标记为 18.251 Resolved, 但 §4.1/§4.5 滞后)
+- §3.2 全绿: 4403 tests (682 lib + 3721 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/parser/expr.rs, src/mir/optimization.rs, src/mir/lower/pattern_lower.rs, src/lexer/token.rs, src/lexer/string.rs, src/resolve/module_build.rs, src/codegen/text/aggregate.rs, src/codegen/llvm/aggregate.rs, src/codegen/llvm/helpers.rs (9 files modified)
+- 设计原则引用:
+  * §1.0 原則 3 (显式 > 隐式): guarded unwrap 应显式化 invariant
+  * §1.0 原則 4 (报错 > 静默): expect 比 unwrap 至少在 panic 时显示原因
+  * §2 原则 3 + §2 原则 4: 同上
+  * §20 (Bug 概率分布推理): Stage 18.127 修复 driver + borrowck 同类, Stage 18.372 扫描整个代码库找出剩余同类
+  * §13.4 J1-J6: 不涉及 (无新增模块, 仅 unwrap→expect 文本改造)
+
+下一步 (下一 MUV):
+- §20 迭代审计: 是否还有同类技术债?
+  - 候选 1: 生产代码 panic!() / todo!() / unimplemented!() / unreachable!() 审计 (预期少量, 大部分在 test code)
+  - 候选 2: 生产代码 .unwrap_or(default) 静默降级审计
+  - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.372

@@ -290,7 +290,12 @@ impl std::fmt::Display for TokenKind {
             TokenKind::DocComment(_, _) => write!(f, "doc comment"),
             TokenKind::Eof => write!(f, "end of file"),
             kw if kw.is_keyword() => {
-                write!(f, "`{}`", kw.keyword_str().unwrap())
+                // Guarded by `is_keyword()`: only true keywords have keyword_str.
+                write!(
+                    f,
+                    "`{}`",
+                    kw.keyword_str().expect("is_keyword => keyword_str is Some")
+                )
             }
             TokenKind::Plus => write!(f, "`+`"),
             TokenKind::Minus => write!(f, "`-`"),

@@ -524,7 +524,13 @@ impl Resolver {
             return;
         }
 
-        let target_module_name = path.segments.last().unwrap().ident.name;
+        // Guarded by `is_empty()` early-return above: segments has at least one.
+        let target_module_name = path
+            .segments
+            .last()
+            .expect("segments non-empty (early-return above)")
+            .ident
+            .name;
 
         // Try to find the target module.
         if let Some(child_mod) = self.module_tree.child(target_module_name) {

@@ -129,7 +129,8 @@ impl AggregateEmitter for TextEmitter {
                 "  %v{} = load {}, ptr {}",
                 load_r,
                 ret_str,
-                sret_name.as_ref().unwrap()
+                // Guarded by `use_sret` branch: sret_name is Some.
+                sret_name.as_ref().expect("use_sret => sret_name is Some")
             ));
             format!("%v{}", load_r)
         } else if *ret_ty == EmitType::Void {
@@ -244,7 +245,8 @@ impl AggregateEmitter for TextEmitter {
             let ret_str = emit_type_to_llvm_str(ret_ty);
             self.line(&format!(
                 "  %v{load_r} = load {ret_str}, ptr {}",
-                sret_name.as_ref().unwrap()
+                // Guarded by `use_sret` branch: sret_name is Some.
+                sret_name.as_ref().expect("use_sret => sret_name is Some")
             ));
             format!("%v{load_r}")
         } else if *ret_ty == EmitType::Void {

@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-28 (last updated Stage 18.352 — Temporary stubs & deferred fixes audit)
+> **Date**: 2026-08-29 (last updated Stage 18.372 — TD-UNWRAP-GUARDED-EXPECT audit + TD-EXPECT-* reclassification)
 > **Version**: v0.510.0
-> **Status**: Stage 18.352 audited temporary stubs (loop {} markers, Region::Erased, i32 fallback, driver order, drop elision, lifetime elision, projection resolver) per user instruction. 8 stubs documented in §2.5.1 with fix plans. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TD: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs lang features). 4403 tests (682 lib + 3721 integration), 0 failures (single-thread, ulimit -s unlimited). v0.4 release-ready.
+> **Status**: Stage 18.372 closed TD-UNWRAP-GUARDED-EXPECT (15 production guarded `.unwrap()` → `.expect("invariant doc")` across 7 files) and reclassified TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS (already resolved Stage 18.251, status propagated to §4.1/§4.5). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs fat pointer syntax), TD-STUB-PRELUDE-LOOP-BODY (same), TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (needs resolve_place_type_with_table recursive substitute). 4403 tests (682 lib + 3721 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -328,7 +328,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----------|-------|-----|
 | P0 (致命) | 0 | — (all resolved) |
 | P1 (严重) | 0 | — (all resolved) |
-| P2 (一般) | 26 | TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-RVALUE-NO-SPAN, TD-EMITTER-PANIC, TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-STRING-AS-STR-ALIAS, TD-HEAP-ALLOC, TD-VEC-MVP, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS |
+| P2 (一般) | 24 | TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-RVALUE-NO-SPAN, TD-EMITTER-PANIC, TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-STRING-AS-STR-ALIAS, TD-HEAP-ALLOC, TD-VEC-MVP, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8) |
 | P3 (优化) | 4 | 4 文件 LOC < 2.0× 阈值（control_flow/mod.rs/region_inference/resolver.rs） |
 | ✅ Resolved in 18.127 | 2 | TD-UNWRAP-DRIVER, TD-UNWRAP-BORROWCK-REGION |
 | ✅ Resolved in 18.128 | 1 | TD-LOC-TYPECK-CHECKER (拆分为 4 文件, 全部 < 1500 LOC) |
@@ -337,6 +337,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.134-18.250 | 1 | TD-LOC-DRIVER (mod.rs 768 + compile_inner.rs 982 + validations 936 + scan 618 + object_safety 164, 全部 < 1500) |
 | ✅ Resolved in 18.247-18.249 | 1 | TD-LOC-MACRO-EXPAND (mod.rs 1138 + collection 240 + expansion 201 + builtin_macros/ + print 686 + compile_time 664 + low_level 601, 全部 < 1500) |
 | ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
+| ✅ Reclassified in 18.251 | 2 | TD-EXPECT-TYPECK-SOLVER (37 expect in test code, all have messages), TD-EXPECT-PARSER-ITEMS (36 calls to Parser::expect method, all take messages) |
 | ✅ Resolved in 18.148 | 1 | TD-PROJECTION-RESOLVER (moved typeck → driver) |
 | ✅ Resolved in 18.151 | 3 | TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD |
 | 🟡 Phase 1 Resolved in 18.152 | 1 | TD-SINGLE-FILE (ModuleLoader + compile_project; phases 2-4 remain) |
@@ -351,6 +352,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Partial in 18.162 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 75 个负面测试, 18.2% → 22.9%; 接近 25%) |
 | 📋 Task Review in 18.163 | 1 | TD-STDLIB-FACADE (拆分为 Option/Result + heap alloc + String/Vec; 发现 codegen 无 malloc/free 支持) |
 | ✅ Resolved in 18.164 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 85 个负面测试 vtable/closure/generics, 22.9% → 27.8%, 超过 25% 目标) |
+| ✅ Resolved in 18.372 | 1 | TD-UNWRAP-GUARDED-EXPECT (15 production guarded unwraps → expect with invariant docs) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
@@ -382,7 +384,8 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----|-----------|-------------|--------|
 | TD-UNWRAP-BORROWCK-REGION | §2 原则 4 (报错 > 静默) | 3 SCC 算法 unwrap → `expect("...")` | ✅ Resolved 18.127 |
 | TD-UNWRAP-DRIVER | §2 原则 3 (显式 > 隐式) + §2 原则 4 | 4 `f.body.unwrap()` after `is_some()` → `if let Some(b)` | ✅ Resolved 18.127 |
-| TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message | Open — v0.2 P2 |
-| TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message | Open — v0.2 P2 |
+| TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message | ✅ Resolved Stage 18.251 — audit: ALL 37 `.expect()` calls are inside `#[cfg(test)] mod tests` with descriptive messages. No production code has bare expect(). No action needed. |
+| TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message | ✅ Resolved Stage 18.251 — audit: ALL 36 calls are to `self.expect(&TokenKind, &str)` — a custom parser method that pushes ParseError (non-panicking). Not `Option::expect()`. `what` parameter already has descriptive messages. No action needed. |
 | TD-UNWRAP-CODEGEN-LLVM-MOD | §2 原则 4 | 1 unwrap (`strip_prefix('@').unwrap()`) | ✅ Resolved Stage 18.151 (replaced with `if let Some` pattern) |
 | TD-BINARYOP2-PANIC | §2 原则 4 + §2 原则 9 (正确 > 妥协) | panic 替代 CodegenError 传播 | ✅ Resolved Stage 18.151 (returns `Err(CodegenError)` via `CodegenResult`) |
+| TD-UNWRAP-GUARDED-EXPECT | §2 原则 3 (显式 > 隐式) + §2 原则 4 (报错 > 静默) | 15 production `.unwrap()` calls guarded by prior checks but lacking explicit invariant docs | ✅ Resolved Stage 18.372 — full codebase audit (excluding test infrastructure files `*_tests.rs`). All 15 guarded unwraps converted to `expect("invariant doc")` with comments explaining the guard. Files touched (7): `src/parser/expr.rs` (3 binop_bp), `src/mir/optimization.rs` (2 preds.next), `src/mir/lower/pattern_lower.rs` (1 arm.guard), `src/lexer/token.rs` (1 kw.keyword_str), `src/lexer/string.rs` (2 rest.chars().next), `src/resolve/module_build.rs` (1 path.segments.last), `src/codegen/text/aggregate.rs` (2 sret_name), `src/codegen/llvm/aggregate.rs` (2 sret_slot), `src/codegen/llvm/helpers.rs` (1 defensive CString fallback). Per §1.0 原則 3 (显式 > 隐式): guarded unwrap should still document the invariant. Per §20 (iterative audit): same class as TD-UNWRAP-DRIVER (Stage 18.127) + TD-UNWRAP-BORROWCK-REGION (Stage 18.127). |

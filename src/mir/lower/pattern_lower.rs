@@ -657,7 +657,8 @@ pub(crate) fn lower_match(
             // If no guard (was_claimed but unguarded), skip directly to arm body.
             let body_block = if has_guard {
                 cx.current_block = after_pattern_check_block;
-                let guard_expr = arm.guard.as_ref().unwrap();
+                // Guarded by `has_guard`: arm.guard is Some.
+                let guard_expr = arm.guard.as_ref().expect("has_guard => arm.guard is Some");
                 let guard_local = lower_expr_to_operand(cx, guard_expr, None);
                 cx.terminate_kind(TerminatorKind::SwitchInt {
                     discr: Operand::Copy(Place::local(guard_local, guard_expr.span)),
