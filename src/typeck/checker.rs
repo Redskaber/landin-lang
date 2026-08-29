@@ -195,6 +195,14 @@ impl TypeChecker {
             self.writeback_field_types_with_table(mir, table);
             self.writeback_field_load_locals_with_table(mir, table);
         }
+        // Stage 18.382 (v0.5+ Phase 1 step 4 experiment): Confirmed Phase 3.5
+        // step 1 (writeback_field_types_with_table) is NOT redundant — disabling
+        // it causes 2 test failures (stage18_334_text_ir_byval_sret_combined +
+        // stage18_334_text_ir_deterministic). Error: "defined with type 'i32'
+        // but expected 'i64'" — codegen reads ProjectionElem::Field(_, field_ty)
+        // directly (not via typeck's infer_projection which applies substitute).
+        // step 1 is REQUIRED for codegen to see substituted field_ty.
+        // v0.5+ Phase 3 (FieldTyTable removal) will eliminate this dependency.
 
         // Stage 18.355 (P2 soundness fix): Phase 3.7 — Post-table re-writeback.
         //

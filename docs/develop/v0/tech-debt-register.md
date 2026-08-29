@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.381 — v0.5+ Phase 1 step 3: Phase 0 removed)
+> **Date**: 2026-08-29 (last updated Stage 18.382 — v0.5+ Phase 1 step 4 experiment)
 > **Version**: v0.510.0
-> **Status**: Stage 18.381 achieved v0.5+ Phase 1 milestone 2 — **Phase 0 (pre-writeback) successfully REMOVED**. After Stage 18.380's substitute() fix in writeback_field_load_locals_with_table, Phase 0 is no longer needed — all 4409 tests pass with Phase 0 disabled. Root cause: Stage 18.380 fixed the FieldTyTable overwrite at both sites (step 1 + step 2), so local_decls no longer regress to unsubstituted Param after Phase 3.5 — without regression, there's nothing for Phase 0 to pre-resolve. Writeback phases reduced from 9 → 8 (Phase 1, 2, 3, 3.5, 4, 5 + writeback_closures + writeback_fndef_substs). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: Stage 18.382 conducted v0.5+ Phase 1 step 4 experiment — tested whether Phase 3.5 step 1 (`writeback_field_types_with_table`) is redundant after Stage 18.351's `infer_projection` substitute in typeck Phase 1. Result: **Phase 3.5 step 1 is NOT redundant** — disabling it causes 2 test failures (stage18_334_text_ir_byval_sret_combined + stage18_334_text_ir_deterministic, error: "defined with type 'i32' but expected 'i64'"). Root cause: codegen reads `ProjectionElem::Field(_, field_ty)` directly (not via typeck's `infer_projection` which applies substitute). step 1 is REQUIRED for codegen to see substituted field_ty. v0.5+ Phase 3 (FieldTyTable removal) will eliminate this dependency by having codegen use `resolve_place_type` instead of reading field_ty directly. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -358,7 +358,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.375 | 1 | TD-AS-CAST-TRUNCATION (8 `*n as u32` silent truncation → `u32::try_from(*n).expect(...)`) |
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
-| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379: experiment confirmed Phase 3.7 NOT redundant (4 test failures). Stage 18.380: root-cause fix — added substitute() in writeback_field_load_locals_with_table, Phase 3.7 REMOVED. Writeback phases 10 → 9. Stage 18.381: Phase 0 REMOVED (redundant after 18.380). Writeback phases 9 → 8. |
+| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379: experiment confirmed Phase 3.7 NOT redundant (4 test failures). Stage 18.380: root-cause fix — added substitute() in writeback_field_load_locals_with_table, Phase 3.7 REMOVED. Writeback phases 10 → 9. Stage 18.381: Phase 0 REMOVED (redundant after 18.380). Writeback phases 9 → 8. Stage 18.382: Phase 3.5 step 1 NOT redundant (2 codegen test failures) — codegen reads field_ty directly, needs substitute. v0.5+ Phase 3 (FieldTyTable removal) will eliminate. |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

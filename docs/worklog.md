@@ -28919,3 +28919,94 @@ Stage Summary:
 - v0.5+ Phase 1 后续: 验证 Phase 3.5 是否可简化 — FieldTyTable 仍是根因, 但 step 1 + step 2 的 substitute 已覆盖
 - v0.5+ Phase 3 (FieldTyTable removal): 让 typeck 直接从 local_decl.ty 解析 field types (已在 Stage 18.358 resolve_place_type_with_table 中实现) — 这是消除 Phase 3.5 的根因修复
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.381, writeback phases 10 → 8
+
+
+---
+Task ID: stage18.382
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.382 — v0.5+ Phase 1 step 4 experiment: Phase 3.5 step 1 redundancy test (confirmed NOT redundant, 2 codegen test failures). L3 (架构实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (v0.5+ Phase 1 架构实验 — 跨 typeck + codegen, 但实验本身 ≤30 行变更)
+- 对齐: Stage 18.381 已移除 Phase 0; §20 顺路径验证 Phase 3.5 step 1 是否也可移除; §1.6 终极检验 — 验证根因修复的连锁效应
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.381 r37 已交付)
+
+决策点 (为何选此路):
+- 为什么选 Phase 3.5 step 1 移除实验?
+  → 引用 §20 (Bug 概率分布推理): Stage 18.380+18.381 移除了 Phase 3.7 + Phase 0 — 同类路径深挖 Phase 3.5
+  → 引用 §1.6 终极检验: Phase 3.5 step 1 修改 ProjectionElem::Field; typeck 的 infer_projection 已应用 substitute — 可能 step 1 冗余
+  → 引用 §1.0 原則 11 (确定性边界): 实验验证边界
+- 为什么是实验性而非直接移除?
+  → 引用 §1.0 原則 9 (正确 > 妥协): 如果 step 1 仍必需, 承认并记录
+
+裁剪点 (为何跳流程):
+- L3 实验性探索 — 仅注释 1 行 + 验证; §3.2 全绿是充分门禁
+- 跳过 §14.5 深度审查 — 实验结果明确 (2 失败)
+
+5W2H:
+- WHAT: v0.5+ Phase 1 step 4 — 验证 Phase 3.5 step 1 (writeback_field_types_with_table) 是否可移除
+- WHY: typeck 的 infer_projection (line 263-277) 已应用 substitute(field_ty, substs) — step 1 修改的 field_ty 可能不被 typeck 读取
+- WHO: ARCH-A (实验设计 + 根因分析) + DEV-A (注释/恢复) + QA-A (测试验证)
+- WHEN: 实验完成 (2 失败确认 step 1 必需) 后停止
+- WHERE: src/typeck/checker.rs:195 (Phase 3.5 step 1 调用点)
+- HOW: 3 步实验
+  (1) 注释 Phase 3.5 step 1 的 `self.writeback_field_types_with_table(mir, table);`
+  (2) 跑 §3.2 三件套 — 发现 2 测试失败 (stage18_334_text_ir_byval_sret_combined + stage18_334_text_ir_deterministic)
+  (3) 恢复 step 1 + 添加 Stage 18.382 实验注释 + 验证全绿
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures (恢复后), fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 假设: typeck 的 infer_projection (line 263-277) 已应用 substitute(field_ty, substs)
+  - 如果假设正确, step 1 修改的 field_ty 不被 typeck 读取 → step 1 冗余
+  - 实验验证: 注释 step 1 → 2 失败 → 假设错误
+- 根因分析:
+  - typeck 的 infer_projection 确实应用了 substitute (line 263-277)
+  - 但 codegen 直接读 ProjectionElem::Field(_, field_ty) 中的 field_ty (不经过 typeck)
+  - codegen 看到 unsubstituted Param → 默认 i32 fallback → 类型不匹配
+  - 错误: "defined with type 'i32' but expected 'i64'"
+  - 结论: step 1 仍被 codegen 需要 — 不能移除
+- 失败测试:
+  1. stage18_334_text_ir_tests::stage18_334_text_ir_byval_sret_combined
+  2. stage18_334_text_ir_tests::stage18_334_text_ir_deterministic
+  - 都是 TextEmitter IR 测试 — 用 llvm-as 验证 IR 正确性
+  - 错误位置: output.ll:179:13 — `%v15` 类型 i32 但期望 i64
+- 恢复 + 文档:
+  - 恢复 step 1 调用
+  - 添加 Stage 18.382 实验注释 (说明 step 1 仍必需 + 根因)
+  - 更新 tech-debt-register.md header + §4.1
+  - 更新 README.md status
+- 架构洞察:
+  - typeck 的 infer_projection substitute (Stage 18.351) 是 typeck 内部的 — 不影响 codegen
+  - codegen 直接读 MIR 的 ProjectionElem::Field(_, field_ty) — 需要 Phase 3.5 step 1 修改 field_ty
+  - 真正根因: codegen 应该用 resolve_place_type (像 typeck 那样) 而非直接读 field_ty
+  - v0.5+ Phase 3 (FieldTyTable removal): codegen 用 resolve_place_type → 消除 step 1 依赖
+- §3.2 全校验流 (Stage 18.382 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.382 — Phase 1 step 4 experiment" + §4.1 行更新
+  - README.md: 版本 Stage 18.381 → 18.382, status 新增 "Stage 18.382 confirmed Phase 3.5 step 1 NOT redundant"
+  - src/typeck/checker.rs: Phase 3.5 注释新增 Stage 18.382 实验结果
+  - worklog.md: 本条 (Stage 18.382)
+
+Stage Summary:
+- v0.5+ Phase 1 step 4 实验完成 — Phase 3.5 step 1 confirmed NOT redundant (2 codegen test failures)
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/typeck/checker.rs (Phase 3.5 注释更新)
+- 设计原则引用:
+  * §1.6 终极检验: 实验验证假设 — 假设错误, 承认 step 1 仍必需
+  * §1.0 原則 11 (确定性边界): 实验验证架构边界
+  * §1.0 原則 9 (正确 > 妥协): 不强行移除仍必需的 step
+  * §20 (Bug 概率分布推理): 2 失败都是 codegen TextEmitter IR — codegen 直接读 field_ty
+- 架构洞察:
+  * typeck 的 infer_projection substitute (Stage 18.351) 是 typeck 内部的 — 不影响 codegen
+  * codegen 直接读 MIR 的 ProjectionElem::Field(_, field_ty) — 需要 Phase 3.5 step 1
+  * 真正根因: codegen 应该用 resolve_place_type (像 typeck 那样)
+  * v0.5+ Phase 3 (FieldTyTable removal): codegen 用 resolve_place_type → 消除 step 1 依赖
+
+下一步 (下一 MUV):
+- v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 用 resolve_place_type 而非直接读 field_ty — 这是消除 Phase 3.5 step 1 的根因修复
+- 当前 v0.5+ Phase 1 已达到极限: Phase 0 + Phase 3.7 已移除 (10 → 8 phases); Phase 3.5 step 1 + step 2 仍必需 (codegen 依赖)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.382, writeback phases 10 → 8
