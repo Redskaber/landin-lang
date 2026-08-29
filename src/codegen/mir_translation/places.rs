@@ -175,6 +175,67 @@ fn resolve_base_ty_for_substs(mir: &MirBody, lv: &Place) -> Ty {
     }
 }
 
+/// Stage 18.388 (v0.5+ Phase 3 step 5): Try to resolve a field's EmitType
+/// from AdtLayouts when the field_ty in MIR is Infer.
+///
+/// This is the codegen-side fallback that mirrors what Phase 3.5 step 1
+/// (`writeback_field_types_with_table`) does via FieldTyTable. When
+/// Phase 3.5 step 1 is disabled, field_ty stays Infer, and this function
+/// provides an alternative resolution path via AdtLayouts.
+///
+/// For non-generic structs like `Big { a: i64, b: i64, c: i64 }`, AdtLayouts
+/// has the field types pre-computed at driver level. We can extract the
+/// field type directly from the struct's layout.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one AdtLayouts lookup covers all
+/// non-generic struct field accesses.
+/// Per §12 (最优 > 最小): root-cause fix at codegen level.
+fn try_resolve_field_from_adt_layouts(
+    mir: &MirBody,
+    base: &Place,
+    field_id: &crate::mir::place::FieldId,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+) -> Option<EmitType> {
+    // Resolve the base place's type to find the Adt DefId.
+    let base_ty = resolve_base_ty_for_substs(mir, base);
+    if let TyKind::Adt(def_id, substs) = &base_ty.kind {
+        // Try mono_layouts first (for generic instantiations).
+        if let Some(mono) = mono_layouts {
+            if let Some(entries) = mono.get(def_id) {
+                for (existing_kinds, layout) in entries {
+                    // If substs match (or substs is empty for non-generic), use this layout.
+                    if substs.is_empty()
+                        || existing_kinds
+                            == &substs.iter().map(|t| t.kind.clone()).collect::<Vec<_>>()
+                    {
+                        if let crate::mir::body::AdtLayout::Struct { field_tys } = layout {
+                            if let Some(field_ty) = field_tys.get(field_id.0 as usize) {
+                                return Some(mir_type_to_emit_type_with_layouts_and_mono(
+                                    field_ty,
+                                    layouts,
+                                    mono_layouts,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Fall back to AdtLayouts (non-generic fast path).
+        if let Some(crate::mir::body::AdtLayout::Struct { field_tys }) = layouts.get(def_id) {
+            if let Some(field_ty) = field_tys.get(field_id.0 as usize) {
+                return Some(mir_type_to_emit_type_with_layouts_and_mono(
+                    field_ty,
+                    layouts,
+                    mono_layouts,
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// Stage 18.347: Helper — does a Ty (recursively) contain any Param?
 ///
 /// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
@@ -406,29 +467,33 @@ pub(crate) fn detect_place_type(
             ProjectionElem::Field(field_id, field_ty) => {
                 // Stage 18.347 (P2 soundness fix): Apply generic substs
                 // from the base struct's resolved type to the field_ty.
-                // Was: passed `field_ty` directly, which contained
-                // unsubstituted `Param(N)` placeholders → fell through to
-                // `EmitType::I32` (mir_type_to_emit_type's default for
-                // unknown TyKind) → wrong field type in load.
-                //
-                // Per §1.0 原則 3 (显式 > 隐式): explicit subst, not silent
-                // i32 fallback. Same fix as detect_place_storage_type
-                // (both must agree on the field's resolved type).
-                // Per §1.0 原則 6 (通解 > 特解): one subst path for all
-                // generic structs.
-                // Per §20 (iterative audit): same class as Stage 18.346
-                // (Aggregate path) — Field projection path was missed.
                 let field_ty = resolve_field_ty_with_substs(mir, base, field_ty);
-                // Stage 14.49: If field_ty is Infer, try to resolve it from
-                // the base's type (e.g., Tuple field types). This handles
-                // nested tuple destructure where the projection's field_ty
-                // was set to Infer at MIR-lower time but the base's type was
-                // resolved by the post-typeck writeback.
                 let emit_ty =
                     mir_type_to_emit_type_with_layouts_and_mono(&field_ty, layouts, mono_layouts);
                 if matches!(emit_ty, EmitType::I32)
                     && matches!(&field_ty.kind, crate::mir::ty::TyKind::Infer(_))
                 {
+                    // Stage 18.388 (v0.5+ Phase 3 step 5): When field_ty is Infer
+                    // (Phase 3.5 step 1 disabled), try resolving from AdtLayouts.
+                    // This is the codegen-side fallback that mirrors what
+                    // Phase 3.5 step 1 does via FieldTyTable.
+                    //
+                    // For non-generic structs like `Big { a: i64, b: i64, c: i64 }`,
+                    // AdtLayouts has the field types. We can extract the field
+                    // type directly from the struct's layout.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one AdtLayouts lookup
+                    // covers all non-generic struct field accesses.
+                    // Per §12 (最优 > 最小): root-cause fix at codegen level.
+                    if let Some(resolved) = try_resolve_field_from_adt_layouts(
+                        mir,
+                        base,
+                        field_id,
+                        layouts,
+                        mono_layouts,
+                    ) {
+                        return resolved;
+                    }
                     // Try to get the field type from the base's Tuple type
                     if let PlaceKind::Local(base_id) = &base.kind {
                         if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
@@ -439,13 +504,6 @@ pub(crate) fn detect_place_type(
                                     );
                                 }
                             }
-                            // Stage 14.84 (audit fix #3): Also handle Closure
-                            // base — extract the field type from the closure's
-                            // substs (which were written back by the driver
-                            // post-typeck). This fixes `|| p.y` codegen where
-                            // the projection's field_ty was set to Infer at
-                            // MIR-lower time but the closure local's substs
-                            // are now resolved to [Adt(Point)].
                             if let crate::mir::ty::TyKind::Closure(_, substs) = &base_ld.ty.kind {
                                 if let Some(resolved) = substs.get(field_id.0 as usize) {
                                     return mir_type_to_emit_type_with_layouts_and_mono(

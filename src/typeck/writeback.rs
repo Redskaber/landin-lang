@@ -25,6 +25,12 @@ use super::predicates::is_concrete_int_or_float;
 use super::tables::FieldTyTable;
 
 impl TypeChecker {
+    /// Stage 18.388 (v0.5+ Phase 3 step 5): Phase 3.5 step 1 REMOVED.
+    /// Code is preserved as dead code — codegen now resolves field types via
+    /// `try_resolve_field_from_adt_layouts` (Stage 18.388). This method is
+    /// kept for v0.5+ Phase 3 (FieldTyTable removal) reference and will be
+    /// deleted when Phase 3 is complete.
+    #[allow(dead_code)]
     pub(super) fn writeback_field_types_with_table(
         &mut self,
         mir: &mut MirBody,
@@ -479,6 +485,9 @@ impl TypeChecker {
 /// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
 /// "needs substitution" check visible at the callsite.
 /// Per §16: pure MIR data predicate, no HIR access.
+/// Stage 18.388 (v0.5+ Phase 3 step 5): Preserved as dead code.
+/// Was used by `writeback_field_types_with_table` (Phase 3.5 step 1, now removed).
+#[allow(dead_code)]
 fn typeck_type_contains_param(ty: &Ty) -> bool {
     match &ty.kind {
         TyKind::Param(_) => true,
