@@ -28428,3 +28428,105 @@ Stage Summary:
   - 候选 2: 嵌套泛型在 method return 路径 — 验证 `fn make() -> Outer<i64> { Outer { inner: Inner { val: 42i64 } } }` 是否工作
   - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TD 的解锁路径
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.376
+
+
+---
+Task ID: stage18.377
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.377 — TD-ALLOW-SUPPRESSION 审计 (26 production #[allow] — 6 stale removed, 20 verified legitimate). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (26 个 #[allow] 审计, 6 个修改, ≤50 行总变更)
+- 对齐: tech-debt-register.md §4.5 已闭合 8 个结构 TDs (Stage 18.127-18.376); §20 Bug 概率分布推理 → 转向 "silent signal suppression" 同类
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.376 r32 已交付, fmt + clippy + test --release 三件套 clean)
+
+决策点 (为何选此路):
+- 为什么选 #[allow] 审计而非其他 TD?
+  → 引用用户指令: "推进任务（修复技术债务（tech-debt）等）"
+  → 引用 §20 (Bug 概率分布推理): Stage 18.372-18.376 都是 "silent context loss" 修复; #[allow] 是另一种 silent suppression — 隐藏 clippy/rustc 信号
+  → 引用 §1.0 原則 3 (显式 > 隐式): #[allow] 应显式说明为何抑制; stale allows 隐藏真实信号
+  → 引用 §1.0 原則 5 (去除兼容思维): stale allows 是兼容思维的产物, 应清理
+- 为什么不全部移除 #[allow]?
+  → §1.6 终极检验: 验证每个 allow 是否真 stale — `region_inference` allow 移除后暴露 13 dead code warnings, 证明它是 BLOCKED infrastructure (TD-STUB-REGION-ERASED), 不是 stale
+  → 引用 §1.0 原則 13 (架构限制记录与升级): BLOCKED infrastructure allows 应保留 + 添加清晰注释
+  → 引用 §1.0 原則 9 (正确 > 妥协): 不删除 NLL 基础设施代码, 等架构升级时启用
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅 #[allow] 移除 + 死代码删除, 不改变控制流; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响错误处理路径, 现有 4409 测试已覆盖
+
+5W2H:
+- WHAT: 审计 26 个生产代码 #[allow(...)] — 移除 6 个 stale, 验证 20 个 legitimate
+- WHY: stale allows 隐藏真实信号 (§1.0 原則 3 显式 > 隐式); BLOCKED infrastructure allows 应显式文档化 (§1.0 原則 13)
+- WHO: ARCH-A (分类 + §1.6 终极检验) + DEV-A (移除 + 注释) + REV-A (§3.2 全绿) + QA-A (4409 tests)
+- WHEN: §3.2 全绿后停止
+- WHERE: 3 文件 — src/driver/mod.rs (5 stale allows), src/typeck/unify.rs (1 dead function), src/borrowck/mod.rs (1 BLOCKED allow 注释更新)
+- HOW: 5 步流程
+  (1) 全代码库扫描 #[allow] — 找到 26 处
+  (2) 分类: unused_imports (5) + dead_code (2) + clippy::* (16) + deprecated (1) + unreachable_patterns (1) + other (1)
+  (3) 验证每个 allow 是否 stale: grep 实际使用情况
+  (4) §1.6 终极检验: 移除 region_inference 的 #[allow(dead_code)] 后 build — 暴露 13 dead code warnings → 恢复 + 添加注释
+  (5) 移除 6 个真 stale allows + 删除 1 个死函数
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 Bug 概率分布推理审计 (转向 "silent signal suppression" 同类):
+  - 扫描源: find src -name '*.rs' + grep "#\[allow\("
+  - 找到 26 处 #[allow]
+  - 分类:
+    * unused_imports (5): src/driver/mod.rs — 全部 stale (imports 实际被使用)
+    * dead_code (2): src/borrowck/mod.rs (region_inference — REQUIRED), src/typeck/unify.rs (int_to_uint — 真 stale)
+    * clippy::too_many_arguments (4): codegen context — v0.5+ Phase 1 CodegenCtxt
+    * clippy::only_used_in_recursion (3): forward-compat API consistency
+    * clippy::collapsible_match (2): style preference
+    * clippy::should_implement_trait (1): TargetTriple::from_str — minor TD
+    * clippy::while_let_loop (2): typeck/unify.rs — algorithm pattern
+    * clippy::arc_with_non_send_sync (2): Arc<MirBody> — Landin single-thread
+    * clippy::module_inception (1): parser/mod.rs — module name convention
+    * clippy::enum_variant_names (1): primitive_intrinsics — naming
+    * deprecated (1): ty_is_copy — test backward compat
+    * unreachable_patterns (1): defensive catch-all
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 验证 region_inference allow: 移除后 build → 13 dead code warnings (SCC/universe/type-test infrastructure)
+  - 结论: 这是 BLOCKED infrastructure (TD-STUB-REGION-ERASED), 不是 stale → 恢复 allow + 添加注释
+  - 验证 driver/mod.rs unused_imports: grep 7 个 symbols — 全部被使用 → 移除 5 个 stale allows
+  - 验证 typeck/unify.rs dead_code: grep int_to_uint → 0 处使用 → 删除死函数
+- 文件修改 (3):
+  1. src/driver/mod.rs — 移除 5 个 #[allow(unused_imports)] + Stage 18.377 注释
+  2. src/typeck/unify.rs — 删除 int_to_uint 死函数 (11 行)
+  3. src/borrowck/mod.rs — region_inference mod 注释更新 (说明 #[allow(dead_code)] 是 REQUIRED, 不是 stale)
+- §3.2 全校验流 (Stage 18.377 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md:
+    * Header 更新: "last updated Stage 18.377 — TD-ALLOW-SUPPRESSION audit"
+    * §4.1 By Severity: 新增 "✅ Resolved in 18.377" 行
+    * §4.5 By §2 Principle Violations: 新增 TD-ALLOW-SUPPRESSION 行 (详细描述 26 allows 审计 + 6 stale 移除 + 20 legitimate 分类)
+  - README.md:
+    * Header 版本: Stage 18.376 → 18.377
+    * Header status: 新增 "Stage 18.377 closed TD-ALLOW-SUPPRESSION — audited 26 production #[allow], removed 6 stale, verified 20 legitimate"
+    * Tech Debt & Known Limitations 表: 新增 TD-ALLOW-SUPPRESSION 行
+    * Documentation 章节 tech-debt-register 描述: "8 structural TDs" → "9 structural TDs resolved Stage 18.127-18.377, including nested generic field access + allow suppression audit"
+  - RELEASE_NOTES.md: 新增 Stage 18.377 章节 (Background / Audit method / Result / Removed 6 stale / Verified 20 legitimate / Files touched / Design principles / Validation)
+  - worklog.md: 本条 (Stage 18.377)
+
+Stage Summary:
+- TD-ALLOW-SUPPRESSION CLOSED ✅ — 26 production #[allow] audited, 6 stale removed, 20 verified legitimate
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件 (3): src/driver/mod.rs, src/typeck/unify.rs, src/borrowck/mod.rs
+- 设计原则引用:
+  * §1.0 原則 3 (显式 > 隐式): #[allow] 应显式说明为何抑制
+  * §1.0 原則 5 (去除兼容思维): stale allows 是兼容思维产物, 应清理
+  * §1.0 原則 9 (正确 > 妥协): 不删除 NLL 基础设施代码, 等架构升级
+  * §1.0 原則 13 (架构限制记录与升级): BLOCKED infrastructure allows 应保留 + 文档化
+  * §20 (Bug 概率分布推理): Stage 18.372-18.376 修 silent context loss; Stage 18.377 转 silent signal suppression 同类
+  * §1.6 终极检验: 验证每个 allow — region_inference 是 REQUIRED 不是 stale
+
+下一步 (下一 MUV):
+- §20 迭代审计: 是否还有同类技术债?
+  - 候选 1: 生产代码 `.clone()` 过度使用审计 (672 处, 大部分是 interned Ty 接近零成本; 真正可疑是 Vec/HashMap clone in monomorphization)
+  - 候选 2: 生产代码 `unwrap_or_else(|| default)` 静默降级审计 (与 Stage 18.372 同类)
+  - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TD 的解锁路径
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.377

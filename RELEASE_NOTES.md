@@ -12,6 +12,79 @@
 
 ---
 
+## v0.510.0 — Stage 18.377 (TD-ALLOW-SUPPRESSION audit)
+
+### Stage 18.377: Audited 26 production `#[allow]` — removed 6 stale, verified 20 legitimate
+
+**Background**: Following §20 (Bug probability distribution reasoning)
+from Stage 18.376 (which closed TD-ARCH-NESTED-GENERIC-FIELD-ACCESS),
+this stage audits the broader class of "silent signal suppression" —
+`#[allow(...)]` attributes that hide compiler/clippy warnings. While some
+allows are legitimate (BLOCKED infrastructure, forward-compat design),
+others may be stale (added when code was different, now hide nothing).
+
+**Audit method**: Scan production code for `#[allow(...)]` patterns
+(excluding `*_tests.rs` and `#[cfg(test)]` blocks). Found 26 allows,
+categorized by reason.
+
+**Result**: 6 stale allows removed, 20 verified as legitimate.
+
+**Removed (6 stale allows)**:
+1. `src/driver/mod.rs`: 5 `#[allow(unused_imports)]` on imports of
+   `BorrowError`, `HirCrate`, `HirItem`, `MirBody`, `TraitError`,
+   `TypeError`, `TypeckResults`. All 7 symbols are actually used in
+   `CompileErrors` struct and `DriverState`. Allows were historical
+   (added when imports were unused in earlier stages).
+2. `src/typeck/unify.rs:41`: 1 `#[allow(dead_code)]` on `int_to_uint`
+   function. The function was truly unused (its inverse `uint_to_int`
+   is used at line 348). Deleted the dead function.
+
+**Verified legitimate (20 allows)**:
+- `region_inference` mod `#[allow(dead_code)]` (1): REQUIRED — removing
+  exposes 13 dead code warnings for SCC/universe/type-test infrastructure
+  BLOCKED on TD-STUB-REGION-ERASED (v0.2+ NLL full integration). Per
+  §1.0 原則 13 (架构限制记录与升级): documents known architecture limitation.
+- `ty_is_copy` `#[allow(deprecated)]` (1): test backward compat.
+- `#[allow(clippy::too_many_arguments)]` (4): codegen context requires
+  many params. v0.5+ Phase 1 will introduce `CodegenCtxt` struct to
+  unify these. Files: codegen/terminator.rs (2), codegen/statement.rs (1),
+  codegen/function.rs (1), borrowck/region_inference.rs (1).
+- `#[allow(clippy::only_used_in_recursion)]` (3): forward-compat API
+  consistency (params passed through for future use). Files: mir/lower/
+  method_resolution.rs, resolve/path_resolve.rs, codegen/mir_translation/
+  places.rs.
+- `#[allow(clippy::collapsible_match)]` (2): style preference (nested
+  let-else could be merged but reduces readability). Files: mir/lower/
+  writeback.rs.
+- `TargetTriple::from_str` `#[allow(clippy::should_implement_trait)]` (1):
+  should be `FromStr` trait impl. Tracked as minor TD (v0.5+).
+- Other singletons (7): `module_inception`, `enum_variant_names`,
+  `arc_with_non_send_sync` (2), `while_let_loop` (2), `unreachable_patterns`.
+  All legitimate (defensive coding, API design, or future-use infrastructure).
+
+**Files touched (3)**:
+- `src/driver/mod.rs`: Removed 5 `#[allow(unused_imports)]` + added
+  Stage 18.377 comment explaining why allows were stale.
+- `src/typeck/unify.rs`: Deleted dead `int_to_uint` function (11 lines).
+- `src/borrowck/mod.rs`: Updated `region_inference` mod comment to
+  explain why `#[allow(dead_code)]` is REQUIRED (BLOCKED infrastructure).
+
+**Design principles cited**:
+- §1.0 原則 3 (显式 > 隐式): if imports are used, no allow needed
+- §1.0 原則 5 (去除兼容思维): remove stale allows that hide nothing
+- §1.0 原則 9 (正确 > 妥协): don't delete infrastructure that will be needed
+- §1.0 原則 13 (架构限制记录与升级): document BLOCKED infrastructure allows
+- §20 (Bug probability distribution reasoning): same class as Stage 18.372-18.376
+  — silent context loss where `#[allow]` hides real signal
+- §1.6 终极检验: each removal verified — `region_inference` allow is REQUIRED
+  (removing exposes 13 warnings), not stale
+
+**Validation**: §3.2 full green — 4409 tests (682 lib + 3727 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
 ## v0.510.0 — Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS fully resolved)
 
 ### Stage 18.376: Nested generic field access `Outer<Inner<T>>.inner.val` now compiles

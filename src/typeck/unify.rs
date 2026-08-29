@@ -37,19 +37,6 @@ fn uint_to_int(u: UintTy) -> IntTy {
     }
 }
 
-/// Convert an IntTy to the corresponding UintTy with the same bit width.
-#[allow(dead_code)]
-fn int_to_uint(i: IntTy) -> UintTy {
-    match i {
-        IntTy::I8 => UintTy::U8,
-        IntTy::I16 => UintTy::U16,
-        IntTy::I32 => UintTy::U32,
-        IntTy::I64 => UintTy::U64,
-        IntTy::I128 => UintTy::U128,
-        IntTy::Isize => UintTy::Usize,
-    }
-}
-
 /// Binding state for an integer inference variable.
 ///
 /// Uses union-find with explicit `Linked` pointers so that

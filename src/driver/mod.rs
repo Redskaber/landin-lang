@@ -40,15 +40,16 @@
 
 use lasso::Rodeo;
 // Stage 18.250: Types used in struct definitions — re-exported for mod.rs
-#[allow(unused_imports)]
+// Stage 18.377 (TD-ALLOW-SUPPRESSION): Removed 5 `#[allow(unused_imports)]`
+// — all 7 symbols (BorrowError, HirCrate, HirItem, MirBody, TraitError,
+// TypeError, TypeckResults) are actually used in CompileErrors struct and
+// DriverState. The allows were historical (added when imports were unused)
+// but are now stale. Per §1.0 原則 5 (去除兼容思维): remove stale allows.
+// Per §1.0 原則 3 (显式 > 隐式): if imports are used, no allow needed.
 use crate::borrowck::BorrowError;
-#[allow(unused_imports)]
 use crate::hir::{HirCrate, HirItem};
-#[allow(unused_imports)]
 use crate::mir::body::MirBody;
-#[allow(unused_imports)]
 use crate::traits::TraitError;
-#[allow(unused_imports)]
 use crate::typeck::{TypeError, TypeckResults};
 
 /// Errors collected from one or more passes.

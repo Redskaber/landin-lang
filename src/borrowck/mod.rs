@@ -39,6 +39,14 @@ mod place_path;
 // Some types/methods (SCC, universe escape) are infrastructure for future
 // full integration — currently only new/region_to_vid/collect_implied_bounds/
 // infer_regions are called.
+//
+// Stage 18.377 (TD-ALLOW-SUPPRESSION): The `#[allow(dead_code)]` is REQUIRED
+// here — removing it exposes 13 dead code warnings for SCC/universe/type-test
+// infrastructure that is BLOCKED on TD-STUB-REGION-ERASED (v0.2+ NLL full
+// integration). Per §1.0 原則 13 (架构限制记录与升级): this allow documents a
+// known architecture limitation, not stale code. Per §1.0 原則 9 (正确 > 妥协):
+// don't delete infrastructure that will be needed for NLL — keep it documented.
+// Per §12 (最优 > 最小): root-cause fix is NLL integration (v0.2+), not deletion.
 #[allow(dead_code)]
 mod region_inference;
 
