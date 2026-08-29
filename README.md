@@ -228,16 +228,47 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | `resolve/` | 2,676 | Name resolution |
 | `lexer/` | 2,252 | Tokenizer |
 
-### Five-layer substitute chain (Stage 18.347-18.358)
+### Three-layer substitute chain (Stage 18.347-18.381)
 
-The typeck writeback architecture uses five layers of `substitute()` calls
-to resolve generic `Param(N)` placeholders:
+The typeck writeback architecture uses three layers of `substitute()` calls
+to resolve generic `Param(N)` placeholders. Originally 5 layers, reduced to 3
+after v0.5+ Phase 1 (Stage 18.380-18.381):
 
-1. **Phase 0** (Stage 18.353): pre-typeck writeback — resolves Param before typeck sees it
-2. **Phase 3.5** (Stage 18.357): table writeback — applies substitute when overwriting field_ty
-3. **Phase 3.7** (Stage 18.355): post-table re-writeback — fixes Phase 3.5 regression
-4. **resolve_place_type_with_table** (Stage 18.358): recursive substitute — resolves nested projections
-5. **compute_use_writeback_ty** (Stage 18.361): recursive Projection — handles nested Projection base
+1. **Phase 3.5 step 1** (Stage 18.357): `writeback_field_types_in_place_with_table`
+   — applies substitute when overwriting `ProjectionElem::Field(_, field_ty)`
+2. **Phase 3.5 step 2** (Stage 18.380): `writeback_field_load_locals_with_table`
+   — applies substitute when writing `dest_local.ty` for field-load locals
+3. **resolve_place_type_with_table** (Stage 18.358): recursive substitute
+   — resolves nested projections (e.g., `o.inner.ptr`)
+
+**Removed layers** (v0.5+ Phase 1):
+- **Phase 0** (Stage 18.353→18.381): pre-typeck writeback — removed, redundant
+  after Stage 18.380 fixed the FieldTyTable overwrite root cause
+- **Phase 3.7** (Stage 18.355→18.380): post-table re-writeback — removed,
+  redundant after Stage 18.380's substitute in step 2
+
+**Additional substitute sites**:
+- `compute_use_writeback_ty` (Stage 18.361): recursive Projection base resolution
+- `writeback_field_types_in_rvalue_with_table` Aggregate arm (Stage 18.376):
+  applies substitute to `AggregateKind::Adt` field_tys
+- `infer_projection` in typeck (Stage 18.351): applies substitute at typeck time
+  (mirrors writeback, but for typeck's own type inference)
+- `collect_from_aggregate_kind` (Stage 18.376): `substs_are_concrete` check
+  to skip generic definitions in monomorphization
+
+### Writeback phase history (v0.5+ Phase 1)
+
+| Stage | Action | Writeback Phases |
+|-------|--------|------------------|
+| 18.347-18.358 | 5-layer substitute chain established | 10 |
+| 18.379 | Experiment: Phase 3.7 NOT redundant (4 failures) | 10 |
+| 18.380 | Root-cause fix + Phase 3.7 REMOVED | 10 → 9 |
+| 18.381 | Phase 0 REMOVED (redundant after 18.380) | 9 → 8 |
+| 18.382 | Phase 3.5 step 1 NOT redundant (codegen dependency) | 8 |
+
+**Current**: 8 phases (Phase 1, 2, 3, 3.5, 4, 5 + writeback_closures + writeback_fndef_substs).
+**v0.5+ Phase 3** (FieldTyTable removal) will eliminate Phase 3.5 by having
+codegen use `resolve_place_type` instead of reading `field_ty` directly.
 
 ### Design principles (§2.2, 11 principles)
 
@@ -267,6 +298,11 @@ field access `Outer<Inner<T>>.inner.val` now compiles; 5-layer root-cause
 fix across lower + inference + writeback + mono collect;
 Stage 18.377 closed TD-ALLOW-SUPPRESSION — audited 26 production `#[allow]`,
 removed 6 stale, verified 20 legitimate).
+**v0.5+ Phase 1 progress** (Stage 18.379-18.382):
+- Stage 18.380: Phase 3.7 REMOVED (root-cause fix in `writeback_field_load_locals_with_table`)
+- Stage 18.381: Phase 0 REMOVED (redundant after 18.380)
+- Stage 18.382: Phase 3.5 step 1 confirmed NOT redundant (codegen reads field_ty directly)
+- Writeback phases: 10 → 8 (Phase 0 + Phase 3.7 removed)
 Remaining items are v0.5+ architecture limitations (documented in
 `docs/develop/v0/tech-debt-register.md` §2.5.1):
 
@@ -294,13 +330,13 @@ Remaining items are v0.5+ architecture limitations (documented in
 
 Based on deep architecture audit (Stage 18.366-18.367), referencing Rust rustc design:
 
-| Phase | Target | Priority | Est. | Reference |
-|-------|--------|----------|------|-----------|
-| 1 | typeck writeback unification (10 phases → inline) | Highest | 2-3w | rustc typeck + type propagation interwoven |
-| 2 | expected_ty propagation in MIR lower | High | 1-2w | rustc MIR lower expected_ty |
-| 3 | FieldTyTable removal | Medium | 1w | rustc doesn't use FieldTyTable |
-| 4 | mono_layouts stored in MirBody | Medium | 1w | rustc MirSource carries type info |
-| 5 | mir_type_to_emit_type returns Result | Low | 1-2w | rustc CodegenCx::layout_of |
+| Phase | Target | Priority | Est. | Reference | Status |
+|-------|--------|----------|------|-----------|--------|
+| 1 | typeck writeback unification (10 phases → inline) | Highest | 2-3w | rustc typeck + type propagation interwoven | 🚧 In progress (Stage 18.379-18.382): Phase 0 + Phase 3.7 removed (10→8); Phase 3.5 step 1 still needed (codegen dependency) |
+| 2 | expected_ty propagation in MIR lower | High | 1-2w | rustc MIR lower expected_ty | 📋 Not started |
+| 3 | FieldTyTable removal | Medium | 1w | rustc doesn't use FieldTyTable | 📋 Not started (eliminates Phase 3.5) |
+| 4 | mono_layouts stored in MirBody | Medium | 1w | rustc MirSource carries type info | 📋 Not started |
+| 5 | mir_type_to_emit_type returns Result | Low | 1-2w | rustc CodegenCx::layout_of | 📋 Not started |
 
 ---
 

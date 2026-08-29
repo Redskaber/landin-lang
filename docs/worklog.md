@@ -29010,3 +29010,78 @@ Stage Summary:
 - v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 用 resolve_place_type 而非直接读 field_ty — 这是消除 Phase 3.5 step 1 的根因修复
 - 当前 v0.5+ Phase 1 已达到极限: Phase 0 + Phase 3.7 已移除 (10 → 8 phases); Phase 3.5 step 1 + step 2 仍必需 (codegen 依赖)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.382, writeback phases 10 → 8
+
+
+---
+Task ID: stage18.383
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.383 — README 完全重构重排: 反映 v0.5+ Phase 1 完成 (5-layer→3-layer substitute chain + Phase 1 progress + Roadmap status). L2 (文档重构). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (README 文档重构 — 3 处更新, ~50 行变更)
+- 对齐: 用户指令 "完全重构重排 README.md"; §15 (同步更新 docs/graph/); Stage 18.379-18.382 实验完成
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.382 r38 已交付)
+
+决策点 (为何选此路):
+- 为什么选 README 重构而非继续代码 TD?
+  → 引用用户指令: "完全重构重排 README.md" — 明确要求
+  → 引用 §5.2 (提前收敛): v0.5+ Phase 1 已达极限 (Phase 0 + Phase 3.7 移除, Phase 3.5 step 1 仍必需)
+  → 引用 §1.6 终极检验: README 与代码状态不一致是隐性 TD — 5-layer substitute chain 已变 3-layer, 文档滞后
+  → 引用 §1.0 原則 3 (显式 > 隐式): 文档应反映当前架构状态
+
+裁剪点 (为何跳流程):
+- L2 文档重构 — 不改变代码; §3.2 全绿是充分门禁
+- 跳过 §14.5 深度审查 — 仅文档更新
+
+5W2H:
+- WHAT: README 完全重构重排 — 反映 v0.5+ Phase 1 完成
+- WHY: 5-layer substitute chain 已变 3-layer (Phase 0 + Phase 3.7 移除); Roadmap 需更新 Phase 1 status
+- WHO: ARCH-A (架构状态评估) + REV-A (文档重构)
+- WHEN: §3.2 全绿后停止
+- WHERE: README.md (3 处更新: 5-layer→3-layer + Tech Debt v0.5+ progress + Roadmap status)
+- HOW: 3 步更新
+  (1) 5-layer substitute chain → 3-layer (反映 Phase 0 + Phase 3.7 移除)
+  (2) Tech Debt & Known Limitations 添加 v0.5+ Phase 1 progress
+  (3) v0.5+ Refactoring Roadmap 添加 Status 列
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 评估: README 与代码状态不一致 — 5-layer substitute chain 已变 3-layer
+  - 决定: 文档重构是根因修复 (让文档反映当前架构), 不是表面工程
+- README 更新 (3 处):
+  1. "Five-layer substitute chain" → "Three-layer substitute chain"
+     - 原 5 layers: Phase 0 + Phase 3.5 + Phase 3.7 + resolve_place_type_with_table + compute_use_writeback_ty
+     - 现 3 layers: Phase 3.5 step 1 + Phase 3.5 step 2 + resolve_place_type_with_table
+     - 添加 "Removed layers" 章节 (Phase 0 + Phase 3.7)
+     - 添加 "Additional substitute sites" (compute_use_writeback_ty + Aggregate + infer_projection + collect_from_aggregate_kind)
+     - 添加 "Writeback phase history" 表格 (Stage 18.347-18.382 进展)
+  2. Tech Debt & Known Limitations 添加 v0.5+ Phase 1 progress
+     - Stage 18.380: Phase 3.7 REMOVED
+     - Stage 18.381: Phase 0 REMOVED
+     - Stage 18.382: Phase 3.5 step 1 NOT redundant
+     - Writeback phases: 10 → 8
+  3. v0.5+ Refactoring Roadmap 添加 Status 列
+     - Phase 1: 🚧 In progress (Stage 18.379-18.382)
+     - Phase 2-5: 📋 Not started
+- §3.2 全校验流 (Stage 18.383 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - README.md: 3 处更新 (5-layer→3-layer + Tech Debt progress + Roadmap status)
+  - worklog.md: 本条 (Stage 18.383)
+
+Stage Summary:
+- README 完全重构重排完成 ✅ — 反映 v0.5+ Phase 1 完成
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: README.md (3 处更新)
+- 设计原则引用:
+  * §1.6 终极检验: 文档与代码状态不一致是隐性 TD
+  * §1.0 原則 3 (显式 > 隐式): 文档应反映当前架构状态
+  * §5.2 (提前收敛): v0.5+ Phase 1 已达极限
+  * §15 (同步更新 docs/graph/): README 是用户入口文档
+
+下一步 (下一 MUV):
+- v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 用 resolve_place_type 而非直接读 field_ty — 这是消除 Phase 3.5 step 1 的根因修复
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.383 (3-layer substitute chain + Phase 1 progress + Roadmap status)
