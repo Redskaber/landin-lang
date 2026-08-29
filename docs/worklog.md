@@ -29373,3 +29373,81 @@ Stage Summary:
 - v0.5+ Phase 3 暂停 — Phase 3.5 step 1 依赖 HIR 层面修复, 超出 Phase 3 范围
 - v0.5+ Phase 2 (expected_ty propagation): 可能是另一个改进方向
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.386
+
+
+---
+Task ID: stage18.387
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.387 — v0.5+ Phase 3 step 4: codegen_place_load_typed detect_place_type fix + Phase 3.5 step 1 dependency root cause (codegen lacks FieldTyTable/HIR access). L2 (架构改进 + 根因确认). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (codegen 改进 + 根因确认 — ~30 行变更)
+- 对齐: Stage 18.386 发现 HIR hir_id owner mismatch; §1.6 终极检验 — 深挖 codegen load 路径
+- 阻断: 4409 tests 全绿基线已确认
+
+决策点 (为何选此路):
+- 为什么选 codegen_place_load_typed 修复?
+  → 引用 §1.6 终极检验: Stage 18.386 说 "HIR hir_id owner mismatch" — 但 IR 显示 %v15 类型错误, 深挖 codegen load 路径
+  → 引用 §20 (Bug 概率分布推理): 2 失败都是 TextEmitter IR — codegen load 用了错误的 ty
+  → 引用 §1.0 原則 6 (通解 > 特解): 用 detect_place_type 替代传入的默认 ty
+
+裁剪点 (为何跳流程):
+- L2 改进 — codegen 1 处修复; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: codegen_place_load_typed Field arm 用 detect_place_type 替代传入的默认 ty (I32)
+- WHY: codegen_place_load 传 EmitType::I32 作为默认, Field load 用了错误的 ty
+- WHO: ARCH-A (根因分析) + DEV-A (detect_place_type 修复) + QA-A (4409 tests)
+- WHEN: §3.2 全绿后停止
+- WHERE: src/codegen/mir_translation/places.rs:1013 (emit_load 调用)
+- HOW: 3 步
+  (1) 发现 codegen_place_load (line 1252) 传 EmitType::I32
+  (2) codegen_place_load_typed Field arm (line 1013) 用传入的 ty → 错误
+  (3) 改用 detect_place_type(mir, lv, ...) 获取正确的 field 类型
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验:
+  - Stage 18.386 说 "HIR hir_id owner mismatch" — 但 IR 显示 %v15 类型错误
+  - 深挖: TextEmitter IR 中 %v15 = load i32 (应 i64), LLVMSysEmitter 正确 (load i64)
+  - 发现: codegen_place_load (line 1252) 传 EmitType::I32 作为默认 ty
+  - codegen_place_load_typed Field arm (line 1013) 用传入的 ty → load i32
+- 修复:
+  - places.rs:1013 — 改 `emitter.emit_load(&ty, &field_ptr)` 为 `detect_place_type(mir, lv, ...)` + `emit_load(&field_ty, ...)`
+  - 添加 Stage 18.387 注释
+- 实验:
+  - 禁用 Phase 3.5 step 1 + 修复 → 仍 2 失败
+  - 原因: detect_place_type 依赖 local_decl.ty 已解析; 禁用 step 1 后 local_decl.ty 是 Infer
+  - Phase 3.5 step 2 (writeback_field_load_locals_with_table) 用 FieldTyTable 替换 dest_local.ty — 这是为什么 step 2 仍需要
+  - Phase 3.5 step 1 (writeback_field_types_with_table) 修改 ProjectionElem::Field(_, field_ty) — codegen 读 field_ty
+  - detect_place_type 在 local_decl.ty 是 Infer 时返回 I32 (fallback)
+- 根因确认:
+  - codegen 不持有 FieldTyTable 或 HIR — 无法在 local_decl.ty 是 Infer 时解析 field 类型
+  - Phase 3.5 step 1 是 codegen 和 FieldTyTable 之间的桥梁
+  - 真正障碍: codegen 需要重构为用 resolve_place_type (读 HIR) 而非读 local_decl.ty
+  - 这是 v0.5+ Phase 3 (FieldTyTable removal) 的真正障碍
+- 恢复 Phase 3.5 step 1 + 保留 detect_place_type 修复
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档同步:
+  - README.md: 版本 18.386 → 18.387
+  - worklog.md: 本条
+
+Stage Summary:
+- codegen_place_load_typed detect_place_type 修复 ✅
+- Phase 3.5 step 1 仍必需 — codegen 缺 FieldTyTable/HIR 访问
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/codegen/mir_translation/places.rs (detect_place_type 修复)
+- 设计原则引用:
+  * §1.6 终极检验: 深挖 codegen load 路径
+  * §1.0 原則 6 (通解 > 特解): detect_place_type 替代默认 ty
+  * §1.0 原則 9 (正确 > 妥协): 承认 Phase 3.5 step 1 仍必需
+  * §20: 2 失败都是 TextEmitter IR — 同类路径深挖
+- 架构洞察:
+  * codegen_place_load 传 EmitType::I32 默认 → Field load 用错误 ty
+  * detect_place_type 修复让 codegen 在 local_decl.ty 已解析时正确获取 field 类型
+  * 但 local_decl.ty 是 Infer 时 (Phase 3.5 step 1 禁用), detect_place_type 返回 I32
+  * 真正障碍: codegen 需重构为用 resolve_place_type (读 HIR)
+
+下一步:
+- v0.5+ Phase 3 真正修复: codegen 重构为用 resolve_place_type (读 HIR) 而非读 local_decl.ty
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8

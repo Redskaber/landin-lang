@@ -195,6 +195,17 @@ impl TypeChecker {
             self.writeback_field_types_with_table(mir, table);
             self.writeback_field_load_locals_with_table(mir, table);
         }
+        // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.
+        // Even with Stage 18.384's codegen recursive resolve + Stage 18.387's
+        // detect_place_type fix in codegen_place_load_typed, step 1 is needed
+        // because detect_place_type depends on local_decl.ty being resolved.
+        // When step 1 is disabled, local_decl.ty stays Infer (Phase 3 unify
+        // doesn't substitute FieldTyTable), so detect_place_type returns I32.
+        // Root cause: codegen doesn't have access to FieldTyTable or HIR to
+        // resolve field types when local_decl.ty is Infer. This is the true
+        // barrier for v0.5+ Phase 3 (FieldTyTable removal) — codegen needs
+        // to be refactored to use resolve_place_type (which reads HIR) instead
+        // of reading local_decl.ty directly.
         // Stage 18.385 (v0.5+ Phase 3 step 2 investigation): Root cause of
         // Phase 3.5 step 1 dependency identified — function parameter types
         // are Infer at MIR lower time. `find_receiver_struct_def_id` sees

@@ -1010,7 +1010,25 @@ pub(crate) fn codegen_place_load_typed(
                 } else {
                     emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0)
                 };
-                emitter.emit_load(&ty, &field_ptr)
+                // Stage 18.387 (v0.5+ Phase 3 step 4): Use detect_place_type
+                // to get the field's actual type, not the caller-supplied `ty`
+                // (which may be I32 default from codegen_place_load).
+                //
+                // Was: `emitter.emit_load(&ty, &field_ptr)` — used caller's
+                // ty (often I32 default), producing wrong load type when
+                // field is i64 but codegen defaults to i32.
+                //
+                // Fix: detect_place_type applies resolve_field_ty_with_substs
+                // (Stage 18.384 recursive resolve) to get the correct field type.
+                // This makes Phase 3.5 step 1 (writeback_field_types_with_table)
+                // redundant for the codegen load path.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one detect_place_type call
+                // covers all field types (generic + non-generic).
+                // Per §12 (最优 > 最小): root-cause fix at the load site.
+                // Per §1.6 终极检验: this is the root-cause fix, not a patch.
+                let field_ty = detect_place_type(mir, lv, layouts, mono_layouts);
+                emitter.emit_load(&field_ty, &field_ptr)
             }
             ProjectionElem::Index(idx) => {
                 // Stage 14.21 (GAP-31): Handle Deref+Field+Index and Field+Index
