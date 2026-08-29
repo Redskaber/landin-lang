@@ -29278,3 +29278,98 @@ Stage Summary:
 - 修复后: find_receiver_struct_def_id 返回 Some → resolve_field_type 返回 Some(i64) → field_ty 不再是 Infer
 - 然后: Phase 3.5 step 1 可能变冗余 (codegen 的 resolve_field_ty_with_substs 能处理)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.385
+
+
+---
+Task ID: stage18.386
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.386 — v0.5+ Phase 3 step 3: deeper investigation (lower_hir_ty_to_mir_ty_with_lifetimes _ arm already delegates; real root cause is HIR hir_id owner mismatch). L2 (根因深挖). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (根因深挖 — eprintln debug, ~30 行变更)
+- 对齐: Stage 18.385 发现 "param types are Infer"; §1.6 终极检验 — 不接受表面结论, 深挖到底
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.385 r41 已交付)
+
+决策点 (为何选此路):
+- 为什么继续深挖而非直接修复?
+  → 引用 §1.6 终极检验: Stage 18.385 结论 "lower_hir_ty_to_mir_ty_with_lifetimes 缺 Path arm" 可能是错误诊断
+  → 引用 §1.0 原則 11 (确定性边界): 动手修复前先验证诊断是否正确
+  → 引用 §20 (Bug 概率分布推理): 同类路径深挖到底
+
+裁剪点 (为何跳流程):
+- L2 根因深挖 — eprintln debug; §3.2 全绿是充分门禁
+- 跳过 §14.5 深度审查 — 调查结果明确
+
+5W2H:
+- WHAT: v0.5+ Phase 3 step 3 — 验证 Stage 18.385 诊断是否正确 + 深挖真正根因
+- WHY: Stage 18.385 说 "lower_hir_ty_to_mir_ty_with_lifetimes 缺 Path arm" — 但该函数的 _ arm 已委托给完整实现
+- WHO: ARCH-A (诊断验证) + DEV-A (eprintln debug) + REV-A (清理)
+- WHEN: 真正根因确认后停止
+- WHERE: src/mir/lower/ty_lower.rs (lower_hir_ty_to_mir_ty_with_lifetimes) + src/mir/lower/body_lower.rs (param lower)
+- HOW: 4 步调查
+  (1) 看 lower_hir_ty_to_mir_ty_with_lifetimes 的 _ arm — 发现已委托给 with_regions_and_hir_and_generics
+  (2) eprintln debug path.res — Big 的 res 是 Def(DefId(0), Struct) ✅
+  (3) eprintln debug lowered param mir_ty — 是 Adt(DefId(0), []) ✅
+  (4) eprintln debug param_local ty — 是 Adt(DefId(0), []) ✅
+  (5) 对比 Stage 18.385 debug — b.a receiver hir_id owner 是 DefId(2) (main), 不是 DefId(1) (transform)
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - Stage 18.385 诊断 "lower_hir_ty_to_mir_ty_with_lifetimes 缺 Path arm" 可能错误
+  - ARCH-A: 验证诊断 — 看代码发现 _ arm (line 140) 已委托给完整实现
+  - 决定: 深挖验证, 不盲目修复
+- 调查步骤:
+  1. 看 lower_hir_ty_to_mir_ty_with_lifetimes (ty_lower.rs:51)
+     - line 138-145: `_ => lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(ty, region_counter, None, generic_params)`
+     - _ arm 已委托! HirTyKind::Path 会走 _ arm
+  2. eprintln debug path.res (ty_lower.rs:571)
+     - Big 的 path.res = Def(DefId(0), Struct) ✅
+     - Res::Def arm 应该返回 Adt(DefId(0), [])
+  3. eprintln debug lowered param mir_ty (body_lower.rs:271)
+     - mir_ty = Adt(DefId(0), []) ✅ — 正确解析!
+  4. eprintln debug param_local ty (body_lower.rs:394)
+     - param_local ty = Adt(DefId(0), []) ✅ — 正确!
+- 真正根因:
+  - transform 函数 (DefId 1) 的参数 b (hir_id=HirId{owner:DefId(1), local_id:4}) 的 ty 是 Adt(DefId(0), []) ✅
+  - 但 b.a 的 receiver b (hir_id=HirId{owner:DefId(2), local_id:15}) — owner 是 DefId(2) (main 函数)!
+  - 这是 HIR 层面的 hir_id owner 关联问题 — b.a 在 transform 函数体中, 但 receiver b 的 hir_id 被关联到 main 函数
+  - local_map 查找 hir_id={owner:DefId(2)} 找不到 (因为 b 注册在 DefId(1) 的 local_map 中)
+  - find_receiver_struct_def_id 返回 None → resolve_field_type 返回 None → field_ty = fresh_infer_ty
+- Stage 18.385 诊断修正:
+  - 错误诊断: "lower_hir_ty_to_mir_ty_with_lifetimes 缺 Path arm"
+  - 正确诊断: "HIR hir_id owner mismatch — b.a receiver b 的 hir_id owner 是 main 函数, 不是 transform 函数"
+  - 这是 HIR lowering 的问题, 不是 MIR lower 的问题
+- 架构影响:
+  - Phase 3.5 step 1 仍必需 — 它用 FieldTyTable 替换跨函数 hir_id 关联的 Infer 类型
+  - 真正修复需要 HIR 层面的 hir_id owner 关联修正 (超出 v0.5+ Phase 3 范围)
+  - v0.5+ Phase 3 (FieldTyTable removal) 暂时无法消除 Phase 3.5 step 1
+- §3.2 全校验流 (Stage 18.386 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.386 — Phase 3 step 3: deeper investigation" + §4.1 行更新
+  - README.md: 版本 Stage 18.385 → 18.386, status 新增 "HIR hir_id owner mismatch, beyond Phase 3 scope"
+  - worklog.md: 本条 (Stage 18.386)
+
+Stage Summary:
+- v0.5+ Phase 3 step 3 深挖完成 — Stage 18.385 诊断修正 ✅
+- 真正根因: HIR hir_id owner mismatch (b.a receiver b 的 owner 是 main 函数, 不是 transform 函数)
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/mir/lower/body_lower.rs (debug 清理), src/mir/lower/ty_lower.rs (debug 清理)
+- 设计原则引用:
+  * §1.6 终极检验: 不接受 Stage 18.385 表面诊断, 深挖验证
+  * §1.0 原則 11 (确定性边界): 动手修复前先验证诊断
+  * §20 (Bug 概率分布推理): 同类路径深挖到底
+- 架构洞察:
+  * lower_hir_ty_to_mir_ty_with_lifetimes _ arm 已委托 — 不缺 Path arm
+  * 参数类型正确解析为 Adt(DefId(0), [])
+  * 真正根因: HIR hir_id owner mismatch — b.a receiver b 的 hir_id owner 错误
+  * 这是 HIR lowering 问题, 超出 v0.5+ Phase 3 (codegen/FieldTyTable) 范围
+  * Phase 3.5 step 1 仍必需 — 替换跨函数 hir_id 关联的 Infer 类型
+
+下一步 (下一 MUV):
+- v0.5+ Phase 3 暂停 — Phase 3.5 step 1 依赖 HIR 层面修复, 超出 Phase 3 范围
+- v0.5+ Phase 2 (expected_ty propagation): 可能是另一个改进方向
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.386

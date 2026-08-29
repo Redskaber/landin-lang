@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.385 — v0.5+ Phase 3 step 2: root cause found)
+> **Date**: 2026-08-29 (last updated Stage 18.386 — v0.5+ Phase 3 step 3: deeper investigation)
 > **Version**: v0.510.0
-> **Status**: Stage 18.385 conducted v0.5+ Phase 3 step 2 root cause investigation. Found that function parameter types are Infer at MIR lower time because `lower_hir_ty_to_mir_ty_with_lifetimes` (body_lower.rs:259) doesn't have a `HirTyKind::Path` arm — returns Error for `Big` (Path type). `find_receiver_struct_def_id` sees `Infer(TyVar)` instead of `Adt(Big)`, returns None, field_ty fallback to fresh_infer_ty. Phase 3.5 step 1 substitutes these via FieldTyTable. Fix (v0.5+ Phase 3 step 3): add Path arm to `with_lifetimes` or use `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics`. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: Stage 18.386 conducted deeper investigation of Phase 3.5 step 1 dependency. Found that `lower_hir_ty_to_mir_ty_with_lifetimes` `_` arm already delegates to `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics` (which has Path arm). Param type IS correctly resolved as `Adt(DefId(0), [])`. Real root cause: `b.a` receiver `b` hir_id owner is `DefId(2)` (main fn), not `DefId(1)` (transform fn) — HIR hir_id owner mismatch. This is HIR-level issue, beyond v0.5+ Phase 3 (codegen/FieldTyTable) scope. Phase 3.5 step 1 remains required to substitute Infer types from cross-function hir_id associations. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -358,7 +358,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.375 | 1 | TD-AS-CAST-TRUNCATION (8 `*n as u32` silent truncation → `u32::try_from(*n).expect(...)`) |
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
-| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379: Phase 3.7 NOT redundant. Stage 18.380: Phase 3.7 REMOVED (10→9). Stage 18.381: Phase 0 REMOVED (9→8). Stage 18.382: Phase 3.5 step 1 NOT redundant. Stage 18.384: codegen recursive resolve. Stage 18.385: root cause found — param types are Infer at lower time (`lower_hir_ty_to_mir_ty_with_lifetimes` missing Path arm). |
+| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.382: Phase 3.5 step 1 NOT redundant. Stage 18.384: codegen recursive resolve. Stage 18.385: root cause found (param Infer). Stage 18.386: deeper investigation — lower_hir_ty_to_mir_ty_with_lifetimes _ arm already delegates; real root cause is HIR hir_id owner mismatch (b.a receiver b owner is main fn, not transform fn). HIR-level issue, beyond Phase 3 scope. |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
