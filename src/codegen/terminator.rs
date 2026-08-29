@@ -270,12 +270,20 @@ pub(crate) fn codegen_terminator(
                     None
                 }
             } else if let Operand::Constant(c) = func {
+                // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect
+                // instead of `as u32`. Per §1.0 原則 1 (内存安全决不能妥协):
+                // silent truncation could mask corrupted ConstVal. Per §2 原则 3:
+                // expect documents the FnDef invariant.
                 match &c.val {
                     ConstVal::Uint(n) => fn_name_by_def_id
-                        .get(&crate::hir::DefId(*n as u32))
+                        .get(&crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                        ))
                         .cloned(),
                     ConstVal::Int(n) => fn_name_by_def_id
-                        .get(&crate::hir::DefId(*n as u32))
+                        .get(&crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                        ))
                         .cloned(),
                     _ => None,
                 }
@@ -359,9 +367,21 @@ pub(crate) fn codegen_terminator(
                 Option<crate::hir::DefId>,
                 crate::mir::ty::SubstsRef,
             ) = if let Operand::Constant(c) = func {
+                // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect
+                // instead of `as u32`. See rationale at the other match site above.
                 match &c.val {
-                    ConstVal::Uint(n) => (Some(crate::hir::DefId(*n as u32)), Vec::new().into()),
-                    ConstVal::Int(n) => (Some(crate::hir::DefId(*n as u32)), Vec::new().into()),
+                    ConstVal::Uint(n) => (
+                        Some(crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                        )),
+                        Vec::new().into(),
+                    ),
+                    ConstVal::Int(n) => (
+                        Some(crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                        )),
+                        Vec::new().into(),
+                    ),
                     _ => (None, Vec::new().into()),
                 }
             } else if let Operand::Copy(lv) | Operand::Move(lv) = func {

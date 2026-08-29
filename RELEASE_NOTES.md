@@ -12,6 +12,67 @@
 
 ---
 
+## v0.510.0 — Stage 18.375 (TD-AS-CAST-TRUNCATION audit)
+
+### Stage 18.375: 8 production `*n as u32` (u128→u32 silent truncation) → `u32::try_from(*n).expect(...)`
+
+**Background**: Following §20 (Bug probability distribution reasoning)
+from Stage 18.374 (which closed TD-TY-INFER-SPAN), this stage audits the
+broader class of "silent numeric truncation". The Landin compiler uses
+`ConstVal::Uint(u128)` / `ConstVal::Int(u128)` (rustc-style storage)
+to represent all integer constants. When a ConstVal represents a FnDef
+reference (function pointer), its value is `DefId.0 as u128` where
+`DefId(pub u32)`. Converting back with `*n as u32` silently truncates
+the upper 96 bits.
+
+**Why this matters**: Per §1.0 原則 1 (内存安全决不能妥协) — silent
+truncation could mask a corrupted ConstVal (e.g., from future unsafe
+transmute) and produce wrong DefId → wrong function called → memory
+unsafety. Even though current typeck prevents non-FnDef ConstVals
+from reaching these sites, the silent truncation is a latent footgun.
+
+**Audit method**: Scan production code for `as u32` patterns, filter to
+non-index casts (exclude `id.0 as u32` / `idx as u32` — those are usize→u32
+with no truncation risk since Rust usize on 64-bit is u64, and Vec.len()
+fits u32 in practice). Found 8 sites all following the same FnDef pattern.
+
+**Result**: All 8 `*n as u32` converted to
+`u32::try_from(*n).expect("FnDef ConstVal must fit u32")` with comments
+explaining the invariant.
+
+**Files touched (4)**:
+- `src/codegen/operand.rs:86`: FnDef constant emission → `u32::try_from(*n).expect(...)`
+- `src/codegen/terminator.rs:275,278`: Call func resolution (dyn_trait path) → 2 sites converted
+- `src/codegen/terminator.rs:363,364`: Call func resolution (direct Call path) → 2 sites converted
+- `src/codegen/function.rs:541,542`: Call destination type resolution → 2 sites converted
+- `src/mir/lower/writeback.rs:399,400`: `compute_call_dest_ty` helper → 2 sites converted
+
+**Audit also confirmed**:
+- 7 of 8 sites had **no FnDef type guard** — they relied on the Call-terminator
+  invariant that `func` operand must be FnDef. The `u32::try_from(...).expect(...)`
+  makes this invariant explicit (panics if violated).
+- 1 site (`operand.rs:86`) had a `TyKind::FnDef` guard, but the cast was still
+  silent — converted for consistency.
+- Long-term fix (v0.5+): introduce `ConstVal::FuncRef(DefId)` variant instead
+  of reusing `Uint(u128)` / `Int(u128)`. This eliminates the truncation risk
+  at the type level (per Rust design philosophy: "make invalid states
+  unrepresentable"). Tracked as architecture debt.
+
+**Design principles cited**:
+- §1.0 原則 1 (内存安全决不能妥协): silent truncation could mask corruption → memory unsafety
+- §2 原则 3 (显式 > 隐式): expect documents the FnDef invariant
+- §2 原则 4 (报错 > 静默): panic is better than silent wrong result
+- §20 (Bug probability distribution reasoning): same class as Stage 18.372/18.373/18.374
+  — all are "silent context loss" patterns where diagnostic info is dropped
+- Rust design philosophy "make invalid states unrepresentable": long-term
+  fix uses `ConstVal::FuncRef(DefId)` variant
+
+**Validation**: §3.2 full green — 4403 tests (682 lib + 3721 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
 ## v0.510.0 — Stage 18.374 (TD-TY-INFER-SPAN audit)
 
 ### Stage 18.374: 3 production `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(real_span)`

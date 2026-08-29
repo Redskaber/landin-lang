@@ -28212,3 +28212,111 @@ Stage Summary:
   - 候选 2: 生产代码 `unsafe` 块审计 — 应为 0 (Landin v0.4 无 unsafe 用户接口)
   - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.374
+
+
+---
+Task ID: stage18.375
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.375 — TD-AS-CAST-TRUNCATION 修复 (8 production `*n as u32` u128→u32 silent truncation → `u32::try_from(*n).expect(...)`). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (8 个 `as u32` → `try_from + expect` 改造, 跨 4 文件, ≤80 行总变更)
+- 对齐: tech-debt-register.md §4.5 已闭合 6 个结构 TDs (Stage 18.127/18.372/18.373/18.374); §20 Bug 概率分布推理 → 顺路径深挖 "silent numeric truncation" 同类
+- 阻断: 4403 tests 全绿基线已确认 (Stage 18.374 r30 已交付, fmt + clippy + test --release 三件套 clean)
+
+决策点 (为何选此路):
+- 为什么选 `*n as u32` 审计而非其他 TD?
+  → 引用用户指令: "推进任务（修复技术债务（tech-debt）等）"
+  → 引用 §20 (Bug 概率分布推理): Stage 18.372 修 15 unwrap; Stage 18.373 修 4 unreachable!(); Stage 18.374 修 3 fresh_infer_ty(Span::DUMMY); 同类技术债 (silent context loss) 已穷尽; 转向新的同类: "silent numeric truncation"
+  → 引用 §1.0 原則 1 (内存安全决不能妥协): 任何可能导致内存不安全的设计一律否决 — u128 静默截断为 u32 可能产生错误 DefId → 错误函数被调用 → 内存不安全
+- 为什么用 `try_from + expect` 而非 v0.5+ 的 `ConstVal::FuncRef(DefId)` variant?
+  → 引用 §12 (最优 > 最小): 当前修复是 "显式 panic" 而非 "silent wrong result"; v0.5+ variant 是根因修复但需 ConstVal schema 变更, 跨阶段
+  → 引用 §1.0 原則 9 (正确 > 妥协): 当前修复让截断 panic (显式报错), 比静默错误好; v0.5+ 是更好的解, 但当前务实
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅 `as u32` → `try_from + expect` 文本改造, 不改变控制流; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响错误处理路径, 现有 4403 测试已覆盖
+
+5W2H:
+- WHAT: 全代码库审计 + 修复 8 个生产代码 `*n as u32` (n 是 ConstVal::Uint(u128)/Int(u128))
+- WHY: u128→u32 静默截断可能产生错误 DefId (§1.0 原則 1 内存安全)
+- WHO: ARCH-A (审计 + 根因分析) + DEV-A (改造) + REV-A (校验) + QA-A (§3.2 全绿)
+- WHEN: §3.2 全绿后停止
+- WHERE: 4 文件 — src/codegen/operand.rs (1), src/codegen/terminator.rs (4), src/codegen/function.rs (2), src/mir/lower/writeback.rs (1)
+- HOW: 5 步流程
+  (1) 全代码库扫描 `as u32` — 找到 318 处
+  (2) 分类审计: 大部分是 `id.0 as usize` (索引转换, 安全) + `bb_idx as u32` (Vec 索引转 BasicBlockId, 安全)
+  (3) 过滤出真正可疑截断: `*n as u32` where n is ConstVal::Uint/Int (u128)
+  (4) 上下文阅读: 确认 8 处都是 FnDef 常量解析路径 (Call func operand)
+  (5) 改造: `*n as u32` → `u32::try_from(*n).expect("FnDef ConstVal must fit u32")` + 注释
+- HOW MUCH: §3.2 硬性红线全绿 — 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 Bug 概率分布推理审计 (顺 Stage 18.372/18.373/18.374 路径转向新同类):
+  - 扫描源: find src -name '*.rs' + grep -rnE " as (u8|u16|u32|u64|usize|i8|i16|i32|i64|isize)"
+  - 找到 318 处 `as` 类型转换
+  - 分类:
+    * `id.0 as usize` (索引转换, 安全): 大部分, 来自 LocalId/TyVid/RegionVid 等
+    * `bb_idx as u32` (Vec 索引转 BasicBlockId, 安全): Vec.len() < u32::MAX in practice
+    * `*b as u32` (mir/optimization.rs:678, wrapping_shl 参数): u128 → u32, 但 wrapping_shl 自带 modulo, 是 Rust 标准语义
+    * `*n as u32` (ConstVal::Uint(u128) → DefId(u32), 8 处): 真正的截断风险
+- 文件分布 (4 files, 8 sites):
+  1. src/codegen/operand.rs:86 — FnDef constant emission
+     Context: `if let TyKind::FnDef(_, _) = c.ty.kind { if let ConstVal::Uint(n) = c.val { DefId(*n as u32) } }`
+     Fix: `u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32 (DefId is u32)")`
+  2-5. src/codegen/terminator.rs:275,278,363,364 — Call func resolution
+     Context: `match &c.val { ConstVal::Uint(n) => DefId(*n as u32), ConstVal::Int(n) => DefId(*n as u32) }` (4 sites)
+     Fix: 4 处全部改 `u32::try_from(*n).expect("FnDef ConstVal must fit u32")`
+  6-7. src/codegen/function.rs:541,542 — Call destination type resolution
+     Context: 同 terminator.rs, 用于 local_idx 匹配
+     Fix: 2 处改 `u32::try_from(*n).expect("FnDef ConstVal must fit u32")`
+  8. src/mir/lower/writeback.rs:399,400 — compute_call_dest_ty helper
+     Context: `let did = match &c.val { ConstVal::Uint(n) => DefId(*n as u32), ConstVal::Int(n) => DefId(*n as u32) }`
+     Fix: 2 处改 `u32::try_from(*n).expect("FnDef ConstVal must fit u32 (DefId is u32)")`
+- 改造原则:
+  - 每个 `u32::try_from(*n).expect("...")` 加 // Stage 18.375 (TD-AS-CAST-TRUNCATION) 注释
+  - 注释引用 §1.0 原則 1 (内存安全) + §2 原则 3 (显式) + §2 原则 4 (报错 > 静默)
+  - expect 消息描述 FnDef invariant ("FnDef ConstVal must fit u32")
+  - 不改变控制流 (仅 `as u32` → `try_from + expect`)
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 当前修复: `u32::try_from(*n).expect(...)` 让截断显式 panic (显式报错) — 这是 §12 的 "最小补丁"? 还是 "最优解"?
+  - 真正的根因: ConstVal 用 u128 存所有整数字面量 (rustc 风格), 但 DefId 是 u32 — 当 ConstVal 用作 FnDef 引用时, 值必须 fit u32
+  - 最优解: 引入 `ConstVal::FuncRef(DefId)` variant, 在类型层面消除截断 (Rust 设计哲学 "make invalid states unrepresentable")
+  - 当前修复: 不是最优解, 但是务实解 — 让截断 panic 而非 silent wrong result
+  - v0.5+ 架构变更: 记录到 tech-debt-register.md TD-AS-CAST-TRUNCATION entry "Long-term fix" 中
+  - 引用 §1.0 原則 9 (正确 > 妥协): 当前修复比 silent truncation 好, 但承认不是根因解
+- §3.2 全校验流 (Stage 18.375 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4403 tests (682 lib + 3721 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md:
+    * Header 更新: "last updated Stage 18.375 — TD-AS-CAST-TRUNCATION audit"
+    * §4.1 By Severity: 新增 "✅ Resolved in 18.375" 行 (TD-AS-CAST-TRUNCATION)
+    * §4.5 By §2 Principle Violations: 新增 TD-AS-CAST-TRUNCATION 行 (✅ Resolved Stage 18.375, 详细描述 4 文件 + 8 sites + 设计原则引用 + v0.5+ 长期修复方案)
+  - README.md:
+    * Header 版本: Stage 18.374 → 18.375
+    * Header status: 新增 "Stage 18.375 closed TD-AS-CAST-TRUNCATION — 8 `*n as u32` u128→u32 silent truncation → `u32::try_from(*n).expect(...)`"
+    * Tech Debt & Known Limitations 表: 新增 TD-AS-CAST-TRUNCATION 行
+    * Documentation 章节 tech-debt-register 描述: "6 structural TDs" → "7 structural unwrap/expect/unreachable/infer-span/as-cast TDs resolved Stage 18.127-18.375"
+  - RELEASE_NOTES.md: 新增 Stage 18.375 章节 (Background / Why this matters / Audit method / Result / Files touched / Audit also confirmed / Design principles / Validation)
+  - worklog.md: 本条 (Stage 18.375)
+
+Stage Summary:
+- TD-AS-CAST-TRUNCATION CLOSED ✅ — 8 production `*n as u32` (u128→u32 silent truncation) → `u32::try_from(*n).expect(...)` across 4 files
+- §3.2 全绿: 4403 tests (682 lib + 3721 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/codegen/operand.rs, src/codegen/terminator.rs, src/codegen/function.rs, src/mir/lower/writeback.rs (4 files modified)
+- 设计原则引用:
+  * §1.0 原則 1 (内存安全决不能妥协): 静默截断可能 mask corruption → 内存不安全
+  * §2 原则 3 (显式 > 隐式): expect 文档化 FnDef invariant
+  * §2 原则 4 (报错 > 静默): panic 比 silent wrong result 好
+  * §20 (Bug 概率分布推理): Stage 18.372/18.373/18.374 修 silent context loss; Stage 18.375 转向 silent numeric truncation 同类
+  * §1.0 原則 9 (正确 > 妥协): 当前修复不是根因解 (根因是 ConstVal schema), 但比 silent truncation 好; v0.5+ 长期修复记录
+  * Rust 设计哲学 "make invalid states unrepresentable": v0.5+ `ConstVal::FuncRef(DefId)` variant
+
+下一步 (下一 MUV):
+- §20 迭代审计: 是否还有同类技术债?
+  - 候选 1: 生产代码 `unsafe` 块审计 — 应为 0 (Landin v0.4 无 unsafe 用户接口)
+  - 候选 2: 生产代码 `.clone()` 过度使用审计 — 性能问题, 非内存安全
+  - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.375

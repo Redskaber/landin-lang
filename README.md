@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.374) |
+| **Version** | v0.510.0 (Stage 18.375) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved (Stage 18.372 closed TD-UNWRAP-GUARDED-EXPECT; Stage 18.373 closed TD-UNREACHABLE-INVARIANT; Stage 18.374 closed TD-TY-INFER-SPAN — 3 `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(real_span)`). §14.5 D1-D8 deep review PASSED. Architecture health: 7.8/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3721 integration tests = 4403 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved (Stage 18.372 closed TD-UNWRAP-GUARDED-EXPECT; Stage 18.373 closed TD-UNREACHABLE-INVARIANT; Stage 18.374 closed TD-TY-INFER-SPAN; Stage 18.375 closed TD-AS-CAST-TRUNCATION — 8 `*n as u32` u128→u32 silent truncation → `u32::try_from(*n).expect(...)`). §14.5 D1-D8 deep review PASSED. Architecture health: 7.8/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.4 (11 design principles + 13 execution principles + Bug probability distribution reasoning) |
@@ -259,7 +259,9 @@ All P0/P1/P2 tech-debts are **resolved** (Stage 18.372 closed TD-UNWRAP-GUARDED-
 Stage 18.373 closed TD-UNREACHABLE-INVARIANT — 4 bare `unreachable!()` →
 `unreachable!("invariant msg")` across 4 files;
 Stage 18.374 closed TD-TY-INFER-SPAN — 3 `fresh_infer_ty(Span::DUMMY)` →
-`fresh_infer_ty(real_span)` across 2 files).
+`fresh_infer_ty(real_span)` across 2 files;
+Stage 18.375 closed TD-AS-CAST-TRUNCATION — 8 `*n as u32` u128→u32 silent
+truncation → `u32::try_from(*n).expect(...)` across 4 files).
 Remaining items are v0.5+ architecture limitations (documented in
 `docs/develop/v0/tech-debt-register.md` §2.5.1):
 
@@ -278,6 +280,7 @@ Remaining items are v0.5+ architecture limitations (documented in
 | TD-UNWRAP-GUARDED-EXPECT | 15 production guarded unwraps lack invariant docs | ✅ Resolved (Stage 18.372) | All converted to `expect("invariant doc")` with comments |
 | TD-UNREACHABLE-INVARIANT | 4 production bare `unreachable!()` lack invariant msg | ✅ Resolved (Stage 18.373) | All converted to `unreachable!("invariant msg")` with comments |
 | TD-TY-INFER-SPAN | 3 production `fresh_infer_ty(Span::DUMMY)` lack source span | ✅ Resolved (Stage 18.374) | All converted to `fresh_infer_ty(real_span)` (param.span / expr.span) |
+| TD-AS-CAST-TRUNCATION | 8 production `*n as u32` (u128→u32) silent truncation | ✅ Resolved (Stage 18.375) | All converted to `u32::try_from(*n).expect(...)` (panic on overflow) |
 
 ---
 
@@ -349,7 +352,7 @@ landin/
 - **Build guide**: `docs/build-guide.md`
 - **Testing guide**: `docs/testing-guide.md`
 - **SOP**: `docs/stage-committee-process.md` v7.4 (11 design principles + 13 execution principles + Bug probability distribution)
-- **Tech debt register**: `docs/develop/v0/tech-debt-register.md` (10 stubs/limitations + 6 structural unwrap/expect/unreachable/infer-span TDs resolved Stage 18.127-18.374)
+- **Tech debt register**: `docs/develop/v0/tech-debt-register.md` (10 stubs/limitations + 7 structural unwrap/expect/unreachable/infer-span/as-cast TDs resolved Stage 18.127-18.375)
 - **Architecture audit**: Stage 18.366-18.367 worklog (health: 7.8/10, v0.5+ 5-phase roadmap)
 - **Per-stage dev logs**: `docs/develop/v0/stage-N/`
 - **Language design**: `docs/lang-design/` (13 docs: overview, spec, grammar, type system, etc.)

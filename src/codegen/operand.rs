@@ -81,9 +81,17 @@ pub(crate) fn codegen_operand(
             _ => {
                 // Stage 14.57: Handle FnDef constants — emit function reference
                 // (function name) instead of the raw integer DefId.
+                // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect instead of
+                // `as u32` to make truncation explicit (panics on overflow rather than
+                // silently returning wrong DefId). Per §1.0 原則 1 (内存安全决不能妥协):
+                // silent truncation u128→u32 could mask a corrupted ConstVal.
+                // Per §2 原则 3 (显式 > 隐式): expect documents the FnDef invariant.
                 if let crate::mir::ty::TyKind::FnDef(_, _) = &c.ty.kind {
                     if let crate::mir::ty::ConstVal::Uint(n) = &c.val {
-                        let def_id = crate::hir::DefId(*n as u32);
+                        let def_id = crate::hir::DefId(
+                            u32::try_from(*n)
+                                .expect("FnDef ConstVal::Uint must fit u32 (DefId is u32)"),
+                        );
                         if let Some(name) = fn_name_by_def_id.get(&def_id) {
                             return format!("@{}", name);
                         }

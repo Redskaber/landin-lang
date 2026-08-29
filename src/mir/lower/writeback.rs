@@ -395,9 +395,17 @@ fn compute_call_dest_ty(
     let Operand::Constant(c) = func else {
         return None;
     };
+    // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect instead of
+    // `as u32`. Per §1.0 原則 1 (内存安全决不能妥协): silent truncation u128→u32
+    // could mask a corrupted ConstVal. Per §2 原则 3 (显式 > 隐式): expect documents
+    // the FnDef invariant.
     let did = match &c.val {
-        crate::mir::ty::ConstVal::Uint(n) => DefId(*n as u32),
-        crate::mir::ty::ConstVal::Int(n) => DefId(*n as u32),
+        crate::mir::ty::ConstVal::Uint(n) => {
+            DefId(u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32 (DefId is u32)"))
+        }
+        crate::mir::ty::ConstVal::Int(n) => {
+            DefId(u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32 (DefId is u32)"))
+        }
         _ => return None,
     };
     let sig = fn_sigs.get(&did)?;

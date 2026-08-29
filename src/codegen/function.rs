@@ -537,9 +537,17 @@ pub(crate) fn call_dest_type(
                 if id.0 as usize == local_idx {
                     // This local is a Call destination — get callee's DefId
                     let callee_def_id = if let crate::mir::place::Operand::Constant(c) = func {
+                        // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect
+                        // instead of `as u32`. Per §1.0 原則 1 (内存安全决不能妥协):
+                        // silent truncation could mask corrupted ConstVal. Per §2 原则 3:
+                        // expect documents the FnDef invariant.
                         match &c.val {
-                            crate::mir::ty::ConstVal::Uint(n) => Some(crate::hir::DefId(*n as u32)),
-                            crate::mir::ty::ConstVal::Int(n) => Some(crate::hir::DefId(*n as u32)),
+                            crate::mir::ty::ConstVal::Uint(n) => Some(crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                            )),
+                            crate::mir::ty::ConstVal::Int(n) => Some(crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                            )),
                             _ => None,
                         }
                     } else if let crate::mir::place::Operand::Copy(lv)
