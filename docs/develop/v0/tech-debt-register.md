@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.384 — v0.5+ Phase 3 step 1: codegen recursive resolve)
+> **Date**: 2026-08-29 (last updated Stage 18.385 — v0.5+ Phase 3 step 2: root cause found)
 > **Version**: v0.510.0
-> **Status**: Stage 18.384 improved codegen's `resolve_field_ty_with_substs` to handle nested projections recursively (mirrors typeck's `resolve_place_type_with_table` from Stage 18.358). Added `resolve_base_ty_for_substs` helper that recursively resolves base Ty for arbitrary nesting depths (Adt/Ref/RawPtr/Deref). Experiment: disabled Phase 3.5 step 1 to test if codegen's recursive resolve makes it redundant. Result: **Phase 3.5 step 1 still required** — 2 test failures (stage18_334_text_ir_deterministic, non-generic struct). Root cause: non-generic struct field_ty is Infer (not Param), so `resolve_field_ty_with_substs`'s fast path returns it as-is without substitution. v0.5+ Phase 3 step 2 will investigate why non-generic field_ty is Infer. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: Stage 18.385 conducted v0.5+ Phase 3 step 2 root cause investigation. Found that function parameter types are Infer at MIR lower time because `lower_hir_ty_to_mir_ty_with_lifetimes` (body_lower.rs:259) doesn't have a `HirTyKind::Path` arm — returns Error for `Big` (Path type). `find_receiver_struct_def_id` sees `Infer(TyVar)` instead of `Adt(Big)`, returns None, field_ty fallback to fresh_infer_ty. Phase 3.5 step 1 substitutes these via FieldTyTable. Fix (v0.5+ Phase 3 step 3): add Path arm to `with_lifetimes` or use `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics`. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -358,7 +358,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.375 | 1 | TD-AS-CAST-TRUNCATION (8 `*n as u32` silent truncation → `u32::try_from(*n).expect(...)`) |
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
-| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379: experiment confirmed Phase 3.7 NOT redundant (4 test failures). Stage 18.380: root-cause fix — added substitute() in writeback_field_load_locals_with_table, Phase 3.7 REMOVED. Writeback phases 10 → 9. Stage 18.381: Phase 0 REMOVED (redundant after 18.380). Writeback phases 9 → 8. Stage 18.382: Phase 3.5 step 1 NOT redundant (2 codegen test failures). Stage 18.384: codegen recursive resolve_field_ty_with_substs (Phase 3 step 1) — step 1 still required (non-generic Infer). |
+| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379: Phase 3.7 NOT redundant. Stage 18.380: Phase 3.7 REMOVED (10→9). Stage 18.381: Phase 0 REMOVED (9→8). Stage 18.382: Phase 3.5 step 1 NOT redundant. Stage 18.384: codegen recursive resolve. Stage 18.385: root cause found — param types are Infer at lower time (`lower_hir_ty_to_mir_ty_with_lifetimes` missing Path arm). |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

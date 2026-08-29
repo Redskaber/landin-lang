@@ -29186,3 +29186,95 @@ Stage Summary:
 - v0.5+ Phase 3 step 2: 调查非泛型 struct field_ty 为何是 Infer — 可能 MIR lower 时未解析
 - v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 完全用 resolve_place_type 而非读 field_ty
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.384, writeback phases 10 → 8, codegen recursive resolve
+
+
+---
+Task ID: stage18.385
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.385 — v0.5+ Phase 3 step 2: root cause investigation (param types are Infer at lower time). L2 (根因调查). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (根因调查 — eprintln debug + 代码分析, ~30 行变更)
+- 对齐: Stage 18.384 确认 Phase 3.5 step 1 仍必需 (非泛型 struct field_ty 是 Infer); §20 顺路径深挖根因
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.384 r40 已交付)
+
+决策点 (为何选此路):
+- 为什么选根因调查而非直接修复?
+  → 引用 §1.0 原則 11 (确定性边界): 动手前先清晰根因 — Stage 18.384 只发现 "Infer" 但未追根因
+  → 引用 §1.6 终极检验: 不接受 "field_ty 是 Infer" 的表面结论, 深挖为何是 Infer
+  → 引用 §20 (Bug 概率分布推理): 2 失败测试都是非泛型 struct — 同类路径深挖
+
+裁剪点 (为何跳流程):
+- L2 根因调查 — eprintln debug + 代码分析; §3.2 全绿是充分门禁
+- 跳过 §14.5 深度审查 — 调查结果明确
+
+5W2H:
+- WHAT: v0.5+ Phase 3 step 2 — 调查非泛型 struct field_ty 为何是 Infer
+- WHY: Stage 18.384 发现 field_ty 是 Infer 但未追根因; 需要找到 Infer 的来源
+- WHO: ARCH-A (根因分析) + DEV-A (eprintln debug) + REV-A (清理)
+- WHEN: 根因确认后停止
+- WHERE: src/mir/lower/field_resolution.rs (find_receiver_struct_def_id) + src/mir/lower/body_lower.rs (param type lower)
+- HOW: 4 步调查
+  (1) 在 resolve_field_type 添加 eprintln — 确认返回 None
+  (2) 在 find_receiver_struct_def_id 添加 eprintln — 确认 ty_kind 是 Infer(TyVar)
+  (3) 追溯 param type lower 路径 — 发现 lower_hir_ty_to_mir_ty_with_lifetimes 缺 Path arm
+  (4) 清理 debug + 记录根因
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - Stage 18.384 结论 "field_ty 是 Infer" 是表面结论
+  - ARCH-A: 不接受此结论 — 必须找到 Infer 的来源
+  - 深挖: 为什么函数参数 `b: Big` 的 local_decl.ty 是 Infer 而非 Adt(Big)?
+- 调查步骤:
+  1. 在 resolve_field_type (expr_operand.rs:569) 添加 eprintln — 确认返回 None
+  2. 在 find_receiver_struct_def_id (field_resolution.rs:267) 添加 eprintln — 发现 ty_kind=Infer(TyVar(TyVid(1)))
+  3. 追溯: 函数参数 `b` 的 local_decl.ty 在 lower 时被设为 Infer
+  4. 看 body_lower.rs:259 — `lower_hir_ty_to_mir_ty_with_lifetimes` 用于参数类型解析
+  5. 发现: `lower_hir_ty_to_mir_ty_with_lifetimes` (ty_lower.rs:51) 没有 HirTyKind::Path arm!
+     - 它只有 Ref/Tuple/etc + default Error (line 668)
+     - 对 `Big` (Path type) 返回 Error
+     - 但 debug 显示 Infer, 不是 Error — 可能后续处理将 Error 转为 Infer
+- 根因确认:
+  - `lower_hir_ty_to_mir_ty_with_lifetimes` 缺 Path arm → 对 `Big` 返回 Error
+  - 后续处理 (可能 typeck writeback) 将 Error 解析为 Infer
+  - `find_receiver_struct_def_id` 看到 Infer → 返回 None
+  - `resolve_field_type` 返回 None → fallback 到 fresh_infer_ty
+  - Phase 3.5 step 1 (writeback_field_types_with_table) 用 FieldTyTable 替换 Infer
+- 修复方案 (v0.5+ Phase 3 step 3):
+  - 选项 A: 在 lower_hir_ty_to_mir_ty_with_lifetimes 添加 Path arm
+  - 选项 B: 在 body_lower.rs:259 用 lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics (已有 Path arm)
+  - 选项 B 更优 — 复用已有正确实现
+- 清理:
+  - 移除 eprintln debug 代码
+  - 恢复 Phase 3.5 step 1 (仍必需)
+  - 添加 Stage 18.385 根因注释
+- §3.2 全校验流 (Stage 18.385 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.385 — Phase 3 step 2: root cause found" + §4.1 行更新
+  - README.md: 版本 Stage 18.384 → 18.385, status 新增 "root cause found — param types are Infer at lower time"
+  - src/typeck/checker.rs: Phase 3.5 注释更新 (Stage 18.385 根因说明)
+  - worklog.md: 本条 (Stage 18.385)
+
+Stage Summary:
+- v0.5+ Phase 3 step 2 完成 — 根因确认 ✅
+- 根因: `lower_hir_ty_to_mir_ty_with_lifetimes` (ty_lower.rs:51) 缺 HirTyKind::Path arm → 对 `Big` 返回 Error → 后续转为 Infer
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/mir/lower/field_resolution.rs (debug 清理), src/mir/lower/expr_operand.rs (debug 清理), src/typeck/checker.rs (根因注释)
+- 设计原则引用:
+  * §1.6 终极检验: 不接受表面结论, 深挖根因
+  * §1.0 原則 11 (确定性边界): 动手前先清晰根因
+  * §20 (Bug 概率分布推理): 2 失败都是非泛型 struct — 同类路径深挖
+- 架构洞察:
+  * `lower_hir_ty_to_mir_ty_with_lifetimes` 是 incomplete implementation — 缺 Path arm
+  * `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics` 是完整实现 — 有 Path arm
+  * 两个函数应该统一 (v0.5+ Phase 3 step 3)
+
+下一步 (下一 MUV):
+- v0.5+ Phase 3 step 3: 修复 `lower_hir_ty_to_mir_ty_with_lifetimes` 缺 Path arm — 让参数类型正确解析为 Adt(Big)
+- 修复后: find_receiver_struct_def_id 返回 Some → resolve_field_type 返回 Some(i64) → field_ty 不再是 Infer
+- 然后: Phase 3.5 step 1 可能变冗余 (codegen 的 resolve_field_ty_with_substs 能处理)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.385
