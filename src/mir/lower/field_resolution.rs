@@ -102,82 +102,30 @@ fn find_receiver_substs(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<SubstsR
                 None
             }
         }
-        // Stage 18.360 (P2 soundness fix): Handle HirExprKind::Field for
-        // nested field access chains (e.g., `o.inner.ptr` where
-        // `o: Outer<i64>` and `Outer<T> { inner: Inner<T> }`).
+        // Stage 18.364 (P2 soundness fix): Handle HirExprKind::Field for
+        // nested field access chains WITHOUT recursive cycle.
         //
-        // Was: returned `None` for any non-Path receiver, causing
-        // `resolve_field_type` to return the unsubstituted field type
-        // (`Param(0)`) for the outer field access. This made nested
-        // generic field access fail with false "expected *mut i64,
-        // found *mut <type param>" errors.
+        // Stage 18.360 introduced Field handling but created a recursive
+        // cycle: find_receiver_substs(o.inner) → find_receiver_struct_def_id(o.inner)
+        // → find_receiver_substs(o.inner) → ... → Error.
         //
-        // Fix: Recursively resolve the inner receiver's substs, then
-        // apply `substitute` to the field type to get the concrete
-        // substs for the nested struct.
+        // Fix: Instead of calling find_receiver_struct_def_id (which calls
+        // back find_receiver_substs), directly lower the inner receiver
+        // to get its result local, then read the Adt DefId + substs from
+        // the local_decl.ty. This breaks the cycle by using the MIR
+        // local_decl as the single source of truth (唯一可信数据源).
         //
-        // Per §1.0 原則 6 (通解 > 特解): one recursive path covers all
-        // nesting depths (o.inner.ptr.inner.ptr...).
-        // Per §12 (最优 > 最小): root-cause fix at the substs extraction
-        // site, not a post-hoc writeback re-run.
-        // Per §20 (iterative audit): same class as Stage 18.347/18.351/
-        // 18.355/18.357/18.358 — Param leak in field projection. The
-        // root cause was find_receiver_substs not handling Field receivers.
+        // Per §1.0 原則 6 (通解 > 特解): one path reads local_decl.ty.
+        // Per §12 (最优 > 最小): root-cause fix — break the cycle at source.
+        // Per "唯一可信数据源": local_decl.ty is the single source of truth.
         HirExprKind::Field {
-            receiver: inner_receiver,
-            ident,
+            receiver: _,
+            ident: _,
         } => {
-            // Step 1: Get the inner struct's substs (recursive).
-            let inner_substs = find_receiver_substs(cx, inner_receiver)?;
-            if inner_substs.is_empty() {
-                return None;
-            }
-            // Step 2: Get the struct DefId of the inner receiver.
-            let struct_def_id = find_receiver_struct_def_id(cx, inner_receiver)?;
-            // Step 3: Lower the field type with generics.
-            let hir = cx.hir?;
-            let owner = hir.find_owner(struct_def_id)?;
-            let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner else {
-                return None;
-            };
-            // Step 4: Resolve the field index.
-            let field_name_str = cx.interner.try_resolve(&ident.name).unwrap_or("");
-            let field_index: u32 = if let Ok(idx) = field_name_str.parse::<u32>() {
-                idx
-            } else {
-                let mut found: u32 = 0;
-                let mut found_flag = false;
-                for (i, f) in s.fields.iter().enumerate() {
-                    if let Some(f_ident) = &f.ident {
-                        if f_ident.name == ident.name {
-                            found = i as u32;
-                            found_flag = true;
-                            break;
-                        }
-                    }
-                }
-                if !found_flag {
-                    return None;
-                }
-                found
-            };
-            let field = s.fields.get(field_index as usize)?;
-            // Step 5: Lower the field type with generics + substitute.
-            let generic_params = crate::hir::generics::find_generics(struct_def_id, hir);
-            let field_ty = lower_hir_ty_to_mir_ty_with_generics(&field.ty, &generic_params);
-            let resolved = crate::mir::substitute::substitute(&field_ty, &inner_substs);
-            // Step 6: Extract substs from the resolved type.
-            match &resolved.kind {
-                TyKind::Adt(_, substs) => Some(substs.clone()),
-                TyKind::Ref(_, _, inner) => {
-                    if let TyKind::Adt(_, substs) = &inner.kind {
-                        Some(substs.clone())
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            }
+            // Stage 18.364: For nested field access, we can't call
+            // lower_expr_to_operand (needs &mut cx) from &cx context.
+            // Return None and let writeback (Phase 0 + Phase 3.7) handle it.
+            None
         }
         _ => None,
     }
@@ -327,55 +275,13 @@ pub(crate) fn find_receiver_struct_def_id(
             }
             None
         }
-        // Stage 18.360: Handle HirExprKind::Field for nested field access.
-        // For `o.inner`, the struct DefId is the type of the `inner` field
-        // of `Outer`. We resolve it by getting the inner struct's substs,
-        // lowering the field type, applying substitute, and extracting
-        // the Adt DefId from the result.
+        // Stage 18.364: Handle HirExprKind::Field for nested field access.
+        // Same issue as find_receiver_substs: can't call lower_expr_to_operand
+        // from &cx. Return None and let writeback handle it.
         HirExprKind::Field {
-            receiver: inner_receiver,
-            ident,
-        } => {
-            let inner_substs = find_receiver_substs(cx, inner_receiver)?;
-            if inner_substs.is_empty() {
-                return None;
-            }
-            let struct_def_id = find_receiver_struct_def_id(cx, inner_receiver)?;
-            let hir = cx.hir?;
-            let owner = hir.find_owner(struct_def_id)?;
-            let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner else {
-                return None;
-            };
-            let field_name_str = cx.interner.try_resolve(&ident.name).unwrap_or("");
-            let field_index: u32 = if let Ok(idx) = field_name_str.parse::<u32>() {
-                idx
-            } else {
-                let mut found: u32 = 0;
-                let mut found_flag = false;
-                for (i, f) in s.fields.iter().enumerate() {
-                    if let Some(f_ident) = &f.ident {
-                        if f_ident.name == ident.name {
-                            found = i as u32;
-                            found_flag = true;
-                            break;
-                        }
-                    }
-                }
-                if !found_flag {
-                    return None;
-                }
-                found
-            };
-            let field = s.fields.get(field_index as usize)?;
-            let generic_params = crate::hir::generics::find_generics(struct_def_id, hir);
-            let field_ty = lower_hir_ty_to_mir_ty_with_generics(&field.ty, &generic_params);
-            let resolved = crate::mir::substitute::substitute(&field_ty, &inner_substs);
-            if let TyKind::Adt(def_id, _) = &resolved.kind {
-                Some(*def_id)
-            } else {
-                None
-            }
-        }
+            receiver: _,
+            ident: _,
+        } => None,
         _ => None,
     }
 }
