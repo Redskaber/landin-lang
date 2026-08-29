@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
-> **Date**: 2026-08-05
-> **Version**: v0.260.0 (Stage 16.74 — v0.4 Design Writeback + Final Verification)
+> **Date**: 2026-08-29
+> **Version**: v0.510.0 (Stage 18.377 — 5-layer substitute chain + nested generic field access fully resolved)
 
 ## Type Checking Data Flow
 
@@ -51,11 +51,38 @@ HIR Body
 │    local.ty = unify.resolve(&local.ty)                       │
 │                                                               │
 │  Phase 3.5: Writeback field types (via FieldTyTable)         │
+│    Stage 18.357: substitute(resolved, substs) applied here   │
+│                                                               │
+│  Phase 3.7: Post-table re-writeback (Stage 18.355)           │
+│    Re-runs writeback_type_propagation after Phase 3.5         │
+│    Fixes Phase 3.5 regression (FieldTyTable overwrites)       │
 │                                                               │
 │  Phase 4: Populate TypeckResults                             │
 │                                                               │
 │  Phase 5: Post-defaulting terminator check                   │
 │    "expected function, found i32" (after defaulting)         │
+│                                                               │
+│  ─── 5-layer substitute chain (Stage 18.347-18.376) ───     │
+│  Layer 1: Phase 0 pre-writeback (Stage 18.353)              │
+│    writeback_type_propagation runs BEFORE Phase 1            │
+│    Resolves Param in local_decls before typeck sees them    │
+│  Layer 2: Phase 3.5 table substitute (Stage 18.357)         │
+│    substitute(resolved, substs) in writeback_field_types    │
+│  Layer 3: Phase 3.7 post-table re-writeback (Stage 18.355)   │
+│    Fixes Phase 3.5 regression                                │
+│  Layer 4: resolve_place_type_with_table (Stage 18.358)      │
+│    Recursive substitute in Projection field_ty resolution    │
+│  Layer 5: compute_use_writeback_ty (Stage 18.361)            │
+│    Recursive Projection base resolution for nested access   │
+│                                                               │
+│  ─── Aggregate field_tys substitute (Stage 18.376) ───      │
+│  writeback_field_types_in_rvalue_with_table:                │
+│    For AggregateKind::Adt(_, _, substs, field_tys):         │
+│      if substs non-empty AND field_ty contains Param:        │
+│        field_ty = substitute(field_ty, substs)              │
+│  Resolves nested generic struct literals:                    │
+│    Outer<Inner<T>> { inner: Inner { val: 42i64 } }           │
+│    → field_tys[0] = Inner<Param(0)> → Inner<i64>             │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            ▼

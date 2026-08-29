@@ -272,7 +272,6 @@ Remaining items are v0.5+ architecture limitations (documented in
 
 | ID | Description | Status | Fix Plan |
 |----|-------------|--------|----------|
-| TD-ARCH-NESTED-GENERIC-FIELD-ACCESS | Chain access `o.inner.ptr` (nested `Outer<Inner<T>>`) | 🟡 v0.5+ | MIR lower `expected_ty` propagation |
 | TD-STUB-PRELUDE-LOOP-BODY | Prelude `loop {}` marker bodies (4 methods) | 🟡 v0.5+ | Fat pointer construction syntax |
 | TD-TYPECK-LOCAL-DECL-ERROR-CHECK | Phase 4.5 disabled (47 prelude false-positives) | 🟡 v0.5+ | Prelude lazy monomorphization |
 | TD-STUB-REGION-ERASED | Region inference no-op | 🟡 v0.2+ | SCC + type tests + universe |

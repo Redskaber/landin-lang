@@ -1,7 +1,7 @@
 # Codegen Data Flow (MIR → LLVM IR)
 
-> **Date**: 2026-08-04
-> **Version**: v0.234.0
+> **Date**: 2026-08-29
+> **Version**: v0.510.0 (Stage 18.377 — FnDef ConstVal truncation hardened + 5-layer substitute chain integrated)
 
 ## Unified Pipeline Data Flow
 
@@ -95,6 +95,31 @@ TyKind::FnDef(_, _)       →     EmitType::OpaquePtr
 TyKind::FnPtr(_)          →     EmitType::OpaquePtr
 TyKind::Str               →     EmitType::Ptr(I8)
 TyKind::Slice(elem)       →     EmitType::Ptr(elem)
+```
+
+## FnDef ConstVal Truncation Hardening (Stage 18.375)
+
+```
+ConstVal::Uint(u128) / ConstVal::Int(u128)
+    │  (when used as FnDef reference — func operand in Call terminator)
+    │
+    ▼
+u32::try_from(*n).expect("FnDef ConstVal must fit u32")
+    │
+    ▼
+DefId(u32) → fn_name_by_def_id lookup → "@<name>"
+
+Was: `*n as u32` (silent truncation — could mask corrupted ConstVal)
+Now: explicit panic on overflow (per §1.0 原則 1 内存安全决不能妥协)
+
+Files touched (4):
+  - src/codegen/operand.rs (1 — FnDef constant emission)
+  - src/codegen/terminator.rs (4 — Call func resolution: dyn_trait + direct)
+  - src/codegen/function.rs (2 — Call destination type resolution)
+  - src/mir/lower/writeback.rs (1 — compute_call_dest_ty)
+
+Long-term fix (v0.5+): ConstVal::FuncRef(DefId) variant
+  (per Rust design philosophy "make invalid states unrepresentable")
 ```
 
 ## Key Data Structures

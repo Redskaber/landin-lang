@@ -28530,3 +28530,104 @@ Stage Summary:
   - 候选 2: 生产代码 `unwrap_or_else(|| default)` 静默降级审计 (与 Stage 18.372 同类)
   - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TD 的解锁路径
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.377
+
+
+---
+Task ID: stage18.378
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.378 — 文档一致性审计 + docs/graph 同步 (README 内部不一致修复 + docs/graph/type-system + codegen data-flow 更新). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档一致性修复 — README 1 处 + docs/graph 2 文件, ≤100 行变更)
+- 对齐: §15 (同步更新 docs/graph/); §1.6 终极检验 — 文档与代码状态不一致是隐性 TD
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.377 r33 已交付)
+
+决策点 (为何选此路):
+- 为什么选文档一致性审计而非继续代码 TD?
+  → 引用 §1.6 终极检验: 连续 6 轮 P3 级 silent context loss 修复 (Stage 18.372-18.377); 按 §5.2 提前收敛原则应触发收敛
+  → 引用用户指令: "严格按照 docs/stage-committee-process.md 校验、同步更新文档"
+  → 引用 §15 (同步更新 docs/graph/): docs/graph/type-system/data-flow.md 版本 v0.260.0 (Stage 16.74), 未反映 Stage 18.347-18.377 的 5-layer substitute chain
+  → 引用 §1.0 原則 3 (显式 > 隐式): 文档与代码状态不一致是隐性 TD — 用户看到的文档说"BLOCKED"但代码已"Resolved"
+- 为什么不继续找 P3 级代码 TD?
+  → 引用 §5.2 (提前收敛): 连续 2 轮 P3 触发收敛; 已连续 6 轮, 远超阈值
+  → 引用 §1.6 终极检验: "这是针对根因的最优架构解, 还是仅仅为了跑通测试的最小补丁?" — 继续找 P3 是后者; 文档一致性是前者
+  → 引用 §12 (最优 > 最小): 文档一致性修复让用户看到的文档与实际代码状态一致, 比继续找 P3 更有价值
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅文档更新, 不改变代码; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响代码, 现有 4409 测试已覆盖
+
+5W2H:
+- WHAT: 修复 README 内部不一致 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 双状态) + 更新 docs/graph/type-system + codegen data-flow
+- WHY: 文档与代码状态不一致是隐性 TD (§1.0 原則 3 显式 > 隐式); docs/graph 滞后于 Stage 18.347-18.377 (§15)
+- WHO: ARCH-A (识别不一致) + REV-A (修复文档)
+- WHEN: §3.2 全绿后停止
+- WHERE: 3 文件 — README.md, docs/graph/type-system/data-flow.md, docs/graph/codegen/data-flow.md
+- HOW: 3 步流程
+  (1) grep README 发现 TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 在 line 275 标记 🟡 v0.5+, 在 line 289 标记 ✅ Resolved — 内部不一致
+  (2) 移除 line 275 的 stale 🟡 v0.5+ 行 (因为 Stage 18.376 已 resolved)
+  (3) 更新 docs/graph/type-system/data-flow.md: 版本 v0.260.0 → v0.510.0; 添加 Phase 0 + Phase 3.7 + 5-layer substitute chain + Aggregate field_tys substitute
+  (4) 更新 docs/graph/codegen/data-flow.md: 版本 v0.234.0 → v0.510.0; 添加 FnDef ConstVal Truncation Hardening 章节
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 评估当前 TD 状态: 9 个结构 TDs 已闭合; 7 个 BLOCKED TDs 需 v0.5+ 架构变更
+  - 连续 6 轮 P3 修复 (Stage 18.372-18.377) 已远超 §5.2 收敛阈值
+  - 决定: 不继续找 P3 级代码 TD (后者, 跑通测试的最小补丁); 转向文档一致性 (前者, 根因修复)
+- 文档不一致发现:
+  - README.md line 275: TD-ARCH-NESTED-GENERIC-FIELD-ACCESS | 🟡 v0.5+ | MIR lower `expected_ty` propagation
+  - README.md line 289: TD-ARCH-NESTED-GENERIC-FIELD-ACCESS | ✅ Resolved (Stage 18.376) | 5-layer fix
+  - 同一 TD 在两个表格中状态不一致 — 用户困惑
+- 修复 README.md:
+  - 移除 line 275 的 stale 🟡 v0.5+ 行 (Stage 18.376 已 resolved)
+  - 保留 line 289 的 ✅ Resolved 行
+- 更新 docs/graph/type-system/data-flow.md:
+  - 版本: v0.260.0 (Stage 16.74) → v0.510.0 (Stage 18.377)
+  - 日期: 2026-08-05 → 2026-08-29
+  - 添加 Phase 3.5 注释 (Stage 18.357 substitute)
+  - 添加 Phase 3.7 (Stage 18.355 post-table re-writeback)
+  - 添加 5-layer substitute chain 详细说明:
+    * Layer 1: Phase 0 pre-writeback (Stage 18.353)
+    * Layer 2: Phase 3.5 table substitute (Stage 18.357)
+    * Layer 3: Phase 3.7 post-table re-writeback (Stage 18.355)
+    * Layer 4: resolve_place_type_with_table recursive substitute (Stage 18.358)
+    * Layer 5: compute_use_writeback_ty recursive Projection (Stage 18.361)
+  - 添加 Aggregate field_tys substitute (Stage 18.376):
+    * writeback_field_types_in_rvalue_with_table 中的 AggregateKind::Adt field_tys substitute
+    * 嵌套泛型 struct literal 解析: Outer<Inner<T>> { inner: Inner { val: 42i64 } }
+- 更新 docs/graph/codegen/data-flow.md:
+  - 版本: v0.234.0 → v0.510.0 (Stage 18.377)
+  - 日期: 2026-08-04 → 2026-08-29
+  - 添加 "FnDef ConstVal Truncation Hardening (Stage 18.375)" 章节:
+    * ConstVal::Uint(u128)/Int(u128) → u32::try_from(*n).expect(...)
+    * Was: *n as u32 (silent truncation)
+    * Now: explicit panic on overflow (§1.0 原則 1 内存安全)
+    * 4 文件 modified: operand.rs, terminator.rs, function.rs, writeback.rs
+    * v0.5+ 长期修复: ConstVal::FuncRef(DefId) variant
+- §3.2 全校验流 (Stage 18.378 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - README.md: 移除 line 275 stale 🟡 v0.5+ 行 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 已在 Stage 18.376 resolved)
+  - docs/graph/type-system/data-flow.md: 版本 + 5-layer substitute chain + Aggregate field_tys substitute
+  - docs/graph/codegen/data-flow.md: 版本 + FnDef ConstVal Truncation Hardening 章节
+  - worklog.md: 本条 (Stage 18.378)
+
+Stage Summary:
+- 文档一致性修复 CLOSED ✅ — README 内部不一致修复 + docs/graph 同步 Stage 18.347-18.377
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件 (3): README.md, docs/graph/type-system/data-flow.md, docs/graph/codegen/data-flow.md
+- 设计原则引用:
+  * §1.0 原則 3 (显式 > 隐式): 文档与代码状态不一致是隐性 TD
+  * §15 (同步更新 docs/graph/): docs/graph 必须反映最新 stage
+  * §1.6 终极检验: 文档一致性是根因修复, 不是跑通测试的最小补丁
+  * §5.2 (提前收敛): 连续 6 轮 P3 远超阈值, 转向文档一致性
+  * §12 (最优 > 最小): 文档一致性让用户看到的文档与代码一致, 比继续找 P3 更有价值
+
+下一步 (下一 MUV):
+- §1.6 终极检验: v0.4 已完全可交付 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8
+- 当前所有可修复的 P0/P1/P2/P3 TDs 已闭合; 剩余 BLOCKED TDs 需 v0.5+ 架构变更 (L3 任务)
+- 建议: 启动 v0.5+ Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TDs 的解锁路径
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.378
