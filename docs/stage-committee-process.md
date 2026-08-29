@@ -185,7 +185,7 @@ flowchart TD
 | 8 | **层级划分** | 各阶段层级清晰，不跨层调用；下游只读上游产出的数据结构 | typeck 直接调用 parser 内部函数 |
 | 9 | **避免死代码** | 不再使用的代码直接删除（Git 记录历史）；不注释保留 | 注释掉废弃函数而非删除 |
 | 10 | **避免分散内容** | 相关功能内聚到同一模块/文件，不分散到多处 | 同一 trait 的定义在 A、impl 在 B、方法在 C |
-| 11 | **确定性边界先行** (v7.4) | 在修复或设计前，必须先清晰划定能力边界、设计边界、职责边界（§2.2 原则 11）。不确定的边界不得猜测，必须基于设计文档或 Rust 参考实现确定。依据 Rust 对应阶段处理方式（如 LLVM IR 生成对比 rustc），通过 Rust 工具链和相同代码内容对比差异。**知识搜索 > 猜测** — 存在不清晰时调用搜索工具。**不得回避 bug 触发** — 必须真正根治，而非抑制症状。 | 不先划分 `emit_null_ptr()` (value) vs `emit_store()` (type prefix) 职责边界就修改代码 |
+| 11 | **确定性边界先行** (v7.4) | 在修复或设计前，必须先清晰划定能力边界、设计边界、职责边界（§2.2 原则 11 确定性边界）。不确定的边界不得猜测，必须基于设计文档或 Rust 参考实现确定。依据 Rust 对应阶段处理方式（如 LLVM IR 生成对比 rustc），通过 Rust 工具链和相同代码内容对比差异。**知识搜索 > 猜测** — 存在不清晰时调用搜索工具。**不得回避 bug 触发** — 必须真正根治，而非抑制症状。 | 不先划分 `emit_null_ptr()` (value) vs `emit_store()` (type prefix) 职责边界就修改代码 |
 | 12 | **临时桩识别与记录** (v7.4) | 在开发过程中，如果遇到传递 `None`、`_`、默认值等情况，必须判断这是真实设计还是临时桩（stub）。如果是临时桩，说明是不完整的实现，必须在 tech-debt 中添加对应条例并说明缘由、影响范围和修复计划（避免埋雷和 bug 生产）。 | 在 codegen 中传递 `mono_layouts=None` 而不记录原因；使用 `loop {}` 作为 prelude 方法体而不在 tech-debt 记录 |
 | 13 | **架构限制记录与升级** (v7.4) | 如果在处理 bug 或设计开发过程中审查结果得出架构限制，必须将审查得出的架构限制和缘由等必要内容添加条例到 tech-debt 中，纳入计划项目架构级重构优化升级。可参考 Rust 对应模型设计。 | 发现 `find_receiver_substs(&cx)` 不能调用 `lower_expr_to_operand(&mut cx)` 时不记录为架构限制，而是 hack 绕过 |
 
@@ -2425,7 +2425,7 @@ docs/graph/
 > **Version**: v1.0
 > **对应设计文档**: docs/lang-design/07-mir.md
 
-## 1. HIR → MIR Lowering 流程
+### 15.4.1 HIR → MIR Lowering 流程
 
 \`\`\`mermaid
 flowchart TD
@@ -2443,7 +2443,7 @@ flowchart TD
     LB --> MB[MirBody<br/>basic_blocks + local_decls + source]
 \`\`\`
 
-## 2. MIR 数据结构关系
+### 15.4.2 MIR 数据结构关系
 
 \`\`\`mermaid
 flowchart LR
@@ -2479,7 +2479,7 @@ flowchart LR
 > **Version**: v1.0
 > **对应代码**: src/typeck/
 
-## 1. Typeck 主流程
+### 15.4.3 Typeck 主流程
 
 \`\`\`mermaid
 flowchart TD
@@ -2554,7 +2554,7 @@ flowchart TD
 > **Date**: YYYY-MM-DD
 > **Version**: v1.0
 
-## 1. if/else 在各阶段的处理
+### 15.4.4 if/else 在各阶段的处理
 
 \`\`\`mermaid
 flowchart TD
@@ -2570,7 +2570,7 @@ flowchart TD
     SRC --> LX --> PS --> HL --> ML --> TC --> BC --> CG
 \`\`\`
 
-## 2. MIR 层的 if-else lowering
+### 15.4.5 MIR 层的 if-else lowering
 
 \`\`\`mermaid
 flowchart TD
