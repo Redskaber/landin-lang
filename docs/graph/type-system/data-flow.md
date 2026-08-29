@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-29
-> **Version**: v0.510.0 (Stage 18.380 — Phase 3.7 REMOVED, writeback phases 10 → 9)
+> **Version**: v0.510.0 (Stage 18.381 — Phase 0 + Phase 3.7 REMOVED, writeback phases 10 → 8)
 
 ## Type Checking Data Flow
 
@@ -65,10 +65,12 @@ HIR Body
 │  Layer 1: Phase 0 pre-writeback (Stage 18.353)              │
 │    writeback_type_propagation runs BEFORE Phase 1            │
 │    Resolves Param in local_decls before typeck sees them    │
+│    ** REMOVED Stage 18.381 — redundant after 18.380 **       │
 │  Layer 2: Phase 3.5 table substitute (Stage 18.357)         │
 │    substitute(resolved, substs) in writeback_field_types    │
 │  Layer 3: Phase 3.7 post-table re-writeback (Stage 18.355)   │
 │    Fixes Phase 3.5 regression                                │
+│    ** REMOVED Stage 18.380 — redundant after step 2 fix **   │
 │  Layer 4: resolve_place_type_with_table (Stage 18.358)      │
 │    Recursive substitute in Projection field_ty resolution    │
 │  Layer 5: compute_use_writeback_ty (Stage 18.361)            │

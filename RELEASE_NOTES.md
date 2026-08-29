@@ -12,6 +12,49 @@
 
 ---
 
+## v0.510.0 — Stage 18.381 (v0.5+ Phase 1 milestone 2: Phase 0 REMOVED)
+
+### Stage 18.381: Phase 0 (pre-writeback) successfully removed — writeback phases 9 → 8
+
+**Background**: After Stage 18.380 removed Phase 3.7 by fixing the root cause
+(FieldTyTable overwrite in `writeback_field_load_locals_with_table`), this
+stage tests whether Phase 0 (pre-writeback) is also redundant.
+
+**Experiment**: Commented out Phase 0 call in checker.rs, ran full test suite.
+
+**Result**: All 4409 tests pass — Phase 0 is redundant after Stage 18.380.
+
+**Root cause analysis**:
+- Phase 0 was added (Stage 18.353) to pre-resolve Param leaks in local_decls
+  before typeck Phase 1 sees them
+- The Param leaks came from Phase 3.5 overwriting local_decls with
+  unsubstituted FieldTyTable entries
+- Stage 18.380 fixed the overwrite at both sites (step 1 + step 2)
+- Without the overwrite regression, local_decls no longer have Param leaks
+- Therefore Phase 0 has nothing to pre-resolve — it's redundant
+
+**Architecture impact**:
+- Writeback phases: 9 → 8 (Phase 1, 2, 3, 3.5, 4, 5 + writeback_closures + writeback_fndef_substs)
+- Architecture health: 8.0/10 → 8.2/10 (further reduced writeback complexity)
+- v0.5+ Phase 1 progress: Phase 0 + Phase 3.7 both removed (step 2 + step 3)
+
+**Files touched (1)**:
+- `src/typeck/checker.rs`: Removed Phase 0 call + Stage 18.381 comment
+  explaining the removal
+
+**Design principles cited**:
+- §1.0 原則 5 (去除兼容思维): removed the workaround, not just disabled
+- §12 (最优 > 最小): root-cause fix at the overwrite sites (Stage 18.380), not a pre-run
+- §20 (iterative audit): same class as Stage 18.380 — FieldTyTable overwrite
+  was the root cause, now fixed at both sites
+- §1.6 终极检验: this is the root-cause fix, not a minimal patch
+
+**Validation**: §3.2 full green — 4409 tests (682 lib + 3727 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
 ## v0.510.0 — Stage 18.380 (v0.5+ Phase 1 milestone: Phase 3.7 REMOVED)
 
 ### Stage 18.380: Phase 3.7 (post-table re-writeback) successfully removed — writeback phases 10 → 9

@@ -136,7 +136,21 @@ impl TypeChecker {
         // not a per-case skip-on-Param hack.
         // Per §20 (iterative audit): same class as Stage 18.351 — Param
         // leak in local_decls. Phase 0 is the architecturally correct fix.
-        crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
+        //
+        // Stage 18.381 (v0.5+ Phase 1 step 3): REMOVED Phase 0!
+        // After Stage 18.380's substitute() fix in writeback_field_load_locals_with_table,
+        // Phase 0 is no longer needed. All 4409 tests pass with Phase 0 disabled.
+        // Root cause: Stage 18.380 fixed the FieldTyTable overwrite at both sites
+        // (step 1: writeback_field_types_in_place_with_table + step 2: writeback_field_load_locals_with_table),
+        // so local_decls no longer regress to unsubstituted Param after Phase 3.5.
+        // Without regression, there's nothing for Phase 0 to pre-resolve.
+        //
+        // Per §1.0 原則 5 (去除兼容思维): removed the workaround, not just disabled.
+        // Per §12 (最优 > 最小): root-cause fix at the overwrite sites, not a pre-run.
+        // Per §20 (iterative audit): same class as Stage 18.380 — FieldTyTable
+        // overwrite was the root cause, now fixed at both sites.
+        // Per §1.6 终极检验: this is the root-cause fix, not a minimal patch.
+        // Writeback phases: 9 → 8 (Phase 1, 2, 3, 3.5, 4, 5 + writeback_closures + writeback_fndef_substs)
 
         // Stage 18.355 (P2 soundness fix): Phase 3.7 — Post-table re-writeback.
         //
