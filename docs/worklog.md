@@ -28105,3 +28105,110 @@ Stage Summary:
   - 候选 2: 生产代码 `as` 类型转换截断审计 (e.g., `as u32`, `as i64` 可能截断)
   - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.373
+
+
+---
+Task ID: stage18.374
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.374 — TD-TY-INFER-SPAN 修复 (3 production `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(real_span)`). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (3 个 fresh_infer_ty span 修复, 跨 2 文件, ≤30 行总变更)
+- 对齐: tech-debt-register.md §4.5 已闭合 TD-UNWRAP-GUARDED-EXPECT (Stage 18.372) + TD-UNREACHABLE-INVARIANT (Stage 18.373); §20 Bug 概率分布推理 → 顺路径深挖"silent context loss" 同类
+- 阻断: 4403 tests 全绿基线已确认 (Stage 18.373 r29 已交付, fmt + clippy + test --release 三件套 clean)
+
+决策点 (为何选此路):
+- 为什么选 fresh_infer_ty(Span::DUMMY) 审计而非其他 TD?
+  → 引用用户指令: "推进任务（修复技术债务（tech-debt）等）"
+  → 引用 §20 (Bug 概率分布推理): Stage 18.372 修 15 unwrap; Stage 18.373 修 4 unreachable!(); 同类技术债 (silent context loss where span is available but not used) 必然散布在代码库其他位置
+  → 引用 §1.0 原則 4 (报错 > 静默): typeck 错误应携带源位置, 不应用 Span::DUMMY
+  → 引用 §2 原则 3 (显式 > 隐式): 真实 span (param.span/expr.span) 已在作用域, 应使用
+- 为什么同时审计 Ty::new(TyKind::Error, Span::DUMMY) 但不改?
+  → §20 同类审计: fresh_infer_ty 与 Ty::new(TyKind::Error) 都是"silent context loss" 候选
+  → 审计结果: 11 处 Ty::new(TyKind::Error, Span::DUMMY) 全部是"错误已报告"placeholder
+    - 每处都先 `cx.type_errors.push(TypeError::new(msg, expr.span))` (正确 span)
+    - 然后用 Span::DUMMY 构造 placeholder Ty::Error 让 codegen 不崩溃
+    - param_check pass 使用 stmt.span/term.span (非 Ty.span)
+    - codegen 从不读 Ty.span 用于诊断
+  → 结论: Span::DUMMY 在"错误已报告"placeholder 中是合法设计模式, 不修改
+  → 引用 §1.0 原則 9 (正确 > 妥协): 不做表面工程, 区分真实 TD 与设计模式
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅 fresh_infer_ty(Span::DUMMY) → fresh_infer_ty(real_span) 文本改造, 不改变控制流; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响错误处理路径, 现有 4403 测试已覆盖
+
+5W2H:
+- WHAT: 全代码库审计 + 修复 3 个生产代码 fresh_infer_ty(Span::DUMMY) (排除 #[cfg(test)] 与 *_tests.rs 测试基础设施文件)
+- WHY: 让 typeck 错误在涉及 InferTy 时携带源位置, 而非 Span::DUMMY (§1.0 原則 4)
+- WHO: ARCH-A (审计分类 + 设计模式判定) + DEV-A (改造) + REV-A (校验) + QA-A (§3.2 全绿)
+- WHEN: §3.2 全绿后停止
+- WHERE: 2 文件 — src/mir/lower/body_lower.rs (2 处 param.span), src/mir/lower/expr_variants.rs (1 处 expr.span)
+- HOW: 5 步流程
+  (1) 全代码库扫描 unwrap_or/unwrap_or_default/unwrap_or_else — 231 处
+  (2) 分类审计: unwrap_or_default (27 处合法集合查找) + unwrap_or_else (57 处需细查) + unwrap_or(constant) (147 处合法默认值)
+  (3) 深入 unwrap_or_else → fresh_infer_ty 模式 — 8 处, 大部分已有 expr.span/sub_pat.span, 3 处用 Span::DUMMY
+  (4) 深入 Ty::new(TyKind::Error, Span::DUMMY) — 11 处, 全部是"错误已报告" placeholder (设计模式)
+  (5) 仅修复 3 处真实 TD (fresh_infer_ty(Span::DUMMY) → fresh_infer_ty(real_span))
+- HOW MUCH: §3.2 硬性红线全绿 — 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 Bug 概率分布推理审计 (顺 Stage 18.372 + 18.373 路径):
+  - 扫描源: find src -name '*.rs' ! -name '*_tests.rs' ! -name '*_test*.rs'
+  - awk 状态机: 进入 #[cfg(test)] 块后跳过
+  - 排除注释行 (line !~ /^[[:space:]]*\/\//)
+  - 找到 231 处 unwrap_or 类调用, 分类:
+    * unwrap_or_default (27 处): 合法集合查找 (HashMap.get().unwrap_or_default())
+    * unwrap_or_else (57 处): 8 处 fresh_infer_ty + 5 处 Ty::new(TyKind::Error) + 其他 default value
+    * unwrap_or(constant) (147 处): 合法默认值 (0/false/""/Span::DUMMY 等)
+  - 深入分析 fresh_infer_ty(Span::DUMMY): 3 处真实 TD
+  - 深入分析 Ty::new(TyKind::Error, Span::DUMMY): 11 处设计模式 (非 TD)
+- 文件分布 (2 files):
+  1. src/mir/lower/body_lower.rs:360 — `fresh_infer_ty(Span::DUMMY)` in self_param fallback
+     Fix: `fresh_infer_ty(param.span)` — HirParam 有 pub span: Span 字段
+  2. src/mir/lower/body_lower.rs:362 — `fresh_infer_ty(Span::DUMMY)` in non-self param fallback
+     Fix: `fresh_infer_ty(param.span)` — 同上
+  3. src/mir/lower/expr_variants.rs:930 — `fresh_infer_ty(Span::DUMMY)` in closure call dest_ty
+     Fix: `fresh_infer_ty(expr.span)` — HirExpr 有 pub span: Span 字段
+- 改造原则:
+  - 每个 fresh_infer_ty(real_span) 添加 // Stage 18.374 (TD-TY-INFER-SPAN) 注释
+  - 注释引用 §1.0 原則 4 + §2 原则 3 说明设计依据
+  - 不改变控制流 (仅 span 参数)
+- 设计模式判定 (非 TD):
+  - 11 处 Ty::new(TyKind::Error, Span::DUMMY) 全部审计
+  - 模式: `cx.type_errors.push(TypeError::new(msg, expr.span)); ...; Ty::new(TyKind::Error, Span::DUMMY)`
+  - 错误位置已通过 type_errors.push 携带正确 span
+  - Span::DUMMY 在 placeholder 中不影响用户诊断
+  - 引用 §1.0 原則 9 (正确 > 妥协): 区分真实 TD 与设计模式, 不做表面工程
+- §3.2 全校验流 (Stage 18.374 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4403 tests (682 lib + 3721 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md:
+    * Header 更新: "last updated Stage 18.374 — TD-TY-INFER-SPAN audit"
+    * §4.1 By Severity: 新增 "✅ Resolved in 18.374" 行 (TD-TY-INFER-SPAN)
+    * §4.5 By §2 Principle Violations: 新增 TD-TY-INFER-SPAN 行 (✅ Resolved Stage 18.374, 详细描述 2 文件 + 3 fresh_infer_ty + 设计原则引用 + 11 Ty::new(TyKind::Error, Span::DUMMY) 设计模式判定)
+  - README.md:
+    * Header 版本: Stage 18.373 → 18.374
+    * Header status: 新增 "Stage 18.374 closed TD-TY-INFER-SPAN — 3 fresh_infer_ty(Span::DUMMY) → fresh_infer_ty(real_span)"
+    * Tech Debt & Known Limitations 表: 新增 TD-TY-INFER-SPAN 行
+    * Documentation 章节 tech-debt-register 描述: "5 structural TDs" → "6 structural unwrap/expect/unreachable/infer-span TDs resolved Stage 18.127-18.374"
+  - RELEASE_NOTES.md: 新增 Stage 18.374 章节 (Background / Audit method / Result / Files touched / Audit also confirmed / Design principles / Validation)
+  - worklog.md: 本条 (Stage 18.374)
+
+Stage Summary:
+- TD-TY-INFER-SPAN CLOSED ✅ — 3 production fresh_infer_ty(Span::DUMMY) → fresh_infer_ty(real_span) across 2 files
+- §3.2 全绿: 4403 tests (682 lib + 3721 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/mir/lower/body_lower.rs, src/mir/lower/expr_variants.rs (2 files modified)
+- 设计原则引用:
+  * §1.0 原則 4 (报错 > 静默): typeck 错误应携带源位置, 不应用 Span::DUMMY
+  * §2 原则 3 (显式 > 隐式): 真实 span 已在作用域, 应使用
+  * §20 (Bug 概率分布推理): Stage 18.372 修 15 unwrap; Stage 18.373 修 4 unreachable!(); Stage 18.374 顺路径深挖 fresh_infer_ty(Span::DUMMY) 同类
+  * §1.0 原則 9 (正确 > 妥协): 区分真实 TD (3 处 fresh_infer_ty) 与设计模式 (11 处 Ty::new(TyKind::Error) placeholder), 不做表面工程
+
+下一步 (下一 MUV):
+- §20 迭代审计: 是否还有同类技术债?
+  - 候选 1: 生产代码 `as` 类型转换截断审计 (e.g., `as u32`, `as i64` 可能截断) — 影响 §1.0 原則 1 (内存安全)
+  - 候选 2: 生产代码 `unsafe` 块审计 — 应为 0 (Landin v0.4 无 unsafe 用户接口)
+  - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.374

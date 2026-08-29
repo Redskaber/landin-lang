@@ -927,7 +927,11 @@ pub(super) fn lower_call_expr(
         // Per §1.0 原則 5 "去除兼容思维": dead code is removed.
         // Per §1.0 原則 6 "通用 > 特例": one codegen path for
         // all closure-typed calls.
-        let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
+        // Stage 18.374 (TD-TY-INFER-SPAN): use expr.span instead of Span::DUMMY
+        // so typeck errors on this InferTy point to the call's source location.
+        // Per §1.0 原則 4 "报错 > 静默": errors should carry diagnostic span.
+        // Per §2 原则 3 "显式 > 隐式": span is available in scope (expr.span), use it.
+        let dest_ty = cx.fresh_infer_ty(expr.span);
         let dest = cx.mir.new_local(dest_ty, None, expr.span);
         let cont = cx.new_block();
         cx.terminate_kind_and_goto(

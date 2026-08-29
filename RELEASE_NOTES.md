@@ -12,6 +12,61 @@
 
 ---
 
+## v0.510.0 — Stage 18.374 (TD-TY-INFER-SPAN audit)
+
+### Stage 18.374: 3 production `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(real_span)`
+
+**Background**: Following §20 (Bug probability distribution reasoning)
+from Stage 18.373 (which closed TD-UNREACHABLE-INVARIANT), this stage
+audits the broader class of "silent type construction without diagnostic
+span". When MIR lower generates a `Ty::Infer(_)` via `fresh_infer_ty`,
+the `Span` argument is stored on the Ty. If typeck later reports an
+error involving this InferTy (e.g., "expected i32, found type parameter T"
+where T came from a fresh_infer_ty), the diagnostic uses the Ty's span.
+Using `Span::DUMMY` here means the error points to "nowhere" in the source.
+
+**Audit method**: Broader scan beyond `unwrap_or` — all `fresh_infer_ty(Span::DUMMY)`
+calls in production code (excluding `*_tests.rs` and `#[cfg(test)]` blocks).
+Found 3 sites where a real span (param.span or expr.span) was already in scope.
+
+**Result**: 3 production `fresh_infer_ty(Span::DUMMY)` converted to
+`fresh_infer_ty(real_span)` with comments explaining the design.
+
+**Files touched (2)**:
+- `src/mir/lower/body_lower.rs:360,362`: `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(param.span)`
+  — In the `param.ty == None` branch (HIR param without explicit type
+  annotation). The `param.span` field on `HirParam` points to the source
+  location of the parameter, so typeck errors on this InferTy will now
+  point to the parameter declaration.
+- `src/mir/lower/expr_variants.rs:930`: `fresh_infer_ty(Span::DUMMY)` → `fresh_infer_ty(expr.span)`
+  — In the closure-call dest_ty assignment. The `expr.span` field on
+  `HirExpr` points to the call expression's source location, so typeck
+  errors on this InferTy will now point to the call site.
+
+**Audit also confirmed**: 11 other `Ty::new(TyKind::Error, Span::DUMMY)`
+calls were audited but NOT changed. They follow the "error already reported"
+pattern — each is preceded by `cx.type_errors.push(TypeError::new(msg, expr.span))`
+which carries the correct span. The `Span::DUMMY` on the placeholder `Ty::Error`
+doesn't affect user-facing diagnostics because:
+- typeck reports use the TypeError's span (pushed with expr.span)
+- param_check pass uses `stmt.span` / `term.span`, not `Ty.span`
+- codegen never reads `Ty.span` for diagnostics
+
+Documented as a design pattern (not TD) — placeholder Ty uses DUMMY span
+to indicate "diagnostic already emitted elsewhere".
+
+**Design principles cited**:
+- §1.0 原則 4 (报错 > 静默): typeck errors on InferTy should carry source location
+- §2 原则 3 (显式 > 隐式): real span (param.span / expr.span) already in scope, use it
+- §20 (Bug probability distribution reasoning): same class as TD-UNWRAP-GUARDED-EXPECT (Stage 18.372)
+  + TD-UNREACHABLE-INVARIANT (Stage 18.373) — all are "silent context loss" patterns
+
+**Validation**: §3.2 full green — 4403 tests (682 lib + 3721 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
 ## v0.510.0 — Stage 18.373 (TD-UNREACHABLE-INVARIANT audit)
 
 ### Stage 18.373: 4 production bare `unreachable!()` → `unreachable!("invariant msg")`

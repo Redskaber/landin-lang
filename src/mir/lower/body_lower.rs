@@ -357,9 +357,16 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 None => {
                     if param.self_kind.is_some() {
                         resolve_self_param_type(&cx, body, param.self_kind)
-                            .unwrap_or_else(|| cx.fresh_infer_ty(Span::DUMMY))
+                            // Stage 18.374 (TD-TY-INFER-SPAN): use param.span instead of
+                            // Span::DUMMY so typeck errors on this InferTy point to the
+                            // parameter's source location, not the meaningless DUMMY span.
+                            // Per §1.0 原則 4 "报错 > 静默": errors should carry diagnostic span.
+                            // Per §2 原则 3 "显式 > 隐式": span is available in scope, use it.
+                            .unwrap_or_else(|| cx.fresh_infer_ty(param.span))
                     } else {
-                        cx.fresh_infer_ty(Span::DUMMY)
+                        // Stage 18.374 (TD-TY-INFER-SPAN): use param.span instead of
+                        // Span::DUMMY. See rationale in the `if` branch above.
+                        cx.fresh_infer_ty(param.span)
                     }
                 }
             }
