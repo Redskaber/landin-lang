@@ -27696,3 +27696,54 @@ writeback_type_propagation 被调用 3 次:
 - 架构审查完成 ✅ — 当前 v0.4 是最优解, v0.5+ 需 Phase 1-3 重构
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8, 架构健康度 7.8/10
 
+
+---
+Task ID: stage18.368
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 18.368 — 新增设计原则: 原则 10 (唯一可信数据源) + 原则 11 (确定性边界) 到 docs/stage-committee-process.md §2.2. L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档更新 — 新增 2 个设计原则到 process doc)
+- 对齐: 用户指令 "遵循设计原则：docs/stage-committee-process.md 的基础上新增 唯一可信数据源，确定性边界（能力边界，设计边界，职责边界等）"
+- 阻断: 4403 tests passing
+
+决策点:
+- 为什么新增 2 个原则而非 1 个?
+  → 引用用户指令: "唯一可信数据源" + "确定性边界（能力边界，设计边界，职责边界等）" 是两个不同的设计原则
+  → 唯一可信数据源: 确保数据一致性, 防止多源冲突 (Stage 18.364 的 find_receiver_substs 递归循环根因就是多源冲突)
+  → 确定性边界: 确保在动手前清晰边界 (Stage 18.347-18.364 的 Param 泄漏根因就是 find_receiver_substs(&cx) 的能力边界未清晰)
+  → 引用 §12 (最优 > 最小): 两个原则分别解决不同维度 (数据 vs 行为)
+
+裁剪点:
+- L2 跳过 §14.5 (无代码变更, 仅文档更新).
+
+5W2H:
+- WHAT: 新增原则 10 (唯一可信数据源) + 原则 11 (确定性边界) 到 §2.2
+- WHY: 用户明确要求新增这两个设计原则
+- WHO: ARCH-A (原则设计)
+- WHEN: 立即
+- WHERE: docs/stage-committee-process.md §2.2
+- HOW:
+  (1) 将 "以下 9 条原则" 改为 "以下 11 条原则"
+  (2) 添加原则 10 (唯一可信数据源) — 含义 + 违反示例 + 执行要求
+  (3) 添加原则 11 (确定性边界) — 含义 + 违反示例 + 执行要求
+  (4) 更新原则间协同关系 — 原则 10 是数据架构基石, 原则 11 是设计前置条件
+- HOW MUCH: 4403 tests 全绿 (无代码变更), fmt clean
+
+Work Log:
+- 新增 2 个设计原则:
+  - 原则 10 (唯一可信数据源): 每个数据实体在管道中应有且仅有一个权威来源; cache 必须与 source 同步; 函数签名决定可操作性; 不得 hack 绕过签名限制
+  - 原则 11 (确定性边界): 动手前先清晰划定能力边界/设计边界/职责边界; 不确定不得猜测; 边界冲突时先解决冲突
+- 执行要求:
+  - 原则 10: 含 6 条执行要求 (权威来源/引用获取/cache 同步/签名可操作性/不得 hack/TyCtxt 参考)
+  - 原则 11: 含 4 条执行要求 (三类边界/不得猜测/先解决冲突/InferCtxt 参考)
+- 违反示例:
+  - 原则 10: find_receiver_substs(&cx) 不能调用 lower_expr_to_operand(&mut cx)
+  - 原则 11: 修复 store ptr ptr null 前必须先划分 emit_null_ptr (value only) vs emit_store (type prefix) 的职责边界
+- §3.2 全校验流: 4403 tests, 0 failures, fmt clean, 0 clippy warnings (无代码变更)
+- 文档: worklog.md (本条) + docs/stage-committee-process.md (§2.2 新增 2 原则)
+
+下一步:
+- 2 个新原则已添加 ✅ — 11 条原则覆盖数据/行为/架构/质量全维度
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
+
