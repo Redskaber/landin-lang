@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.372 — TD-UNWRAP-GUARDED-EXPECT audit + TD-EXPECT-* reclassification)
+> **Date**: 2026-08-29 (last updated Stage 18.373 — TD-UNREACHABLE-INVARIANT audit)
 > **Version**: v0.510.0
-> **Status**: Stage 18.372 closed TD-UNWRAP-GUARDED-EXPECT (15 production guarded `.unwrap()` → `.expect("invariant doc")` across 7 files) and reclassified TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS (already resolved Stage 18.251, status propagated to §4.1/§4.5). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs fat pointer syntax), TD-STUB-PRELUDE-LOOP-BODY (same), TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (needs resolve_place_type_with_table recursive substitute). 4403 tests (682 lib + 3721 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: Stage 18.373 closed TD-UNREACHABLE-INVARIANT (4 bare `unreachable!()` → `unreachable!("invariant msg")` across 4 files). Following §20 from Stage 18.372 (TD-UNWRAP-GUARDED-EXPECT), this stage audits the same class of "silent panic" — `unreachable!()` without message. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C (needs fat pointer syntax), TD-STUB-PRELUDE-LOOP-BODY (same), TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (needs resolve_place_type_with_table recursive substitute). 4403 tests (682 lib + 3721 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -353,6 +353,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 📋 Task Review in 18.163 | 1 | TD-STDLIB-FACADE (拆分为 Option/Result + heap alloc + String/Vec; 发现 codegen 无 malloc/free 支持) |
 | ✅ Resolved in 18.164 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 85 个负面测试 vtable/closure/generics, 22.9% → 27.8%, 超过 25% 目标) |
 | ✅ Resolved in 18.372 | 1 | TD-UNWRAP-GUARDED-EXPECT (15 production guarded unwraps → expect with invariant docs) |
+| ✅ Resolved in 18.373 | 1 | TD-UNREACHABLE-INVARIANT (4 bare `unreachable!()` → `unreachable!("invariant msg")`) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
@@ -389,3 +390,4 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | TD-UNWRAP-CODEGEN-LLVM-MOD | §2 原则 4 | 1 unwrap (`strip_prefix('@').unwrap()`) | ✅ Resolved Stage 18.151 (replaced with `if let Some` pattern) |
 | TD-BINARYOP2-PANIC | §2 原则 4 + §2 原则 9 (正确 > 妥协) | panic 替代 CodegenError 传播 | ✅ Resolved Stage 18.151 (returns `Err(CodegenError)` via `CodegenResult`) |
 | TD-UNWRAP-GUARDED-EXPECT | §2 原则 3 (显式 > 隐式) + §2 原则 4 (报错 > 静默) | 15 production `.unwrap()` calls guarded by prior checks but lacking explicit invariant docs | ✅ Resolved Stage 18.372 — full codebase audit (excluding test infrastructure files `*_tests.rs`). All 15 guarded unwraps converted to `expect("invariant doc")` with comments explaining the guard. Files touched (7): `src/parser/expr.rs` (3 binop_bp), `src/mir/optimization.rs` (2 preds.next), `src/mir/lower/pattern_lower.rs` (1 arm.guard), `src/lexer/token.rs` (1 kw.keyword_str), `src/lexer/string.rs` (2 rest.chars().next), `src/resolve/module_build.rs` (1 path.segments.last), `src/codegen/text/aggregate.rs` (2 sret_name), `src/codegen/llvm/aggregate.rs` (2 sret_slot), `src/codegen/llvm/helpers.rs` (1 defensive CString fallback). Per §1.0 原則 3 (显式 > 隐式): guarded unwrap should still document the invariant. Per §20 (iterative audit): same class as TD-UNWRAP-DRIVER (Stage 18.127) + TD-UNWRAP-BORROWCK-REGION (Stage 18.127). |
+| TD-UNREACHABLE-INVARIANT | §2 原则 3 (显式 > 隐式) + §2 原则 4 (报错 > 静默) | 4 production `unreachable!()` calls without invariant message | ✅ Resolved Stage 18.373 — full codebase audit following §20 from Stage 18.372. All 4 bare `unreachable!()` converted to `unreachable!("invariant msg")` with comments explaining the guard. Files touched (4): `src/parser/path.rs` (1 — `matches!` guard), `src/parser/expr.rs` (1 — macro delimiter match), `src/mir/drop_elaboration.rs` (1 — split_point StorageDead), `src/resolve/path_resolve.rs` (1 — HirItem owner match). Per §1.0 原則 4 (报错 > 静默): `unreachable!()` panics with no diagnostic; `unreachable!("msg")` shows the violated invariant. Per §20 (iterative audit): same class as TD-UNWRAP-GUARDED-EXPECT (Stage 18.372) — both are "silent panic" patterns where panic message lacks context. Note: 7 other `unreachable!("with msg")` and 2 `panic!("with msg")` were already correct (no change needed). 3 `panic!` in `src/codegen/error.rs` and 1 in `src/codegen/llvm/tests.rs` are in test modules (legal). |

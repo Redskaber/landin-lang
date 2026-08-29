@@ -118,7 +118,8 @@ impl<'a> Parser<'a> {
                     PathLeading::Crate => "crate",
                     PathLeading::Super => "super",
                     PathLeading::Self_ => "self",
-                    _ => unreachable!(),
+                    // Guarded by `matches!` above: only Crate|Super|Self_ reach here.
+                    _ => unreachable!("matches! guard ensures only Crate|Super|Self_"),
                 };
                 let ident = self.interner.get(kw_str).unwrap_or_default();
                 return Path {

@@ -859,7 +859,10 @@ impl<'a> Parser<'a> {
                         TokenKind::LParen => MacroDelim::Paren,
                         TokenKind::LBrace => MacroDelim::Brace,
                         TokenKind::LBracket => MacroDelim::Bracket,
-                        _ => unreachable!(),
+                        // Macro invocation must be followed by a delimiter.
+                        // Other tokens are parser errors caught earlier in the
+                        // macro-call path; reaching here means dispatcher invariant violation.
+                        _ => unreachable!("macro call must be followed by `(`, `{{`, or `[`"),
                     };
 
                     // Stage 18.48 (REMOVED): The Println special-case code has been

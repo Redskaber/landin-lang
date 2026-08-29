@@ -758,7 +758,9 @@ pub fn elaborate_drops(
             let local_id = if let StatementKind::StorageDead(lid) = &stmt.kind {
                 *lid
             } else {
-                unreachable!() // we just checked this above
+                // split_point only returns Some when stmt.kind == StorageDead(_).
+                // Reaching here means split_point's filter logic diverged.
+                unreachable!("split_point returned Some but stmt.kind != StorageDead")
             };
 
             // Split the block at stmt_idx.

@@ -27997,3 +27997,111 @@ Stage Summary:
   - 候选 2: 生产代码 .unwrap_or(default) 静默降级审计
   - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.372
+
+
+---
+Task ID: stage18.373
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.373 — TD-UNREACHABLE-INVARIANT 修复 (4 production bare unreachable!() → unreachable!("invariant msg")). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (4 个 unreachable!() → unreachable!("msg") 改造, 跨 4 文件, ≤50 行总变更)
+- 对齐: tech-debt-register.md §4.5 已闭合 TD-UNWRAP-GUARDED-EXPECT (Stage 18.372); §20 Bug 概率分布推理 → 顺路径深挖 unreachable!() 同类
+- 阻断: 4403 tests 全绿基线已确认 (Stage 18.372 r28 已交付, fmt + clippy + test --release 三件套 clean)
+
+决策点 (为何选此路):
+- 为什么选 unreachable!() 审计而非其他 TD?
+  → 引用用户指令: "推进任务（修复技术债务（tech-debt）等）"
+  → 引用 §20 (Bug 概率分布推理): Stage 18.127 修 driver+borrowck 7 unwraps; Stage 18.372 修剩余 15 unwraps; 同类技术债 (bare unreachable!() lacking invariant msg) 必然散布在代码库其他位置
+  → 引用 §1.0 原則 4 (报错 > 静默): unreachable!() 在 panic 时无诊断信息; unreachable!("msg") 至少显示违反的 invariant
+  → 引用 §2 原则 3 (显式 > 隐式): 显式化假设让代码审查更明确
+- 为什么同时审计 panic!/todo!/unimplemented!?
+  → §20 同类审计: panic!/todo!/unimplemented!/unreachable! 都是 "panic 类调用", 应一并审计
+  → 审计结果: panic!() 共 5 处 — 3 处在 codegen/error.rs test mod (合法) + 1 处在 codegen/llvm/tests.rs (test file, 合法) + 1 处在 driver/mod.rs:758 (已有 message "expected at least one error, but compilation succeeded with zero errors") → 无需修改
+  → todo!/unimplemented!(): 0 处在生产代码 (Landin 不允许 stub 调用)
+  → 仅 unreachable!() 有 4 处需修复
+
+裁剪点 (为何跳流程):
+- L2 跳过 §14.5 深度审查 — 仅 unreachable!() → unreachable!("msg") 文本改造, 不改变控制流; §3.2 全绿是充分门禁
+- L2 跳过 §7.3.1 30-case 负向审计 — 修改不影响错误处理路径, 现有 4403 测试已覆盖
+
+5W2H:
+- WHAT: 全代码库审计 + 修复 4 个生产代码 bare unreachable!() (排除 #[cfg(test)] 与 *_tests.rs 测试基础设施文件)
+- WHY: 显式化 invariant 假设, 让未来 panic 至少带上下文 (§1.0 原則 4)
+- WHO: ARCH-A (审计分类) + DEV-A (改造) + REV-A (校验) + QA-A (§3.2 全绿)
+- WHEN: §3.2 全绿后停止
+- WHERE: 4 文件 — src/parser/path.rs:121, src/parser/expr.rs:862, src/mir/drop_elaboration.rs:761, src/resolve/path_resolve.rs:98
+- HOW: 5 步流程
+  (1) 全代码库扫描: find src -name '*.rs' ! -name '*_tests.rs' ! -name '*_test*.rs' + awk 状态机排除 #[cfg(test)] + 排除注释
+  (2) 上下文阅读: 对每个 unreachable!() 读 ±10 行确认守护条件 (matches! / split_point filter / collect_generic_type_params None 返回)
+  (3) 改造: unreachable!() → unreachable!("invariant msg") + 添加 // Guarded by 注释
+  (4) fmt + clippy 验证 (发现 1 个 format string 错误: `{` 需 escape 为 `{{`, 立即修复)
+  (5) §3.2 三件套验证
+- HOW MUCH: §3.2 硬性红线全绿 — 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 Bug 概率分布推理审计 (顺 Stage 18.372 路径):
+  - 扫描源: find src -name '*.rs' ! -name '*_tests.rs' ! -name '*_test*.rs' 排除测试基础设施
+  - awk 状态机: 进入 #[cfg(test)] 块后跳过, 直到文件结束
+  - 排除注释行 (line !~ /^[[:space:]]*\/\//)
+  - 找到 11 处 panic 类调用, 其中:
+    * 4 处 bare unreachable!() — 需修复 (path.rs:121, expr.rs:862, drop_elaboration.rs:761, path_resolve.rs:98)
+    * 7 处 unreachable!("with msg") — 已有 message, 无需修改
+    * 2 处 panic!("with msg") — 已有 message, 无需修改
+    * 4 处 panic! in test mod — 测试代码合法 (codegen/error.rs 3 处 + codegen/llvm/tests.rs 1 处)
+- 文件分布 (4 files):
+  1. src/parser/path.rs:121 — `_ => unreachable!()` in `match leading` arm
+     Guarded by: `matches!(leading, PathLeading::Crate | Super | Self_)` check at line 112-115
+     Fix: `unreachable!("matches! guard ensures only Crate|Super|Self_")`
+  2. src/parser/expr.rs:862 — `_ => unreachable!()` in `match self.peek()` arm (macro delim)
+     Guarded by: prior `matches!(self.peek_at(1), LParen | LBrace | LBracket)` check at line 853-856
+     Fix: `unreachable!("macro call must be followed by \`(\`, \`{{\`, or \`[\`")` (escape `{` as `{{`)
+  3. src/mir/drop_elaboration.rs:761 — `unreachable!() // we just checked this above` in if-let-else arm
+     Guarded by: `split_point` filter only returns Some for StatementKind::StorageDead(_)
+     Fix: `unreachable!("split_point returned Some but stmt.kind != StorageDead")`
+  4. src/resolve/path_resolve.rs:98 — `_ => unreachable!()` in `match item` arm
+     Guarded by: `collect_generic_type_params` returns None for non-Fn/Struct/Enum/Trait/Impl
+     Fix: `unreachable!("only Fn/Struct/Enum/Trait/Impl carry generic_params")`
+- 改造原则:
+  - 每个 unreachable!("msg") 描述守护条件 (e.g., "matches! guard ensures only Crate|Super|Self_")
+  - 添加 // Guarded by 注释让代码审查时一目了然
+  - 不改变控制流 (仅 unreachable!() → unreachable!("msg") + 注释)
+- Bug 发现与修复 (Stage 18.373 中):
+  - 首次 clippy 失败: `error: invalid format string: expected '}', found '``
+  - 根因: src/parser/expr.rs:862 unreachable!("macro call must be followed by `(`, `{`, or `[`") 中 `{` 在 format string 中是特殊字符
+  - 修复: 转义为 `{{` per Rust format string syntax
+  - 引用 §1.0 原則 9 (正确 > 妥协): 不绕过 clippy, 立即修复根因
+- §3.2 全校验流 (Stage 18.373 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4403 tests (682 lib + 3721 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md:
+    * Header 更新: "last updated Stage 18.373 — TD-UNREACHABLE-INVARIANT audit"
+    * §4.1 By Severity: 新增 "✅ Resolved in 18.373" 行 (TD-UNREACHABLE-INVARIANT)
+    * §4.5 By §2 Principle Violations: 新增 TD-UNREACHABLE-INVARIANT 行 (✅ Resolved Stage 18.373, 详细描述 4 文件 + 4 unreachable + 设计原则引用 + 同类审计结果)
+  - README.md:
+    * Header 版本: Stage 18.372 → 18.373
+    * Header status: 新增 "Stage 18.373 closed TD-UNREACHABLE-INVARIANT — 4 bare unreachable!() → unreachable!(\"invariant msg\")"
+    * Tech Debt & Known Limitations 表: 新增 TD-UNREACHABLE-INVARIANT 行
+    * Documentation 章节 tech-debt-register 描述: "4 structural TDs" → "5 structural unwrap/expect/unreachable TDs resolved Stage 18.127-18.373"
+  - RELEASE_NOTES.md: 新增 Stage 18.373 章节 (Background / Audit method / Result / Files touched / Audit also confirmed / Bug fixed / Design principles / Validation)
+  - worklog.md: 本条 (Stage 18.373)
+
+Stage Summary:
+- TD-UNREACHABLE-INVARIANT CLOSED ✅ — 4 production bare unreachable!() → unreachable!("invariant msg") across 4 files
+- §3.2 全绿: 4403 tests (682 lib + 3721 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/parser/path.rs, src/parser/expr.rs, src/mir/drop_elaboration.rs, src/resolve/path_resolve.rs (4 files modified)
+- 设计原则引用:
+  * §1.0 原則 3 (显式 > 隐式): unreachable!() 应显式化 invariant
+  * §1.0 原則 4 (报错 > 静默): unreachable!("msg") 比 unreachable!() 至少在 panic 时显示原因
+  * §2 原则 3 + §2 原则 4: 同上
+  * §20 (Bug 概率分布推理): Stage 18.127 修 driver+borrowck 7 unwraps; Stage 18.372 修剩余 15 unwraps; Stage 18.373 顺路径深挖 unreachable!() 同类
+  * §1.0 原則 9 (正确 > 妥协): format string `{` escape 立即修复, 不绕过 clippy
+
+下一步 (下一 MUV):
+- §20 迭代审计: 是否还有同类技术债?
+  - 候选 1: 生产代码 .unwrap_or(default) 静默降级审计 (e.g., `unwrap_or_default()`, `unwrap_or_else(|| default)`)
+  - 候选 2: 生产代码 `as` 类型转换截断审计 (e.g., `as u32`, `as i64` 可能截断)
+  - 候选 3: v0.5+ 架构重构 Phase 1 (typeck writeback 统一) — 这是 BLOCKED TD 的解锁路径
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.373

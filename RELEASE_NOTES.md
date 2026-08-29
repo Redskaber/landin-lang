@@ -12,6 +12,60 @@
 
 ---
 
+## v0.510.0 — Stage 18.373 (TD-UNREACHABLE-INVARIANT audit)
+
+### Stage 18.373: 4 production bare `unreachable!()` → `unreachable!("invariant msg")`
+
+**Background**: Following §20 (Bug probability distribution reasoning)
+from Stage 18.372 (which closed TD-UNWRAP-GUARDED-EXPECT), this stage
+audits the same class of "silent panic" patterns — `unreachable!()`
+calls without an invariant message. While `unreachable!()` panics when
+the unreachable branch is hit, the panic message lacks any context about
+which invariant was violated, making debugging harder.
+
+**Audit method**: Same as Stage 18.372 — `find src -name '*.rs' ! -name '*_tests.rs'
+! -name '*_test*.rs'` + awk state machine to skip `#[cfg(test)]` blocks
++ filter comment lines. Match `unreachable!\(\)` (empty parens, no message).
+
+**Result**: 4 production bare `unreachable!()` found across 4 files, all
+converted to `unreachable!("invariant msg")` with comments explaining
+the guard. No control flow changes; pure documentation of invariants
+for future reviewers.
+
+**Files touched (4)**:
+- `src/parser/path.rs:121`: `_ => unreachable!()` → `unreachable!("matches! guard ensures only Crate|Super|Self_")`
+  — guarded by `matches!(leading, PathLeading::Crate | Super | Self_)` check above
+- `src/parser/expr.rs:862`: `_ => unreachable!()` → `unreachable!("macro call must be followed by \`(\`, \`{{\`, or \`[\`")`
+  — guarded by prior `matches!` check that peek is `LParen | LBrace | LBracket`
+  (note: `{` escaped as `{{` in format string per Rust syntax)
+- `src/mir/drop_elaboration.rs:761`: `_ => unreachable!()` → `unreachable!("split_point returned Some but stmt.kind != StorageDead")`
+  — guarded by `split_point` filter that only returns Some for StorageDead
+- `src/resolve/path_resolve.rs:98`: `_ => unreachable!()` → `unreachable!("only Fn/Struct/Enum/Trait/Impl carry generic_params")`
+  — guarded by `collect_generic_type_params` returning None for other HirItem variants
+
+**Audit also confirmed**: 7 other `unreachable!("with msg")` calls and
+2 `panic!("with msg")` calls in production code were already correct
+(no change needed). 3 `panic!` in `src/codegen/error.rs` and 1 in
+`src/codegen/llvm/tests.rs` are in `#[cfg(test)] mod tests` (legal
+test infrastructure).
+
+**Bug fixed during this stage**: Initial `unreachable!("macro call must be followed by `(`, `{`, or `[`")`
+triggered clippy error: "invalid format string: expected `}`, found ```"
+— literal `{` in format string must be escaped as `{{`. Fixed immediately.
+
+**Design principles cited**:
+- §1.0 原則 3 (显式 > 隐式): `unreachable!()` should explicitly document the invariant
+- §1.0 原則 4 (报错 > 静默): `unreachable!("msg")` shows reason on panic vs `unreachable!()` silent
+- §2 原则 3 + §2 原则 4: same as above (file-level principles)
+- §20 (Bug probability distribution reasoning): Stage 18.372 fixed 15 unwraps;
+  Stage 18.373 audits the parallel "silent panic" class (bare unreachable!)
+
+**Validation**: §3.2 full green — 4403 tests (682 lib + 3721 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
 ## v0.510.0 — Stage 18.372 (TD-UNWRAP-GUARDED-EXPECT audit + TD-EXPECT-* reclassification)
 
 ### Stage 18.372: 15 production guarded unwraps → expect with invariant docs

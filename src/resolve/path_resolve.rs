@@ -95,7 +95,9 @@ impl Resolver {
                         HirItem::Enum(e) => e.hir_id.owner,
                         HirItem::Trait(t) => t.hir_id.owner,
                         HirItem::Impl(i) => i.hir_id.owner,
-                        _ => unreachable!(),
+                        // Only Fn/Struct/Enum/Trait/Impl can carry generic_params.
+                        // Other HirItem variants are filtered out before this match.
+                        _ => unreachable!("only Fn/Struct/Enum/Trait/Impl carry generic_params"),
                     };
                     owner_generic_params.insert(owner_def_id, params.clone());
 
