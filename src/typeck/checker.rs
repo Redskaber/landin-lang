@@ -199,6 +199,14 @@ impl TypeChecker {
         // Per §12 (最优 > 最小): root-cause fix at the Phase 3.5/3.7 boundary.
         // Per §20 (iterative audit): Phase 3.5 was the missing link identified
         // in Stage 18.354's investigation.
+        //
+        // Stage 18.379 (v0.5+ Phase 1 experiment): Confirmed Phase 3.7 is NOT
+        // redundant — disabling it causes 4 test failures (stage18_376_nested
+        // _generic_ptr_field_regression + 3 stage18_355_rawptr_field tests).
+        // Stage 18.357's substitute() in Phase 3.5 covers the common path but
+        // not all edge cases (e.g., RawPtr fields with explicit type annotations).
+        // Phase 3.7 remains REQUIRED until v0.5+ Phase 3 (FieldTyTable removal)
+        // eliminates the root cause.
         crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
 
         // Phase 4: Populate TypeckResults.

@@ -28631,3 +28631,100 @@ Stage Summary:
 - 当前所有可修复的 P0/P1/P2/P3 TDs 已闭合; 剩余 BLOCKED TDs 需 v0.5+ 架构变更 (L3 任务)
 - 建议: 启动 v0.5+ Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TDs 的解锁路径
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.378
+
+
+---
+Task ID: stage18.379
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.379 — v0.5+ Phase 1 实验性探索 (验证 Phase 3.7 是否可移除). L3 (架构实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (v0.5+ Phase 1 架构实验 — 跨 typeck/writeback 模块, 但实验本身 ≤50 行变更)
+- 对齐: tech-debt-register.md §2.5.1 TD-ARCH-NESTED-GENERIC-FIELD-ACCESS 已 resolved (Stage 18.376); v0.5+ 5-Phase Roadmap Phase 1 = typeck writeback 统一; §1.6 终极检验 — 启动根因架构重构
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.378 r34 已交付, fmt + clippy + test --release 三件套 clean)
+
+决策点 (为何选此路):
+- 为什么选 v0.5+ Phase 1 实验而非继续 P3 级 TD?
+  → 引用 §1.6 终极检验: "这是针对根因的最优架构解, 还是仅仅为了跑通测试的最小补丁?" — v0.5+ Phase 1 是根因架构重构, P3 级 TD 是后者
+  → 引用 §12 (最优 > 最小): v0.5+ Phase 1 目标是消除独立的 writeback 阶段 (10 Phase → inline)
+  → 引用 §5.2 (提前收敛): 连续 6 轮 P3 修复已收敛; 转向 L3 架构工作
+- 为什么先做实验而非直接重构?
+  → 引用 §1.0 原則 11 (确定性边界): 动手前先清晰能力/设计/职责边界 — 实验验证 Phase 3.7 是否可移除
+  → 引用 §1.0 原則 9 (正确 > 妥协): 不做表面工程 — 如果 Phase 3.7 仍必需, 承认并记录, 不强行移除
+- 为什么选 Phase 3.7 而非 Phase 0?
+  → Stage 18.357 在 Phase 3.5 中添加了 substitute(resolved, substs) — 可能已使 Phase 3.7 冗余
+  → Phase 3.7 是 re-run writeback_type_propagation — 如果 Phase 3.5 已正确 substitute, Phase 3.7 应可移除
+  → 实验成本最低 (注释 1 行 + 跑测试)
+
+裁剪点 (为何跳流程):
+- L3 实验性探索 — 仅注释/恢复 1 行代码, 不改变架构; §3.2 全绿 + 4 失败测试恢复是充分门禁
+- 跳过 §14.5 深度审查 — 实验结果明确 (4 失败), 不需深度审查确认
+
+5W2H:
+- WHAT: v0.5+ Phase 1 实验 — 验证 Phase 3.7 (post-table re-writeback) 是否可移除
+- WHY: Stage 18.357 在 Phase 3.5 中添加 substitute() 可能已使 Phase 3.7 冗余; 移除可简化 writeback 架构 (10 → 9 Phase)
+- WHO: ARCH-A (实验设计) + DEV-A (注释/恢复) + QA-A (测试验证)
+- WHEN: 实验完成 (4 失败确认 Phase 3.7 必需) 后停止
+- WHERE: src/typeck/checker.rs:202 (Phase 3.7 调用点)
+- HOW: 3 步实验
+  (1) 注释 Phase 3.7 的 `crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);`
+  (2) 跑 §3.2 三件套 — 发现 4 测试失败 (stage18_376_nested_generic_ptr_field_regression + 3 stage18_355_rawptr_field)
+  (3) 恢复 Phase 3.7 + 添加 Stage 18.379 实验注释 + 验证全绿
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures (恢复后), fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - 评估: Stage 18.372-18.378 都是 P3 级修复或文档一致性; 连续 7 轮已远超 §5.2 收敛阈值
+  - 决定: 启动 v0.5+ Phase 1 (typeck writeback 统一) — 这是剩余 BLOCKED TDs 的解锁路径
+  - 策略: 先做最小实验 (Phase 3.7 移除) 验证架构边界, 而非直接 L3 重构
+- 实验设计:
+  - 假设: Stage 18.357 在 Phase 3.5 中添加的 substitute(resolved, substs) (writeback.rs:203-207) 已覆盖 Phase 3.7 的功能
+  - 验证: 注释 Phase 3.7 调用, 跑全测试套件
+  - 预期: 如果假设正确, 4409 tests 全绿; 否则失败
+- 实验结果:
+  - 4 测试失败:
+    1. stage18_347_generic_struct_field_access_tests::stage18_376_nested_generic_ptr_field_regression
+    2. stage18_351_recursive_param_tests::stage18_355_rawptr_field_access
+    3. stage18_351_recursive_param_tests::stage18_355_rawptr_field_explicit_type
+    4. stage18_351_recursive_param_tests::stage18_355_wrapper_rawptr_field
+  - 结论: **Phase 3.7 不是冗余的** — Stage 18.357 的 substitute() 覆盖 common path, 但 RawPtr 字段 + 显式类型注解的 edge case 仍需 Phase 3.7
+- 根因分析:
+  - Stage 18.357 的 substitute() 在 writeback_field_types_in_place_with_table 中 (line 203-207)
+  - 但 writeback_field_types_in_rvalue_with_table (Aggregate 路径) 在 Stage 18.376 才添加 substitute
+  - 4 个失败测试都是 RawPtr 字段 — 可能涉及 rvalue 路径或其他 edge case
+  - 真正根因: FieldTyTable 设计本身存储 HIR-level 类型 (含 Param), 需要 Phase 3.5 覆盖 + Phase 3.7 re-writeback
+  - v0.5+ Phase 3 (FieldTyTable removal) 才能消除根因
+- 恢复 + 文档:
+  - 恢复 Phase 3.7 调用
+  - 添加 Stage 18.379 实验注释 (说明 Phase 3.7 仍必需 + 实验结果)
+  - 更新 tech-debt-register.md header + README.md status
+- §3.2 全校验流 (Stage 18.379 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.379 — v0.5+ Phase 1 experiment"
+  - README.md: 版本 Stage 18.378 → 18.379, status 新增实验结果说明
+  - src/typeck/checker.rs: Phase 3.7 注释新增 Stage 18.379 实验结果
+  - worklog.md: 本条 (Stage 18.379)
+
+Stage Summary:
+- v0.5+ Phase 1 实验完成 — Phase 3.7 确认 NOT redundant (4 测试失败)
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/typeck/checker.rs (Phase 3.7 注释更新)
+- 设计原则引用:
+  * §1.6 终极检验: v0.5+ Phase 1 是根因架构重构, P3 级 TD 是最小补丁
+  * §1.0 原則 11 (确定性边界): 实验验证 Phase 3.7 是否可移除
+  * §1.0 原則 9 (正确 > 妥协): 承认 Phase 3.7 仍必需, 不强行移除
+  * §12 (最优 > 最小): v0.5+ Phase 3 (FieldTyTable removal) 才是根因修复
+  * §20 (Bug 概率分布推理): 4 失败测试是 RawPtr edge case — 同类路径深挖
+- 架构洞察:
+  * Stage 18.357 的 substitute() 覆盖 common path (writeback_field_types_in_place_with_table)
+  * 但 RawPtr 字段 + 显式类型注解的 edge case 仍需 Phase 3.7
+  * 真正根因: FieldTyTable 存储 HIR-level 类型 (含 Param)
+  * v0.5+ Phase 3 (FieldTyTable removal) 才能消除 Phase 3.5 + Phase 3.7
+
+下一步 (下一 MUV):
+- v0.5+ Phase 1 后续: 深入分析 4 失败测试的根因 — 是 rvalue 路径还是其他 edge case?
+- v0.5+ Phase 3 (FieldTyTable removal): 让 typeck 直接从 local_decl.ty 解析 field types (已在 Stage 18.358 resolve_place_type_with_table 中实现)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.379
