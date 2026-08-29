@@ -27851,3 +27851,53 @@ Work Log:
 - Process doc 审查完成 ✅ — v7.4 文档结构健康, 无缺陷
 - 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8
 
+
+---
+Task ID: stage18.371
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.371 — 完全重构重排 README.md + 最终打包. L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档重构 — README.md 完全重写)
+- 对齐: 用户指令 "完全重构重排 README.md"
+- 阻断: 4403 tests passing, fmt clean, 0 clippy warnings
+
+决策点:
+- 为什么完全重写而非增量更新?
+  → 引用用户指令: "完全重构重排 README.md"
+  → 引用 §3.3 (Spec 持续演进): README 需要反映 Stage 18.347-18.370 的全部变更
+  → 引用 §1.0 原則 3 (显式 > 隐式): 旧 README 的 Stage History 累积过长, 需精要化
+
+裁剪点:
+- L2 跳过 §14.5 (无代码变更, 仅文档重写).
+
+5W2H:
+- WHAT: 完全重构重排 README.md — 11 个章节, 覆盖所有 Stage 18.347-18.370 变更
+- WHY: 用户明确要求 "完全重构重排"
+- WHO: ARCH-A (结构设计) + REV-A (内容审查)
+- WHEN: §3.2 全绿后停止
+- WHERE: README.md
+- HOW:
+  (1) 重构为 11 个章节: Quick Start / CLI / Language Features / Codegen ABI / Testing / Architecture Overview / Tech Debt / v0.5+ Roadmap / Project Layout / Documentation / Contributing
+  (2) 新增章节: Architecture Overview (pipeline + module sizes + 5-layer substitute chain + 11 design principles + 13 execution principles)
+  (3) 新增章节: Tech Debt & Known Limitations (10 stubs/limitations table)
+  (4) 新增章节: v0.5+ Refactoring Roadmap (5-phase table)
+  (5) 更新: 测试数 4365→4403, process doc v7.3→v7.4, 文件数 176→177, LOC 82K→83K
+  (6) 更新: Contributing 流程 (11 步, 新增确定性边界/临时桩/架构限制步骤)
+- HOW MUCH: 4403 tests 全绿 (无代码变更), fmt clean, 0 clippy warnings
+
+Work Log:
+- README.md 完全重写 (381 行 → 新文件):
+  - 11 个章节, 清晰的 TOC
+  - Architecture Overview: pipeline 图 + 11 模块 LOC 表 + 5-layer substitute chain + 11 design principles + 13 execution principles
+  - Tech Debt: 10 条目 table (7 BLOCKED + 2 mitigated + 1 design choice)
+  - v0.5+ Roadmap: 5-phase table (priority + est. + reference)
+  - Contributing: 11-step workflow (新增 §2.1.1 原则 11-13 步骤)
+  - 更新所有数字: 4403 tests, 177 files, 83K LOC, v7.4, LLVM 22.1.8
+- §3.2 全校验流: 4403 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档: worklog.md (本条) + README.md (完全重写)
+
+下一步:
+- README.md 完全重构重排完成 ✅
+- 当前 v0.4 已完全可交付: 4403 tests, 0 failures, LLVM 22.1.8, README v0.510.0
+
