@@ -84,22 +84,95 @@ fn resolve_field_ty_with_substs(mir: &MirBody, base: &Place, field_ty: &Ty) -> T
     if !type_contains_param(field_ty) {
         return field_ty.clone();
     }
-    // Slow path: extract substs from base's local_decl.
-    if let PlaceKind::Local(base_id) = &base.kind {
-        if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
-            let base_ty = match &base_ld.ty.kind {
-                // Auto-deref Ref to get the Adt inside.
-                TyKind::Ref(_, _, inner) => inner.as_ref(),
-                _ => &base_ld.ty,
-            };
-            if let TyKind::Adt(_, substs) = &base_ty.kind {
-                if !substs.is_empty() {
-                    return crate::mir::substitute::substitute(field_ty, substs);
-                }
+    // Stage 18.384 (v0.5+ Phase 3 step 1): Recursive base resolution.
+    //
+    // Was: only handled `PlaceKind::Local(base_id)` — nested projections
+    // like `o.inner.val` (base = Projection(o, Field(inner))) had base =
+    // Projection(...) which didn't match Local → fell through to
+    // `field_ty.clone()` returning unsubstituted Param.
+    //
+    // Fix: Recursively resolve the base's type via `detect_place_type`
+    // (which handles arbitrary nesting depths), then extract substs from
+    // the resolved Adt type. This mirrors `resolve_place_type_with_table`
+    // in typeck/writeback.rs (Stage 18.358).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one recursive path covers all nesting depths.
+    // Per §12 (最优 > 最小): root-cause fix at the resolution site.
+    // Per §20 (iterative audit): same class as Stage 18.358 — codegen path
+    // was missed when typeck got recursive substitute.
+    // Per §1.6 终极检验: this is the root-cause fix for codegen field_ty
+    // dependency on Phase 3.5 step 1.
+    //
+    // NOTE: We pass `None` for mono_layouts here because we only need the
+    // TyKind to extract substs — we don't need the full EmitType resolution.
+    // This avoids recursive calls to detect_place_type that would re-enter
+    // resolve_field_ty_with_substs (infinite loop).
+    let base_ty = resolve_base_ty_for_substs(mir, base);
+    if let TyKind::Adt(_, substs) = &base_ty.kind {
+        if !substs.is_empty() {
+            return crate::mir::substitute::substitute(field_ty, substs);
+        }
+    }
+    // Also handle Ref-to-Adt base (e.g., `&self.field`).
+    if let TyKind::Ref(_, _, inner) = &base_ty.kind {
+        if let TyKind::Adt(_, substs) = &inner.kind {
+            if !substs.is_empty() {
+                return crate::mir::substitute::substitute(field_ty, substs);
             }
         }
     }
     field_ty.clone()
+}
+
+/// Stage 18.384 (v0.5+ Phase 3 step 1): Recursively resolve a Place's Ty
+/// (not EmitType) for the purpose of extracting Adt substs.
+///
+/// This mirrors `resolve_place_type_with_table` in typeck/writeback.rs but
+/// operates on MIR data only (no FieldTyTable). Used by
+/// `resolve_field_ty_with_substs` to handle nested projections like
+/// `o.inner.val` where base = Projection(o, Field(inner)).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one recursive path covers all nesting depths.
+/// Per §16: pure MIR data predicate, no HIR access.
+fn resolve_base_ty_for_substs(mir: &MirBody, lv: &Place) -> Ty {
+    match &lv.kind {
+        PlaceKind::Local(id) => mir
+            .local_decls
+            .get(id.0 as usize)
+            .map(|ld| ld.ty.clone())
+            .unwrap_or_else(|| Ty::from_kind(TyKind::Error)),
+        PlaceKind::Projection(base, elem) => {
+            let base_ty = resolve_base_ty_for_substs(mir, base);
+            match elem {
+                ProjectionElem::Field(_field_id, field_ty) => {
+                    if let TyKind::Adt(_, substs) = &base_ty.kind {
+                        if !substs.is_empty() {
+                            return crate::mir::substitute::substitute(field_ty, substs);
+                        }
+                    }
+                    if let TyKind::Ref(_, _, inner) = &base_ty.kind {
+                        if let TyKind::Adt(_, substs) = &inner.kind {
+                            if !substs.is_empty() {
+                                return crate::mir::substitute::substitute(field_ty, substs);
+                            }
+                        }
+                    }
+                    field_ty.clone()
+                }
+                ProjectionElem::Deref => {
+                    // Extract pointee Ty from Ref/RawPtr.
+                    match &base_ty.kind {
+                        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
+                            inner.as_ref().clone()
+                        }
+                        _ => base_ty,
+                    }
+                }
+                _ => base_ty,
+            }
+        }
+        PlaceKind::Static(_) => Ty::from_kind(TyKind::Error),
+    }
 }
 
 /// Stage 18.347: Helper — does a Ty (recursively) contain any Param?

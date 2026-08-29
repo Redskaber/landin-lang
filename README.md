@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.382) |
+| **Version** | v0.510.0 (Stage 18.384) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1 progress: Stage 18.380 removed Phase 3.7, Stage 18.381 removed Phase 0 (writeback phases 10 → 8), Stage 18.382 confirmed Phase 3.5 step 1 NOT redundant (codegen reads field_ty directly). §14.5 D1-D8 deep review PASSED. Architecture health: 8.2/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1: Phase 0 + Phase 3.7 removed (10→8 phases). v0.5+ Phase 3 step 1 (Stage 18.384): codegen recursive `resolve_field_ty_with_substs` handles nested projections. §14.5 D1-D8 deep review PASSED. Architecture health: 8.2/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.4 (11 design principles + 13 execution principles + Bug probability distribution reasoning) |

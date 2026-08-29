@@ -195,6 +195,14 @@ impl TypeChecker {
             self.writeback_field_types_with_table(mir, table);
             self.writeback_field_load_locals_with_table(mir, table);
         }
+        // Stage 18.384 (v0.5+ Phase 3 step 1 experiment): Confirmed Phase 3.5
+        // step 1 is STILL required even after adding recursive resolve_field_ty_with_substs
+        // in codegen. Disabling step 1 causes 2 test failures (non-generic struct
+        // field access). Root cause: codegen's resolve_field_ty_with_substs reads
+        // field_ty from MIR's ProjectionElem::Field — if step 1 doesn't substitute
+        // it, codegen sees Infer (not Param) for non-generic structs, and
+        // resolve_field_ty_with_substs's fast path (no Param) returns it as-is.
+        // v0.5+ Phase 3 step 2: investigate why non-generic struct field_ty is Infer.
         // Stage 18.382 (v0.5+ Phase 1 step 4 experiment): Confirmed Phase 3.5
         // step 1 (writeback_field_types_with_table) is NOT redundant — disabling
         // it causes 2 test failures (stage18_334_text_ir_byval_sret_combined +

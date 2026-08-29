@@ -29085,3 +29085,104 @@ Stage Summary:
 下一步 (下一 MUV):
 - v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 用 resolve_place_type 而非直接读 field_ty — 这是消除 Phase 3.5 step 1 的根因修复
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.383 (3-layer substitute chain + Phase 1 progress + Roadmap status)
+
+
+---
+Task ID: stage18.384
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.384 — v0.5+ Phase 3 step 1: codegen recursive resolve_field_ty_with_substs (handles nested projection). L3 (架构改进). v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (v0.5+ Phase 3 架构改进 — codegen recursive resolve, ~80 行新代码)
+- 对齐: Stage 18.382 确认 codegen 直接读 field_ty; Stage 18.358 的 resolve_place_type_with_table (typeck) 已递归; 本轮让 codegen 也递归
+- 阻断: 4409 tests 全绿基线已确认 (Stage 18.383 r39 已交付)
+
+决策点 (为何选此路):
+- 为什么选 codegen recursive resolve?
+  → 引用 §1.6 终极检验: Stage 18.382 确认 Phase 3.5 step 1 仍被 codegen 需要 — 深挖根因
+  → 引用 §20 (Bug 概率分布推理): typeck 的 resolve_place_type_with_table (Stage 18.358) 已递归 — codegen 应该也能递归
+  → 引用 §1.0 原則 6 (通解 > 特解): 一个递归路径覆盖所有嵌套深度
+- 为什么是实验性?
+  → 引用 §1.0 原則 11 (确定性边界): 实验验证 codegen recursive resolve 是否能让 Phase 3.5 step 1 变冗余
+
+裁剪点 (为何跳流程):
+- L3 实验性探索 — 新增 helper + 修改现有函数; §3.2 全绿是充分门禁
+- 跳过 §14.5 深度审查 — 实验结果明确
+
+5W2H:
+- WHAT: v0.5+ Phase 3 step 1 — codegen recursive resolve_field_ty_with_substs + 实验 Phase 3.5 step 1 移除
+- WHY: codegen 的 resolve_field_ty_with_substs 只处理 PlaceKind::Local — 嵌套 projection 不处理
+- WHO: ARCH-A (根因分析) + DEV-A (recursive 实现) + QA-A (4409 tests)
+- WHEN: 实验完成 (step 1 仍必需) 后停止
+- WHERE: src/codegen/mir_translation/places.rs (resolve_field_ty_with_substs + resolve_base_ty_for_substs)
+- HOW: 4 步流程
+  (1) 添加 resolve_base_ty_for_substs helper (递归解析 base Ty)
+  (2) 修改 resolve_field_ty_with_substs 调用 resolve_base_ty_for_substs
+  (3) 验证 4409 tests 全绿 (确保递归不破坏现有功能)
+  (4) 实验: 禁用 Phase 3.5 step 1 → 2 失败 → 恢复
+- HOW MUCH: §3.2 硬性红线全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验 (这是针对根因的最优架构解，还是仅仅为了跑通测试的最小补丁?):
+  - Stage 18.382 确认 codegen 直接读 field_ty — 深挖根因
+  - 发现: codegen 的 resolve_field_ty_with_substs (Stage 18.347) 只处理 PlaceKind::Local
+  - 嵌套 projection (base 是 Projection) 不处理 → 返回 unsubstituted field_ty
+  - 决定: 添加递归解析, 镜像 typeck 的 resolve_place_type_with_table (Stage 18.358)
+- 实现:
+  - 新增 resolve_base_ty_for_substs helper (places.rs:137-174)
+    - 递归解析 Place 的 Ty (不是 EmitType)
+    - 处理 PlaceKind::Local + PlaceKind::Projection (Field + Deref)
+    - Field arm: 从 base_ty 提取 substs + substitute(field_ty, substs)
+    - Deref arm: 从 Ref/RawPtr 提取 inner Ty
+  - 修改 resolve_field_ty_with_substs (places.rs:82-125)
+    - 调用 resolve_base_ty_for_substs 而非只处理 PlaceKind::Local
+    - 保留 Ref-to-Adt 处理
+- 实验:
+  - 禁用 Phase 3.5 step 1 (checker.rs:195)
+  - cargo test → 2 失败 (stage18_334_text_ir_deterministic + stage18_334_text_ir_byval_sret_combined)
+  - 错误: "defined with type 'i32' but expected 'i64'" — 非泛型 struct field_ty 是 Infer
+- 根因分析:
+  - 失败测试: `struct Big { a: i64, b: i64, c: i64 }` — 非泛型 struct
+  - Phase 3.5 step 1 禁用后, MIR 中 field_ty 是 Infer (不是 Param)
+  - resolve_field_ty_with_substs 的 fast path (line 84): `if !type_contains_param(field_ty)` → Infer 不含 Param → 返回 as-is
+  - codegen 看到 Infer → mir_type_to_emit_type 默认 I32 → 类型不匹配
+  - 结论: Phase 3.5 step 1 仍必需 — 它将 Infer 解析为具体类型 (通过 FieldTyTable)
+- 恢复 + 文档:
+  - 恢复 Phase 3.5 step 1
+  - 添加 Stage 18.384 实验注释
+  - 更新 tech-debt-register.md + README.md
+- 架构洞察:
+  - codegen 的 recursive resolve 改进是有价值的 — 正确处理嵌套泛型 projection
+  - 但 Phase 3.5 step 1 仍必需 — 它处理 Infer (非 Param) 情况
+  - v0.5+ Phase 3 step 2: 调查为什么非泛型 struct field_ty 是 Infer
+  - 可能根因: MIR lower 时 field_ty 未被解析为具体类型 (只有泛型 Param 被 substitute)
+- §3.2 全校验流 (Stage 18.384 完成后):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited)
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.384 — Phase 3 step 1" + §4.1 行更新
+  - README.md: 版本 Stage 18.383 → 18.384, status 新增 "v0.5+ Phase 3 step 1: codegen recursive resolve_field_ty_with_substs"
+  - src/codegen/mir_translation/places.rs: resolve_field_ty_with_substs 递归 + resolve_base_ty_for_substs helper + Stage 18.384 注释
+  - src/typeck/checker.rs: Phase 3.5 step 1 实验注释更新
+  - worklog.md: 本条 (Stage 18.384)
+
+Stage Summary:
+- v0.5+ Phase 3 step 1 完成 — codegen recursive resolve_field_ty_with_substs ✅
+- Phase 3.5 step 1 仍必需 (2 失败 — 非泛型 struct field_ty 是 Infer)
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, fmt clean, 0 clippy warnings
+- 关键文件: src/codegen/mir_translation/places.rs (recursive resolve + helper)
+- 设计原则引用:
+  * §1.6 终极检验: 深挖 Stage 18.382 的 codegen 依赖根因
+  * §1.0 原則 6 (通解 > 特解): 一个递归路径覆盖所有嵌套深度
+  * §1.0 原則 11 (确定性边界): 实验验证 codegen recursive 是否足够
+  * §20 (Bug 概率分布推理): typeck 已递归 (Stage 18.358) — codegen 应该也能
+- 架构洞察:
+  * codegen recursive resolve 是有价值的改进 — 正确处理嵌套泛型 projection
+  * 但 Phase 3.5 step 1 仍必需 — 它处理 Infer (非 Param) 情况
+  * v0.5+ Phase 3 step 2: 调查为什么非泛型 struct field_ty 是 Infer
+
+下一步 (下一 MUV):
+- v0.5+ Phase 3 step 2: 调查非泛型 struct field_ty 为何是 Infer — 可能 MIR lower 时未解析
+- v0.5+ Phase 3 (FieldTyTable removal): 让 codegen 完全用 resolve_place_type 而非读 field_ty
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, README v0.510.0 Stage 18.384, writeback phases 10 → 8, codegen recursive resolve
