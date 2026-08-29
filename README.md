@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.379) |
+| **Version** | v0.510.0 (Stage 18.380) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1 experiment (Stage 18.379) confirmed Phase 3.7 is NOT redundant — 4 test failures when disabled. Phase 3.7 remains REQUIRED until v0.5+ Phase 3 (FieldTyTable removal). §14.5 D1-D8 deep review PASSED. Architecture health: 7.8/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1 milestone (Stage 18.380): **Phase 3.7 removed** — writeback phases 10 → 9. Root-cause fix: added `substitute()` in `writeback_field_load_locals_with_table`. §14.5 D1-D8 deep review PASSED. Architecture health: 7.8/10 → 8.0/10 (Phase 3.7 removal reduces writeback complexity). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.4 (11 design principles + 13 execution principles + Bug probability distribution reasoning) |

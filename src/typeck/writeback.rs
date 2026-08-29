@@ -320,13 +320,46 @@ impl TypeChecker {
                                 &lv.kind
                             {
                                 let base_ty = self.resolve_place_for_writeback(mir, base);
-                                if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                                if let TyKind::Adt(def_id, substs) = &base_ty.kind {
                                     if let Some(fields) = table.struct_fields(def_id) {
                                         if let Some(field_ty) = fields.get(field_id.0 as usize) {
                                             if let Some(dest_local) =
                                                 mir.local_decls.get_mut(dest_id.0 as usize)
                                             {
-                                                dest_local.ty = field_ty.clone();
+                                                // Stage 18.380 (v0.5+ Phase 1 step 2):
+                                                // Apply substitute() when writing
+                                                // field_ty to dest_local.ty.
+                                                //
+                                                // Was: `dest_local.ty = field_ty.clone()`
+                                                // which overwrote Phase 0 + Phase 3.5
+                                                // step 1's substitute() result with
+                                                // unsubstituted `Param(N)` from
+                                                // FieldTyTable. This caused the 4
+                                                // test failures observed in Stage 18.379
+                                                // experiment (RawPtr field access).
+                                                //
+                                                // Fix: If base_ty is `Adt(_, substs)`
+                                                // with non-empty substs, apply
+                                                // `substitute(field_ty, substs)` before
+                                                // writing to dest_local.ty. This is the
+                                                // root-cause fix — Phase 3.7's re-writeback
+                                                // workaround becomes redundant for this path.
+                                                //
+                                                // Per §1.0 原則 6 (通解 > 特解): one
+                                                // substitute call covers all generic
+                                                // struct field loads.
+                                                // Per §12 (最优 > 最小): root-cause fix
+                                                // at the overwrite site.
+                                                // Per §20 (iterative audit): same class
+                                                // as Stage 18.357 — FieldTyTable overwrite
+                                                // was the root cause.
+                                                dest_local.ty = if !substs.is_empty() {
+                                                    crate::mir::substitute::substitute(
+                                                        field_ty, substs,
+                                                    )
+                                                } else {
+                                                    field_ty.clone()
+                                                };
                                             }
                                         }
                                     }

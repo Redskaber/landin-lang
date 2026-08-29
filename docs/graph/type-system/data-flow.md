@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-29
-> **Version**: v0.510.0 (Stage 18.377 — 5-layer substitute chain + nested generic field access fully resolved)
+> **Version**: v0.510.0 (Stage 18.380 — Phase 3.7 REMOVED, writeback phases 10 → 9)
 
 ## Type Checking Data Flow
 
@@ -51,11 +51,10 @@ HIR Body
 │    local.ty = unify.resolve(&local.ty)                       │
 │                                                               │
 │  Phase 3.5: Writeback field types (via FieldTyTable)         │
-│    Stage 18.357: substitute(resolved, substs) applied here   │
-│                                                               │
-│  Phase 3.7: Post-table re-writeback (Stage 18.355)           │
-│    Re-runs writeback_type_propagation after Phase 3.5         │
-│    Fixes Phase 3.5 regression (FieldTyTable overwrites)       │
+│    Stage 18.357: substitute(resolved, substs) in step 1      │
+│    Stage 18.380: substitute(field_ty, substs) in step 2      │
+│      (writeback_field_load_locals_with_table)                │
+│    Phase 3.7 REMOVED (Stage 18.380) — no longer needed!      │
 │                                                               │
 │  Phase 4: Populate TypeckResults                             │
 │                                                               │

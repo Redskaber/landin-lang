@@ -12,6 +12,85 @@
 
 ---
 
+## v0.510.0 — Stage 18.380 (v0.5+ Phase 1 milestone: Phase 3.7 REMOVED)
+
+### Stage 18.380: Phase 3.7 (post-table re-writeback) successfully removed — writeback phases 10 → 9
+
+**Background**: Stage 18.379 experiment confirmed Phase 3.7 was NOT redundant
+(disabling caused 4 test failures). This stage identifies and fixes the root
+cause, enabling Phase 3.7 removal.
+
+**Root cause investigation**:
+- 4 failing tests all used `Holder<T> { ptr: *mut T }` (RawPtr field access)
+- Stage 18.357 added `substitute()` in `writeback_field_types_in_place_with_table`
+  (Phase 3.5 step 1) — covered the common path
+- But `writeback_field_load_locals_with_table` (Phase 3.5 step 2) was still
+  using `dest_local.ty = field_ty.clone()` — unsubstituted FieldTyTable entry
+- This overwrote Phase 0 + Phase 3.5 step 1's substitute() result with
+  unsubstituted `Param(N)`, causing the 4 test failures
+
+**Fix**: Added `substitute(field_ty, substs)` in
+`writeback_field_load_locals_with_table` (writeback.rs line 356-362):
+```rust
+dest_local.ty = if !substs.is_empty() {
+    crate::mir::substitute::substitute(field_ty, substs)
+} else {
+    field_ty.clone()
+};
+```
+
+**Result**: All 4409 tests pass with Phase 3.7 disabled. The workaround
+(re-running `writeback_type_propagation` after Phase 3.5) is no longer needed.
+
+**Files touched (2)**:
+- `src/typeck/writeback.rs`: Added `substitute()` in
+  `writeback_field_load_locals_with_table` (line 356-362) + Stage 18.380 comment
+- `src/typeck/checker.rs`: Removed Phase 3.7 call + Stage 18.380 comment
+  explaining the removal
+
+**Architecture impact**:
+- Writeback phases: 10 → 9 (Phase 0, 1, 2, 3, 3.5, 4, 5 + writeback_closures + writeback_fndef_substs)
+- Architecture health: 7.8/10 → 8.0/10 (reduced writeback complexity)
+- v0.5+ Phase 1 progress: Phase 3.7 removal is step 2 of writeback unification
+
+**Design principles cited**:
+- §1.0 原則 5 (去除兼容思维): removed the workaround, not just disabled
+- §1.0 原則 6 (通解 > 特解): one substitute call covers all generic struct field loads
+- §12 (最优 > 最小): root-cause fix at the overwrite site, not a re-run
+- §20 (iterative audit): same class as Stage 18.357 — FieldTyTable overwrite
+  was the root cause, now fixed at both sites (step 1 + step 2)
+- §1.6 终极检验: this is the root-cause fix, not a minimal patch
+
+**Validation**: §3.2 full green — 4409 tests (682 lib + 3727 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
+## v0.510.0 — Stage 18.379 (v0.5+ Phase 1 experiment)
+
+### Stage 18.379: Phase 3.7 redundancy experiment — confirmed NOT redundant (4 test failures)
+
+**Background**: Following Stage 18.378 (doc consistency audit), this stage
+conducted v0.5+ Phase 1 experiment to test whether Phase 3.7 (post-table
+re-writeback) can be removed after Stage 18.357's substitute() in Phase 3.5.
+
+**Experiment**: Commented out Phase 3.7 call in checker.rs, ran full test suite.
+
+**Result**: 4 test failures — Phase 3.7 is NOT redundant.
+- stage18_376_nested_generic_ptr_field_regression
+- stage18_355_rawptr_field_access
+- stage18_355_rawptr_field_explicit_type
+- stage18_355_wrapper_rawptr_field
+
+**Conclusion**: Stage 18.357's substitute() covers common path but not
+RawPtr field-load edge cases. Phase 3.7 remains REQUIRED until root cause
+is fixed (Stage 18.380).
+
+**Validation**: §3.2 full green after restoring Phase 3.7 — 4409 tests, 0 failures.
+
+---
+
 ## v0.510.0 — Stage 18.377 (TD-ALLOW-SUPPRESSION audit)
 
 ### Stage 18.377: Audited 26 production `#[allow]` — removed 6 stale, verified 20 legitimate

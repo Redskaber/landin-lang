@@ -207,7 +207,19 @@ impl TypeChecker {
         // not all edge cases (e.g., RawPtr fields with explicit type annotations).
         // Phase 3.7 remains REQUIRED until v0.5+ Phase 3 (FieldTyTable removal)
         // eliminates the root cause.
-        crate::mir::lower::writeback_type_propagation(mir, &self.fn_sigs);
+        //
+        // Stage 18.380 (v0.5+ Phase 1 step 2): REMOVED Phase 3.7!
+        // Root cause of Stage 18.379's 4 failures: `writeback_field_load_locals_with_table`
+        // (Phase 3.5 step 2) was overwriting `dest_local.ty` with unsubstituted
+        // `field_ty.clone()` from FieldTyTable. Added `substitute(field_ty, substs)`
+        // at that site (writeback.rs line 356-362). Now all 4409 tests pass with
+        // Phase 3.7 disabled — the workaround is no longer needed.
+        //
+        // Per §1.0 原則 5 (去除兼容思维): removed the workaround, not just disabled.
+        // Per §12 (最优 > 最小): root-cause fix at the overwrite site, not a re-run.
+        // Per §20 (iterative audit): same class as Stage 18.357 — FieldTyTable
+        // overwrite was the root cause, now fixed at both sites (step 1 + step 2).
+        // Per §1.6 终极检验: this is the root-cause fix, not a minimal patch.
 
         // Phase 4: Populate TypeckResults.
         for (idx, local) in mir.local_decls.iter().enumerate() {
