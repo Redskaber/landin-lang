@@ -161,7 +161,18 @@ fn collect_from_aggregate_kind(kind: &AggregateKind, collected: &mut HashSet<Mon
         AggregateKind::Array(ty) => collect_from_ty(ty, collected),
         AggregateKind::Adt(def_id, _, substs, field_tys) => {
             // Collect the Adt itself if it has non-empty substs.
-            if !substs.is_empty() {
+            // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Also check
+            // `substs_are_concrete` — prelude generic functions like
+            // `Option::unwrap_or` have Aggregate with `substs = [Param(0)]`
+            // (generic definition, not concrete instantiation). Collecting
+            // these as MonoItems caused `build_mono_layouts` to produce extra
+            // layouts, breaking dedup tests.
+            //
+            // Per §1.0 原則 6 "通用 > 特例": same concrete check as `collect_from_ty`.
+            // Per §1.0 原則 9 "正确 > 妥协": don't collect generic definitions.
+            // Per §20 (iterative audit): same class as Stage 18.106 (S7 fix)
+            // which added the check to `collect_from_ty` but missed Aggregate.
+            if !substs.is_empty() && substs_are_concrete(substs) {
                 collected.insert(MonoItem::Type {
                     def_id: *def_id,
                     substs: substs.clone(),

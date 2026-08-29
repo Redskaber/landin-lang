@@ -5,10 +5,92 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-29 |
-| **Test count** | 682 lib tests + 3721 integration tests = 4403 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Test count** | 682 lib tests + 3727 integration tests = 4409 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test (50 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348` + `stage18_351`) |
+
+---
+
+## v0.510.0 — Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS fully resolved)
+
+### Stage 18.376: Nested generic field access `Outer<Inner<T>>.inner.val` now compiles
+
+**Background**: TD-ARCH-NESTED-GENERIC-FIELD-ACCESS was previously marked
+as 🟡 v0.5+ architecture work, requiring `resolve_place_type_with_table`
+to apply substitute. Stage 18.358 partially fixed `o.inner.ptr` (RawPtr
+field), but `o.inner.val` (non-Ptr value field) still failed with
+`Invalid InsertValueInst operands` LLVM verification error.
+
+**Root cause investigation** (5 layers, each fixed):
+
+1. **`resolve_adt_field_tys` used wrong lowerer** (field_resolution.rs:349):
+   Called `lower_hir_ty_to_mir_ty(&f.ty)` without `generic_params`. For
+   `Outer<T> { inner: Inner<T> }`, the field `inner: Inner<T>` had `T`
+   resolved to `Error` (not `Param(0)`), breaking downstream inference.
+
+2. **`lower_hir_ty_to_mir_ty_with_generics_and_regions` had duplicate Path arm** (ty_lower.rs:787):
+   Had a separate Path arm that only checked `Res::Err | Res::Unknown`
+   for generic param lookup, missing `Res::GenericParam` (the normal
+   case after HIR resolution). Fixed by delegating to the full
+   implementation `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics`.
+
+3. **Struct literal inference was non-recursive** (expr_operand.rs:1275):
+   Only matched `field_ty.kind == Param(N)` (e.g., `struct Outer<T> { val: T }`).
+   But for `struct Outer<T> { inner: Inner<T> }`, field_ty is
+   `Adt(Inner, [Param(0)])` — the old check missed it. Added recursive
+   `collect_param_bindings` that walks field_ty and operand_ty in
+   parallel, extracting (param_index, concrete_ty) pairs from arbitrary
+   nesting (Adt/Ref/RawPtr/Array/Tuple).
+
+4. **Writeback didn't substitute AggregateKind::Adt field_tys** (typeck/writeback.rs:242):
+   `writeback_field_types_in_rvalue_with_table` handled `Aggregate` by
+   updating operands only, leaving `field_tys` Vec with unsubstituted
+   `Param(N)`. Codegen then saw `Inner<Param>` → defaulted to i32.
+   Added substitute pass for `AggregateKind::Adt` field_tys when substs
+   are non-empty.
+
+5. **`collect_from_aggregate_kind` missed `substs_are_concrete` check** (item.rs:162):
+   Unlike `collect_from_ty` (which had the check since Stage 18.106 S7),
+   `collect_from_aggregate_kind` collected any non-empty substs as
+   MonoItem — including prelude generic definitions like `Option<T>`
+   with `substs = [Param(0)]`. This caused `build_mono_layouts` to
+   produce extra layouts, breaking dedup tests. Added the same
+   `substs_are_concrete` check.
+
+**Files touched (5)**:
+- `src/mir/lower/field_resolution.rs`: `resolve_adt_field_tys` now uses
+  `lower_hir_ty_to_mir_ty_with_generics` (was: `lower_hir_ty_to_mir_ty`).
+- `src/mir/lower/ty_lower.rs`: `lower_hir_ty_to_mir_ty_with_generics_and_regions`
+  now delegates to full implementation (was: duplicate Path arm).
+- `src/mir/lower/expr_operand.rs`: Struct literal inference now uses
+  recursive `collect_param_bindings` + `type_contains_infer_or_error` guard.
+- `src/typeck/writeback.rs`: `writeback_field_types_in_rvalue_with_table`
+  now applies `substitute` to `AggregateKind::Adt` field_tys. Added
+  `typeck_type_contains_param` helper.
+- `src/mir/monomorphize/item.rs`: `collect_from_aggregate_kind` adds
+  `substs_are_concrete` check (was: missing).
+
+**Regression tests added**: 6 tests (4 positive + 2 negative) in
+`tests/v0/stage18/plan/stage18_347_generic_struct_field_access_tests.rs`:
+- `stage18_376_nested_generic_value_field` (positive)
+- `stage18_376_nested_generic_chain_value` (positive)
+- `stage18_376_nested_generic_ptr_field_regression` (positive, regression for 18.358)
+- `stage18_376_triple_nested_generic` (positive)
+- `stage18_376_nested_generic_type_mismatch` (negative)
+- `stage18_376_nested_generic_wrong_outer` (negative)
+
+**Validation**: §3.2 full green — 4409 tests (682 lib + 3727 integration),
+0 failures, 2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check`
+0 lines diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+**Design principles cited**:
+- §1.0 原則 6 (通解 > 特解): one recursive path covers all nesting depths
+- §12 (最优 > 最小): root-cause fix at multiple sites, not a single workaround
+- §20 (iterative audit): same class as Stage 18.347/18.358 — nested generic
+  substitute path was incomplete
+- §1.0 原則 9 (正确 > 妥协): skip Infer/Error in inference (don't silently use
+  unresolved types as substs)
 
 ---
 

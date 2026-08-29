@@ -1272,6 +1272,23 @@ pub(crate) fn lower_expr_to_operand(
                 // Stage 18.346 (P2 soundness fix): If substs is empty (no
                 // turbofish), infer from field operand types. Mirrors the
                 // fix in expr_variants.rs lower_call_expr.
+                //
+                // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Extend
+                // inference to handle nested generic field types. Was: only
+                // matched `field_ty.kind == Param(N)` (e.g., `struct Outer<T> { val: T }`).
+                // But for `struct Outer<T> { inner: Inner<T> }`, field_ty is
+                // `Adt(Inner, [Param(0)])` — the old check missed it, leaving
+                // inferred substs as all-Error, which then caused codegen to
+                // emit wrong type (Inner<Param> → i32 fallback).
+                //
+                // Fix: recursively extract Param from field_ty, then unify
+                // with the corresponding operand's type to infer substs.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one recursive extraction
+                // handles arbitrary nesting depths (Outer<Inner<T>>, etc.).
+                // Per §12 (最优 > 最小): root-cause fix at the inference site.
+                // Per §20 (iterative audit): same class as Stage 18.347/18.358
+                // — Param leak in nested generic field access.
                 let substs = if substs.is_empty() {
                     let unresolved_field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
                     let generic_params = cx
@@ -1285,15 +1302,25 @@ pub(crate) fn lower_expr_to_operand(
                             .map(|_| Ty::new(TyKind::Error, expr.span))
                             .collect();
                         for (i, field_ty) in unresolved_field_tys.iter().enumerate() {
-                            if let TyKind::Param(param) = &field_ty.kind {
-                                let idx = param.index as usize;
-                                if idx < inferred.len() && i < field_locals.len() {
-                                    if let Some(ld) =
-                                        cx.mir.local_decls.get(field_locals[i].0 as usize)
-                                    {
-                                        if !matches!(ld.ty.kind, TyKind::Infer(_) | TyKind::Error) {
-                                            inferred[idx] = ld.ty.clone();
-                                        }
+                            if i >= field_locals.len() {
+                                break;
+                            }
+                            let operand_ty = cx
+                                .mir
+                                .local_decls
+                                .get(field_locals[i].0 as usize)
+                                .map(|ld| ld.ty.clone());
+                            if let Some(operand_ty) = operand_ty {
+                                if matches!(operand_ty.kind, TyKind::Infer(_) | TyKind::Error) {
+                                    continue;
+                                }
+                                // Collect (param_index, concrete_ty) pairs by
+                                // walking field_ty and operand_ty in parallel.
+                                let mut bindings: Vec<(u32, Ty)> = Vec::new();
+                                collect_param_bindings(field_ty, &operand_ty, &mut bindings);
+                                for (idx, ty) in bindings {
+                                    if (idx as usize) < inferred.len() {
+                                        inferred[idx as usize] = ty;
                                     }
                                 }
                             }
@@ -1547,5 +1574,84 @@ pub(crate) fn lower_expr_to_operand(
             // Stage 18.309 §13.4 J2: moved to method_call_lower.rs (split from expr_variants.rs)
             super::method_call_lower::lower_method_call_expr(cx, expr, receiver, method, args)
         }
+    }
+}
+
+/// Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Recursively collect
+/// (param_index, concrete_ty) bindings by walking `field_ty` and `operand_ty`
+/// in parallel. Used by struct literal inference to extract generic substs
+/// from nested generic field types.
+///
+/// Examples:
+/// - `field_ty = Param(0)`, `operand_ty = i64` → bindings = [(0, i64)]
+/// - `field_ty = Adt(Inner, [Param(0)])`, `operand_ty = Adt(Inner, [i64])` → bindings = [(0, i64)]
+/// - `field_ty = RawPtr(_, Param(0))`, `operand_ty = RawPtr(_, i64)` → bindings = [(0, i64)]
+///
+/// Per §1.0 原則 6 (通解 > 特解): one recursive walk handles arbitrary
+/// nesting depths (Outer<Inner<T>>, *mut T, &T, [T; N], (T, U), etc.).
+/// Per §12 (最优 > 最小): root-cause fix at the inference site.
+/// Per §20 (iterative audit): same class as Stage 18.347/18.358.
+fn collect_param_bindings(field_ty: &Ty, operand_ty: &Ty, bindings: &mut Vec<(u32, Ty)>) {
+    // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Skip if operand_ty
+    // contains Infer or Error — these are unresolved types that would pollute
+    // the inferred substs. typeck will resolve them later via unify, but at
+    // lower time we can't use them for inference.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): don't silently use Infer as a subst.
+    // Per §1.0 原則 9 (正确 > 妥协): better to leave subst as Error (triggering
+    // typeck unify) than to use Infer (which would skip unify).
+    if type_contains_infer_or_error(operand_ty) {
+        return;
+    }
+    match (&field_ty.kind, &operand_ty.kind) {
+        (TyKind::Param(param), _) => {
+            // Direct Param — bind to operand type.
+            bindings.push((param.index, operand_ty.clone()));
+        }
+        (TyKind::Adt(field_def, field_substs), TyKind::Adt(op_def, op_substs))
+            if field_def == op_def =>
+        {
+            // Same ADT — recurse on substs in parallel.
+            for (f_sub, o_sub) in field_substs.iter().zip(op_substs.iter()) {
+                collect_param_bindings(f_sub, o_sub, bindings);
+            }
+        }
+        (TyKind::RawPtr(_, f_inner), TyKind::RawPtr(_, o_inner)) => {
+            collect_param_bindings(f_inner, o_inner, bindings);
+        }
+        (TyKind::Ref(_, _, f_inner), TyKind::Ref(_, _, o_inner)) => {
+            collect_param_bindings(f_inner, o_inner, bindings);
+        }
+        (TyKind::Slice(f_inner), TyKind::Slice(o_inner)) => {
+            collect_param_bindings(f_inner, o_inner, bindings);
+        }
+        (TyKind::Array(f_inner, _), TyKind::Array(o_inner, _)) => {
+            collect_param_bindings(f_inner, o_inner, bindings);
+        }
+        (TyKind::Tuple(f_tys), TyKind::Tuple(o_tys)) => {
+            for (f, o) in f_tys.iter().zip(o_tys.iter()) {
+                collect_param_bindings(f, o, bindings);
+            }
+        }
+        // Mismatched kinds (e.g., field_ty = Param, operand_ty = Infer) — skip.
+        // typeck will catch the mismatch later.
+        _ => {}
+    }
+}
+
+/// Stage 18.376 helper: Check if a Ty (recursively) contains any Infer or Error.
+/// Used to skip inference when operand type is unresolved.
+fn type_contains_infer_or_error(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Infer(_) | TyKind::Error => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_infer_or_error(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_infer_or_error(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_infer_or_error),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_infer_or_error),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_infer_or_error),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_infer_or_error),
+        _ => false,
     }
 }

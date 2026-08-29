@@ -245,6 +245,36 @@ impl TypeChecker {
                         changed |=
                             writeback_field_types_in_operand_with_table(op, mir, table, unify);
                     }
+                    // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS):
+                    // For AggregateKind::Adt, the `field_tys` Vec may contain
+                    // unsubstituted Param(N) (e.g., nested struct literal
+                    // `Outer { inner: Inner<T> }` where field_tys[0] = Inner<Param(0)>).
+                    // Apply substitute(field_ty, adt_substs) so codegen sees
+                    // the resolved type (Inner<i64>) instead of Param.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one substitute path for all
+                    // nested Adt aggregates. Per §12 (最优 > 最小): root-cause fix
+                    // at the writeback site, not a codegen-layer hack.
+                    // Per §20 (iterative audit): same class as Stage 18.347
+                    // (Field projection) — Aggregate field_tys path was missed.
+                    if let Rvalue::Aggregate(
+                        AggregateKind::Adt(_, _variant, substs, field_tys),
+                        _,
+                    ) = rv
+                    {
+                        if !substs.is_empty() {
+                            for field_ty in field_tys.iter_mut() {
+                                if typeck_type_contains_param(field_ty) {
+                                    let new_ty =
+                                        crate::mir::substitute::substitute(field_ty, substs);
+                                    if new_ty != *field_ty {
+                                        *field_ty = new_ty;
+                                        changed = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     changed
                 }
                 Rvalue::Ref(_, _, lv) => {
@@ -403,5 +433,30 @@ impl TypeChecker {
             }
             PlaceKind::Static(_) => Ty::new(TyKind::Error, lv.span),
         }
+    }
+}
+
+/// Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Local helper for
+/// `writeback_field_types_in_rvalue_with_table` to check if a Ty (recursively)
+/// contains any `Param`. Mirrors `type_contains_param` in `mir/lower/writeback.rs`.
+///
+/// Used to decide whether to apply `substitute(field_ty, adt_substs)` for
+/// unsubstituted generic placeholders in `AggregateKind::Adt` field_tys.
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit predicate makes the
+/// "needs substitution" check visible at the callsite.
+/// Per §16: pure MIR data predicate, no HIR access.
+fn typeck_type_contains_param(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            typeck_type_contains_param(inner)
+        }
+        TyKind::Array(elem, _) => typeck_type_contains_param(elem),
+        TyKind::Tuple(tys) => tys.iter().any(typeck_type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(typeck_type_contains_param),
+        TyKind::Closure(_, substs) => substs.iter().any(typeck_type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(typeck_type_contains_param),
+        _ => false,
     }
 }

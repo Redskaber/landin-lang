@@ -789,108 +789,23 @@ fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
     generic_params: &[crate::mir::ty::ParamTy],
     region_counter: &mut u32,
 ) -> Ty {
-    // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
-    let span = ty.span;
-    match &ty.kind {
-        // For Path types, check if it's a generic type param first.
-        HirTyKind::Path(_, path) => {
-            // Single-segment path with unresolved Res → might be a type param.
-            if path.segments.len() == 1 && matches!(path.res, Res::Err | Res::Unknown) {
-                let seg_name = path.segments[0].ident.name;
-                for param in generic_params {
-                    if param.name == seg_name {
-                        return Ty::new(TyKind::Param(*param), span);
-                    }
-                }
-            }
-            // Not a type param — delegate to the standard lowerer.
-            lower_hir_ty_to_mir_ty_with_regions(ty, region_counter)
-        }
-        // For recursive types (Tuple, Ref, Array, etc.), recurse with generics.
-        HirTyKind::Tuple(tys) => Ty::new(
-            TyKind::Tuple(
-                tys.iter()
-                    .map(|t| {
-                        lower_hir_ty_to_mir_ty_with_generics_and_regions(
-                            t,
-                            generic_params,
-                            region_counter,
-                        )
-                    })
-                    .collect(),
-            ),
-            span,
-        ),
-        HirTyKind::Ref(region, mutability, inner) => {
-            let mir_region = match region {
-                Some(_) => {
-                    let vid = *region_counter;
-                    *region_counter += 1;
-                    crate::mir::ty::Region::Var(crate::mir::ty::RegionVid(vid))
-                }
-                None => {
-                    let vid = *region_counter;
-                    *region_counter += 1;
-                    crate::mir::ty::Region::Var(crate::mir::ty::RegionVid(vid))
-                }
-            };
-            let mir_mut = match mutability {
-                ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
-                ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
-            };
-            Ty::new(
-                TyKind::Ref(
-                    mir_region,
-                    mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
-                        inner,
-                        generic_params,
-                        region_counter,
-                    )),
-                ),
-                span,
-            )
-        }
-        HirTyKind::Ptr(mutability, inner) => {
-            let mir_mut = match mutability {
-                ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
-                ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
-            };
-            Ty::new(
-                TyKind::RawPtr(
-                    mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
-                        inner,
-                        generic_params,
-                        region_counter,
-                    )),
-                ),
-                span,
-            )
-        }
-        HirTyKind::Slice(inner) => Ty::new(
-            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
-                inner,
-                generic_params,
-                region_counter,
-            ))),
-            span,
-        ),
-        HirTyKind::Array(inner, count_expr) => {
-            let len_const = const_eval_array_len(count_expr, span);
-            Ty::new(
-                TyKind::Array(
-                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
-                        inner,
-                        generic_params,
-                        region_counter,
-                    )),
-                    Box::new(len_const),
-                ),
-                span,
-            )
-        }
-        // All other kinds delegate to the standard lowerer (no generics needed).
-        _ => lower_hir_ty_to_mir_ty_with_regions(ty, region_counter),
-    }
+    // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Delegate to the
+    // full implementation `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics`
+    // instead of duplicating logic. Was: had a separate Path arm that only
+    // checked `Res::Err | Res::Unknown` for generic param lookup, missing
+    // `Res::GenericParam` (which is the normal case after HIR resolution).
+    // This caused nested generic field types like `Outer<T> { inner: Inner<T> }`
+    // to resolve `T` to `Error` instead of `Param(0)`.
+    //
+    // Per §1.0 原則 5 "去除兼容思维": remove the duplicate Path arm — the
+    // full implementation already handles all Res variants correctly.
+    // Per §1.0 原則 6 "通解 > 特例": one Path handling path, not two.
+    // Per §12 (最优 > 最小): root-cause fix — delegate instead of patching.
+    // Per §20 (iterative audit): same class as Stage 18.347/18.358.
+    lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+        ty,
+        region_counter,
+        None,
+        generic_params,
+    )
 }

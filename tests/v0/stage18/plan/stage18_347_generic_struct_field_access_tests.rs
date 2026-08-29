@@ -381,3 +381,95 @@ fn main() -> i32 {
         "Expected error for accessing field on undefined variable"
     );
 }
+
+// ============================================================================
+// Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS) regression tests
+// ============================================================================
+
+/// Stage 18.376 positive 1: Nested generic with non-Ptr value field.
+/// Before Stage 18.376: codegen emit "Invalid InsertValueInst operands"
+/// because AggregateKind::Adt field_tys contained unsubstituted Param.
+/// After Stage 18.376: writeback Rule 3 applies substitute to Adt field_tys.
+#[test]
+fn stage18_376_nested_generic_value_field() {
+    let src = r#"struct Inner<T> { val: T }
+struct Outer<T> { inner: Inner<T> }
+fn main() -> i32 {
+    let o: Outer<i64> = Outer { inner: Inner { val: 42i64 } };
+    let v = o.inner.val;
+    v as i32
+}"#;
+    let result = compile(src);
+    assert!(!result.has_errors(), "errors: {:?}", result.errors);
+}
+
+/// Stage 18.376 positive 2: Chained nested access (o.inner.val returns correct value).
+#[test]
+fn stage18_376_nested_generic_chain_value() {
+    let src = r#"struct Inner<T> { val: T }
+struct Outer<T> { inner: Inner<T> }
+fn main() -> i32 {
+    let o: Outer<i64> = Outer { inner: Inner { val: 99i64 } };
+    let v = o.inner.val;
+    v as i32
+}"#;
+    let result = compile(src);
+    assert!(!result.has_errors(), "errors: {:?}", result.errors);
+}
+
+/// Stage 18.376 positive 3: Nested generic with RawPtr field (already worked in 18.358).
+#[test]
+fn stage18_376_nested_generic_ptr_field_regression() {
+    let src = r#"struct Inner<T> { ptr: *mut T }
+struct Outer<T> { inner: Inner<T> }
+fn main() -> i32 {
+    let o: Outer<i64> = Outer { inner: Inner { ptr: 0i64 as *mut i64 } };
+    let p = o.inner.ptr;
+    0
+}"#;
+    let result = compile(src);
+    assert!(!result.has_errors(), "errors: {:?}", result.errors);
+}
+
+/// Stage 18.376 positive 4: Triple-nested generic.
+#[test]
+fn stage18_376_triple_nested_generic() {
+    let src = r#"struct Inner<T> { val: T }
+struct Middle<T> { inner: Inner<T> }
+struct Outer<T> { middle: Middle<T> }
+fn main() -> i32 {
+    let o: Outer<i64> = Outer { middle: Middle { inner: Inner { val: 7i64 } } };
+    let v = o.middle.inner.val;
+    v as i32
+}"#;
+    let result = compile(src);
+    assert!(!result.has_errors(), "errors: {:?}", result.errors);
+}
+
+/// Stage 18.376 negative 1: Nested generic with type mismatch in inner field.
+#[test]
+fn stage18_376_nested_generic_type_mismatch() {
+    let src = r#"struct Inner<T> { val: T }
+struct Outer<T> { inner: Inner<T> }
+fn main() -> i32 {
+    // Outer<i64> expects Inner<i64>, but Inner { val: true } is Inner<bool>
+    let o: Outer<i64> = Outer { inner: Inner { val: true } };
+    0
+}"#;
+    let result = compile(src);
+    assert!(result.has_errors(), "expected type mismatch error");
+}
+
+/// Stage 18.376 negative 2: Nested generic with wrong outer type.
+#[test]
+fn stage18_376_nested_generic_wrong_outer() {
+    let src = r#"struct Inner<T> { val: T }
+struct Outer<T> { inner: Inner<T> }
+fn main() -> i32 {
+    // Outer<i64> but inner is Inner<i32> — should mismatch
+    let o: Outer<i64> = Outer { inner: Inner { val: 42i32 } };
+    0
+}"#;
+    let result = compile(src);
+    assert!(result.has_errors(), "expected type mismatch error");
+}

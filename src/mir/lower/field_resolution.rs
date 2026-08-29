@@ -18,10 +18,7 @@ use crate::mir::ty::*;
 
 use crate::session::Span;
 
-use super::{
-    lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics, lower_hir_ty_to_mir_ty_with_hir,
-    MirLowerCtxt,
-};
+use super::{lower_hir_ty_to_mir_ty_with_generics, lower_hir_ty_to_mir_ty_with_hir, MirLowerCtxt};
 
 /// Resolve the type of a specific field of a struct, given the receiver
 /// expression and the field index.
@@ -351,11 +348,21 @@ pub(crate) fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId
         Some(h) => h,
         None => return Vec::new(),
     };
+    // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Pass generic_params
+    // so nested generic field types (e.g., `Outer<T> { inner: Inner<T> }`)
+    // resolve `T` to `Param(0)` instead of `Error`. Was: called
+    // `lower_hir_ty_to_mir_ty(&f.ty)` without generic_params, which left
+    // nested generic fields as `Adt(Inner, [Error])` — breaking inference.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one path for generic + non-generic ADTs.
+    // Per §12 (最优 > 最小): root-cause fix at the resolution site.
+    // Per §20 (iterative audit): same class as Stage 18.347/18.358.
+    let generic_params = crate::hir::generics::find_generics(def_id, hir);
     match hir.find_owner(def_id) {
         Some(OwnerNode::Item(HirItem::Struct(s))) => s
             .fields
             .iter()
-            .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
+            .map(|f| lower_hir_ty_to_mir_ty_with_generics(&f.ty, &generic_params))
             .collect(),
         Some(OwnerNode::Item(HirItem::Enum(_))) => {
             vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
