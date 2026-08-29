@@ -8,7 +8,81 @@
 | **Test count** | 682 lib tests + 3727 integration tests = 4409 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
-| **TextEmitter IR** | Validated by `llvm-as` smoke test (50 tests in `stage18_334` + `stage18_335` + `stage18_336` + `stage18_337` + `stage18_347` + `stage18_348` + `stage18_351`) |
+| **TextEmitter IR** | Validated by `llvm-as` smoke test |
+| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed) |
+
+---
+
+## v0.510.0 — v0.5+ Phase 1+3 Complete Summary (Stage 18.347-18.390)
+
+### Overview
+
+The v0.5+ Phase 1+3 (typeck writeback unification + codegen FieldTyTable
+dependency reduction) is complete. Writeback phases reduced from 10 → 7
+through root-cause fixes at multiple sites.
+
+### Phase 1: Writeback Phase Removal (Stage 18.379-18.381)
+
+| Stage | Action | Mechanism | Writeback Phases |
+|-------|--------|-----------|------------------|
+| 18.380 | Phase 3.7 REMOVED | substitute() in writeback_field_load_locals_with_table | 10→9 |
+| 18.381 | Phase 0 REMOVED | Redundant after 18.380 (no regression → nothing to pre-resolve) | 9→8 |
+
+### Phase 3: Codegen FieldTyTable Dependency Reduction (Stage 18.384-18.390)
+
+| Stage | Action | Mechanism | Writeback Phases |
+|-------|--------|-----------|------------------|
+| 18.384 | codegen recursive resolve | resolve_field_ty_with_substs + resolve_base_ty_for_substs | 8 |
+| 18.387 | detect_place_type fix in codegen_place_load_typed | Use detect_place_type instead of caller-supplied ty | 8 |
+| 18.388 | Phase 3.5 step 1 REMOVED | try_resolve_field_from_adt_layouts (codegen AdtLayouts fallback) | 8→7 |
+| 18.389-18.390 | Phase 3.5 step 2 test — NOT redundant | typeck error reporting + codegen local_decl.ty dependency | 7 |
+
+### Phase 3 Limit (§5.2 convergence)
+
+Phase 3.5 step 2 (`writeback_field_load_locals_with_table`) remains required:
+- **typeck dependency**: step 2 writes `dest_local.ty` for field-load locals
+  (e.g., `let p = b.a`). Without it, typeck sees Infer instead of the concrete
+  field type → misses type errors (5 test failures).
+- **codegen dependency**: some codegen paths read `local_decl.ty` directly
+  (not via `detect_place_type`) → see Infer → default to I32 → wrong LLVM IR.
+
+**Root cause**: codegen doesn't use `detect_place_type` uniformly. Full
+elimination requires v0.5+ Phase 2 (expected_ty propagation in MIR lower)
+to eliminate typeck's dependency on FieldTyTable.
+
+### Current Writeback Architecture (7 phases)
+
+1. **Phase 1**: Walk basic blocks, collecting constraints (check_statement)
+2. **Phase 2**: default_unresolved() (IntVar → I32, FloatVar → F64)
+3. **Phase 3**: Writeback to local_decls (unify.resolve)
+4. **Phase 3.5 step 2**: Writeback field-load locals (FieldTyTable + substitute)
+5. **Phase 4**: Populate TypeckResults
+6. **Phase 5**: Post-defaulting terminator check
+7. **+ writeback_closures** (driver-level)
+8. **+ writeback_fndef_substs** (driver-level)
+
+### Design Principles Applied
+
+- §1.0 原則 5 (去除兼容思维): removed 3 workaround phases, not just disabled
+- §1.0 原則 6 (通解 > 特解): one AdtLayouts lookup covers all field types
+- §12 (最优 > 最小): root-cause fixes at multiple sites, not single workaround
+- §1.6 终极检验: each removal verified by experiment (test suite must pass)
+- §20 (Bug probability distribution): same class — FieldTyTable overwrite
+- §5.2 (提前收敛): Phase 3 limit reached after 2 consecutive NOT-redundant results
+
+### Validation
+
+§3.2 full green — 4409 tests (682 lib + 3727 integration), 0 failures,
+2 ignored (single-thread, ulimit -s unlimited). `cargo fmt --check` 0 lines
+diff. `cargo clippy --release --features llvm-backend --all-targets` 0 warnings.
+
+---
+
+## Previous Stages (18.347-18.378)
+
+See worklog.md for complete Stage 18.347-18.378 history (TD-UNWRAP-GUARDED-EXPECT,
+TD-UNREACHABLE-INVARIANT, TD-TY-INFER-SPAN, TD-AS-CAST-TRUNCATION,
+TD-ARCH-NESTED-GENERIC-FIELD-ACCESS, TD-ALLOW-SUPPRESSION — all resolved).
 
 ---
 

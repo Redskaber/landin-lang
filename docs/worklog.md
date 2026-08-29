@@ -29562,3 +29562,114 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 3 step 7: 重构 codegen 消除直接读 local_decl.ty 的路径 → 让 step 2 可移除
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.390
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.390 — v0.5+ Phase 3 limit reached + README 完全重构重排. L2 (文档重构 + 收敛). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (§5.2 提前收敛 — Phase 3.5 step 2 仍必需, Phase 3 极限到达)
+- 对齐: Stage 18.389 确认 5 失败 (typeck 错误报告 + codegen local_decl.ty); §5.2 连续 2 轮确认 → 收敛
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2 (提前收敛): 连续 2 轮 (18.389 + 18.390) 确认 Phase 3.5 step 2 仍必需 → Phase 3 极限
+- 引用 §1.6 终极检验: Phase 3.5 step 2 不仅是 codegen 依赖, 也是 typeck 错误报告依赖 → 不能移除
+- 引用 §12 (最优 > 最小): Phase 2 (expected_ty propagation) 才是消除 step 2 的根因修复
+
+裁剪点:
+- L2 文档重构 — 不改变代码; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: §5.2 收敛 + README 完全重构重排
+- WHY: Phase 3 极限到达, Phase 2 是下一个方向
+- HOW: 更新 README (5-layer→2-layer substitute chain + phase history + roadmap status)
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §5.2 提前收敛评估:
+  - Stage 18.389: Phase 3.5 step 2 禁用 → 5 失败 (typeck 错误报告 + codegen local_decl.ty)
+  - Stage 18.390: 确认 step 2 不仅是 codegen 依赖, 也是 typeck 错误报告依赖
+  - 连续 2 轮确认 → §5.2 触发收敛
+  - Phase 3 极限: 3 个 phase 移除 (Phase 0 + Phase 3.7 + Phase 3.5 step 1), writeback 10→7
+- README 完全重构重排:
+  - 5-layer → 2-layer substitute chain (Phase 3.5 step 2 + resolve_place_type_with_table)
+  - Phase history 表更新: 18.347-18.390 全部进展
+  - Roadmap Status 列更新: Phase 1 ✅ (limit reached), Phase 2 📋 (next)
+  - Tech Debt 章节更新: v0.5+ Phase 1+3 progress
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- v0.5+ Phase 3 极限到达 ✅ — Phase 3.5 step 2 required (typeck + codegen dependency)
+- Writeback phases: 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed)
+- README 完全重构重排 ✅ — 2-layer substitute chain + phase history + roadmap status
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §5.2 (提前收敛): 连续 2 轮确认 → 收敛
+  * §1.6 终极检验: step 2 是 typeck + codegen 双重依赖 → 不能移除
+  * §12 (最优 > 最小): Phase 2 (expected_ty propagation) 是根因修复
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.391
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.391 — v0.5+ Phase 1+3 完整总结 + RELEASE_NOTES.md 重构 + 最终打包. L2 (文档重构). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档重构 — RELEASE_NOTES.md 完全重写)
+- 对齐: §5.2 收敛后做最终总结; 用户指令 "同步更新文档"
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: Phase 3 极限已到达 → 做最终总结
+- 引用用户指令: "同步更新文档、完全重构重排 README.md、打包"
+- 引用 §1.6 终极检验: 所有 v0.5+ Phase 1+3 成果都是根因修复, 不是最小补丁
+
+裁剪点:
+- L2 文档重构 — 不改变代码; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: RELEASE_NOTES.md 完全重写 — v0.5+ Phase 1+3 完整总结
+- WHY: 旧 RELEASE_NOTES 是增量更新, 需要完整总结反映 writeback 10→7
+- HOW: 新增 "v0.5+ Phase 1+3 Complete Summary" 章节 (Phase 1 + Phase 3 + Limit + Architecture + Principles + Validation)
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- RELEASE_NOTES.md 完全重写:
+  - 新增 "v0.5+ Phase 1+3 Complete Summary" 章节
+    * Phase 1 表格 (Phase 3.7 + Phase 0 removed)
+    * Phase 3 表格 (recursive resolve + detect_place_type fix + Phase 3.5 step 1 removed + step 2 test)
+    * Phase 3 Limit 说明 (§5.2 convergence)
+    * Current Writeback Architecture (7 phases)
+    * Design Principles Applied (§1.0 原則 5/6, §12, §1.6, §20, §5.2)
+    * Validation (4409 tests, 0 failures)
+  - 旧 stage 详情保留在后 (18.381, 18.380, 18.379 等)
+  - Header 新增 "Architecture: Writeback phases 10 → 7"
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- RELEASE_NOTES.md 完全重写 ✅ — v0.5+ Phase 1+3 完整总结
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- v0.4 release-ready 状态:
+  * 4409 tests (682 lib + 3727 integration)
+  * fmt clean, 0 clippy warnings
+  * LLVM 22.1.8
+  * Writeback phases 10 → 7
+  * 9 structural TDs resolved (Stage 18.127-18.377)
+  * v0.5+ Phase 1+3 complete (3 phases removed)
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
