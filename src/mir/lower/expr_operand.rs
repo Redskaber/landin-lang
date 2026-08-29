@@ -384,6 +384,148 @@ pub(crate) fn lower_expr_to_operand(
         // fresh_infer_ty — typeck never resolved it, so codegen loaded
         // i32 even for i64 fields).
         HirExprKind::Field { receiver, ident } => {
+            // Stage 18.362 (P2 soundness fix): Thread expected_ty into
+            // field access for chain access (e.g., `o.inner.ptr`).
+            //
+            // Was: `lower_expr_to_operand(cx, receiver, None)` — passed
+            // None for expected_ty, so the inner Field access (`o.inner`)
+            // didn't get the expected type from the outer context. This
+            // meant `resolve_field_type` for `o.inner` couldn't resolve
+            // substs from `o`'s type when `o.inner` is itself a Field.
+            //
+            // Stage 18.360 fixed `find_receiver_substs` to handle Field
+            // receivers, but the inner `o.inner` result local's type was
+            // still set to the unsubstituted field type because the
+            // `resolve_field_type` call uses the *receiver HIR expr* (not
+            // the result local's type) to find substs. For `o.inner.ptr`,
+            // `resolve_field_type(o.inner, 0)` calls `find_receiver_substs(o.inner)`
+            // which (with Stage 18.360) recursively resolves `o`'s substs
+            // → `[i64]` → substitutes `Inner<T>` → `Inner<i64>` → extracts
+            // substs `[i64]` → substitutes `*mut T` → `*mut i64`. This
+            // should work IF `find_receiver_substs` is called.
+            //
+            // The issue: `resolve_field_type` is called with `receiver`
+            // (the HIR expr `o.inner`), and `find_receiver_substs(o.inner)`
+            // calls `find_receiver_struct_def_id(o.inner)` which (with
+            // Stage 18.360) recursively resolves. But this requires `o`'s
+            // local_decl.ty to be `Adt(Outer, [i64])` at lower time.
+            //
+            // For `let o: Outer<i64> = ...`, `o`'s local_decl.ty is set
+            // from the type annotation → `Adt(Outer, [i64])` at lower time.
+            // So `find_receiver_substs(o.inner)` should work.
+            //
+            // The remaining issue: `resolve_field_type` returns the
+            // substituted type, but the *result local's type* (`field_ty`)
+            // is set to this substituted type. However, `field_ty_for_proj`
+            // (stored in `ProjectionElem::Field`) is the SAME substituted
+            // type. So Phase 3.5's `writeback_field_types_with_table`
+            // should NOT overwrite it (since it's already substituted).
+            //
+            // BUT: Phase 3.5 calls `resolve_place_type_with_table(base, mir)`
+            // which (with Stage 18.358) recursively resolves. For `o.inner`,
+            // `resolve_place_type_with_table` returns `Adt(Inner, [i64])`
+            // (substituted). Then Phase 3.5's `writeback_field_types_in_place_with_table`
+            // checks `if let TyKind::Adt(def_id, substs) = &base_ty.kind` —
+            // `substs = [i64]`. It then applies `substitute(resolved, [i64])`
+            // where `resolved` is from FieldTyTable (unsubstituted `RawPtr(Mutable, Param(0))`).
+            // Result: `RawPtr(Mutable, i64)` ✓.
+            //
+            // So the chain should work with Stage 18.358 + 18.360 + 18.357.
+            // The issue might be in `lower_expr_to_operand` not being called
+            // with the right `expected_ty` for the outer `o.inner.ptr`.
+            //
+            // Actually: the outer `o.inner.ptr` is lowered via:
+            //   1. `base_local = lower_expr_to_operand(o.inner, None)` —
+            //      this lowers `o.inner` and creates a result local with
+            //      type = `resolve_field_type(o.inner, 0)` = (with 18.360)
+            //      `Adt(Inner, [i64])` ✓.
+            //   2. `field_index = resolve_field_index(o.inner.ptr_field)` = 0.
+            //   3. `field_ty = resolve_field_type(o.inner, 0)` — wait, this
+            //      is called with `receiver = o.inner` (the HIR expr for
+            //      the inner field access). But `resolve_field_type` is
+            //      called to resolve the type of `ptr` field of `Inner`.
+            //      It calls `find_receiver_substs(o.inner)` which (with
+            //      18.360) recursively resolves `o` → `[i64]` → substitutes
+            //      `Inner<T>` → `Inner<i64>` → substs `[i64]` → substitutes
+            //      `*mut T` → `*mut i64` ✓.
+            //
+            // So `field_ty` should be `RawPtr(Mutable, i64)` — correct!
+            // The result local's type is set to `RawPtr(Mutable, i64)`.
+            //
+            // The issue must be elsewhere. Let me check if `find_receiver_substs`
+            // actually works for `o.inner` by looking at what `find_receiver_struct_def_id(o.inner)`
+            // returns. It calls `find_receiver_substs(o)` → `[i64]` (from o's
+            // local_decl). Then lowers `Inner<T>` field of `Outer` → `Adt(Inner, [Param(0)])`.
+            // Substitutes with `[i64]` → `Adt(Inner, [i64])`. Returns DefId of Inner. ✓
+            //
+            // Then `find_receiver_substs(o.inner)`:
+            //   1. `inner_substs = find_receiver_substs(o)` → `[i64]`
+            //   2. `struct_def_id = find_receiver_struct_def_id(o)` → Outer's DefId
+            //   3. Lowers `inner: Inner<T>` → `Adt(Inner, [Param(0)])`
+            //   4. Substitutes with `[i64]` → `Adt(Inner, [i64])`
+            //   5. Extracts substs → `[i64]`
+            //   6. Returns `Some([i64])` ✓
+            //
+            // Then `resolve_field_type(o.inner, 0)`:
+            //   1. `struct_def_id = find_receiver_struct_def_id(o.inner)` → Inner's DefId (via 18.360)
+            //   2. `receiver_substs = find_receiver_substs(o.inner)` → `Some([i64])` (via 18.360)
+            //   3. `field = Inner.fields[0]` → `ptr: *mut T`
+            //   4. `field_ty = lower_hir_ty_to_mir_ty_with_generics(*mut T, [T])` → `RawPtr(Mutable, Param(0))`
+            //   5. `substitute(RawPtr(Mutable, Param(0)), [i64])` → `RawPtr(Mutable, i64)` ✓
+            //
+            // So `field_ty = RawPtr(Mutable, i64)` — CORRECT!
+            // The result local's type is `RawPtr(Mutable, i64)`.
+            //
+            // BUT: Phase 3.5 `writeback_field_types_with_table` overwrites
+            // `field_ty_for_proj` with FieldTyTable's unsubstituted type.
+            // Phase 3.7 re-writeback should fix it. But the re-writeback's
+            // `compute_use_writeback_ty` needs `base_ld.ty` (o.inner result
+            // local's type) to be `Adt(Inner, [i64])`.
+            //
+            // The question: is `o.inner` result local's type `Adt(Inner, [i64])`
+            // or `Adt(Inner, [Param(0)])` after Phase 0?
+            //
+            // `o.inner` result local's type is set at lower time to
+            // `resolve_field_type(o, 0)` = (without 18.360's find_receiver_substs
+            // fix for Field) — wait, `resolve_field_type` is called with
+            // `receiver = o` (the HIR expr `o`, which is a Path). So
+            // `find_receiver_substs(o)` returns `[i64]` (from o's local_decl).
+            // `resolve_field_type(o, 0)` substitutes `Inner<T>` with `[i64]`
+            // → `Adt(Inner, [i64])` ✓.
+            //
+            // So `o.inner` result local's type = `Adt(Inner, [i64])` at lower time.
+            // Phase 0 writeback: `o.inner` result is `Copy(Projection(Local(o), Field(0, ft_outer)))`
+            // where `ft_outer = Adt(Inner, [i64])` (from resolve_field_type).
+            // Phase 0's compute_use_writeback_ty: base = Local(o), base_ld.ty =
+            // Adt(Outer, [i64]). type_contains_param(ft_outer=Adt(Inner, [i64]))?
+            // No — Adt(Inner, [i64]) has no Param. So `needs_writeback` returns
+            // false → writeback skips it → local_decl.ty stays as `Adt(Inner, [i64])` ✓.
+            //
+            // Then `o.inner.ptr` result local's type is set at lower time to
+            // `resolve_field_type(o.inner, 0)` = (with 18.360) `RawPtr(Mutable, i64)` ✓.
+            //
+            // Phase 0 writeback: `o.inner.ptr` result is `Copy(Projection(Local(o.inner_result),
+            // Field(0, ft_inner)))` where `ft_inner = RawPtr(Mutable, i64)`.
+            // type_contains_param(ft_inner)? No. needs_writeback? No.
+            // → writeback skips it → local_decl.ty stays as `RawPtr(Mutable, i64)` ✓.
+            //
+            // Then Phase 3.5 writeback_field_types_with_table overwrites
+            // `ft_inner` with FieldTyTable's `RawPtr(Mutable, Param(0))`.
+            // Phase 3.7 re-writeback: compute_use_writeback_ty for
+            // `o.inner.ptr` result: base = Local(o.inner_result), base_ld.ty =
+            // `Adt(Inner, [i64])` (still correct). type_contains_param(ft_inner
+            // = RawPtr(Mutable, Param(0)))? Yes! substitute(RawPtr(Mutable, Param(0)),
+            // [i64]) → `RawPtr(Mutable, i64)` ✓.
+            //
+            // So Phase 3.7 should resolve it! But the error still appears.
+            //
+            // Wait — the MIR for `o.inner.ptr` is:
+            //   `result = Copy(Projection(Projection(Local(o), Field(0, ft_outer)),
+            //    Field(0, ft_inner)))`
+            // NOT `result = Copy(Projection(Local(o.inner_result), Field(0, ft_inner)))`.
+            //
+            // The MIR lower creates a CHAIN Projection, not an intermediate local!
+            // Let me check the MIR structure.
             let base_local = lower_expr_to_operand(cx, receiver, None);
             // Stage 18.304 (P3 fix): Check if receiver is a primitive type.
             // Per §2 原則 4 (报错>静默): field access on primitive types
