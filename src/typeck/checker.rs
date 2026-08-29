@@ -195,13 +195,13 @@ impl TypeChecker {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
 
-            // Stage 18.389 (v0.5+ Phase 3 step 6): Phase 3.5 step 2 STILL required.
-            // Disabling causes 5 test failures — step 2 writes dest_local.ty for
-            // field-load locals (e.g., `let p = b.a`). codegen's detect_place_type
-            // can resolve field types from AdtLayouts (Stage 18.388), but dest_local.ty
-            // stays Infer when step 2 is disabled — affects codegen paths that read
-            // local_decl.ty directly (not via detect_place_type).
-            // v0.5+ Phase 3 step 7: refactor codegen to always use detect_place_type.
+            // Stage 18.392 (v0.5+ Phase 2 experiment): Phase 3.5 step 2 STILL required.
+            // Re-tested after Stage 18.388's AdtLayouts fallback — still 5 failures.
+            // Root cause: typeck error reporting depends on dest_local.ty being
+            // concrete (not Infer). When step 2 is disabled, `let p = b.a` gives
+            // p an Infer type → typeck can't detect `s << 2` (str has no shl).
+            // This is a typeck-level dependency, not codegen — Phase 2 (expected_ty
+            // propagation) is needed to eliminate it.
             self.writeback_field_load_locals_with_table(mir, table);
         }
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.

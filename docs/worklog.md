@@ -29673,3 +29673,119 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.392
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.392 — v0.5+ Phase 2 launch: re-test Phase 3.5 step 2 after Stage 18.388 AdtLayouts fix + typeck dependency confirmed. L2 (实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (实验性 — 注释 1 行 + 验证 + 恢复)
+- 对齐: Stage 18.390 收敛; §20 顺路径深挖 — Stage 18.388 AdtLayouts fallback 是否让 step 2 可移除
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: Stage 18.388 成功移除 step 1 via AdtLayouts — 重新验证 step 2
+- 引用 §20: 同类路径深挖 — step 2 也可能被 AdtLayouts 覆盖
+- 引用 §5.2: 连续 3 轮 (18.389 + 18.390 + 18.392) 确认 step 2 仍必需 → 真正极限
+
+裁剪点:
+- L2 实验 — 注释 1 行 + 验证; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 重新验证 Phase 3.5 step 2 是否可移除 (Stage 18.388 后)
+- WHY: Stage 18.388 的 try_resolve_field_from_adt_layouts 可能也覆盖 step 2 的路径
+- HOW: 禁用 step 2 → 5 失败 → 分析 → 恢复
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures (恢复后)
+
+Work Log:
+- 实验: 禁用 Phase 3.5 step 2 → 5 失败
+  - stage18_288_neg_shl_on_str: `s << 2` on `&str` — typeck 未报告错误 (exit 0, expected non-0)
+  - stage18_288_neg_shl_on_unit: `u << 2` on `()` — same typeck error reporting failure
+  - stage18_332_sret_invalid_field_access: invalid field access — typeck missed
+  - stage18_334_text_ir_byval_sret_combined: TextEmitter IR invalid
+  - stage18_334_text_ir_deterministic: TextEmitter IR invalid
+- 根因确认:
+  * step 2 写 dest_local.ty — 当 `let p = b.a` 时, p 的类型从 Infer 替换为 field 的具体类型
+  * step 2 禁用后, p 的类型是 Infer → typeck 无法检测 `s << 2` (str 无 shl impl)
+  * 这是 typeck 错误报告依赖, 不是 codegen 依赖
+  * codegen 的 AdtLayouts fallback (Stage 18.388) 能修复 codegen IR, 但不能修复 typeck 错误报告
+  * typeck 需要 dest_local.ty 是具体类型才能做类型检查
+- 恢复 step 2 + 添加 Stage 18.392 注释
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档同步:
+  - README.md: 版本 18.390 → 18.392, status 新增 "Phase 3.5 step 2 required (typeck error reporting dependency — confirmed Stage 18.392 re-test)"
+  - src/typeck/checker.rs: Phase 3.5 注释更新 (Stage 18.392 实验结果)
+  - worklog.md: 本条
+
+Stage Summary:
+- Phase 3.5 step 2 confirmed STILL required (3rd consecutive confirmation — §5.2 true limit)
+- 根因: typeck error reporting depends on dest_local.ty being concrete (not Infer)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §1.6 终极检验: 深挖 — AdtLayouts fallback 不能修复 typeck 错误报告
+  * §5.2: 连续 3 轮确认 → 真正极限
+  * §20: 同类路径深挖到底
+  * §1.0 原則 9 (正确 > 妥协): 承认 step 2 是 typeck 依赖, 不强行移除
+- 架构洞察:
+  * Phase 3.5 step 1 REMOVED (Stage 18.388) — codegen AdtLayouts fallback
+  * Phase 3.5 step 2 STILL required — typeck error reporting dependency
+  * 根因: typeck 需要 dest_local.ty 是具体类型 → Phase 2 (expected_ty propagation) 才能消除
+  * Phase 2: 在 MIR lower 时传播 expected_ty → dest_local.ty 不再是 Infer → step 2 可移除
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation): 在 MIR lower 时传播 expected_ty 到 field access → dest_local.ty 不再是 Infer
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.393
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.393 — v0.4 最终交付: 全文档同步 + 最终打包. L2 (文档同步). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档同步 — tech-debt-register + RELEASE_NOTES 更新)
+- 对齐: §5.2 收敛 (3 轮确认); 用户指令 "同步更新文档、打包"
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: 连续 3 轮 (18.389 + 18.390 + 18.392) 确认 Phase 3.5 step 2 仍必需 → 真正极限
+- 引用 §1.6 终极检验: v0.5+ Phase 1+3 成果都是根因修复, 不是最小补丁
+- 引用用户指令: "同步更新文档、完全重构重排 README.md、打包"
+
+裁剪点:
+- L2 文档同步 — 不改变代码; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 全文档同步 (tech-debt-register.md + RELEASE_NOTES.md + README.md) + 最终打包
+- WHY: 文档滞后于代码状态 — tech-debt-register 仍说 "Stage 18.386"
+- HOW: 更新 tech-debt-register header + §4.1 行; RELEASE_NOTES 已在 18.391 重写
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- 文档同步:
+  - docs/develop/v0/tech-debt-register.md: header 更新 "Stage 18.392 — v0.5+ Phase 1+3 complete, writeback 10→7"
+  - docs/develop/v0/tech-debt-register.md: §4.1 行更新 "v0.5+ Phase 1+3 complete" (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed, step 2 required)
+  - README.md: 版本 18.392 (已在 Stage 18.392 更新)
+  - RELEASE_NOTES.md: 已在 Stage 18.391 完全重写
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- v0.4 最终交付完成 ✅
+- 全文档同步: README.md (Stage 18.392) + RELEASE_NOTES.md (Stage 18.391) + tech-debt-register.md (Stage 18.393) + worklog.md (Stage 18.393)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- v0.4 release-ready 最终状态:
+  * 4409 tests (682 lib + 3727 integration)
+  * fmt clean, 0 clippy warnings
+  * LLVM 22.1.8
+  * Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed)
+  * 9 structural TDs resolved (Stage 18.127-18.377)
+  * v0.5+ Phase 1+3 complete (3 writeback phases removed)
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation in MIR lower): 消除 Phase 3.5 step 2 的根因
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7

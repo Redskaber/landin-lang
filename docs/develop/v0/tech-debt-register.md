@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.386 — v0.5+ Phase 3 step 3: deeper investigation)
+> **Date**: 2026-08-29 (last updated Stage 18.392 — v0.5+ Phase 1+3 complete, writeback 10→7)
 > **Version**: v0.510.0
-> **Status**: Stage 18.386 conducted deeper investigation of Phase 3.5 step 1 dependency. Found that `lower_hir_ty_to_mir_ty_with_lifetimes` `_` arm already delegates to `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics` (which has Path arm). Param type IS correctly resolved as `Adt(DefId(0), [])`. Real root cause: `b.a` receiver `b` hir_id owner is `DefId(2)` (main fn), not `DefId(1)` (transform fn) — HIR hir_id owner mismatch. This is HIR-level issue, beyond v0.5+ Phase 3 (codegen/FieldTyTable) scope. Phase 3.5 step 1 remains required to substitute Infer types from cross-function hir_id associations. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: v0.5+ Phase 1+3 complete. Writeback phases reduced 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed via root-cause fixes). Phase 3.5 step 2 remains required (typeck error reporting dependency — confirmed 3 consecutive tests Stage 18.389-18.392 per §5.2). Phase 2 (expected_ty propagation in MIR lower) is the only path to eliminate step 2. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -358,7 +358,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.375 | 1 | TD-AS-CAST-TRUNCATION (8 `*n as u32` silent truncation → `u32::try_from(*n).expect(...)`) |
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
-| 🚧 v0.5+ Phase 1 in progress | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.382: Phase 3.5 step 1 NOT redundant. Stage 18.384: codegen recursive resolve. Stage 18.385: root cause found (param Infer). Stage 18.386: deeper investigation — lower_hir_ty_to_mir_ty_with_lifetimes _ arm already delegates; real root cause is HIR hir_id owner mismatch (b.a receiver b owner is main fn, not transform fn). HIR-level issue, beyond Phase 3 scope. |
+| 🚧 v0.5+ Phase 1+3 complete | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.388: Phase 3.5 step 1 REMOVED (8→7, codegen AdtLayouts fallback). Stage 18.389-18.392: Phase 3.5 step 2 NOT redundant (3 consecutive — typeck error reporting dependency per §5.2). Writeback 10→7. Phase 2 (expected_ty propagation) needed to eliminate step 2. |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
