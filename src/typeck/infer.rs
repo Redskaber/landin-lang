@@ -417,7 +417,36 @@ impl TypeChecker {
                         a_ty
                     }
                     // Shifts: lhs can be int, rhs must be int (not bool).
+                    // Stage 18.412 (v0.5+ Phase 2 L3 step 2 root-cause fix):
+                    // Add LHS type check — shift lhs must be Int/Uint (not
+                    // Bool, Float, Str, Unit, Adt, etc.). This catches
+                    // `&str << 2` and `() << 2` at typeck, eliminating the
+                    // need for writeback_binaryop_results (Pass 2) which
+                    // was a workaround that overwrote dest_local.ty to
+                    // i32 (from b_ty) so codegen would catch the mismatch.
+                    //
+                    // Was: only checked `is_shift_count_ty(&b_ty)` — the
+                    // Shl arm returned `a_ty` (e.g. `&str`) without error.
+                    // Pass 2 then masked this by overwriting dest to i32.
+                    //
+                    // Per §1.0 原則 4 (报错 > 静默): LHS type error must be
+                    // reported at typeck, not masked by writeback.
+                    // Per §1.6 终极检验: root-cause fix at typeck, not a
+                    // writeback patch.
+                    // Per §12 (最优 > 最小): one LHS check covers all
+                    // non-integer LHS types (Bool, Float, Str, Unit, Adt).
+                    // Per §1.0 原則 6 (通解 > 特解): one LHS check replaces
+                    // the per-call-site writeback overwrite.
                     BinOp::Shl | BinOp::Shr => {
+                        if !is_shift_count_ty(&a_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "shift lhs must be an integer type, found {}",
+                                    self.format_ty(&a_ty)
+                                ),
+                                stmt_span,
+                            ));
+                        }
                         if !is_shift_count_ty(&b_ty) {
                             self.errors.push(TypeError::new(
                                 // Stage 15.80: use human-readable type name.

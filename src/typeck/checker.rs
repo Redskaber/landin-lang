@@ -195,22 +195,44 @@ impl TypeChecker {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
 
-            // Stage 18.405: Phase 3.5 step 2 STILL required (5 failures).
-            // Phase 2 L3 step 1 (expected_ty in Call dest) doesn't help because
-            // the 5 failures are all field-access paths, not Call dest paths.
-            // The failures are:
-            // - neg_shl_on_str/unit: `s << 2` where s is from field access (not Call)
-            // - sret_invalid_field_access: `x.nonexistent_field` where x is from Call
-            //   but the Call dest now has expected_ty (i64) — but the field access
-            //   on x creates a NEW local with Infer field_ty (not from expected_ty)
-            // - text_ir_deterministic/byval_sret: field access in struct literal
-            //   construction — not Call dest path
-            // Root cause: field access (`b.a`) creates dest_local with Infer field_ty
-            // because resolve_field_type returns None (param types are Infer).
-            // Phase 2 L3 step 1 only helps Call dest, not field access dest.
-            // Full fix needs Phase 2 L3 step 2: expected_ty in Field arm.
+            // Stage 18.411 (v0.5+ Phase 2 L3 step 2 refactor): Split the
+            // former `writeback_field_load_locals_with_table` (which bundled
+            // Pass 1 = field-access writeback + Pass 2 = BinaryOp result
+            // writeback) into two independent methods.
+            //
+            // Stage 18.410 surgical experiments confirmed:
+            //   - Pass 1 (writeback_field_load_locals_with_table): 3 failures
+            //     if disabled — field-access dest_local.ty stays Infer →
+            //     downstream type checks pass incorrectly. ARCHITECTURALLY
+            //     CORRECT position for field type resolution (runs after
+            //     Phase 3, so receiver types are concrete). CANNOT be
+            //     removed in v0.5+ (§5.2 true limit, 7 consecutive).
+            //   - Pass 2 (writeback_binaryop_results): 2 failures if disabled
+            //     — `&str << 2` and `() << 2` compiled successfully (should
+            //     error). WORKAROUND for typeck's Shl/Shr arm not checking
+            //     LHS type. REMOVED in Stage 18.413 after Stage 18.412 added
+            //     the LHS type check in typeck's infer_rvalue Shl/Shr arm.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): separation of concerns —
+            // field-access writeback vs BinaryOp result writeback are
+            // logically independent and belong in separate methods.
+            // Per §1.6 终极检验: Pass 1 IS the root-cause fix; Pass 2 was
+            // a minimal patch, now eliminated by Stage 18.412.
             self.writeback_field_load_locals_with_table(mir, table);
         }
+        // Stage 18.413 (v0.5+ Phase 2 L3 step 2 completion): REMOVED
+        // writeback_binaryop_results call. Stage 18.412 added the LHS type
+        // check in typeck's infer_rvalue Shl/Shr arm, so typeck now reports
+        // `&str << 2` and `() << 2` errors directly. The writeback workaround
+        // is no longer needed.
+        //
+        // Per §1.6 终极检验: this is the root-cause fix — typeck catches
+        // the error at the right architectural layer, instead of writeback
+        // masking it by overwriting dest_local.ty.
+        // Per §1.0 原則 4 (报错 > 静默): error is now reported explicitly
+        // at typeck, not silently masked by writeback.
+        // Per §1.0 原則 5 (去除兼容思维): the workaround method is fully
+        // removed (Stage 18.413), not just commented out.
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.
         // Even with Stage 18.384's codegen recursive resolve + Stage 18.387's
         // detect_place_type fix in codegen_place_load_typed, step 1 is needed

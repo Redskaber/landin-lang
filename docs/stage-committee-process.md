@@ -3116,7 +3116,7 @@ flowchart TD
 - **§1.0 原則 5 (去除兼容思维)**：如果 0 失败 → REMOVED（不是仅 disabled）
 - **§5.2 (提前收敛)**：连续 2 轮 NOT redundant → 真正极限
 
-**v0.5+ Phase 1+3 实验记录**（Stage 18.379-18.392）：
+**v0.5+ Phase 1+3+2 L3 实验记录**（Stage 18.379-18.413）：
 
 | Stage | Target | Result | Action | Writeback Phases |
 |-------|--------|--------|--------|------------------|
@@ -3126,11 +3126,18 @@ flowchart TD
 | 18.382 | Phase 3.5 step 1 | 2 failures | 深挖根因 | 8 |
 | 18.384-18.387 | codegen recursive resolve | 0 failures (improvement) | 保留改进 | 8 |
 | 18.388 | Phase 3.5 step 1 (fix) | 0 failures | REMOVED | 8→7 |
-| 18.389 | Phase 3.5 step 2 | 5 failures | 深挖根因 | 7 |
-| 18.390 | Phase 3.5 step 2 (re-test) | 5 failures | 深挖根因 | 7 |
-| 18.392 | Phase 3.5 step 2 (re-test) | 5 failures | §5.2 收敛 | 7 |
+| 18.389-18.392 | Phase 3.5 step 2 | 5 failures (3 consecutive) | 深挖根因 | 7 |
+| 18.396-18.405 | Phase 3.5 step 2 (re-test) | 5 failures (7 consecutive) | §5.2 收敛 | 7 |
+| 18.410 | Phase 3.5 step 2 surgical split | Pass 1: 3 failures; Pass 2: 2 failures | 深挖根因 — 两个独立关注点 | 7 |
+| 18.412 | typeck Shl/Shr lhs check (root-cause fix) | 0 failures (Pass 2 redundant) | 准备 REMOVED Pass 2 | 7 |
+| 18.413 | Pass 2 (writeback_binaryop_results) REMOVED | 0 failures | REMOVED + dead code 清理 | 7 (Phase 3.5 step 2 精简) |
 
-**结论**：Phase 3.5 step 2 是 typeck 错误报告依赖 — 需要 Phase 2 (expected_ty propagation) 才能消除。
+**结论 (Stage 18.413 修正)**：
+- Phase 3.5 step 2 原本捆绑两个独立关注点:
+  - **Pass 1** (field-access writeback): 架构上正确的字段类型解析位置 (Phase 3 之后, receiver 类型已解析). **TRUE LIMIT** — 不能在 v0.5+ 移除 (需要 v0.6+ typeck 前置重构).
+  - **Pass 2** (BinaryOp result writeback): typeck Shl/Shr arm 缺少 lhs 检查的 workaround. Stage 18.412 根因修复 (添加 lhs 检查), Stage 18.413 移除.
+- §5.2 "7 consecutive" 仍成立 (Pass 1 不能移除), 但 Pass 2 已通过根因修复移除.
+- **方法论启示**: 当 §5.2 收敛到"NOT redundant"时, 必须执行外科手术式实验 (拆分 bundled concerns) 区分 TRUE LIMIT vs WORKAROUND. §20.6 实验方法论需要扩展支持 surgical split (env var guards per pass).
 
 ---
 

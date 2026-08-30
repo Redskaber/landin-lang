@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-29 (last updated Stage 18.392 — v0.5+ Phase 1+3 complete, writeback 10→7)
+> **Date**: 2026-08-30 (last updated Stage 18.413 — v0.5+ Phase 2 L3 step 2 partial: Pass 2 removed via typeck root-cause fix)
 > **Version**: v0.510.0
-> **Status**: v0.5+ Phase 1+3 complete. Writeback phases reduced 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed via root-cause fixes). Phase 3.5 step 2 remains required (typeck error reporting dependency — confirmed 3 consecutive tests Stage 18.389-18.392 per §5.2). Phase 2 (expected_ty propagation in MIR lower) is the only path to eliminate step 2. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial. Writeback phases reduced 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed via root-cause fixes). Stage 18.410 surgical experiments revealed Phase 3.5 step 2 bundled two INDEPENDENT concerns: Pass 1 (field-access writeback — TRUE LIMIT, architecturally correct) and Pass 2 (BinaryOp result writeback — WORKAROUND for typeck Shl/Shr lhs check). Stage 18.412 added typeck lhs check (root-cause fix); Stage 18.413 removed Pass 2 + dead code (resolve_operand_for_writeback, is_concrete_int_or_float). Phase 3.5 step 2 Pass 1 remains the true limit (cannot be removed without v0.6+ typeck前置重构). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -358,7 +358,8 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.375 | 1 | TD-AS-CAST-TRUNCATION (8 `*n as u32` silent truncation → `u32::try_from(*n).expect(...)`) |
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
-| 🚧 v0.5+ Phase 1+3 complete | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.388: Phase 3.5 step 1 REMOVED (8→7, codegen AdtLayouts fallback). Stage 18.389-18.392: Phase 3.5 step 2 NOT redundant (3 consecutive — typeck error reporting dependency per §5.2). Writeback 10→7. Phase 2 (expected_ty propagation) needed to eliminate step 2. |
+| ✅ Resolved in 18.413 | 1 | TD-PASS2-BINARYOP-WORKAROUND (writeback_binaryop_results removed; typeck Shl/Shr lhs check root-cause fix per Stage 18.412) |
+| 🚧 v0.5+ Phase 1+3 complete | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.388: Phase 3.5 step 1 REMOVED (8→7, codegen AdtLayouts fallback). Stage 18.389-18.405: Phase 3.5 step 2 NOT redundant (7 consecutive — §5.2 true limit, but surgical Stage 18.410 experiments revealed two independent concerns: Pass 1 = field-access writeback [TRUE LIMIT, architecturally correct], Pass 2 = BinaryOp result writeback [WORKAROUND, removed Stage 18.413]). Stage 18.412 added Shl/Shr lhs type check in typeck infer_rvalue. Stage 18.413 removed writeback_binaryop_results + dead code (resolve_operand_for_writeback + is_concrete_int_or_float). Writeback 10→7. Phase 3.5 step 2 Pass 1 (field-access writeback) remains the true limit (cannot be removed without v0.6+ typeck前置重构). |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

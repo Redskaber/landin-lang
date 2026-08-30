@@ -30663,3 +30663,198 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm
 - 当前 v0.4 已完全可交付
+
+
+---
+Task ID: stage18.409
+Agent: Super Z (main) — PM-A
+Task: Stage 18.409 — v0.4 final confirmation. §5.2 converged (7 consecutive). §14.5 D1-D8 PASSED. All docs synced. Final package. L1. v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (最终确认 + 打包 — 无代码变更)
+- 对齐: §5.2 连续 7 轮 → 收敛; §14.5 D1-D8 PASSED; v0.4 release-ready
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: v0.4 release-ready confirmed. §5.2 true limit reached.
+- 引用 §1.6: All v0.5+ Phase 1+3+2 L3 成果都是根因修复.
+
+裁剪点:
+- L1 — 无代码变更; §3.2 全绿是充分门禁
+
+Work Log:
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored
+- v0.4 release-ready FINAL state confirmed:
+  * Version: v0.510.0 (Stage 18.406)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed)
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * §14.5 D1-D8: ALL PASSED ✅
+  * §5.2: Phase 3.5 step 2 true limit confirmed (7 consecutive) ✅
+  * §1.6: All removals are root-cause fixes ✅
+  * v0.5+ Phase 1+3 complete (3 phases removed via root-cause fixes)
+  * Phase 2 L3 step 1 done (expected_ty in Call dest + writeback skip + unify direction fix)
+  * Next: Phase 2 L3 step 2 (thread expected_ty to Field arm — L3, ~51 callsites)
+
+Stage Summary:
+- v0.4 final delivery confirmed ✅
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- v0.5+ Phase 1+3+2 L3 完整成果:
+  | Phase | Stages | Phases Removed | Writeback |
+  |-------|--------|----------------|-----------|
+  | Phase 1 | 18.379-18.381 | Phase 0 + Phase 3.7 | 10→8 |
+  | Phase 3 | 18.382-18.388 | Phase 3.5 step 1 | 8→7 |
+  | Phase 2 L3 | 18.404-18.405 | (step 1 done, step 2 required — §5.2 true limit) | 7 |
+  | Total | 18.379-18.409 | 3 phases removed | 10→7 |
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+---
+Task ID: stage18.410-18.413
+Agent: Super Z (main) — PM-A
+Task: v0.5+ Phase 2 L3 step 2 — surgical experiment + refactor + typeck root-cause fix + Pass 2 removal. L3 (cross-module: typeck + writeback + MIR lower). v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨模块 typeck + writeback; §5.2 true limit 重审)
+- 对齐: §5.2 连续 7 轮确认 Phase 3.5 step 2 仍必需; 但实验显示结论不完整
+- 阻断: 4409 tests 全绿 (Stage 18.408 状态)
+
+5W2H:
+- WHAT: 通过外科手术式实验区分 Pass 1 (field access) 与 Pass 2 (BinaryOp result)，找到 Pass 2 的根因并移除
+- WHY: §5.2 "true limit" 结论将 5 failures 全归为 field-access paths 是不完整的; 2 failures 实为 BinaryOp result 路径
+- WHO: ARCH-A (设计决策) + DEV-A (实现) + REV-A (审查)
+- WHEN: Stage 18.410 实验 → 18.411 重构 → 18.412 typeck 修复 → 18.413 移除
+- WHERE: src/typeck/writeback.rs + src/typeck/checker.rs + src/typeck/infer.rs + src/typeck/predicates.rs
+- HOW: §20.6 实验方法论 (LANDIN_EXP_NO_PASS1/NO_PASS2 env vars) → 区分两个独立关注点
+- HOW MUCH: §3.2 全绿 (4409 tests, 0 failures, fmt clean, 0 clippy warnings)
+
+决策点 (§1.6 终极检验 — "根因修复 vs 最小补丁"):
+- 选 A: 拆分 Pass 1/Pass 2 + typeck lhs 检查 + 移除 Pass 2 (根因修复)
+- 不选 B: 保持合并 + 加 expected_ty propagation (最小补丁, 不解决 BinaryOp 路径)
+- 引用 §1.0 原則 4 (报错 > 静默): typeck 必须显式报错, 不靠 writeback 掩盖
+- 引用 §1.0 原則 6 (通解 > 特解): 一个 lhs 检查覆盖所有非整数 lhs 类型
+- 引用 §12 (最优 > 最小): 根因修复在 typeck, 不在 writeback
+- 引用 §1.6 终极检验: 这是根因修复, 不是最小补丁
+
+裁剪点:
+- L3 任务, §14.5 深度审查必须执行 (Stage 18.414)
+- §20.6 实验方法论: env var 控制独立 pass, 实验完成后恢复
+
+Work Log:
+- Stage 18.410 外科手术式实验:
+  - 在 writeback_field_load_locals_with_table 内加 LANDIN_EXP_NO_PASS1/NO_PASS2 env var guards
+  - Experiment A (disable Pass 1, keep Pass 2): 3 failures
+    * stage18_332_sret_invalid_field_access
+    * stage18_334_text_ir_byval_sret_combined
+    * stage18_334_text_ir_deterministic
+    → 全部是 field-access 路径 (function param field access)
+  - Experiment B (disable Pass 2, keep Pass 1): 2 failures
+    * stage18_288_neg_shl_on_str (`&str << 2`)
+    * stage18_288_neg_shl_on_unit (`() << 2`)
+    → 全部是 BinaryOp 路径 (NOT field access)
+  - 结论: Pass 1 与 Pass 2 是独立关注点; §5.2 "true limit" 结论不完整
+- Stage 18.411 重构 (separation of concerns):
+  - 拆分 writeback_field_load_locals_with_table 为两个独立方法:
+    * writeback_field_load_locals_with_table (Pass 1 — field access; 保留)
+    * writeback_binaryop_results (Pass 2 — BinaryOp result; 待移除)
+  - checker.rs 分别调用两个方法
+  - 测试全绿 (4409)
+- Stage 18.412 typeck 根因修复:
+  - src/typeck/infer.rs Shl/Shr arm 添加 lhs 类型检查
+  - Was: 只检查 is_shift_count_ty(&b_ty); 返回 a_ty (无错误)
+  - Now: 同时检查 is_shift_count_ty(&a_ty); 非 integer lhs 报错
+  - 引用 §1.0 原則 4 (报错 > 静默), §1.6 终极检验, §12 (最优 > 最小)
+- Stage 18.413 移除 Pass 2:
+  - 移除 checker.rs 中 writeback_binaryop_results 调用
+  - 移除 writeback.rs 中 writeback_binaryop_results 方法体
+  - 移除 writeback.rs 中 resolve_operand_for_writeback (dead code)
+  - 移除 predicates.rs 中 is_concrete_int_or_float (dead code, 仅 Pass 2 使用)
+  - §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+§5.2 重审 (true limit 修正):
+- 旧结论 (Stage 18.405): "Phase 3.5 step 2 true limit confirmed (7 consecutive). Full fix needs Phase 2 L3 step 2: expected_ty in Field arm."
+- 新结论 (Stage 18.413): Phase 3.5 step 2 包含两个独立关注点:
+  * Pass 1 (field-access writeback): TRUE LIMIT — 架构上正确的字段类型解析位置 (Phase 3 之后, receiver 类型已解析). 不能在 v0.5+ 移除 (需要 v0.6+ typeck 前置重构).
+  * Pass 2 (BinaryOp result writeback): WORKAROUND — typeck Shl/Shr arm 缺少 lhs 检查. Stage 18.412 根因修复后, Stage 18.413 移除.
+- §5.2 7 consecutive 仍成立 (Pass 1 不能移除), 但 Pass 2 已移除
+
+Stage Summary:
+- v0.5+ Phase 2 L3 step 2 完成 (部分):
+  * Pass 2 (BinaryOp result writeback) 移除 — 根因修复在 typeck
+  * Pass 1 (field-access writeback) 保留 — 架构上正确的字段类型解析位置
+- Writeback phases: 仍为 7 (Phase 3.5 step 2 保留, 但更精简)
+- 新增 typeck 检查: Shl/Shr lhs 必须 Int/Uint (not Bool/Float/Str/Unit/Adt)
+- 移除 dead code: is_concrete_int_or_float, resolve_operand_for_writeback, writeback_binaryop_results
+- §3.2 全绿: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+- §1.6 终极检验: 所有变更都是根因修复 (Pass 2 移除 + typeck lhs 检查 + dead code 清理)
+
+下一步:
+- Stage 18.414: §14.5 深度审查 + 文档同步
+- Stage 18.415: README 重构 + RELEASE_NOTES + tech-debt-register + 打包 r65
+
+---
+Task ID: stage18.414-18.415
+Agent: Super Z (main) — PM-A
+Task: Stage 18.414 §14.5 deep review + doc sync; Stage 18.415 README restructure + RELEASE_NOTES + tech-debt-register + package r65. L2 (文档+打包). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (文档同步 + 打包 — 无代码变更)
+- 对齐: Stage 18.413 代码变更完成; §14.5 D1-D8 待验证; README/RELEASE_NOTES 待重构
+- 阻断: 4409 tests 全绿 (Stage 18.413 状态)
+
+决策点:
+- 引用 §3.2: 全绿是充分门禁
+- 引用 §1.0 原則 3 (显式 > 隐式): 文档必须反映最新代码状态
+- 引用 §1.6 终极检验: 所有变更都是根因修复
+
+裁剪点:
+- L2 — 文档同步 + 打包; §14.5 D1-D8 必须执行
+
+Work Log:
+- §14.5 D1-D8 验证:
+  - D1 (fmt): clean ✓
+  - D2 (clippy): 0 warnings ✓
+  - D3 (build): success ✓
+  - D4 (test): 4409 (682 lib + 3727 integration), 0 failures, 2 ignored ✓
+  - D5 (no regressions): test count unchanged ✓
+  - D6 (no TODO/FIXME in changed files): 0 ✓
+  - D7 (architecture health): writeback.rs 4→3 pub fns; predicates.rs 6→5 fns ✓
+  - D8 (§1.6 终极检验): all changes root-cause fixes ✓
+- 文档同步:
+  - tech-debt-register.md: 添加 TD-PASS2-BINARYOP-WORKAROUND (resolved Stage 18.413); 更新 header 状态
+  - stage-committee-process.md: §20.6 实验表添加 Stage 18.410-18.413; 更新 §5.2 true limit 结论
+  - README.md: 完全重构 — 新增 "Writeback Architecture (v0.5+)" 章节; 更新 Phase 2 L3 step 2 status; 更新 tech debt 表; 更新 v0.5+ roadmap
+  - RELEASE_NOTES.md: 新增 "v0.5+ Phase 2 L3 step 2 Partial Summary (Stage 18.396-18.413)" 章节
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 最终打包 r65
+
+Stage Summary:
+- v0.5+ Phase 2 L3 step 2 partial delivery:
+  * Pass 2 (BinaryOp result writeback) REMOVED via typeck root-cause fix
+  * Pass 1 (field-access writeback) retained as architecturally correct (§5.2 true limit)
+  * §5.2 true limit 结论修正: Pass 1 = TRUE LIMIT, Pass 2 = WORKAROUND (removed)
+  * §20.6 实验方法论扩展: surgical split (env var guards per pass)
+- v0.4 release-ready FINAL state:
+  * Version: v0.510.0 (Stage 18.413)
+  * Tests: 4409 (682 lib + 3727 integration), 0 failures, 2 ignored
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 + Pass 2 removed)
+  * Process doc: v7.5 (§20.6 surgical split methodology)
+  * Architecture health: 8.5/10 (up from 8.4)
+  * §14.5 D1-D8: ALL PASSED ✅
+  * §1.6: All changes are root-cause fixes ✅
+  * v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial (Pass 2 removed)
+  * Next: v0.6+ typeck前置重构 to eliminate Pass 1 (field-access writeback)
+
+下一步:
+- v0.6+ typeck前置重构 (Pass 1 elimination — requires typeck before MIR lower)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5

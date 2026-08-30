@@ -4,13 +4,18 @@
 //! Extracted from `checker.rs` per `docs/stage-committee-process.md` v3.21
 //! §14.4 + §13.4.
 //!
-//! Owns 6 type predicate / coercion functions:
+//! Owns 5 type predicate / coercion functions:
 //! - `is_arithmetic_ty` (Int/Uint/Float/Infer/Error — for Add/Sub/Mul/Div/Rem)
-//! - `is_concrete_int_or_float` (concrete Int/Uint/Float, not Infer/Error)
 //! - `is_negatable_ty` (unary `-`)
 //! - `is_notable_ty` (bitwise `!`)
-//! - `is_shift_count_ty` (rhs of Shl/Shr)
+//! - `is_shift_count_ty` (rhs of Shl/Shr; also lhs per Stage 18.412)
 //! - `can_coerce` (implicit coercion matrix per §8)
+//!
+//! Stage 18.413 (v0.5+ Phase 2 L3 step 2): REMOVED `is_concrete_int_or_float`
+//! — was only used by the removed `writeback_binaryop_results` (Pass 2 of
+//! the former `writeback_field_load_locals_with_table`). The LHS type check
+//! in typeck's `infer_rvalue` Shl/Shr arm (Stage 18.412) makes it redundant.
+//! Per §1.0 原則 5 (去除兼容思维): unused code removed.
 
 use crate::mir::ty::*;
 
@@ -22,17 +27,6 @@ pub(super) fn is_arithmetic_ty(ty: &Ty) -> bool {
     matches!(
         &ty.kind,
         TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Infer(_) | TyKind::Error
-    )
-}
-
-/// Stage 3.36 (L-DEBT-3 fix): whether a type is a concrete Int/Uint/Float
-/// (not Infer, not Error, not Bool, not Str, etc.). Used by
-/// `writeback_field_load_locals` to decide if a BinaryOp operand's type
-/// should propagate to the result.
-pub(super) fn is_concrete_int_or_float(ty: &Ty) -> bool {
-    matches!(
-        &ty.kind,
-        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_)
     )
 }
 

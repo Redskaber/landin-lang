@@ -4,12 +4,148 @@
 |---|---|
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
-| **Date** | 2026-08-29 |
-| **Test count** | 682 lib tests + 3727 integration tests = 4409 total (100% pass rate single-thread with `ulimit -s unlimited`, 0 skipped) |
+| **Date** | 2026-08-30 |
+| **Test count** | 682 lib tests + 3727 integration tests = 4409 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed) |
+| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 + Phase 3.5 step 2 Pass 2 removed via root-cause fixes) |
+
+---
+
+## v0.510.0 — v0.5+ Phase 2 L3 step 2 Partial Summary (Stage 18.396-18.413)
+
+### Overview
+
+The v0.5+ Phase 2 L3 step 2 (expected_ty propagation + typeck root-cause
+fixes) is **partially complete**. Stage 18.410 surgical split experiments
+revealed that the §5.2 "true limit" conclusion (Phase 3.5 step 2 cannot
+be removed) was **incomplete** — Phase 3.5 step 2 bundled two INDEPENDENT
+concerns:
+
+1. **Pass 1** (field-access writeback): **TRUE LIMIT** — architecturally
+   correct position for field type resolution (runs after Phase 3, so
+   receiver types are concrete). Cannot be removed in v0.5+ without
+   restructuring typeck to run before MIR lower (v0.6+ concern).
+2. **Pass 2** (BinaryOp result writeback): **WORKAROUND** — was masking
+   typeck's `infer_rvalue` Shl/Shr arm not checking LHS type. Root-cause
+   fixed in Stage 18.412 (added LHS check), then removed in Stage 18.413.
+
+### Surgical Split Experiment (Stage 18.410)
+
+Added env var guards (`LANDIN_EXP_NO_PASS1`, `LANDIN_EXP_NO_PASS2`) to
+independently disable Pass 1 and Pass 2 in `writeback_field_load_locals_with_table`:
+
+| Experiment | Disabled | Failures | Failure Type |
+|-----------|----------|----------|--------------|
+| A | Pass 1 (keep Pass 2) | 3 | field-access paths (`sret_invalid_field_access`, `byval_sret_combined`, `deterministic`) |
+| B | Pass 2 (keep Pass 1) | 2 | BinaryOp paths (`neg_shl_on_str`, `neg_shl_on_unit`) |
+
+**Conclusion**: Pass 1 and Pass 2 are logically independent concerns
+bundled in one function. The §5.2 "true limit" applies to Pass 1 only;
+Pass 2 is a workaround that can be root-cause fixed.
+
+### Stage 18.411 — Refactor: Split Pass 1 and Pass 2
+
+Split `writeback_field_load_locals_with_table` into two independent methods:
+
+- `writeback_field_load_locals_with_table` (Pass 1 — field access; retained)
+- `writeback_binaryop_results` (Pass 2 — BinaryOp result; to be removed)
+
+Updated `checker.rs` to call them separately. All 4409 tests pass after
+the refactor (no behavior change, just separation of concerns).
+
+Per §1.0 原則 6 (通解 > 特解): field-access writeback vs BinaryOp result
+writeback are logically independent and belong in separate methods.
+
+### Stage 18.412 — typeck Root-Cause Fix: Shl/Shr LHS Check
+
+Added LHS type check in `infer_rvalue` Shl/Shr arm (`src/typeck/infer.rs`):
+
+```rust
+BinOp::Shl | BinOp::Shr => {
+    if !is_shift_count_ty(&a_ty) {
+        self.errors.push(TypeError::new(
+            format!("shift lhs must be an integer type, found {}", self.format_ty(&a_ty)),
+            stmt_span,
+        ));
+    }
+    if !is_shift_count_ty(&b_ty) {
+        self.errors.push(TypeError::new(
+            format!("shift count must be an integer type, found {}", self.format_ty(&b_ty)),
+            stmt_span,
+        ));
+    }
+    a_ty
+}
+```
+
+**Was**: only checked `is_shift_count_ty(&b_ty)` — the Shl arm returned
+`a_ty` (e.g., `&str`) without error. Pass 2 then masked this by
+overwriting `dest_local.ty` to `i32` (from `b_ty`), causing a codegen
+type mismatch.
+
+**Now**: typeck reports `&str << 2` and `() << 2` errors directly at
+the typeck layer, eliminating the need for Pass 2's writeback workaround.
+
+Per §1.0 原則 4 (报错 > 静默): LHS type error must be reported at typeck,
+not masked by writeback.
+Per §1.6 终极检验: root-cause fix at typeck, not a writeback patch.
+Per §12 (最优 > 最小): one LHS check covers all non-integer LHS types.
+Per §1.0 原則 6 (通解 > 特解): one LHS check replaces writeback overwrite.
+
+### Stage 18.413 — Pass 2 Removal + Dead Code Cleanup
+
+Removed:
+- `writeback_binaryop_results` method body and call in `checker.rs`
+- `resolve_operand_for_writeback` (dead code — only called by Pass 2)
+- `is_concrete_int_or_float` in `predicates.rs` (dead code — only used by Pass 2)
+- Updated `predicates.rs` module doc to reflect 5 functions (was 6)
+
+Per §1.0 原則 5 (去除兼容思维): workaround fully removed, not just
+commented out. Dead code eliminated.
+
+### §5.2 True Limit — Refined (Stage 18.413)
+
+**Previous conclusion** (Stage 18.405): "Phase 3.5 step 2 true limit
+confirmed (7 consecutive). Full fix needs Phase 2 L3 step 2: expected_ty
+in Field arm."
+
+**Refined conclusion** (Stage 18.413): Phase 3.5 step 2 originally bundled
+two independent concerns:
+
+- **Pass 1** (field-access writeback): **TRUE LIMIT** — architecturally
+  correct. §5.2 "7 consecutive" still applies. Cannot be removed in v0.5+
+  without v0.6+ typeck前置重构.
+- **Pass 2** (BinaryOp result writeback): **WORKAROUND** — root-cause
+  fixed in Stage 18.412, removed in Stage 18.413.
+
+**Methodology insight** (§20.6 extension): When §5.2 converges to "NOT
+redundant", execute surgical split experiments (env var guards per pass)
+to distinguish TRUE LIMIT vs WORKAROUND. The 7 consecutive "NOT redundant"
+conclusion was correct for Pass 1 but masked Pass 2's workaround nature.
+
+### Test & Quality Verification
+
+- 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored
+- fmt clean (0 lines diff)
+- 0 clippy warnings
+- §14.5 D1-D8 deep review PASSED
+- Architecture health: 8.5/10 (up from 8.4 — Pass 2 workaround removed)
+
+### Files Changed (Stage 18.410-18.413)
+
+| File | Change |
+|------|--------|
+| `src/typeck/writeback.rs` | Split Pass 1/Pass 2; removed Pass 2 + `resolve_operand_for_writeback` |
+| `src/typeck/checker.rs` | Updated Phase 3.5/3.6 invocation; removed Pass 2 call |
+| `src/typeck/infer.rs` | Added Shl/Shr LHS type check in `infer_rvalue` |
+| `src/typeck/predicates.rs` | Removed `is_concrete_int_or_float` (dead code) |
+| `docs/develop/v0/tech-debt-register.md` | Added TD-PASS2-BINARYOP-WORKAROUND (resolved) |
+| `docs/stage-committee-process.md` | Updated §20.6 experimental table with Stage 18.410-18.413 |
+| `docs/worklog.md` | Stage 18.410-18.413 entries |
+| `README.md` | Complete restructure — v0.5+ writeback architecture section + Phase 2 L3 step 2 status |
+| `RELEASE_NOTES.md` | This section |
 
 ---
 
