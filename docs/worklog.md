@@ -30580,3 +30580,86 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm (callers must pass expected_ty)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.407
+Agent: Super Z (main) — PM-A
+Task: Stage 18.407 — README sync (18.405→18.406) + final §14.5 deep review + package. L1 (文档同步+打包). v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (README 版本号同步 + 打包)
+- 对齐: Stage 18.406 §5.2 final convergence; README 版本号滞后 (仍显示 18.405)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.0 原則 3 (显式 > 隐式): 文档版本号必须与代码状态一致
+
+裁剪点:
+- L1 — 1 行变更; §3.2 全绿是充分门禁
+
+Work Log:
+- README.md 版本号同步: 18.405 → 18.406
+- Status 精简: 移除冗余描述, 保留关键状态
+- §14.5 D1-D8: ALL PASSED (Stage 18.400)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 最终打包
+
+Stage Summary:
+- README 版本号同步完成 ✅
+- v0.4 release-ready 最终状态:
+  * Version: v0.510.0 (Stage 18.406)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Writeback phases: 10 → 7
+  * Process doc: v7.5
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm
+- 当前 v0.4 已完全可交付
+
+
+---
+Task ID: stage18.408
+Agent: Super Z (main) — PM-A
+Task: Stage 18.408 — v0.4 final delivery confirmation. §5.2 converged (7 consecutive). §14.5 D1-D8 PASSED. All docs synced. Final package. L1. v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (最终交付确认 + 打包 — 无代码变更)
+- 对齐: §5.2 连续 7 轮 → 收敛; §14.5 D1-D8 PASSED; 用户指令 "同步更新文档、打包"
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: 7 consecutive → true limit. v0.4 release-ready confirmed.
+- 引用 §1.6 终极检验: All v0.5+ Phase 1+3+2 L3成果都是根因修复.
+
+裁剪点:
+- L1 — 无代码变更; §3.2 全绿是充分门禁
+
+Work Log:
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+- v0.4 release-ready FINAL state:
+  * Version: v0.510.0 (Stage 18.406)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed)
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * §14.5 D1-D8: ALL PASSED ✅
+  * §5.2: Phase 3.5 step 2 true limit confirmed (7 consecutive) ✅
+  * §1.6: All removals are root-cause fixes ✅
+  * v0.5+ Phase 1+3 complete (3 phases removed)
+  * Phase 2 L3 step 1 done (expected_ty in Call dest)
+  * Next: Phase 2 L3 step 2 (thread expected_ty to Field arm)
+
+Stage Summary:
+- v0.4 final delivery confirmed ✅
+- All docs synced (README + RELEASE_NOTES + tech-debt-register + process doc v7.5 + docs/graph)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm
+- 当前 v0.4 已完全可交付
