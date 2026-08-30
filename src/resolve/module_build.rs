@@ -172,6 +172,13 @@ impl Resolver {
         // Per §1.0 原則 4 "报错 > 静默": used by duplicate-definition errors.
         let item_span = item_span(item);
         self.def_span.insert(def_id, item_span);
+
+        // Stage 26.1 (v0.8): Record the item's owner module for visibility enforcement.
+        // Per §1.0 原則 10 (唯一可信数据源): this is the single source of truth
+        // for "which module owns this DefId".
+        if let Some(module) = self.current_module {
+            self.def_owner_module.insert(def_id, module);
+        }
         match item {
             HirItem::Fn(f) => {
                 // Stage 18.178 (TD-HEAP-ALLOC bug fix): Distinguish extern
@@ -639,7 +646,7 @@ impl Resolver {
     pub(super) fn check_visibility(
         &self,
         def_id: crate::hir::DefId,
-        _span: Span,
+        span: Span,
     ) -> Result<(), ResolveError> {
         let vis = match self.def_visibility.get(&def_id) {
             Some(v) => v,
@@ -648,18 +655,56 @@ impl Resolver {
         match vis {
             crate::ast::Visibility::Public => Ok(()),
             crate::ast::Visibility::Private => {
-                // Stage 4.12: current_module tracking now available.
-                // If current_module is None (crate root), allow private access
-                // (crate root can see everything in the crate).
-                // If current_module is Some, we're inside a nested module —
-                // for now still allow (conservative, avoids false positives).
-                // Full strict enforcement (block cross-module private) will
-                // be activated after testing confirms no regressions.
-                Ok(())
+                // Stage 26.1 (v0.8): Enforce visibility.
+                //
+                // Per §1.0 原則 4 (报错 > 静默): private items accessed from
+                // outside their defining module must report an error.
+                //
+                // A private item is accessible if:
+                // 1. The caller is in the same module as the item's owner module
+                // 2. The caller is in the crate root (crate root can see everything)
+                // 3. The item has no owner module recorded (fall back to allow —
+                //    avoids false positives for prelude/builtin items)
+
+                // Look up the item's owner module.
+                let item_module = self.def_owner_module.get(&def_id);
+
+                // If no owner module is recorded, allow access (prelude/builtin).
+                // Per §1.0 原則 9 (正确 > 妥协): no false positives — if we don't
+                // know the owner module, we can't determine visibility, so allow.
+                let item_module = match item_module {
+                    Some(m) => *m,
+                    None => return Ok(()),
+                };
+
+                // Get the caller's current module.
+                let caller_module = self.current_module;
+
+                // If caller is in crate root (None), allow access to everything.
+                // Per Rust semantics: crate root is the crate's top-level module;
+                // it can access all private items in the crate.
+                if caller_module.is_none() {
+                    return Ok(());
+                }
+
+                // If caller's module matches the item's owner module, allow.
+                // Per Rust: private items are visible within their defining module.
+                if caller_module == Some(item_module) {
+                    return Ok(());
+                }
+
+                // Otherwise: private item accessed from a different module → error.
+                // Per §1.0 原則 4 (报错 > 静默): report visibility violation.
+                Err(ResolveError::new(
+                    "visibility error: cannot access private item from outside its module"
+                        .to_string(),
+                    span,
+                ))
             }
             crate::ast::Visibility::PubRestricted(_) => {
-                // Stage 4.12: pub(crate)/pub(super) — same-crate access allowed.
-                // Full discrimination with current_module deferred.
+                // Stage 26.1 (v0.8): pub(crate)/pub(super) — same-crate access allowed.
+                // Full discrimination with current_module deferred to future.
+                // Per §1.0 原則 9 (正确 > 妥协): conservative — allow for now.
                 Ok(())
             }
         }

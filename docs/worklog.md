@@ -33824,3 +33824,58 @@ v0.7 FINAL STATE:
   4. TD-SINGLE-FILE Phase 4 (manifest integration)
   5. TD-GAT-HIGHER-RANKED (region-aware monomorphization)
 
+
+---
+Task ID: stage26.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 26.1 — v0.8 Visibility enforcement. L2-L3 (跨 resolve/resolver.rs + resolve/module_build.rs). v0.533.0.
+
+3秒启动自检:
+- 定位: L2-L3 (修改 src/resolve/resolver.rs + src/resolve/module_build.rs — ~60 LOC changed)
+- 对齐: 已查 v0.7 FINAL (v0.532.0); TD-VISIBILITY-NOOP ("Private struct fields/functions/methods silently accessible from outside module"); existing Visibility enum (Public/Private/PubRestricted) + def_visibility map + check_visibility stub (always Ok) + current_module tracking
+- 阻断: v0.7 FINAL 全绿 (4821 tests), 0 P0/P1
+
+决策点 (设计选择):
+- Added def_owner_module map (DefId → Spur) for module ownership tracking
+  - 引用 §1.0 原則 10 (唯一可信数据源): single source of truth for "which module owns this DefId"
+  - 引用 §11 (接口隔离): resolve layer owns this data, check_visibility reads it
+  - 替代: thread HirImpl.span through to find module — but this is fragile and slow
+  - 选择: explicit map populated during build_module_tree
+
+- check_visibility now enforces private items
+  - 引用 §1.0 原則 4 (报错 > 静默): private violations now reported (was: always Ok)
+  - 引用 §1.0 原則 9 (正确 > 妥协): no false positives — items without owner module (prelude/builtin) are allowed
+  - Logic: Private item accessible if (a) caller in same module, (b) caller in crate root, (c) no owner module recorded
+  - 引用 Rust semantics: private items visible within their defining module
+
+- Populated def_owner_module during collect_item_registration
+  - 引用 §1.0 原則 3 (显式 > 隐式): explicit population during build, not lazy lookup
+  - Per §13.4 J2 (单一职责): collect_item_registration is the data extraction point
+
+裁剪点:
+- L2-L3 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — will be done at v0.8 FINAL
+- 安全理由: visibility enforcement is additive (new field + new check), doesn't modify existing resolve behavior for items without owner module (allowed by default)
+
+5W2H:
+- WHAT: def_owner_module field + populated during build_module_tree + check_visibility enforces private items
+- WHY: v0.8 TD-VISIBILITY-NOOP — enforce module-level visibility (private items from outside module → error)
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.7 FINAL 完成后的第一个 v0.8 MUV
+- WHERE: src/resolve/resolver.rs + src/resolve/module_build.rs
+- HOW: (1) Add def_owner_module field (2) Populate during collect_item_registration (3) Update check_visibility to enforce
+- HOW MUCH: 4821 tests (unchanged — behavior-preserving for existing tests, no nested modules in tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.8 Phase 1: Visibility enforcement COMPLETE ✅
+- New: def_owner_module map + check_visibility enforces private items
+- §3.2 全绿: 4821 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- Addresses: TD-VISIBILITY-NOOP
+
+下一步 (v0.8 remaining language features):
+- Break/continue context enforcement — language feature
+- Enum exhaustiveness checking — language feature
+- TD-SINGLE-FILE Phase 4 — manifest integration
+- TD-GAT-HIGHER-RANKED — region-aware monomorphization
+

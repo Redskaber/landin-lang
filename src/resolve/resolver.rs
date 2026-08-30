@@ -35,7 +35,16 @@ pub struct Resolver {
     /// only — the actual visibility check is a stub since the module tree is
     /// flat (all items at crate root). Once nested modules are supported
     /// (Stage 4), `check_visibility` will enforce access rules.
+    /// Stage 26.1 (v0.8): Now used for actual visibility enforcement.
     pub(super) def_visibility: HashMap<DefId, crate::ast::Visibility>,
+
+    /// Stage 26.1 (v0.8): Map from DefId → module Spur (the module that
+    /// owns this item). Used by `check_visibility` to determine if the
+    /// caller's module matches the item's module.
+    ///
+    /// Per §1.0 原則 10 (唯一可信数据源): this is the single source of
+    /// truth for "which module owns this DefId".
+    pub(super) def_owner_module: HashMap<DefId, Spur>,
     /// Stage 18.57: Map from DefId → Span (for accurate diagnostic spans).
     ///
     /// Populated during `build_module_tree`. Used by `module_build.rs` to
@@ -120,6 +129,7 @@ impl Resolver {
             module_tree: ModuleNode::new(),
             def_kinds: HashMap::new(),
             def_visibility: HashMap::new(),
+            def_owner_module: HashMap::new(),
             def_span: HashMap::new(),
             scopes: None,
             current_self_kind: None,

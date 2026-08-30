@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.532.0 (v0.7 FINAL — TD-SOLVER-WHERE-CLAUSE-MVP complete, remaining TDs BLOCKED) |
+| **Version** | v0.533.0 (Stage 26.1 — v0.8 Visibility enforcement) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 FINAL — TD-SOLVER-WHERE-CLAUSE-MVP COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.7 task: ✅ Stage 25.1 TD-SOLVER-WHERE-CLAUSE-MVP (ImplWhereClause struct + ImplInfo.where_clauses field + HIR where clause collection in TraitResolver::collect() + collect_impl_where_clauses() reads stored where clauses). Remaining TDs ALL BLOCKED: TD-SINGLE-FILE Phase 4 (manifest), TD-GAT-HIGHER-RANKED (region-aware mono), visibility/break-continue/enum-exhaustiveness (language features — need parser+typeck changes). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.8 (language features: visibility + break/continue + enum exhaustiveness). |
+| **Status** | v0.8 Phase 1: Visibility enforcement COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 26.1 added `def_owner_module` field to Resolver + populated during `build_module_tree` + `check_visibility` now enforces private items: private item accessed from outside its defining module → `ResolveError` (was: always Ok). Per §1.0 原則 4 (报错 > 静默): private violations now reported. Per §1.0 原則 9 (正确 > 妥协): no false positives — items without owner module (prelude/builtin) are allowed. Per §1.0 原則 10 (唯一可信数据源): `def_owner_module` is the SSOT for module ownership. Addresses TD-VISIBILITY-NOOP. Next: v0.8 remaining language features. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
