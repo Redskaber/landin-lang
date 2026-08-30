@@ -464,7 +464,23 @@ impl TypeChecker {
             PlaceKind::Projection(base, elem) => {
                 let base_ty = self.resolve_place_for_writeback(mir, base);
                 match elem {
-                    crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
+                    crate::mir::place::ProjectionElem::Field(_, field_ty) => {
+                        // Stage 18.399 (v0.5+ Phase 2 step 4): Apply substitute
+                        // when field_ty contains Param and base_ty is Adt with substs.
+                        // This mirrors resolve_field_ty_with_substs in codegen
+                        // (Stage 18.384) and resolve_place_type_with_table
+                        // (Stage 18.358).
+                        //
+                        // Was: `field_ty.clone()` — returned unsubstituted Param
+                        // from MIR ProjectionElem::Field.
+                        //
+                        // Per §1.0 原則 6 (通解 > 特解): one substitute path.
+                        // Per §12 (最优 > 最小): root-cause fix at resolution site.
+                        if let TyKind::Adt(_, substs) = &base_ty.kind {
+                            if !substs.is_empty() {
+                                return crate::mir::substitute::substitute(field_ty, substs);
+                            }
+                        }
                         field_ty.clone()
                     }
                     _ => base_ty,

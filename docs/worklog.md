@@ -30074,3 +30074,55 @@ Stage Summary:
 - v0.5+ Phase 2 完整实施: threading expected_ty 通过 ALL lower_expr_* callsites
 - 或: 让 typeck 从 HIR 读取 dest_local 类型 (而非从 MIR local_decl.ty)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.399
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.399 — v0.5+ Phase 2 step 4: resolve_place_for_writeback substitute fix + Phase 3.5 step 2 final convergence. L2 (架构改进). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (resolve_place_for_writeback substitute fix — ~15 行变更)
+- 对齐: Stage 18.398 HIR fallback; §1.6 终极检验 — resolve_place_for_writeback 也应 substitute
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: resolve_place_for_writeback (writeback.rs:467) 返回 unsubstituted field_ty — 与 codegen 的 resolve_field_ty_with_substs (Stage 18.384) 不一致
+- 引用 §1.0 原則 6 (通解 > 特解): 一个 substitute 路径覆盖所有 field type resolution
+- 引用 §20.6: 实验性探索方法论
+
+裁剪点:
+- L2 — 1 函数修改; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: resolve_place_for_writeback 的 Field arm 添加 substitute
+- WHY: 与 codegen/typeck 的 substitute 路径一致 — 之前返回 unsubstituted Param
+- HOW: 当 base_ty 是 Adt(_, substs) 且 substs 非空时, substitute(field_ty, substs)
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- 修复: resolve_place_for_writeback (writeback.rs:467-485)
+  - Was: `field_ty.clone()` — 返回 unsubstituted Param
+  - Now: 当 base_ty 是 Adt(_, substs) 且 substs 非空时, substitute(field_ty, substs)
+  - Mirrors resolve_field_ty_with_substs (Stage 18.384) + resolve_place_type_with_table (Stage 18.358)
+- 实验: 禁用 step 2 → 5 失败 (same as Stage 18.398)
+  - step 2 写 dest_local.ty for ALL field-load locals, not just generic ones
+  - 非泛型 struct fields 也有 Infer field_ty (from MIR lower)
+  - step 2 replaces them with concrete types from FieldTyTable
+- 恢复 step 2 + 保留 substitute fix (无害, 改进了 generic struct field resolution)
+- §5.2 收敛: Phase 3.5 step 2 confirmed required 5th consecutive time (18.389→18.392→18.396→18.398→18.399)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Stage Summary:
+- resolve_place_for_writeback substitute fix ✅
+- Phase 3.5 step 2 STILL required (5 consecutive — §5.2 true limit)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §1.6 终极检验: resolve_place_for_writeback 与 codegen 不一致
+  * §1.0 原則 6: 一个 substitute 路径
+  * §5.2: 5 consecutive → true limit
+  * §20.6: 实验性探索方法论
+
+下一步:
+- v0.5+ Phase 2 完整实施: threading expected_ty 通过 ALL lower_expr_* callsites
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
