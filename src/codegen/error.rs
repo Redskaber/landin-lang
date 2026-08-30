@@ -22,6 +22,14 @@ pub enum CodegenErrorKind {
     LlvmTargetMachine,
     LlvmEmission,
     InvalidString,
+    /// Stage 18.438 (v0.5+ Phase 5 Step 1): Unresolved MIR type kind
+    /// (Param, Infer, Error, Projection) reached codegen.
+    ///
+    /// Per §1.0 原則 4 (报错 > 静默): codegen should report unresolved
+    /// types, not silently fall back to EmitType::I32.
+    /// Per §1.0 原則 6 (通解 > 特解): one error kind for all unresolved
+    /// type categories.
+    UnresolvedType,
 }
 
 #[derive(Debug, Clone)]

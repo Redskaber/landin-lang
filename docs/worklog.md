@@ -31614,3 +31614,62 @@ Stage Summary:
   - Start when beginning v0.5+ development milestone
 - v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor, typeck前置重构
 - v0.4 is RELEASE-READY — no further L2 work needed
+
+---
+Task ID: stage18.438
+Agent: Super Z (main) — PM-A
+Task: Stage 18.438 v0.5+ Phase 5 Step 1 — mir_type_to_emit_type_checked + CodegenErrorKind::UnresolvedType. L2 (incremental Phase 5 launch). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (new function + enum variant, backward compatible, no callsite migration)
+- 对齐: §5.2 convergence; Stage 18.437 Phase 5 assessment — start incremental
+- 阻断: 4586 tests 全绿 (Stage 18.437 state)
+
+决策点 (Phase 5 incremental approach per §13.4):
+- 选 A: Add `mir_type_to_emit_type_checked` (returns CodegenResult<EmitType>) + `CodegenErrorKind::UnresolvedType` — backward compatible, no callsite migration needed
+- 不选 B: Change `mir_type_to_emit_type` to return Result directly — breaks 87 callsites, L3 risk
+- 引用 §13.4 重构判据: incremental approach (add checked variant first, migrate gradually)
+- 引用 §1.0 原則 4 (报错 > 静默): checked variant returns Err for unresolved types
+- 引用 §1.0 原則 6 (通解 > 特解): one checked function covers all unresolved type categories
+- 引用 §12 (最优 > 最小): root-cause fix at the type conversion boundary
+
+裁剪点:
+- L2 — new function + enum variant only; no callsite migration; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: Add `mir_type_to_emit_type_checked` (returns CodegenResult<EmitType>) + `CodegenErrorKind::UnresolvedType` enum variant
+- WHY: Phase 5 Step 1 — foundation for incremental migration from unchecked to checked variant
+- WHO: ARCH-A (design checked variant API) + DEV-A (implement)
+- WHEN: After Stage 18.437 (Phase 5 assessment)
+- WHERE: src/codegen/emitter/mod.rs + src/codegen/error.rs
+- HOW: New function mirrors mir_type_to_emit_type but returns Err for Adt/Infer/Error/Param/Projection/Never/Foreign instead of EmitType::I32
+- HOW MUCH: §3.2 全绿 — 4586 tests, 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- Phase 5 Step 1 implementation:
+  - Added `CodegenErrorKind::UnresolvedType` to error.rs (new enum variant)
+  - Added `mir_type_to_emit_type_checked` in emitter/mod.rs (pub fn, returns CodegenResult<EmitType>)
+  - Checked variant returns Err(CodegenError) for: Adt, Infer, Error, Param, Projection, Never, Foreign
+  - All other type kinds return Ok(EmitType) — same as unchecked variant
+  - Backward compatible: existing `mir_type_to_emit_type` unchanged, no callsite migration needed
+  - All TyKind variants listed explicitly (no `_` catch-all — exhaustiveness check)
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4586 tests (682 lib + 3904 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- v0.5+ Phase 5 Step 1 complete ✅
+- `mir_type_to_emit_type_checked` added (returns CodegenResult<EmitType>)
+- `CodegenErrorKind::UnresolvedType` added
+- Backward compatible — no existing behavior changed
+- Foundation for Phase 5 Step 2 (gradual callsite migration)
+- §3.2 全绿: 4586 tests, 0 failures, fmt clean, 0 clippy warnings
+
+下一步:
+- Phase 5 Step 2: Gradually migrate callers from mir_type_to_emit_type to mir_type_to_emit_type_checked
+  - Start with high-risk callers (those that handle Adt types)
+  - 87 callsites total (22 direct + 65 with_layouts_and_mono)
+  - Each migration is L1 (1-2 lines per callsite)
+- Phase 5 Step 3: Eventually deprecate mir_type_to_emit_type (remove unchecked variant)
+- v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor

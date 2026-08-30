@@ -340,7 +340,114 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // fn pointer params to be treated as i32 — function refs passed as `0`.
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
         // ADTs and other complex types — Stage 3 treats as opaque i32 placeholder.
+        // Stage 18.438 (v0.5+ Phase 5 Step 1): This fallback is the target of
+        // Phase 5. The checked variant (`mir_type_to_emit_type_checked`)
+        // returns Err for these types. param_check (Stage 18.348) catches
+        // unresolved types BEFORE codegen, so this fallback is dead code in
+        // practice — but keeping it for backward compat during Phase 5
+        // incremental migration.
         _ => EmitType::I32,
+    }
+}
+
+/// Stage 18.438 (v0.5+ Phase 5 Step 1): Checked variant of
+/// `mir_type_to_emit_type` that returns `CodegenResult<EmitType>`.
+///
+/// Returns `Err(CodegenError)` for unresolved type kinds (Param, Infer, Error,
+/// Projection, Never, Foreign) instead of silently falling back to
+/// `EmitType::I32`. This is the foundation for Phase 5 — gradually migrate
+/// callers from `mir_type_to_emit_type` to this checked variant.
+///
+/// Per §1.0 原則 4 (报错 > 静默): unresolved types must be reported, not
+/// silently mapped to I32.
+/// Per §1.0 原則 6 (通解 > 特解): one checked function covers all unresolved
+/// type categories.
+/// Per §13.4 (重构判据): incremental approach — add checked variant first,
+/// migrate callers gradually, eventually deprecate unchecked variant.
+/// Per §12 (最优 > 最小): root-cause fix at the type conversion boundary.
+pub fn mir_type_to_emit_type_checked(
+    ty: &crate::mir::ty::Ty,
+) -> crate::codegen::CodegenResult<EmitType> {
+    use crate::codegen::error::{CodegenError, CodegenErrorKind};
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Int(crate::ast::IntTy::I8) | TyKind::Uint(crate::ast::UintTy::U8) => {
+            Ok(EmitType::I8)
+        }
+        TyKind::Int(crate::ast::IntTy::I16) | TyKind::Uint(crate::ast::UintTy::U16) => {
+            Ok(EmitType::I16)
+        }
+        TyKind::Int(crate::ast::IntTy::I32) | TyKind::Uint(crate::ast::UintTy::U32) => {
+            Ok(EmitType::I32)
+        }
+        TyKind::Int(crate::ast::IntTy::I64) | TyKind::Uint(crate::ast::UintTy::U64) => {
+            Ok(EmitType::I64)
+        }
+        TyKind::Int(crate::ast::IntTy::I128) | TyKind::Uint(crate::ast::UintTy::U128) => {
+            Ok(EmitType::I128)
+        }
+        TyKind::Int(crate::ast::IntTy::Isize) | TyKind::Uint(crate::ast::UintTy::Usize) => {
+            Ok(EmitType::I64)
+        }
+        #[allow(unreachable_patterns)]
+        TyKind::Int(_) | TyKind::Uint(_) => Ok(EmitType::I32),
+        TyKind::Bool => Ok(EmitType::I1),
+        TyKind::Float(crate::ast::FloatTy::F32) => Ok(EmitType::F32),
+        TyKind::Float(_) => Ok(EmitType::F64),
+        TyKind::Char => Ok(EmitType::I8),
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => match &inner.kind {
+            TyKind::Str => Ok(crate::codegen::emit_fat_ptr_type(EmitType::I8)),
+            TyKind::Slice(elem) => Ok(crate::codegen::emit_fat_ptr_type(
+                mir_type_to_emit_type_checked(elem)?,
+            )),
+            _ => Ok(EmitType::ptr_to(mir_type_to_emit_type_checked(inner)?)),
+        },
+        TyKind::Str => Ok(EmitType::ptr_to(EmitType::I8)),
+        TyKind::Slice(elem) => Ok(EmitType::ptr_to(mir_type_to_emit_type_checked(elem)?)),
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                Ok(EmitType::Void)
+            } else {
+                let mut fields = Vec::with_capacity(tys.len());
+                for t in tys.iter() {
+                    fields.push(mir_type_to_emit_type_checked(t)?);
+                }
+                Ok(EmitType::Struct(fields))
+            }
+        }
+        TyKind::Array(elem, len) => {
+            let n = match &len.val {
+                ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
+                _ => 0,
+            };
+            Ok(EmitType::array_of(mir_type_to_emit_type_checked(elem)?, n))
+        }
+        TyKind::Closure(_, substs) => {
+            let mut fields = Vec::with_capacity(substs.len());
+            for t in substs.iter() {
+                fields.push(mir_type_to_emit_type_checked(t)?);
+            }
+            Ok(EmitType::Struct(fields))
+        }
+        TyKind::FnPtr(_) | TyKind::FnDef(_, _) => Ok(EmitType::OpaquePtr),
+        // Stage 18.438: Unresolved types — return Err instead of EmitType::I32.
+        // These should have been caught by param_check (Stage 18.348) before
+        // reaching codegen. If they reach here, it's a bug in the pipeline.
+        // All remaining TyKind variants are listed explicitly (no `_` catch-all).
+        TyKind::Adt(_, _)
+        | TyKind::Infer(_)
+        | TyKind::Error
+        | TyKind::Param(_)
+        | TyKind::Projection(_, _)
+        | TyKind::Never
+        | TyKind::Foreign => Err(CodegenError {
+            message: format!(
+                "unresolved type kind `{:?}` reached codegen — param_check should have caught this",
+                ty.kind
+            ),
+            span: crate::session::Span::DUMMY,
+            kind: CodegenErrorKind::UnresolvedType,
+        }),
     }
 }
 
