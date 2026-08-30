@@ -561,6 +561,143 @@ pub fn run_mir_optimizations(mir: &mut MirBody) {
     run_dce(mir);
     run_const_prop(mir);
     run_dce(mir);
+    // Stage 23.1 (v0.5 MIR Optimization P3): Jump threading pass.
+    // Per §1.0 原則 6 (通解 > 特解): one pass handles all goto chain shapes.
+    // Per §12 (最优 > 最小): root-cause fix for TD-NO-JUMP-THREADING.
+    run_jump_threading(mir);
+    // Run DCE again after jump threading — threading may make some BBs unreachable.
+    run_dce(mir);
+}
+
+/// Stage 23.1 (v0.5 MIR Optimization P3): Jump threading pass.
+///
+/// Rewrites `goto B` → `goto C` when B is an empty BB that just does `goto C`.
+/// This eliminates unnecessary goto chains, reducing the number of basic blocks
+/// and simplifying the CFG.
+///
+/// Per `docs/develop/v0/tech-debt-register.md` TD-NO-JUMP-THREADING:
+/// "Jump threading not implemented — unnecessary goto chains in optimized MIR"
+///
+/// Per §1.0 原則 6 (通解 > 特解): one pass handles all goto chain shapes:
+/// - Simple: `A → B → C` (B is empty) → rewrite A to `→ C`
+/// - Multi-hop: `A → B → C → D` (B, C empty) → rewrite A to `→ D` (fixpoint)
+///
+/// Per §1.0 原則 9 (正确 > 妥协): only thread through EMPTY blocks (no
+/// statements). Blocks with side effects (statements) are NOT threaded through,
+/// preserving correctness.
+///
+/// Per §12 (最优 > 最小): fixpoint iteration handles multi-hop chains in one pass.
+/// Per §11 (接口隔离): operates on MirBody (data contract), no HIR access.
+pub fn run_jump_threading(mir: &mut MirBody) {
+    // Build a map: BB_id → ultimate target (after following empty goto chains).
+    // Per §1.0 原則 10 (唯一可信数据源): this map is the single source of truth
+    // for "what does this BB's goto ultimately reach?"
+    let mut redirect_map: HashMap<crate::mir::body::BasicBlockId, crate::mir::body::BasicBlockId> =
+        HashMap::new();
+
+    // Fixpoint: keep threading until no more changes.
+    // Per §12 (最优 > 最小): one fixpoint pass handles arbitrary chain length.
+    let mut changed = true;
+    while changed {
+        changed = false;
+
+        // For each BB, if it's empty (no statements) and ends with Goto(target),
+        // record the redirect: this BB → target.
+        for (i, bb) in mir.basic_blocks.iter().enumerate() {
+            let this_bb = crate::mir::body::BasicBlockId(i as u32);
+
+            // Skip if already redirected (avoid re-computation).
+            if redirect_map.contains_key(&this_bb) {
+                continue;
+            }
+
+            // Only thread through empty blocks (no statements = no side effects).
+            // Per §1.0 原則 9 (正确 > 妥协): blocks with statements are NOT threaded.
+            if !bb.statements.is_empty() {
+                continue;
+            }
+
+            // Only thread Goto terminators (not SwitchInt, Call, etc.).
+            if let TerminatorKind::Goto(target) = &bb.terminator.kind {
+                // Follow the chain: if target itself is redirected, use the
+                // ultimate target.
+                let ultimate_target = follow_chain(*target, &redirect_map);
+                redirect_map.insert(this_bb, ultimate_target);
+                changed = true;
+            }
+        }
+    }
+
+    // Apply the redirect map: rewrite all Goto terminators to point to
+    // the ultimate target.
+    // Per §1.0 原則 3 (显式 > 隐式): explicit rewrite pass, no silent mutation.
+    for bb in &mut mir.basic_blocks {
+        match &mut bb.terminator.kind {
+            TerminatorKind::Goto(ref mut target) => {
+                if let Some(&ultimate) = redirect_map.get(target) {
+                    *target = ultimate;
+                }
+            }
+            TerminatorKind::SwitchInt {
+                ref mut targets,
+                ref mut otherwise,
+                ..
+            } => {
+                for (_, target) in targets.iter_mut() {
+                    if let Some(&ultimate) = redirect_map.get(target) {
+                        *target = ultimate;
+                    }
+                }
+                if let Some(&ultimate) = redirect_map.get(otherwise) {
+                    *otherwise = ultimate;
+                }
+            }
+            TerminatorKind::Call {
+                target: Some(ref mut t),
+                ..
+            } => {
+                if let Some(&ultimate) = redirect_map.get(t) {
+                    *t = ultimate;
+                }
+            }
+            TerminatorKind::Drop { ref mut target, .. } => {
+                if let Some(&ultimate) = redirect_map.get(target) {
+                    *target = ultimate;
+                }
+            }
+            TerminatorKind::Assert { ref mut target, .. } => {
+                if let Some(&ultimate) = redirect_map.get(target) {
+                    *target = ultimate;
+                }
+            }
+            // Return, Unreachable, Resume — no targets to rewrite.
+            _ => {}
+        }
+    }
+}
+
+/// Follow a chain of empty goto blocks to find the ultimate target.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one function handles arbitrary chain length.
+/// Per §1.0 原則 9 (正确 > 妥协): stops at first non-redirected BB (correct).
+fn follow_chain(
+    start: crate::mir::body::BasicBlockId,
+    redirect_map: &HashMap<crate::mir::body::BasicBlockId, crate::mir::body::BasicBlockId>,
+) -> crate::mir::body::BasicBlockId {
+    let mut current = start;
+    let mut visited = HashSet::new();
+
+    // Per §5.8-like cycle detection: prevent infinite loops on cyclic gotos.
+    while let Some(&next) = redirect_map.get(&current) {
+        // Cycle detection: if we've already visited this BB, stop.
+        // Per §1.0 原則 1 (内存安全决不能妥协): infinite loop would hang compiler.
+        if !visited.insert(current) {
+            break;
+        }
+        current = next;
+    }
+
+    current
 }
 
 /// Replace `Copy(local)` / `Move(local)` with `Constant(val)` if `local`

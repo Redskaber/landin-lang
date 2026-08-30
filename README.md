@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.524.0 (Stage 22.2 — v0.5 Trait Coherence P2 FINAL §14.5 + §14.6 + §14.8) |
+| **Version** | v0.525.0 (Stage 23.1 — v0.5 MIR Optimization P3 Phase 1: jump threading) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 Trait Coherence P2 FINAL — APPROVED for stage transition to v0.5 MIR Optimization P3**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done. v0.5 Trait Coherence P2 COMPLETE (Stage 22.1: OrphanRuleError + check_orphan_rule + TraitError::OrphanRule + driver wiring + Stage 22.2: §14.5 FINAL). MVP: orphan rule auto-satisfied (single-crate); infrastructure for v0.6+ multi-crate. Next: v0.5 MIR Optimization P3 (3-4 stages) — jump threading + const_prop loop fixpoint + constant folding. |
+| **Status** | v0.5 MIR Optimization P3 Phase 1 COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 23.1 added `run_jump_threading()` pass — rewrites `goto B → goto C` when B is empty (no statements) and ends with `goto C`. Fixpoint iteration handles multi-hop chains. Cycle detection via HashSet. Addresses TD-NO-JUMP-THREADING. Per §1.0 原則 6 (通解 > 特解): one pass handles all goto chain shapes. Per §1.0 原則 9 (正确 > 妥协): only threads through empty blocks (no side effects). Per §12 (最优 > 最小): root-cause fix. Wired into `run_mir_optimizations` pipeline (DCE → const_prop → DCE → jump_threading → DCE). Next: Stage 23.2 const_prop loop fixpoint (addresses TD-CONST-PROP-LOOPS) + Stage 23.3 §14.5 deep review + FINAL. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

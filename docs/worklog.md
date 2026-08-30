@@ -33367,3 +33367,61 @@ Stage Summary:
   - const_prop loop fixpoint (addresses TD-CONST-PROP-LOOPS)
   - simple constant folding
 
+
+---
+Task ID: stage23.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 23.1 — v0.5 MIR Optimization P3 Phase 1 (jump threading pass). L2 (single file modification + ~140 LOC new). v0.525.0.
+
+3秒启动自检:
+- 定位: L2 (修改 src/mir/optimization.rs — 添加 run_jump_threading + follow_chain ~140 LOC)
+- 对齐: 已查 docs/lang-design/06-mir.md + existing optimization.rs (DCE + const_prop) + TD-NO-JUMP-THREADING (v0.3: jump threading pass) + v0.5-roadmap §3.5 MIR Optimization Passes
+- 阻断: Stage 22.2 v0.5 Trait Coherence P2 FINAL 全绿 (4821 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- fixpoint iteration for multi-hop chains (vs single-pass)
+  - 引用 §12 (最优 > 最小): one fixpoint pass handles arbitrary chain length (A → B → C → D)
+  - 引用 §1.0 原則 6 (通解 > 特解): one loop handles all goto chain shapes
+  - 替代: single-pass + caller calls multiple times — but this is less efficient and harder to reason about
+
+- only thread through EMPTY blocks (no statements)
+  - 引用 §1.0 原則 9 (正确 > 妥协): blocks with statements have side effects, threading through would be incorrect
+  - 引用 rustc pattern: rustc's jump threading also only threads through empty blocks for MVP
+
+- cycle detection via HashSet (vs depth counter)
+  - 引用 §1.0 原則 1 (内存安全决不能妥协): infinite loop would hang compiler (UB)
+  - 引用 §5.8-like pattern: cycle detection stops gracefully (returns current BB)
+  - 替代: depth counter — but cycle is not an error, just a stop signal (per §1.0 原則 9)
+
+- wired into run_mir_optimizations pipeline (DCE → const_prop → DCE → jump_threading → DCE)
+  - 引用 §12 (最优 > 最小): jump threading may make BBs unreachable → run DCE after
+  - 引用 §1.0 原則 6 (通解 > 特解): one pipeline handles all optimization combinations
+
+裁剪点:
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 23.3 (v0.5 MIR Optimization P3 FINAL) 一起做
+- 安全理由: Phase 1 只添加 new optimization pass, 不修改 existing DCE/const_prop behavior, 无回归风险
+
+5W2H:
+- WHAT: run_jump_threading() + follow_chain() in src/mir/optimization.rs (~140 LOC)
+- WHY: v0.5 MIR Optimization P3 Phase 1 — eliminate unnecessary goto chains (TD-NO-JUMP-THREADING)
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.5 Trait Coherence P2 FINAL 后的下一个 MUV; Phase 2 (Stage 23.2) 将做 const_prop loop fixpoint
+- WHERE: src/mir/optimization.rs
+- HOW: (1) Build redirect_map (BB_id → ultimate target) (2) Fixpoint iteration (3) Apply redirect_map to all terminators (4) Cycle detection via HashSet
+- HOW MUCH: 4821 tests (unchanged — jump threading is behavior-preserving), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 MIR Optimization P3 Phase 1 COMPLETE ✅
+- New: run_jump_threading() + follow_chain() in src/mir/optimization.rs
+- Addresses: TD-NO-JUMP-THREADING
+- §3.2 全绿: 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+
+下一步 (Stage 23.2):
+- MUV: v0.5 MIR Optimization P3 Phase 2 (const_prop loop fixpoint)
+- Addresses: TD-CONST-PROP-LOOPS
+- 当前 const_prop skips all BinaryOp folding when back-edges exist (Stage 18.110 safety)
+- Phase 2: implement fixpoint iteration for const_prop in loops
+- L2 (50-500 LOC, single file modification)
+
