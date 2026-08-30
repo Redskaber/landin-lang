@@ -119,6 +119,74 @@ impl TypeChecker {
                     ));
                 }
             }
+
+            // Stage 18.446 (§20 audit round 10 continuation): Post-defaulting
+            // literal range check. In Phase 1, the literal's IntVar hasn't
+            // been bound yet (unify hasn't resolved). In Phase 5.5 (post-
+            // defaulting), the IntVar is now resolved to a concrete Int/Uint
+            // type. This is where we can check if the literal value fits.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): out-of-range literals must be
+            // reported.
+            // Per §1.0 原則 6 (通解 > 特解): one check covers all int/uint types.
+            // Per §12 (最优 > 最小): root-cause fix at the typeck boundary.
+            if let crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Constant(c)) = rvalue
+            {
+                match (&resolved_place.kind, &c.val) {
+                    (TyKind::Int(int_ty), ConstVal::Int(n)) => {
+                        let (min, max) = int_range(*int_ty);
+                        let val = *n as i128;
+                        if val < min || val > max {
+                            self.errors.push(crate::typeck::TypeError::new(
+                                format!(
+                                    "literal out of range for `{:?}`: value {} exceeds range [{}, {}]",
+                                    int_ty, n, min, max
+                                ),
+                                stmt.span,
+                            ));
+                        }
+                    }
+                    (TyKind::Int(int_ty), ConstVal::Uint(n)) => {
+                        let (_, max) = int_range(*int_ty);
+                        let val = *n as i128;
+                        if val > max {
+                            self.errors.push(crate::typeck::TypeError::new(
+                                format!(
+                                    "literal out of range for `{:?}`: value {} exceeds max {}",
+                                    int_ty, n, max
+                                ),
+                                stmt.span,
+                            ));
+                        }
+                    }
+                    (TyKind::Uint(uint_ty), ConstVal::Uint(n)) => {
+                        let max = uint_max(*uint_ty);
+                        if *n > max {
+                            self.errors.push(crate::typeck::TypeError::new(
+                                format!(
+                                    "literal out of range for `{:?}`: value {} exceeds max {}",
+                                    uint_ty, n, max
+                                ),
+                                stmt.span,
+                            ));
+                        }
+                    }
+                    (TyKind::Uint(uint_ty), ConstVal::Int(n)) => {
+                        let max = uint_max(*uint_ty);
+                        let val = *n as i128;
+                        if val < 0 || *n > max {
+                            self.errors.push(crate::typeck::TypeError::new(
+                                format!(
+                                    "literal out of range for `{:?}`: value {} exceeds range [0, {}]",
+                                    uint_ty, n, max
+                                ),
+                                stmt.span,
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -324,6 +392,81 @@ impl TypeChecker {
                             e.span = stmt.span;
                         }
                         self.errors.push(*e);
+                    }
+                }
+
+                // Stage 18.446 (§20 audit round 10 continuation): Check
+                // integer literal range when an unsuffixed literal (Infer
+                // IntVar) is unified with a concrete integer type.
+                //
+                // `let x: i8 = 200` — the literal `200` has no suffix, so
+                // it's Infer(IntVar) at lower time. typeck's unify binds
+                // the IntVar to i8. After unify, we check if the literal
+                // value fits in the resolved type.
+                //
+                // Per §1.0 原則 4 (报错 > 静默): out-of-range literals must
+                // be reported, not silently truncated.
+                // Per §1.0 原則 6 (通解 > 特解): one check covers all int/uint types.
+                // Per §12 (最优 > 最小): root-cause fix at the typeck boundary.
+                if let crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Constant(c)) =
+                    rvalue
+                {
+                    let resolved_place = self.unify.resolve(&place_ty);
+                    match (&resolved_place.kind, &c.val) {
+                        // Signed int place: check both Int and Uint literal values
+                        (TyKind::Int(int_ty), ConstVal::Int(n)) => {
+                            let (min, max) = int_range(*int_ty);
+                            let val = *n as i128;
+                            if val < min || val > max {
+                                self.errors.push(crate::typeck::TypeError::new(
+                                    format!(
+                                        "literal out of range for `{:?}`: value {} exceeds range [{}, {}]",
+                                        int_ty, n, min, max
+                                    ),
+                                    stmt.span,
+                                ));
+                            }
+                        }
+                        (TyKind::Int(int_ty), ConstVal::Uint(n)) => {
+                            let (_, max) = int_range(*int_ty);
+                            let val = *n as i128;
+                            if val > max {
+                                self.errors.push(crate::typeck::TypeError::new(
+                                    format!(
+                                        "literal out of range for `{:?}`: value {} exceeds max {}",
+                                        int_ty, n, max
+                                    ),
+                                    stmt.span,
+                                ));
+                            }
+                        }
+                        // Unsigned int place: check both Int and Uint literal values
+                        (TyKind::Uint(uint_ty), ConstVal::Uint(n)) => {
+                            let max = uint_max(*uint_ty);
+                            if *n > max {
+                                self.errors.push(crate::typeck::TypeError::new(
+                                    format!(
+                                        "literal out of range for `{:?}`: value {} exceeds max {}",
+                                        uint_ty, n, max
+                                    ),
+                                    stmt.span,
+                                ));
+                            }
+                        }
+                        (TyKind::Uint(uint_ty), ConstVal::Int(n)) => {
+                            let max = uint_max(*uint_ty);
+                            let val = *n as i128;
+                            if val < 0 || *n > max {
+                                self.errors.push(crate::typeck::TypeError::new(
+                                    format!(
+                                        "literal out of range for `{:?}`: value {} exceeds range [0, {}]",
+                                        uint_ty, n, max
+                                    ),
+                                    stmt.span,
+                                ));
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 // The resolved type will be written back to local_decls
@@ -624,5 +767,29 @@ impl TypeChecker {
             // Call, SwitchInt, Drop, Assert (above) + Goto, Return, Unreachable (here).
             TerminatorKind::Goto(_) | TerminatorKind::Return | TerminatorKind::Unreachable => {}
         }
+    }
+}
+
+/// Stage 18.446: Get the min/max range for a signed integer type.
+fn int_range(ty: ast::IntTy) -> (i128, i128) {
+    match ty {
+        ast::IntTy::I8 => (i8::MIN as i128, i8::MAX as i128),
+        ast::IntTy::I16 => (i16::MIN as i128, i16::MAX as i128),
+        ast::IntTy::I32 => (i32::MIN as i128, i32::MAX as i128),
+        ast::IntTy::I64 => (i64::MIN as i128, i64::MAX as i128),
+        ast::IntTy::I128 => (i128::MIN, i128::MAX),
+        ast::IntTy::Isize => (isize::MIN as i128, isize::MAX as i128),
+    }
+}
+
+/// Stage 18.446: Get the max value for an unsigned integer type.
+fn uint_max(ty: ast::UintTy) -> u128 {
+    match ty {
+        ast::UintTy::U8 => u8::MAX as u128,
+        ast::UintTy::U16 => u16::MAX as u128,
+        ast::UintTy::U32 => u32::MAX as u128,
+        ast::UintTy::U64 => u64::MAX as u128,
+        ast::UintTy::U128 => u128::MAX,
+        ast::UintTy::Usize => usize::MAX as u128,
     }
 }

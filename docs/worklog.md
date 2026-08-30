@@ -32076,3 +32076,66 @@ Stage Summary:
 - Stage 18.446: doc sync + README restructure + package r83
 - Future: type annotation range check (needs typeck unify + range check integration)
 - v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor
+
+---
+Task ID: stage18.446
+Agent: Super Z (main) — PM-A
+Task: Stage 18.446 type annotation range check in post_check_statement. L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (typeck post_check_statement modification + helper functions)
+- 对齐: §20 audit round 10 continuation; Stage 18.445 known limitation
+- 阻断: 4586 tests 全绿 (Stage 18.445 state)
+
+决策点 (type annotation range check — §5.2 + §1.0 原則 4):
+- 发现: Stage 18.445 only checks suffixed literals (200i8), not type annotation path (let x: i8 = 200)
+- 根因: In Phase 1 (check_statement), the literal's IntVar hasn't been bound yet — place_ty is i8 but rvalue is Infer(IntVar)
+- 选 A: Add range check in Phase 5.5 (post_check_statement) — after default_unresolved, IntVar is resolved
+- 引用 §1.0 原則 4 (报错 > 静默): out-of-range literals must be reported
+- 引用 §1.0 原則 6 (通解 > 特解): one check covers all int/uint types + both Int/Uint ConstVal
+- 引用 §12 (最优 > 最小): root-cause fix at the typeck boundary (post-defaulting)
+
+裁剪点:
+- L2 — typeck modification; §3.2 全绿
+
+5W2H:
+- WHAT: Add literal range check in post_check_statement (Phase 5.5) for all 4 (place_ty, const_val) combos
+- WHY: §20 audit — `let x: i8 = 200` silently compiled (soundness bug, known limitation from 18.445)
+- WHO: DEV-A (implement) + REV-A (verify all 5 test cases)
+- WHEN: After Stage 18.445 (suffixed literal check)
+- WHERE: src/typeck/check.rs (post_check_statement + int_range/uint_max helpers)
+- HOW: In Phase 5.5, after unify resolves IntVar→Int/Uint, check ConstVal against resolved place type
+- HOW MUCH: §3.2 全绿 — 4586 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- Phase 1 attempt: Added range check in check_statement (Phase 1) — didn't fire because IntVar unresolved
+- Phase 5.5 fix: Added range check in post_check_statement (Phase 5.5) — IntVar is now resolved
+- 4 match arms covering all (place_ty, const_val) combinations:
+  1. (Int, ConstVal::Int) — signed literal to signed place
+  2. (Int, ConstVal::Uint) — unsigned literal to signed place
+  3. (Uint, ConstVal::Uint) — unsigned literal to unsigned place
+  4. (Uint, ConstVal::Int) — signed literal to unsigned place
+- Added helper functions: int_range(IntTy) → (i128, i128), uint_max(UintTy) → u128
+- Verified:
+  * let x: i8 = 200 → ERROR ✅
+  * let x: u8 = 300 → ERROR ✅
+  * let x: i32 = 2147483648 → ERROR ✅
+  * let x: i8 = -129 → ERROR ✅
+  * let x: i8 = 127 → PASS ✅
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --lib: 0 warnings
+  - cargo test --release --features llvm-backend --lib: 682 tests, 0 failures
+  - cargo test --release --features llvm-backend --test all_tests: 3904 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- Type annotation range check complete ✅
+- All 4 (place_ty, const_val) combinations covered
+- Known limitation from Stage 18.445 RESOLVED ✅
+- §3.2 全绿: 4586 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: root-cause fix at Phase 5.5 (post-defaulting), not Phase 1
+
+下一步:
+- doc sync + README restructure + package r84
+- v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor
+- §20 audit: 11 rounds complete (9 fixes + 2 audit-only + 1 continuation = 10 bugs fixed total)
