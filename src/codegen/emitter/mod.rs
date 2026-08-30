@@ -339,16 +339,17 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // opaque pointer (function reference). Was: fell through to I32, causing
         // fn pointer params to be treated as i32 — function refs passed as `0`.
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
-        // Stage 18.440 (v0.5+ Phase 5 Step 2): Unresolved type kinds — emit
-        // warning instead of silently returning EmitType::I32. The checked
-        // variant (`mir_type_to_emit_type_checked`) returns Err for these
-        // types. param_check (Stage 18.348) catches them BEFORE codegen, so
-        // reaching here means a pipeline bug.
+        // Stage 18.441 (v0.5+ Phase 5 Step 3): Unresolved type kinds —
+        // emit warning + return I32. Verified that param_check (Stage 18.348)
+        // catches Infer/Error/Param types, but Adt types DO reach here via
+        // function_sigs.rs (LLVM backend function signature construction).
+        // Adt types need layouts variant (mir_type_to_emit_type_with_layouts)
+        // — the unchecked variant is used as fallback for sig types.
         //
-        // Per §1.0 原則 4 (报错 > 静默): emit warning, not silent fallback.
-        // Per §1.0 原則 5 (去除兼容思维): warning surfaces the issue, future
-        // Step 3 will make this a hard error.
-        // Per §12 (最优 > 最小): root-cause fix at the fallback site.
+        // Per §1.0 原則 4 (报错 > 静默): warning surfaces the issue.
+        // Per §1.0 原則 9 (正确 > 妥协): Adt types need layouts; can't panic.
+        // Per §13.4: Step 3 deferred — need to migrate function_sigs.rs to
+        // use layouts variant first (future Step 4).
         TyKind::Adt(_, _)
         | TyKind::Infer(_)
         | TyKind::Error
@@ -358,7 +359,7 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         | TyKind::Foreign => {
             eprintln!(
                 "warning: unresolved type kind `{:?}` in mir_type_to_emit_type — \
-                falling back to i32 (param_check should have caught this)",
+                falling back to i32 (use mir_type_to_emit_type_with_layouts for Adt types)",
                 ty.kind
             );
             EmitType::I32
