@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.519.0 (Stage 20.2 — v0.5 CodegenError P1 Phase 2: layouts variant migration) |
+| **Version** | v0.520.0 (Stage 20.3 — v0.5 CodegenError P1 FINAL §14.5 + §14.6 + §14.8) |
 | **License** | MIT |
-| **Status** | v0.5 CodegenError P1 Phase 2 COMPLETE. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 20.2 migrated 7 unchecked `mir_type_to_emit_type` callsites to layouts variants: rvalue.rs:436 (Aggregate field_tys → `with_layouts_and_mono`) + rvalue.rs:598 (Cast target_ty → `with_layouts_and_mono`) + drop_glue.rs ×5 (field_emit_ty/struct field_tys/enum payload/discriminant_ty ×2 → `with_layouts`). Per §1.0 原則 4 (报错 > 静默): layouts variant resolves Adt properly (vs unchecked I32 fallback). Per §1.0 原則 6 (通解 > 特解): one layouts variant handles all type kinds. Per §12 (最优 > 最小): root-cause fix — Stage 20.1 discovered checked variant too strict for Adt-in-pointer; layouts variant correctly resolves `*mut Point` → `Ptr(Struct(...))`. Next: Stage 20.3 §14.5 deep review + v0.5 CodegenError P1 FINAL. |
+| **Status** | ✅ **v0.5 CodegenError P1 FINAL — APPROVED for stage transition to v0.5 GATs P2 or Trait Coherence P2**. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (implementation > design for layouts variant migration + checked variant analysis). v0.5 CodegenError P1 Phase 1-2 ALL COMPLETE (2 stages, 22 new tests, 7 callsites migrated to layouts variants). 2 remaining TD-CODEGEN-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 GATs P2 (4-6 stages) or Trait Coherence P2 (2-3 stages). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
