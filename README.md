@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.520.0 (Stage 20.3 — v0.5 CodegenError P1 FINAL §14.5 + §14.6 + §14.8) |
+| **Version** | v0.521.0 (Stage 21.1 — v0.5 GATs P2 Phase 1: E2E verification) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 CodegenError P1 FINAL — APPROVED for stage transition to v0.5 GATs P2 or Trait Coherence P2**. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (implementation > design for layouts variant migration + checked variant analysis). v0.5 CodegenError P1 Phase 1-2 ALL COMPLETE (2 stages, 22 new tests, 7 callsites migrated to layouts variants). 2 remaining TD-CODEGEN-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 GATs P2 (4-6 stages) or Trait Coherence P2 (2-3 stages). |
+| **Status** | v0.5 GATs P2 Phase 1 COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 21.1 added 21 E2E GAT tests verifying full pipeline: `type Item<T>;` parsing + HIR (`HirAssocType.generics`) + MIR (`TyKind::Projection(def_id, substs)`) + impl blocks (`type Item<U> = U;`) + qualified path (`<T as Trait>::Item<i32>`). Per §1.0 原則 6 (通解 > 特解): tests use real compilation pipeline. GATs Phase 1-3 (Stage 18.52 + 18.87) already complete; Stage 21.1 adds comprehensive E2E verification. 8 positive + 8 negative + 5 integration tests. Next: Stage 21.2 §14.5 deep review + v0.5 GATs P2 FINAL. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

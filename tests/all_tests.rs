@@ -755,3 +755,7 @@ mod stage18_432_non_exhaustive_match_tests;
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
+
+// === Stage 21.1: v0.5 GATs P2 Phase 1 — E2E tests ===
+#[path = "v0/stage21/plan/stage21_01_gats_e2e_tests.rs"]
+mod stage21_01_gats_e2e_tests;
