@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.511.0 (Stage 19.1 — v0.5 Phase 1 Trait Solver data structures) |
+| **Version** | v0.512.0 (Stage 19.2 — v0.5 Phase 2 Trait Solver Evaluation) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 1 (Trait Solver data structures) COMPLETE. 4628 tests (724 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.1 added `src/traits/solver/mod.rs` (953 LOC, 42 tests) — TraitPredicate + Binder + Obligation + ObligationQueue + Goal + ParamEnv + InferCtxt + Universe + EvalResult + EvalError + SelectionResult + InferCtxtError + ObligationCause data structures. Per `docs/lang-design/03-type-system.md` §5 (rustc 老 solver 3-phase: Evaluation → Selection → Fulfillment). Phase 1 only declares structures; Phase 2+ (Stage 19.2+) adds algorithm. v0.4 FINAL APPROVED at Stage 18.500 (§14.5 D1-D8 + §14.6 + §14.8) — §20 audit 14 rounds complete (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2). |
+| **Status** | v0.5 Phase 2 (Trait Solver Evaluation) COMPLETE. 4658 tests (754 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.2 added `src/traits/solver/eval.rs` (~660 LOC, 30 tests) — evaluate_one + evaluate + eval_all_to_result + EvalCtxt + EvalOneResult + EvalAllResult + UniverseGuard (RAII) + self_type_name_for_obligation + infer_substs_from_self_type. Per `docs/lang-design/03-type-system.md` §5.2 (rustc 老 solver Evaluation phase: 0 candidates → Err, 1 Ok → Ok, >1 Ok → Ambiguous MVP禁 overlapping). Phase 2 implements Evaluation; Phase 3 (Stage 19.3) will add Selection. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

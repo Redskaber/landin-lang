@@ -762,10 +762,11 @@ impl SelectionResult {
 }
 
 // =====================================================================
-// Sub-module re-exports
+// Sub-modules
 // =====================================================================
 
-// (Phase 2+ will add: pub mod eval; pub mod select; pub mod fulfill;)
+// Stage 19.2 (v0.5 Phase 2): Evaluation phase — evaluate_one + evaluate.
+pub mod eval;
 
 // =====================================================================
 // Tests

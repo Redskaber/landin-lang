@@ -32568,3 +32568,71 @@ Stage Summary:
 - 输出: evaluate_one 函数 + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
 - 验收: §3.2 全绿
 
+
+---
+Task ID: stage19.2
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 19.2 — v0.5 Trait Solver Phase 2 (Evaluation). L2 (single new module + 1 wiring line). v0.512.0.
+
+3秒启动自检:
+- 定位: L2 (新增 src/traits/solver/eval.rs ~660 LOC; 修改 src/traits/solver/mod.rs 1 行添加 pub mod eval;)
+- 对齐: 已查 docs/lang-design/03-type-system.md §5.2 (Evaluation phase) + §5.5 (Impl matching); Stage 19.1 数据结构 (TraitPredicate + Goal + InferCtxt + Obligation); v0.4 TraitResolver API (find_impl_by_def_ids, type_by_def_id)
+- 阻断: Stage 19.1 全绿 (4628 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- name-based self type matching 而非 full unification
+  - 引用 §5.5: rustc 用 full unification (unify Vec<T> ↔ Vec<i32> → T=i32)
+  - 但 v0.4 TraitResolver 只存储 ImplInfo.self_ty_name: Option<Spur> (类型名, 不存完整类型)
+  - 完整 unification 需要 typeck unify table 集成 — Phase 2 不破坏现有 typeck pipeline (per §13.4 J1)
+  - Phase 3 (Selection) 将集成 typeck unify + Adt substs, 实现真正的 T=i32 推断
+  - 引用 §12 (最优 > 最小): Phase 2 实现 name-based 是中间步骤, Phase 3 升级到 full unification 是根因修复
+
+- UniverseGuard 用 unsafe raw pointer + RAII
+  - 引用 §1.0 原則 3 (显式 > 隐式): RAII guard 需要在 Drop 时修改 InferCtxt, 但 Drop 不能借用 &mut
+  - 替代: Rc<RefCell<InferCtxt>> 引入 refcount 开销 (违反零成本抽象)
+  - unsafe raw pointer + SAFETY comment 是 zero-cost (per Rust 零成本原则)
+  - SAFETY 保证: guard 在函数 scope 内创建+销毁, InferCtxt 借用期 = 函数期, 不会悬垂
+
+- self_type_name_for_obligation 对复合类型 (Ref/Array/Tuple/...) 返回 None
+  - 引用 §1.0 原則 9 (正确 > 妥协): 不应该静默 accept 复合类型匹配 (e.g., impl<T> Trait for &T 匹配 &i32 需要 unification)
+  - 复合类型 matching 需要 Phase 3 的 full unification
+  - Phase 2 return None → EvalOneResult::ambiguous() → Fulfillment pending queue defer
+  - 这是正确的: 复合类型 obligations 会被 defer 到 Phase 3+ 处理
+
+- where clause 检查是 TODO
+  - 引用 §5.5: "Check impl's where clause: i32: Clone? Recursively select i32: Clone" — 这是 Phase 4 (Fulfillment) 的工作
+  - Phase 2 只做 Evaluation (评估候选适用性); Phase 3 (Selection) 选定 impl; Phase 4 (Fulfillment) 把 impl 的 where clauses 加入 obligation queue 递归求解
+  - 引用 §1.0 原則 4 (报错 > 静默): 这是 documented limitation, 不是 silent failure — Phase 4 会补上
+
+裁剪点 (跳流程安全理由):
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 19.7 (Trait Solver Phase 6 完成后) 一起做
+- 安全理由: Phase 2 只添加新模块, 不修改现有 codegen/typeck 路径, 无集成, 无回归风险
+
+5W2H:
+- WHAT: src/traits/solver/eval.rs 新模块 — EvalOneResult + EvalCtxt + EvalAllResult + evaluate_one + evaluate + eval_all_to_result + UniverseGuard + self_type_name_for_obligation + infer_substs_from_self_type + 30 unit tests
+- WHY: v0.5 P1 Trait Solver Phase 2 — Evaluation 是 3-phase 的第一步, 评估候选 impl 的适用性 (Ok/Ambiguous/Err)
+- WHO: PM-A + DEV-A + REV-A + QA-A — 单 agent 多角色
+- WHEN: Phase 1 完成后的下一个 MUV; Phase 3 (Selection) 依赖 evaluate 输出 EvalAllResult
+- WHERE: src/traits/solver/eval.rs + wiring via pub mod eval; in src/traits/solver/mod.rs
+- HOW: (1) 查 rustc 老 solver §5.2 Evaluation 算法 (2) 设计 evaluate_one (单候选) + evaluate (多候选收集) (3) UniverseGuard RAII 保证 placeholder universe 恢复 (4) self_type_name_for_obligation 通用化所有 type kinds (5) infer_substs_from_self_type 从 Adt 提取 substs (6) §3.2 全绿验收
+- HOW MUCH: 4658 tests (was 4628, +30 new Phase 2 tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 Phase 2 Trait Solver Evaluation COMPLETE ✅
+- New module: src/traits/solver/eval.rs (~660 LOC, 30 tests)
+- 9 new items: EvalOneResult + EvalCtxt + EvalAllResult + UniverseGuard + evaluate_one + evaluate + eval_all_to_result + self_type_name_for_obligation + infer_substs_from_self_type
+- §3.2 全绿: 4658 tests (754 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 3/4/6/9/10 + §11 + §12 全部遵循
+
+下一步 (Stage 19.3):
+- MUV: Trait Solver Phase 3 (Selection)
+- 实现 select(goal, cx) -> SelectionResult 从 EvalAllResult 选定唯一 impl
+- MVP禁 overlapping — 多候选 = SelectionResult::Ambiguous
+- 集成 typeck unify table 实现真正的 substs 推断 (T=i32)
+- L2 (50-500 LOC, 单文件 src/traits/solver/select.rs)
+- 输入: Phase 2 EvalAllResult + v0.4 typeck unify
+- 输出: select 函数 + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
+- 验收: §3.2 全绿
+
