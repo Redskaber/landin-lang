@@ -29888,3 +29888,65 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
 - 当前 v0.4 已完全可交付
+
+
+---
+Task ID: stage18.396
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.396 — v0.5+ Phase 2 step 1: expected_ty fallback in lower_expr_to_operand Field arm. L2 (实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (实验性 — 添加 expected_ty fallback + 测试 + 恢复)
+- 对齐: §20.6 实验性探索方法论; Phase 2 = expected_ty propagation
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §20.6: 实验性探索方法论 — 注释 1 行 → 测试 → 判断
+- 引用 §1.6 终极检验: Phase 3.5 step 2 仍必需 — 深挖 Phase 2 是否能消除
+- 引用 §12 (最优 > 最小): expected_ty fallback 是根因修复方向
+
+裁剪点:
+- L2 实验 — 添加 fallback + 测试 + 恢复; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 在 lower_expr_to_operand Field arm 添加 expected_ty fallback
+- WHY: 当 resolve_field_type 返回 None 时, 用 expected_ty 替代 fresh_infer_ty
+- HOW: `.or_else(|| expected_ty.cloned())` 在 resolve_field_type 之后
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures (恢复后)
+
+Work Log:
+- 实现: lower_expr_to_operand Field arm (expr_operand.rs:578-580) 添加 `.or_else(|| expected_ty.cloned())`
+- 实验: 禁用 Phase 3.5 step 2 → 5 失败 → expected_ty fallback 不够
+- 根因: callers 传 None 给 expected_ty — Phase 2 threading 不完整
+  - lower_expr_to_operand 的 expected_ty 参数已存在 (Stage 18.256) 但未使用 (line 72: `let _ = expected_ty`)
+  - 所有 call sites 传 None — 需要完整 threading (L3 任务)
+- 恢复 step 2 + 添加 Stage 18.396 注释
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档同步:
+  - README.md: 版本 18.394 → 18.396, status 新增 "Phase 2 step 1 tested — incomplete"
+  - src/typeck/checker.rs: Phase 3.5 注释更新
+  - src/mir/lower/expr_operand.rs: expected_ty fallback + Stage 18.396 注释
+  - worklog.md: 本条
+
+Stage Summary:
+- Phase 2 step 1 (expected_ty fallback) 实验完成 — 不完整 (callers pass None)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §20.6: 实验性探索方法论
+  * §1.6: 深挖根因 — expected_ty 参数存在但未 threading
+  * §12: expected_ty fallback 是根因修复方向
+  * §5.2: Phase 2 step 1 不够 → 需要完整 threading (L3)
+- 架构洞察:
+  * expected_ty 参数已存在 (Stage 18.256) 但未使用
+  * 需要 threading expected_ty 通过 ALL lower_expr_* callsites (L3)
+  * 这是 v0.5+ Phase 2 的完整实施 — 估计 1-2 周
+  * 当前 expected_ty fallback 保留 (无害, 不影响正确性)
+
+下一步:
+- v0.5+ Phase 2 完整实施: threading expected_ty 通过 ALL lower_expr_* callsites
+  - lower_expr_to_place (call_lower.rs)
+  - lower_block (control_flow.rs)
+  - lower_call_expr (expr_variants.rs)
+  - lower_method_call_expr (method_call_lower.rs)
+  - 等 (~51 callsites)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5

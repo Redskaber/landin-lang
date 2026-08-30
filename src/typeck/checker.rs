@@ -195,13 +195,10 @@ impl TypeChecker {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
 
-            // Stage 18.392 (v0.5+ Phase 2 experiment): Phase 3.5 step 2 STILL required.
-            // Re-tested after Stage 18.388's AdtLayouts fallback — still 5 failures.
-            // Root cause: typeck error reporting depends on dest_local.ty being
-            // concrete (not Infer). When step 2 is disabled, `let p = b.a` gives
-            // p an Infer type → typeck can't detect `s << 2` (str has no shl).
-            // This is a typeck-level dependency, not codegen — Phase 2 (expected_ty
-            // propagation) is needed to eliminate it.
+            // Stage 18.396 (v0.5+ Phase 2 step 1): Phase 3.5 step 2 STILL required.
+            // expected_ty fallback in lower_expr_to_operand Field arm doesn't help
+            // because callers pass None for expected_ty (Phase 2 threading incomplete).
+            // Full Phase 2 requires threading expected_ty through ALL lower_expr_* callsites.
             self.writeback_field_load_locals_with_table(mir, table);
         }
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.

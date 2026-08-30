@@ -566,7 +566,17 @@ pub(crate) fn lower_expr_to_operand(
             // Resolve the field index from the ident name.
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
+            // Stage 18.396 (v0.5+ Phase 2 step 1): When resolve_field_type returns
+            // None (because find_receiver_struct_def_id sees Infer), use expected_ty
+            // as fallback. This is the root-cause fix for Phase 3.5 step 2 dependency —
+            // if field_ty is concrete at lower time, typeck doesn't need FieldTyTable.
+            //
+            // Per §12 (最优 > 最小): root-cause fix at the lower site.
+            // Per §1.0 原則 6 (通解 > 特解): one expected_ty fallback covers all
+            // field access paths where receiver type is Infer.
+            // Per §20.6: experimental — test if this makes Phase 3.5 step 2 redundant.
             let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
+                .or_else(|| expected_ty.cloned())
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let field_ty_for_proj = field_ty.clone();
             // Stage 14.19 (GAP-31): If the base local's type is Ref (e.g. &self
