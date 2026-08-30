@@ -724,6 +724,10 @@ mod stage18_348_param_check_tests;
 #[path = "v0/stage18/plan/stage18_351_recursive_param_tests.rs"]
 mod stage18_351_recursive_param_tests;
 
+// === Stage 18.416: §20 iterative audit — BitAnd/BitOr/BitXor type check ===
+#[path = "v0/stage18/plan/stage18_416_bitwise_type_check_tests.rs"]
+mod stage18_416_bitwise_type_check_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

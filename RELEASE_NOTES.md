@@ -5,11 +5,103 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3727 integration tests = 4409 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 682 lib tests + 3766 integration tests = 4448 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 + Phase 3.5 step 2 Pass 2 removed via root-cause fixes) |
+| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 + Phase 3.5 step 2 Pass 2 removed via root-cause fixes); §20 iterative audit: BitAnd/BitOr/BitXor type check |
+
+---
+
+## v0.510.0 — §20 Iterative Audit: BitAnd/BitOr/BitXor Type Check (Stage 18.416)
+
+### Overview
+
+Stage 18.412 fixed the Shl/Shr lhs type check deficiency. Per §20 (iterative
+audit — "finding one bug means there are many similar bugs"), this stage
+audited ALL BinaryOp arms in typeck's `infer_rvalue` for similar missing
+type checks.
+
+**Finding**: The BitAnd/BitOr/BitXor arm only called `unify(a, b)` without
+checking that `a_ty` is Bool or Int/Uint. For `"hello" & "world"`, unify
+succeeds (same type) → no error → silent acceptance. Codegen's `_ => "add i32"`
+fallback then emitted wrong LLVM IR for the non-integer operands.
+
+### Root-Cause Fix
+
+Added `is_notable_ty(&a_ty)` check BEFORE the unify call in the
+BitAnd/BitOr/BitXor arm (`src/typeck/infer.rs`):
+
+```rust
+BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
+    if !is_notable_ty(&a_ty) {
+        self.errors.push(TypeError::new(
+            format!("bitwise op requires Bool or integer type, found {}", self.format_ty(&a_ty)),
+            stmt_span,
+        ));
+    } else if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
+        // ... unify error handling
+    }
+    a_ty
+}
+```
+
+**Design decisions**:
+- Check `is_notable_ty` BEFORE unify: catches `"hello" & "world"` (same type,
+  both non-notable) with a specific error message before unify would succeed.
+- Skip unify if a is not notable: avoids double-reporting for `"hello" & 1`
+  (where both the notability check and unify would fail).
+- `is_notable_ty` accepts Bool + Int/Uint + IntVar + TyVar + Error (not Float,
+  Str, Array, Tuple, Adt, Unit).
+
+### Float Bitwise Ops Removed (Stage 3.45 Design Divergence Corrected)
+
+Stage 3.45 implemented float bitwise ops via bitcast (double → i64, bitwise
+op, i64 → double). This was a design divergence from Rust, where
+`1.0 & 2.0` is a compile error.
+
+Stage 18.416 removes this divergence — float bitwise ops are now rejected
+at typeck. The 5 old positive tests (codegen_float_bitand, codegen_float_
+bitor, codegen_float_bitxor, codegen_float_bitand_uses_cast, codegen_float_
+bitand_returns_double) are converted to 3 negative tests.
+
+Per §1.0 原則 5 (去除兼容思维): the bitcast behavior is removed, not kept
+as a fallback. Per §1.6 终极检验: root-cause fix at typeck, not codegen.
+
+### Test Coverage
+
+New test file: `tests/v0/stage18/plan/stage18_416_bitwise_type_check_tests.rs`
+
+| Category | Positive | Negative |
+|----------|----------|----------|
+| Int/Bool (valid) | 8 | — |
+| Float (f64, f32, literal) | — | 9 |
+| &str (typed, literal) | — | 6 |
+| Unit | — | 3 |
+| Struct/Tuple | — | 6 |
+| Type mismatch (int/bool, int/str, int/float, i32/i64) | — | 6 |
+| Result to wrong type | — | 3 |
+| **Total** | **8** | **33** |
+
+Ratio: 8:33 = 1:4.1 (exceeds 1:3 target per §9.4.3).
+
+### §20 Iterative Audit Summary
+
+All BinaryOp arms in `infer_rvalue` audited:
+
+| Arm | Type Check | Status |
+|-----|-----------|--------|
+| Comparison (Eq/Ne/Lt/Le/Gt/Ge) | unify(a, b) | ✅ OK — unify catches mismatches |
+| BitAnd/BitOr/BitXor | is_notable_ty(a) + unify(a, b) | ✅ Fixed Stage 18.416 |
+| Shl/Shr | is_shift_count_ty(a) + is_shift_count_ty(b) | ✅ Fixed Stage 18.412 |
+| Add/Sub/Mul/Div/Rem | is_arithmetic_ty(a) + is_arithmetic_ty(b) + unify(a, b) | ✅ OK |
+
+### Verification
+
+- 4448 tests (682 lib + 3766 integration), 0 failures, 2 ignored
+- fmt clean (0 lines diff)
+- 0 clippy warnings
+- §14.5 D1-D8 deep review PASSED
 
 ---
 

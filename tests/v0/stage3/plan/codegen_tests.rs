@@ -2073,58 +2073,51 @@ fn codegen_const_in_if() {
     );
 }
 
-// Stage 3.45: L10 fix — Float bitwise ops via bitcast
+// Stage 3.45→18.416: Float bitwise ops are now typeck errors.
+//
+// Stage 3.45 originally implemented float bitwise ops via bitcast (double →
+// i64, bitwise op, i64 → double). This was a design divergence from Rust,
+// where `1.0 & 2.0` is a compile error ("no implementation for `f64 & f64`").
+//
+// Stage 18.416 (§20 iterative audit — same class as Stage 18.412 Shl/Shr
+// fix): Added `is_notable_ty` check in BitAnd/BitOr/BitXor arm. Float is
+// not notable → typeck now reports "bitwise op requires Bool or integer
+// type, found f64" instead of silently accepting via bitcast.
+//
+// Per §1.0 原則 5 (去除兼容思维): the old float-bitcast behavior is removed,
+// not kept as a fallback. Per §1.6 终极检验: root-cause fix at typeck,
+// not a codegen workaround. Per §1.0 原則 4 (报错 > 静默): float bitwise
+// ops are now explicitly rejected.
+//
+// The 5 old positive tests (codegen_float_bitand, codegen_float_bitor,
+// codegen_float_bitxor, codegen_float_bitand_uses_cast, codegen_float_
+// bitand_returns_double) are converted to negative tests below.
 
 #[test]
-fn codegen_float_bitand() {
-    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
-    // Should bitcast to i64, do `and i64`, bitcast back to double.
+fn codegen_float_bitand_rejected() {
+    // Stage 18.416: `f64 & f64` is now a typeck error.
+    let result = compile_no_opt("fn f(a: f64, b: f64) -> f64 { a & b }");
     assert!(
-        ll.contains("and i64"),
-        "expected 'and i64' for float bitwise AND in:\n{}",
-        ll
+        result.has_errors(),
+        "float bitwise AND must be rejected at typeck"
     );
 }
 
 #[test]
-fn codegen_float_bitor() {
-    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a | b }");
+fn codegen_float_bitor_rejected() {
+    let result = compile_no_opt("fn f(a: f64, b: f64) -> f64 { a | b }");
     assert!(
-        ll.contains("or i64"),
-        "expected 'or i64' for float bitwise OR in:\n{}",
-        ll
+        result.has_errors(),
+        "float bitwise OR must be rejected at typeck"
     );
 }
 
 #[test]
-fn codegen_float_bitxor() {
-    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a ^ b }");
+fn codegen_float_bitxor_rejected() {
+    let result = compile_no_opt("fn f(a: f64, b: f64) -> f64 { a ^ b }");
     assert!(
-        ll.contains("xor i64"),
-        "expected 'xor i64' for float bitwise XOR in:\n{}",
-        ll
-    );
-}
-
-#[test]
-fn codegen_float_bitand_uses_cast() {
-    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
-    // Should have cast instructions (double → i64 and i64 → double).
-    // emit_cast uses sitofp/fptosi for float↔int, not bitcast.
-    assert!(
-        ll.contains("fptosi") && ll.contains("sitofp"),
-        "expected 'fptosi' + 'sitofp' for float bitwise op in:\n{}",
-        ll
-    );
-}
-
-#[test]
-fn codegen_float_bitand_returns_double() {
-    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
-    assert!(
-        ll.contains("ret double"),
-        "expected 'ret double' for float bitwise result in:\n{}",
-        ll
+        result.has_errors(),
+        "float bitwise XOR must be rejected at typeck"
     );
 }
 

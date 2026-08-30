@@ -30858,3 +30858,82 @@ Stage Summary:
 下一步:
 - v0.6+ typeck前置重构 (Pass 1 elimination — requires typeck before MIR lower)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+---
+Task ID: stage18.416-18.417
+Agent: Super Z (main) — PM-A
+Task: Stage 18.416 — §20 iterative audit: BitAnd/BitOr/BitXor type check (same class as Stage 18.412 Shl/Shr fix). L2 (single-file typeck fix + test conversion). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (single-file typeck fix + 5 test conversions + 41 new tests)
+- 对齐: §20 iterative audit — "finding one bug means many similar bugs"; Stage 18.412 fixed Shl/Shr, must audit all BinaryOp arms
+- 阻断: 4409 tests 全绿 (Stage 18.413 state)
+
+决策点 (§20 iterative audit):
+- 发现: BitAnd/BitOr/BitXor arm (infer.rs:408-418) only called unify(a, b) without checking that a_ty is Bool or Int/Uint
+- 验证: `"hello" & "world"` compiles successfully (no typeck error) — confirmed bug
+- 选 A: Add is_notable_ty check before unify (root-cause fix, same pattern as Stage 18.412)
+- 不选 B: Keep bitcast approach for float bitwise (Stage 3.45 design divergence from Rust)
+- 引用 §20: "finding one bug means there are many similar bugs" — Stage 18.412 found Shl/Shr, must audit all BinaryOp arms
+- 引用 §1.0 原則 4 (报错 > 静默): typeck must reject, not codegen fallback
+- 引用 §1.0 原則 5 (去除兼容思维): float bitcast behavior removed, not kept as fallback
+- 引用 §1.0 原則 6 (通解 > 特解): one is_notable_ty check covers all non-Bool/non-Int types
+- 引用 §1.6 终极检验: root-cause fix at typeck, not codegen workaround
+
+裁剪点:
+- L2 — single-file typeck fix; §14.5 D1-D8 verification required (Stage 18.418)
+
+5W2H:
+- WHAT: Add is_notable_ty check in BitAnd/BitOr/BitXor arm; convert 5 float bitwise positive tests to negative; add 41 new tests (8 pos + 33 neg, ratio 1:4.1)
+- WHY: §20 iterative audit — same class as Stage 18.412; float bitwise ops are not valid in Rust; bitcast was a design divergence
+- WHO: ARCH-A (design: reject float bitwise per Rust philosophy) + DEV-A (implement) + REV-A (audit all BinaryOp arms)
+- WHEN: After Stage 18.413 (Phase 2 L3 step 2 partial completion)
+- WHERE: src/typeck/infer.rs + tests/v0/stage3/plan/codegen_tests.rs + tests/v0/stage18/plan/stage18_416_bitwise_type_check_tests.rs
+- HOW: is_notable_ty check before unify; if not notable → error + skip unify (avoids double-reporting)
+- HOW MUCH: §3.2 全绿 — 4448 tests (682 lib + 3766 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 iterative audit — audited ALL BinaryOp arms in typeck infer_rvalue:
+  - Comparison (Eq/Ne/Lt/Le/Gt/Ge): unify(a, b) + return Bool — OK (unify catches mismatches)
+  - BitAnd/BitOr/BitXor: only unify(a, b) — BUG! No type check (confirmed: `"hello" & "world"` compiles)
+  - Shl/Shr: FIXED in Stage 18.412 (is_shift_count_ty check for both lhs and rhs)
+  - Add/Sub/Mul/Div/Rem: is_arithmetic_ty check for both — OK
+- Stage 18.416 fix:
+  - src/typeck/infer.rs BitAnd/BitOr/BitXor arm: added is_notable_ty(&a_ty) check BEFORE unify
+  - If a is not notable → report "bitwise op requires Bool or integer type, found <type>" and skip unify
+  - If a is notable → check unify (catches type mismatches like `1 & true`)
+- Test conversion (Stage 3.45 → 18.416):
+  - codegen_float_bitand → codegen_float_bitand_rejected (negative test)
+  - codegen_float_bitor → codegen_float_bitor_rejected (negative test)
+  - codegen_float_bitxor → codegen_float_bitxor_rejected (negative test)
+  - codegen_float_bitand_uses_cast → REMOVED (no longer applicable — float bitwise is error)
+  - codegen_float_bitand_returns_double → REMOVED (no longer applicable)
+  - Net: 5 positive tests → 3 negative tests (−2 tests)
+- New test file: tests/v0/stage18/plan/stage18_416_bitwise_type_check_tests.rs
+  - 8 positive tests: int/bool/i64/u32 BitAnd/BitOr/BitXor (valid cases)
+  - 33 negative tests covering 7 categories:
+    * Float (f64, f32, literal): 9 cases
+    * &str (typed, literal): 6 cases
+    * Unit (): 3 cases
+    * Struct/Tuple: 6 cases
+    * Type mismatch (int/bool, int/str, int/float, i32/i64): 6 cases
+    * Result assigned to wrong type: 3 cases
+  - Ratio: 8 positive / 33 negative = 1:4.1 (exceeds 1:3 target per §9.4.3)
+- Registered in tests/all_tests.rs
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4448 tests (682 lib + 3766 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- §20 iterative audit complete for BinaryOp arms ✅
+- BitAnd/BitOr/BitXor type check added (same pattern as Stage 18.412 Shl/Shr)
+- Float bitwise ops rejected at typeck (Rust design alignment)
+- 5 old positive tests converted to 3 negative tests
+- 41 new tests added (8 pos + 33 neg, ratio 1:4.1)
+- §3.2 全绿: 4448 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: root-cause fix at typeck, not codegen workaround
+
+下一步:
+- Stage 18.418: §14.5 deep review + doc sync + README restructure + package r66
+- Future: v0.5+ Phase 4/5 or v0.6+ typeck前置重构

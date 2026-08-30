@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-30 (last updated Stage 18.413 — v0.5+ Phase 2 L3 step 2 partial: Pass 2 removed via typeck root-cause fix)
+> **Date**: 2026-08-30 (last updated Stage 18.416 — §20 iterative audit: BitAnd/BitOr/BitXor type check, same class as Stage 18.412)
 > **Version**: v0.510.0
-> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial. Writeback phases reduced 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed via root-cause fixes). Stage 18.410 surgical experiments revealed Phase 3.5 step 2 bundled two INDEPENDENT concerns: Pass 1 (field-access writeback — TRUE LIMIT, architecturally correct) and Pass 2 (BinaryOp result writeback — WORKAROUND for typeck Shl/Shr lhs check). Stage 18.412 added typeck lhs check (root-cause fix); Stage 18.413 removed Pass 2 + dead code (resolve_operand_for_writeback, is_concrete_int_or_float). Phase 3.5 step 2 Pass 1 remains the true limit (cannot be removed without v0.6+ typeck前置重构). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4409 tests (682 lib + 3727 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial + §20 iterative audit. Writeback phases 10→7. Stage 18.412 fixed Shl/Shr lhs type check; Stage 18.416 (§20 iterative audit — "finding one bug means many similar bugs") fixed BitAnd/BitOr/BitXor arm with same `is_notable_ty` check pattern. Float bitwise ops (via bitcast, Stage 3.45 design divergence from Rust) now rejected at typeck. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4448 tests (682 lib + 3766 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -359,6 +359,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.376 | 1 | TD-ARCH-NESTED-GENERIC-FIELD-ACCESS (nested generic field access 5-layer fix: lower + inference + writeback + mono collect) |
 | ✅ Resolved in 18.377 | 1 | TD-ALLOW-SUPPRESSION (26 #[allow] audited, 6 stale removed, 20 verified legitimate) |
 | ✅ Resolved in 18.413 | 1 | TD-PASS2-BINARYOP-WORKAROUND (writeback_binaryop_results removed; typeck Shl/Shr lhs check root-cause fix per Stage 18.412) |
+| ✅ Resolved in 18.416 | 1 | TD-BITWISE-NOTABLE-CHECK (BitAnd/BitOr/BitXor arm lacked is_notable_ty check; `"hello" & "world"` silently accepted. §20 iterative audit — same class as Stage 18.412 Shl/Shr fix. Added is_notable_ty check before unify; float bitwise bitcast path removed from codegen.) |
 | 🚧 v0.5+ Phase 1+3 complete | — | Stage 18.379-18.381: Phase 0 + Phase 3.7 REMOVED (10→8). Stage 18.388: Phase 3.5 step 1 REMOVED (8→7, codegen AdtLayouts fallback). Stage 18.389-18.405: Phase 3.5 step 2 NOT redundant (7 consecutive — §5.2 true limit, but surgical Stage 18.410 experiments revealed two independent concerns: Pass 1 = field-access writeback [TRUE LIMIT, architecturally correct], Pass 2 = BinaryOp result writeback [WORKAROUND, removed Stage 18.413]). Stage 18.412 added Shl/Shr lhs type check in typeck infer_rvalue. Stage 18.413 removed writeback_binaryop_results + dead code (resolve_operand_for_writeback + is_concrete_int_or_float). Writeback 10→7. Phase 3.5 step 2 Pass 1 (field-access writeback) remains the true limit (cannot be removed without v0.6+ typeck前置重构). |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)

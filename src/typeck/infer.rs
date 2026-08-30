@@ -405,8 +405,41 @@ impl TypeChecker {
                         Ty::from_kind(TyKind::Bool)
                     }
                     // Bitwise ops: Bool or integer types only.
+                    // Stage 18.416 (§20 iterative audit): Add type check for
+                    // BitAnd/BitOr/BitXor — same class as Stage 18.412 Shl/Shr
+                    // fix. Without this check, `"hello" & "world"` and
+                    // `[1,2,3] | [4,5,6]` silently pass typeck (unify succeeds
+                    // because both operands are the same type), then codegen's
+                    // `_ => "add i32"` fallback emits wrong LLVM IR for the
+                    // non-integer operands.
+                    //
+                    // Was: only `unify(a, b)` — returned a_ty without checking
+                    // that a_ty is Bool or Int/Uint. For `"hello" & "world"`,
+                    // unify(&str, &str) succeeds → no error → silent acceptance.
+                    //
+                    // Fix: Check `is_notable_ty(&a_ty)` BEFORE unify. If a is
+                    // not Bool/Int/Uint, report error and skip unify (avoids
+                    // double-reporting for `"hello" & 1` where both the
+                    // notability check and unify would fail).
+                    //
+                    // Per §20 (iterative audit): same class as Stage 18.412
+                    // (Shl/Shr lhs check). Finding one BinaryOp type-check bug
+                    // means auditing ALL BinaryOp arms.
+                    // Per §1.0 原則 4 (报错 > 静默): bitwise op on non-Bool/
+                    // non-Int types must be reported at typeck.
+                    // Per §1.0 原則 6 (通解 > 特解): one is_notable_ty check
+                    // covers all non-Bool/non-Int types (Float, Str, Array,
+                    // Tuple, Adt, Unit, etc.).
                     BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
-                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
+                        if !is_notable_ty(&a_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "bitwise op requires Bool or integer type, found {}",
+                                    self.format_ty(&a_ty)
+                                ),
+                                stmt_span,
+                            ));
+                        } else if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
                             // Stage 15.82: use stmt_span for unify errors.
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
