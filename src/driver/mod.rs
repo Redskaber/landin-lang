@@ -622,6 +622,22 @@ pub fn compile_project(entry_path: &std::path::Path) -> CompileResult {
     compile_project_opt(entry_path, true)
 }
 
+/// Stage 29.1 (v0.11 TD-SINGLE-FILE Phase 4): Compile a project from a
+/// `ProjectManifest` (loaded from `landin.toml`).
+///
+/// This is the manifest-based entry point for project compilation. It:
+/// 1. Reads the entry point from the manifest
+/// 2. Compiles via `compile_project_opt` (which runs ModuleLoader)
+/// 3. Returns the `CompileResult`
+///
+/// Per §10: `compile_project_from_manifest` follows `<verb>_<noun>_<prep>_<noun>` pattern.
+/// Per §11: driver-level orchestrator (no cross-stage leakage).
+/// Per §1.0 原則 6 (通解 > 特解): one function handles all manifest kinds.
+/// Per §12 (最优 > 最小): root-cause fix — manifest → entry_point → compile.
+pub fn compile_project_from_manifest(manifest: &crate::cargo::ProjectManifest) -> CompileResult {
+    compile_project_opt(&manifest.entry_point, true)
+}
+
 /// Stage 18.155 (TD-SINGLE-FILE Phase 4): Compile a multi-file project with
 /// explicit optimization control.
 ///

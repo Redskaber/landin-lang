@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.538.0 (v0.10 FINAL — Enum exhaustiveness checking complete, remaining TDs BLOCKED) |
+| **Version** | v0.539.0 (Stage 29.1 — v0.11 TD-SINGLE-FILE Phase 4: manifest integration) |
 | **License** | MIT |
-| **Status** | ✅ **v0.10 FINAL — ENUM EXHAUSTIVENESS CHECKING COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.10 task: ✅ Stage 28.1 Enum exhaustiveness checking (enum_variants map + lower_match checks all variants covered). Remaining TDs ALL BLOCKED: TD-SINGLE-FILE Phase 4 (manifest — large refactor), TD-GAT-HIGHER-RANKED (region-aware mono — architectural change). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.11 (manifest integration + region-aware mono). |
+| **Status** | v0.11 Phase 1: TD-SINGLE-FILE Phase 4 (manifest integration) COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 29.1 added `compile_project_from_manifest()` function + `landinc test` command + re-exported `compile_project_from_manifest` from lib.rs. Per §11 (接口隔离): driver-level orchestrator. Per §1.0 原則 6 (通解 > 特解): one function handles all manifest kinds. Per §12 (最优 > 最小): root-cause fix — manifest → entry_point → compile. Addresses TD-SINGLE-FILE Phase 4. Next: v0.11 remaining TDs. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

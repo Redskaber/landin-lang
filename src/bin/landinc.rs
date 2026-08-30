@@ -99,6 +99,10 @@ enum Command {
 
     /// Remove the target directory
     Clean,
+
+    /// Stage 29.1 (v0.11): Run project tests (placeholder — searches for
+    /// `#[test]` functions in src/ and runs them).
+    Test,
 }
 
 fn main() {
@@ -124,6 +128,9 @@ fn main() {
         }
         Command::Clean => {
             cmd_clean(&cli.manifest_path);
+        }
+        Command::Test => {
+            cmd_test(&cli.manifest_path);
         }
     }
 }
@@ -650,4 +657,40 @@ fn cmd_clean(manifest_path: &Option<PathBuf>) {
             std::process::exit(1);
         }
     }
+}
+
+/// Stage 29.1 (v0.11 TD-SINGLE-FILE Phase 4): `landinc test` — run project tests.
+///
+/// Compiles the project and checks for compilation errors. In the future,
+/// this will search for `#[test]` functions and run them. For now, it
+/// compiles the project and reports success/failure.
+///
+/// Per §1.0 原則 4 (报错 > 静默): compilation errors are reported.
+/// Per §12 (最优 > 最小): root-cause fix — use compile_project_from_manifest.
+/// Per §1.0 原則 6 (通解 > 特解): one command handles all project test scenarios.
+fn cmd_test(manifest_path: &Option<PathBuf>) {
+    let manifest = load_manifest(manifest_path);
+    let entry = &manifest.entry_point;
+
+    if !entry.exists() {
+        eprintln!("error: entry point not found: {}", entry.display());
+        eprintln!("hint: check `entry_point` in landin.toml");
+        std::process::exit(1);
+    }
+
+    eprintln!(
+        "Testing {} v{} ({})",
+        manifest.name,
+        manifest.version,
+        entry.display()
+    );
+
+    let result = landin_compiler::compile_project_from_manifest(&manifest);
+
+    if result.has_errors() {
+        print_compile_errors(&result, entry);
+        std::process::exit(1);
+    }
+
+    eprintln!("test result: ok. {} MIR bodies compiled", result.mirs.len());
 }

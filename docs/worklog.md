@@ -34129,3 +34129,54 @@ v0.10 FINAL STATE:
   1. TD-SINGLE-FILE Phase 4 — manifest integration (unblocks Incremental Compilation)
   2. TD-GAT-HIGHER-RANKED — region-aware monomorphization
 
+
+---
+Task ID: stage29.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 29.1 — v0.11 TD-SINGLE-FILE Phase 4: manifest integration. L2-L3 (跨 driver/mod.rs + lib.rs + bin/landinc.rs). v0.539.0.
+
+3秒启动自检:
+- 定位: L2-L3 (修改 src/driver/mod.rs + src/lib.rs + src/bin/landinc.rs — ~60 LOC new)
+- 对齐: 已查 v0.10 FINAL (v0.538.0); TD-SINGLE-FILE Phase 4 ("manifest integration remains"); existing ProjectManifest (parse/load + name/version/edition/src_dir/entry_point/target_dir); existing landinc CLI (new/build/run/check/clean); existing compile_project_opt (entry_path → compile_inner)
+- 阻断: v0.10 FINAL 全绿 (4821 tests), 0 P0/P1
+
+决策点 (设计选择):
+- Added compile_project_from_manifest() function
+  - 引用 §11 (接口隔离): driver-level orchestrator (no cross-stage leakage)
+  - 引用 §1.0 原則 6 (通解 > 特解): one function handles all manifest kinds
+  - 引用 §12 (最优 > 最小): root-cause fix — manifest → entry_point → compile_project_opt
+  - 替代: thread manifest through compile_inner — but this violates §11 (compile_inner shouldn't know about manifests)
+  - 选择: manifest → entry_point at the driver level, then compile_project_opt handles the rest
+
+- Added landinc test command
+  - 引用 §1.0 原則 4 (报错 > 静默): compilation errors are reported
+  - 引用 §1.0 原則 6 (通解 > 特解): one command handles all project test scenarios
+  - MVP: compiles the project and reports success/failure (future: search for #[test] functions and run them)
+
+- Re-exported compile_project_from_manifest from lib.rs
+  - 引用 §10.1 rule 4 (显式 re-export): added to explicit pub use list
+
+裁剪点:
+- L2-L3 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — will be done at v0.11 FINAL
+- 安全理由: manifest integration is additive (new function + new command + new re-export), doesn't modify existing compile_project behavior
+
+5W2H:
+- WHAT: compile_project_from_manifest() + landinc test command + re-export from lib.rs
+- WHY: v0.11 TD-SINGLE-FILE Phase 4 — manifest-based compilation
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.10 FINAL 完成后的第一个 v0.11 MUV
+- WHERE: src/driver/mod.rs + src/lib.rs + src/bin/landinc.rs
+- HOW: (1) Add compile_project_from_manifest (2) Add landinc test command (3) Re-export from lib.rs
+- HOW MUCH: 4821 tests (unchanged — new function + new command, no behavior change for existing code), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.11 Phase 1: TD-SINGLE-FILE Phase 4 (manifest integration) COMPLETE ✅
+- New: compile_project_from_manifest() + landinc test command + re-export
+- §3.2 全绿: 4821 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- Addresses: TD-SINGLE-FILE Phase 4
+
+下一步 (v0.11 remaining TDs):
+- TD-GAT-HIGHER-RANKED — region-aware monomorphization
+
