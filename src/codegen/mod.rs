@@ -220,9 +220,19 @@ pub fn codegen_crate_to_module_with_target(
 ) -> CodegenResult<LLVMSysEmitter> {
     let mut emitter = LLVMSysEmitter::with_target(target);
     // Stage 14.91 (Bug X3 fix): Populate fn_sigs BEFORE vtable emission.
+    // Stage 18.442 (Phase 5 Step 4): Pass adt_layouts so Adt types resolve
+    // correctly via mir_type_to_emit_type_with_layouts (not I32 fallback).
+    let adt_layouts = if let Some(first_mir) = result.mirs.first() {
+        first_mir.adt_layouts.clone()
+    } else {
+        // Stage 18.442: Empty layouts fallback — no MIR bodies available.
+        #[allow(clippy::arc_with_non_send_sync)]
+        std::sync::Arc::new(crate::mir::body::AdtLayouts::new())
+    };
     let fn_sigs_map = crate::codegen::llvm::function_sigs::build_fn_sigs_map(
         &result.fn_name_by_def_id,
         &result.fn_sigs,
+        &adt_layouts,
     );
     emitter.set_fn_sigs(fn_sigs_map);
     run_codegen_pipeline(result, &mut emitter)?;

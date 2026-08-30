@@ -31866,3 +31866,74 @@ Stage Summary:
 - Then retry Step 3 (panic) after function_sigs.rs no longer calls unchecked variant for Adt types
 - v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor
 - v0.4 is RELEASE-READY with Phase 5 Step 1+2 complete
+
+---
+Task ID: stage18.442-18.443
+Agent: Super Z (main) — PM-A
+Task: Stage 18.442 Phase 5 Step 4 (migrate function_sigs.rs to layouts variant) + Stage 18.443 Step 3 retry (panic — 2 failures, other callers remain). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (function_sigs.rs migration + Step 3 retry assessment)
+- 对齐: Phase 5 Step 3 deferred (Stage 18.441); Step 4 unblocks by migrating function_sigs.rs
+- 阻断: 4586 tests 全绿 (Stage 18.441 state)
+
+决策点 (Phase 5 Step 4 — §13.4):
+- 选 A: Migrate function_sigs.rs to mir_type_to_emit_type_with_layouts (pass adt_layouts)
+- 引用 §1.0 原則 4 (报错 > 静默): Adt types should be correctly resolved via layouts
+- 引用 §1.0 原則 6 (通解 > 特解): one layouts variant handles all types
+- 引用 §13.4: incremental migration — unblocks Step 3
+
+裁剪点:
+- L2 — function_sigs.rs migration + Step 3 retry; §3.2 全绿
+
+5W2H:
+- WHAT: Migrate function_sigs.rs to layouts variant; retry Step 3 (panic); discover other callers; keep warning
+- WHY: Phase 5 Step 4 — unblock Step 3 by removing function_sigs.rs as Adt type source
+- WHO: DEV-A (migrate) + REV-A (retry panic, discover remaining callers)
+- WHEN: After Stage 18.441 (Step 3 deferred)
+- WHERE: src/codegen/llvm/function_sigs.rs + src/codegen/mod.rs + src/codegen/emitter/mod.rs
+- HOW: Add adt_layouts param to build_fn_sigs_map; use with_layouts variant; retry panic
+- HOW MUCH: §3.2 全绿 — 4586 tests, 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- Stage 18.442 — function_sigs.rs migration:
+  - Added `adt_layouts: &AdtLayouts` param to `build_fn_sigs_map`
+  - Replaced `mir_type_to_emit_type` calls with `mir_type_to_emit_type_with_layouts`
+  - Updated caller in `codegen/mod.rs` to pass `adt_layouts` from first MIR body
+  - Adt return types (e.g., `fn make_big() -> Big`) now correctly resolved via layouts
+- Stage 18.443 — Step 3 retry (panic):
+  - Replaced warning with panic for unresolved types
+  - 2 tests STILL FAILED — panic triggered on `TyKind::Error` (not Adt!)
+  - Root cause: other callers still pass Error types:
+    * rvalue.rs:436 — `.map(mir_type_to_emit_type)` on aggregate field_tys
+    * rvalue.rs:598 — `mir_type_to_emit_type(target_ty)` for Cast target
+    * drop_glue.rs:146 — `mir_type_to_emit_type(field_ty)` for drop fields
+    * mir_translation/types.rs:229 — `_ => mir_type_to_emit_type(ty)` fallback
+  - These callers need migration to layouts variant (future Step 5)
+  - Per §1.0 原則 9 (正确 > 妥协): can't panic — other callers exist
+  - Reverted to warning + I32 fallback
+- §3.2 全校验流 (after revert):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4586 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- Phase 5 Step 4 complete ✅ — function_sigs.rs migrated to layouts variant
+- Phase 5 Step 3 retry: DEFERRED — other callers (rvalue.rs, drop_glue.rs, types.rs) still pass Adt/Error types
+- Remaining unchecked callers: rvalue.rs:436,598 + drop_glue.rs:146,195,203,206 + types.rs:229
+- Phase 5 status:
+  * Step 1 (Stage 18.438): COMPLETE — checked variant added
+  * Step 2 (Stage 18.440): COMPLETE — warning replaces silent fallback
+  * Step 3 (Stage 18.441): DEFERRED — panic breaks Adt types
+  * Step 4 (Stage 18.442): COMPLETE — function_sigs.rs migrated to layouts
+  * Step 3 retry (Stage 18.443): DEFERRED — other callers still pass Error types
+  * Step 5 (future): Migrate remaining callers (rvalue, drop_glue, types.rs)
+- §3.2 全绿: 4586 tests, 0 failures, fmt clean, 0 clippy warnings
+
+下一步:
+- Phase 5 Step 5 (future): Migrate remaining callers to layouts variant:
+  * rvalue.rs:436,598 — use with_layouts_and_mono for aggregate field_tys + Cast target
+  * drop_glue.rs:146,195,203,206 — use with_layouts for drop field types
+  * mir_translation/types.rs:229 — use with_layouts for fallback (already has layouts!)
+- Then retry Step 3 (panic) after ALL callers migrated
+- v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor

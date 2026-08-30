@@ -339,17 +339,15 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // opaque pointer (function reference). Was: fell through to I32, causing
         // fn pointer params to be treated as i32 — function refs passed as `0`.
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
-        // Stage 18.441 (v0.5+ Phase 5 Step 3): Unresolved type kinds —
-        // emit warning + return I32. Verified that param_check (Stage 18.348)
-        // catches Infer/Error/Param types, but Adt types DO reach here via
-        // function_sigs.rs (LLVM backend function signature construction).
-        // Adt types need layouts variant (mir_type_to_emit_type_with_layouts)
-        // — the unchecked variant is used as fallback for sig types.
+        // Stage 18.443 (v0.5+ Phase 5 Step 3 retry): Unresolved type kinds —
+        // emit warning + return I32. After Step 4 (Stage 18.442) migrated
+        // function_sigs.rs to layouts variant, Adt types no longer reach here
+        // from that path. BUT other callers (rvalue.rs:436,598, drop_glue.rs:146,
+        // mir_translation/types.rs:229) may still pass Adt/Error types.
         //
         // Per §1.0 原則 4 (报错 > 静默): warning surfaces the issue.
-        // Per §1.0 原則 9 (正确 > 妥协): Adt types need layouts; can't panic.
-        // Per §13.4: Step 3 deferred — need to migrate function_sigs.rs to
-        // use layouts variant first (future Step 4).
+        // Per §1.0 原則 9 (正确 > 妥协): can't panic — other callers exist.
+        // Per §13.4: need to migrate ALL remaining callers (future Step 5).
         TyKind::Adt(_, _)
         | TyKind::Infer(_)
         | TyKind::Error
@@ -359,7 +357,7 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         | TyKind::Foreign => {
             eprintln!(
                 "warning: unresolved type kind `{:?}` in mir_type_to_emit_type — \
-                falling back to i32 (use mir_type_to_emit_type_with_layouts for Adt types)",
+                falling back to i32 (remaining callers need migration to layouts variant)",
                 ty.kind
             );
             EmitType::I32
