@@ -32454,3 +32454,117 @@ Stage Summary:
 - v0.5 启动准备: §13.1 阶段开始设计对齐 — Trait Solver (P1) + CodegenError System (P1)
 - v0.5 P1 first sub-stage: Stage 19.1 Trait Solver Phase 1 (data structures: TraitPredicate, Goal, InferCtxt)
 
+
+---
+Task ID: stage19.001
+Agent: Super Z (main) — PM-A
+Task: Stage 19.001 v0.5 启动设计对齐 (§13.1) + §17 任务规划排版图. L3 (跨大版本启动). v0.510.0 → v0.511.0 (pending).
+
+3秒启动自检:
+- 定位: L3 (新大阶段启动 — §13.1 设计对齐 + §17 任务规划排版图)
+- 对齐: docs/lang-design/03-type-system.md §5 (Trait Resolution 3-phase) + v0.5-roadmap.md + tech-debt-register.md
+- 阻断: v0.4 FINAL APPROVED (Stage 18.500); 无 P0/P1 阻断
+
+决策点 (v0.5 启动设计对齐):
+- §13.1 Step 1 定位设计文档: ✅ docs/lang-design/03-type-system.md §5 + 07-codegen.md + v0.5-roadmap.md + tech-debt-register.md
+- §13.1 Step 2 阅读设计文档:
+  - Trait Solver P1: rustc 老 solver 3-phase (Evaluation → Selection → Fulfillment) + Canonical query (§5.8) + Orphan rule (§5.6) + MVP 禁 specialization (§5.7)
+  - CodegenError P1: Phase 5 Step 1+2+4 已完成 (Stage 18.438-18.444); v0.5 完成 Step 3+5 callsite migration + ~40 unwrap → ? in llvm/mod.rs + CodegenError struct (vs CodegenErrorKind enum)
+  - GATs P2: Stage 18.87 Phase 3 base; v0.5 扩展 type Item<T>; 参数化
+  - MIR Opt P3: jump threading + const_prop loop fixpoint + constant folding — 解除 TD-NO-JUMP-THREADING + TD-CONST-PROP-LOOPS
+- §13.1 Step 3 与现状对齐: v0.4 已有 TraitResolver + CodegenResult + CodegenErrorKind::UnresolvedType + mir_type_to_emit_type_checked + GATs Phase 3 + const_prop merge-point + DCE + TargetTriple
+- §13.1 Step 4 阶段规划: 23-35 sub-stages, P1 (Trait Solver 6-8 + CodegenError 2-3) → P2 (GATs 4-6 + Trait Coherence 2-3) → P3 (MIR Opt 3-4 + Incremental 4-6 + Cross-compile 2-3)
+
+灰区决策:
+- Trait Solver MVP 禁 overlapping (per 设计 §5.3)
+- Trait Solver MVP 支持自动 supertrait (per 设计 §5.5 Phase 4)
+- CodegenError 是 struct with kind field (扩展 CodegenErrorKind enum)
+- GATs MVP 仅 1-参数 (higher-ranked 推 v0.6+)
+- MIR Opt 增量添加 (不替换现有 const_prop)
+
+§17 任务规划排版图:
+- Step 1 扫描文档: ✅
+- Step 2 依赖图: ✅ Mermaid 图覆盖 7 任务 + 8 缺陷纳入
+- Step 3-4 节点详情: ✅ Trait Solver (7 sub-stages) + CodegenError (3 sub-stages) 节点流
+- Step 5 设计-开发-测试节点流: ✅ 5 阶段测试 (局部/集成/E2E/负向/健壮性)
+- Step 6 缺陷纳入: ✅ 8 个 BLOCKED TDs 都有对应 v0.5 任务节点
+- Step 7 审查结论: ✅ 完整 + 清晰 + 明确 + 充足
+
+裁剪点:
+- L3 — 全流程 (§1-§17) 不可跳过
+- §13.1 设计对齐 + §17 任务规划排版图是 v0.5 启动前置
+- v0.5 实际编码从 Stage 19.1 开始 (Trait Solver Phase 1)
+
+Stage Summary:
+- v0.5 启动设计对齐完成 ✅
+- v0.5 任务规划: 23-35 sub-stages (P1 → P2 → P3)
+- v0.5 first sub-stage: Stage 19.1 Trait Solver Phase 1 (TraitPredicate + Goal + InferCtxt data structures)
+- 文档: docs/develop/v0/stage-19/stage-19.001-v0.5-startup-design-alignment.md
+
+下一步:
+- Stage 19.1: Trait Solver Phase 1 — data structures
+  - L2 (50-500 LOC, 2-5 files)
+  - 输入: v0.4 TraitResolver
+  - 输出: src/traits/solver/{mod,predicate,goal,infer_ctxt}.rs + unit tests
+  - 验收: §3.2 全绿 + 1:3+ 测试比例 + ≥3 集成测试
+
+
+---
+Task ID: stage19.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 19.1 — v0.5 Trait Solver Phase 1 (data structures). L2 (single new module + 1 wiring file). v0.511.0.
+
+3秒启动自检:
+- 定位: L2 (新增 src/traits/solver/mod.rs ~600 LOC 实际代码 + ~350 LOC tests = 953 LOC total; 修改 src/traits/mod.rs 12 行)
+- 对齐: 已查 docs/lang-design/03-type-system.md §5 (Trait Resolution 3-phase rustc 老 solver); v0.5-roadmap.md §3.1; stage-19.001-v0.5-startup-design-alignment.md
+- 阻断: v0.4 FINAL APPROVED (Stage 18.500), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- 一次性定义 12 个数据结构 (vs. 每个 Phase 一个 stage)
+  - 引用 §12 (最优 > 最小): 一次性定义避免后续 stage 反复重构
+  - 引用 §1.0 原則 6 (通解 > 特解): 数据结构之间有依赖 (Goal 用 ParamEnv + TraitPredicate, ObligationQueue 用 Obligation, ...)
+  - Per §13.4 J2 (单一职责): 每个结构单一明确职责
+- InferCtxt 与现有 typeck unify table 保持独立
+  - 引用 §13.4 J1 (architecture aligned): 不破坏现有 typeck pipeline
+  - 引用 §13.4 J5 (阶段划分清晰): solver 是新阶段, 与 typeck (现有) 隔离
+  - Phase 2+ 集成时再合并 (per rustc pattern: InferCtxt 是 typeck + solver 共享)
+- ObligationCause 用 9-variant enum 而非 String
+  - 引用 §1.0 原則 3 (显式 > 隐式): enum 比字符串类型安全
+  - 引用 §1.0 原則 9 (正确 > 妥协): 编译器强制覆盖所有 cause 类型
+  - 引用 rustc pattern: rustc 也用 enum ObligationCause
+- EvalResult tri-state (Ok/Ambiguous/Err) 而非 bool
+  - 引用 §1.0 原則 9 (正确 > 妥协): 区分 "可能匹配" 与 "确定匹配"
+- InferCtxt::bind_infer_var 返回 Result (而非静默覆盖)
+  - 引用 §1.0 原則 4 (报错 > 静默): conflicting binding 报错
+
+裁剪点 (跳流程安全理由):
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 19.7 (Trait Solver Phase 6 完成后) 一起做
+- 安全理由: Phase 1 只声明数据结构, 无算法变更, 无 codegen/typeck 路径集成, 无回归风险
+
+5W2H:
+- WHAT: src/traits/solver/mod.rs 新模块 — 12 个数据结构 (TraitPredicate + Binder + Obligation + ObligationCause + ObligationQueue + Goal + ParamEnv + InferCtxt + Universe + EvalResult + EvalError + SelectionResult + InferCtxtError) + 42 unit tests
+- WHY: v0.5 P1 Trait Solver 第一步 — 数据结构是后续 Phase 2 (Evaluation) + Phase 3 (Selection) + Phase 4 (Fulfillment) 的输入
+- WHO: PM-A (协调) + DEV-A (实现) + REV-A (审查) + QA-A (测试) — 单 agent 多角色
+- WHEN: v0.5 启动后的第一个 MUV; Phase 2 (Stage 19.2) 依赖 Phase 1 输出
+- WHERE: src/traits/solver/mod.rs + src/traits/mod.rs re-export wiring
+- HOW: (1) 查 rustc 老 solver 3-phase 设计 (2) 设计 data structures 对应 3-phase (3) 一次性定义所有结构 (4) 为每个结构写 ≥3 测试 (5) 整合测试覆盖 3-phase 交互 (6) §3.2 全绿验收
+- HOW MUCH: 4628 tests (was 4586, +42 new solver tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 Phase 1 Trait Solver data structures COMPLETE ✅
+- New module: src/traits/solver/mod.rs (953 LOC, 42 tests)
+- 12 data structures covering all 3 phases (Evaluation/Selection/Fulfillment) inputs
+- §3.2 全绿: 4628 tests (724 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 3/4/6/9/10 + §11 + §12 全部遵循
+
+下一步 (Stage 19.2):
+- MUV: Trait Solver Phase 2 (Evaluation)
+- 实现 evaluate_one(impl, obligation, infer_ctxt) -> EvalResult
+- 用 placeholder 不污染全局推导状态
+- L2 (50-500 LOC, 单文件 src/traits/solver/eval.rs)
+- 输入: Phase 1 数据结构 + v0.4 TraitResolver (impl candidate list)
+- 输出: evaluate_one 函数 + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
+- 验收: §3.2 全绿
+

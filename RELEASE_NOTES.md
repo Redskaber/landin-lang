@@ -3,14 +3,65 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.510.0 (Stage 18.500 — v0.4 FINAL) |
+| **Current version** | v0.511.0 (Stage 19.1 — v0.5 Phase 1 Trait Solver data structures) |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3904 integration tests = 4586 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 724 lib tests + 3904 integration tests = 4628 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2) |
-| **Stage transition** | ✅ APPROVED for v0.5 — §14.5 D1-D8 ALL PASSED, §14.6 cross-stage validation COMPLETE, §14.8 B2 design writeback done |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) complete |
+
+---
+
+## v0.511.0 — v0.5 Phase 1: Trait Solver Data Structures (Stage 19.1)
+
+### Overview
+
+Stage 19.1 implements v0.5 Trait Solver Phase 1 — adds the foundational data structures for trait solver, following rustc's 老 solver 3-phase architecture (Evaluation → Selection → Fulfillment) per `docs/lang-design/03-type-system.md` §5.
+
+Phase 1 only **declares structures** — no algorithm yet. Phase 2+ (Stage 19.2+) will add Evaluation, Selection, and Fulfillment logic.
+
+### New module: `src/traits/solver/mod.rs` (953 LOC, 42 tests)
+
+| Data Structure | Purpose |
+|----------------|---------|
+| `TraitPredicate` | Expresses `T: Trait<args>` bound — atomic unit of trait resolution |
+| `Binder<T>` | Generic binder over bound variables (lifetimes/types) |
+| `Obligation` | Predicate + cause + span — diagnostic-aware predicate |
+| `ObligationCause` | 9-variant enum (LetBinding/FunctionArg/FunctionReturn/MethodCall/ImplBlock/Supertrait/WhereClause/GenericBound/Misc) |
+| `ObligationQueue` | FIFO ready queue + pending queue for ambiguous obligations |
+| `Goal` | Predicate + ParamEnv — Evaluation phase input |
+| `ParamEnv` | Where clauses as assumptions (not proved, assumed true) |
+| `InferCtxt` | Inference context: placeholder universe + substitution table |
+| `Universe` | Universe counter (for higher-ranked bounds) |
+| `EvalResult` | Tri-state: Ok / Ambiguous / Err |
+| `EvalError` | 4-variant enum (SelfTypeMismatch/SubstsMismatch/WrongTrait/WhereClauseNotSatisfied) |
+| `SelectionResult` | Ok(impl) / Ambiguous / NoImpl |
+| `InferCtxtError` | ConflictingBinding (no silent overwrite) |
+
+### Design principles followed
+
+- §1.0 原則 3 (显式 > 隐式): All methods explicitly declared; `ObligationCause` 9 variants all explicit
+- §1.0 原則 4 (报错 > 静默): `InferCtxt::bind_infer_var` returns `Result<(), InferCtxtError>` — conflicting binding errors out, no silent overwrite
+- §1.0 原則 6 (通解 > 特解): `Binder<T>` is generic — covers TraitPredicate + Region + any bound value
+- §1.0 原則 9 (正确 > 妥协): `EvalResult` is tri-state (Ok/Ambiguous/Err), not bool — distinguishes "might match" from "definitely matches"
+- §1.0 原則 10 (唯一可信数据源): `InferCtxt.bound_vars` is the single source of truth for InferVar bindings
+- §11 (接口隔离): solver module is independent, doesn't cross-call typeck/codegen internals
+- §12 (最优 > 最小): One-shot definition of all 12 data structures, avoiding future refactors
+
+### Test results
+
+- 724 lib tests (was 682, +42 new solver tests)
+- 3904 integration tests (unchanged)
+- 4628 total, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+
+### Next stage
+
+Stage 19.2 — Trait Solver Phase 2 (Evaluation):
+- Implement `evaluate_one(impl, obligation, infer_ctxt) -> EvalResult`
+- Use placeholders to avoid polluting global inference state
+- L2 (50-500 LOC, single file `src/traits/solver/eval.rs`)
 
 ---
 
