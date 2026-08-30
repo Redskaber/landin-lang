@@ -97,6 +97,7 @@ impl TestFixture {
                 is_unsafe: false,
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
+                where_clauses: Vec::new(),
             },
         );
         resolver
@@ -176,6 +177,7 @@ impl TestFixture {
                 is_unsafe: false,
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
+                where_clauses: Vec::new(),
             },
         );
         resolver
@@ -193,6 +195,7 @@ impl TestFixture {
                 is_unsafe: false,
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
+                where_clauses: Vec::new(),
             },
         );
         resolver
@@ -282,6 +285,7 @@ impl TestFixture {
                 is_unsafe: false,
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
+                where_clauses: Vec::new(),
             },
         );
 
@@ -296,6 +300,7 @@ impl TestFixture {
                 is_unsafe: false,
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
+                where_clauses: Vec::new(),
             },
         );
 

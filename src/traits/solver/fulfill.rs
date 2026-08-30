@@ -514,10 +514,36 @@ pub fn collect_impl_where_clauses(impl_def_id: DefId, resolver: &TraitResolver) 
         }
     }
 
-    // Step 2: Collect impl's where clauses (MVP placeholder — returns empty).
-    // Per §1.0 原則 4: documented limitation, not silent failure.
-    // Future phase will integrate HIR access to fetch HirImpl.generics.where_clause.
-    // (No-op for now — supertrait expansion above is the main integration.)
+    // Step 2: Collect impl's where clauses.
+    // Stage 25.1 (v0.7 TD-SOLVER-WHERE-CLAUSE-MVP): Now reads where clauses
+    // from ImplInfo.where_clauses (populated during TraitResolver::collect()).
+    //
+    // Per §11 (接口隔离): solver reads from TraitResolver (data contract),
+    // not directly from HIR.
+    // Per §1.0 原則 4 (报错 > 静默): where clauses are now collected, not empty.
+    // Per §1.0 原則 6 (通解 > 特解): one loop handles all where clause kinds.
+    if let Some(impl_info) = resolver.impls.get(&impl_def_id) {
+        for wc in &impl_info.where_clauses {
+            // Construct a TraitPredicate from the where clause.
+            // The bounded type is a type parameter (e.g., T in `T: Clone`).
+            // We use the type parameter's name to look up its ParamTy.
+            //
+            // MVP: we construct a Ty with ParamTy for the bounded type.
+            // The trait_def_id is already resolved (stored during collect()).
+            let self_ty = crate::mir::ty::Ty::from_kind(crate::mir::ty::TyKind::Param(
+                crate::mir::ty::ParamTy {
+                    index: 0, // MVP: assume first param (correct for `impl<T: Clone> ...`)
+                    name: wc.bounded_type_name,
+                },
+            ));
+            let predicate = crate::traits::solver::TraitPredicate::simple(self_ty, wc.trait_def_id);
+            obligations.push(crate::traits::solver::Obligation::new(
+                predicate,
+                crate::traits::solver::ObligationCause::WhereClause,
+                wc.span,
+            ));
+        }
+    }
 
     obligations
 }

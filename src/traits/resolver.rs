@@ -53,6 +53,35 @@ pub struct ImplInfo {
     /// Stage 18.73 P1-H: Associated const names implemented in this impl.
     /// Used to validate that all trait associated consts are provided.
     pub associated_consts: Vec<Spur>,
+    /// Stage 25.1 (v0.7 TD-SOLVER-WHERE-CLAUSE-MVP): Where clauses from the
+    /// impl's generics. Each entry is a (bounded_type_name, trait_def_id) pair
+    /// extracted from `HirImpl.generics.where_clause` during `collect()`.
+    ///
+    /// Per §11 (接口隔离): solver reads this from TraitResolver (data contract),
+    /// not directly from HIR.
+    /// Per §1.0 原則 4 (报错 > 静默): where clauses are now collected, not empty.
+    /// Per §1.0 原則 6 (通解 > 特解): one field stores all where clause kinds.
+    pub where_clauses: Vec<ImplWhereClause>,
+}
+
+/// Stage 25.1 (v0.7): A where clause from an impl block, stored in ImplInfo.
+///
+/// Represents `Type: Trait` where clause on an impl block, e.g.:
+/// `impl<T: Clone> Trait for Vec<T>` → where_clauses = [ImplWhereClause {
+///     bounded_type_name: T's Spur, trait_def_id: Clone's DefId
+/// }]
+///
+/// Per §23: `ImplWhereClause` follows `<Noun>WhereClause` pattern.
+#[derive(Debug, Clone)]
+pub struct ImplWhereClause {
+    /// The Spur (interned symbol) of the bounded type's name.
+    /// For `T: Clone`, this is T's Spur.
+    pub bounded_type_name: Spur,
+    /// The DefId of the trait in the bound.
+    /// For `T: Clone`, this is Clone's DefId.
+    pub trait_def_id: DefId,
+    /// Source span for error reporting.
+    pub span: crate::session::Span,
 }
 
 #[derive(Debug, Default)]
@@ -501,6 +530,41 @@ impl TraitResolver {
                             }
                         }
 
+                        // Stage 25.1 (v0.7 TD-SOLVER-WHERE-CLAUSE-MVP): Collect
+                        // where clauses from the impl's generics.
+                        //
+                        // Per §11 (接口隔离): we extract the data from HIR during
+                        // collect() and store it in ImplInfo, so the solver
+                        // reads it from TraitResolver (data contract), not HIR.
+                        // Per §1.0 原則 6 (通解 > 特解): one loop handles all
+                        // where clause kinds.
+                        // Per §1.0 原則 4 (报错 > 静默): where clauses are now
+                        // collected, not silently empty.
+                        let mut impl_where_clauses: Vec<ImplWhereClause> = Vec::new();
+                        for hir_pred in &i.generics.where_clause {
+                            // Extract the bounded type's name Spur.
+                            let bounded_type_name = match &hir_pred.bounded_ty.kind {
+                                crate::hir::HirTyKind::Path(_, hir_path) => {
+                                    hir_path.segments.last().map(|s| s.ident.name)
+                                }
+                                _ => None,
+                            };
+                            if let Some(bt_name) = bounded_type_name {
+                                // For each trait bound, look up the trait's DefId.
+                                for bound in &hir_pred.bounds {
+                                    if let crate::hir::HirTypeBound::Trait(tc) = bound {
+                                        if let crate::hir::Res::Def(trait_def_id, _) = tc.path.res {
+                                            impl_where_clauses.push(ImplWhereClause {
+                                                bounded_type_name: bt_name,
+                                                trait_def_id,
+                                                span: hir_pred.span,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         let info = ImplInfo {
                             def_id: *def_id,
                             trait_name,
@@ -511,6 +575,7 @@ impl TraitResolver {
                             // for accurate trait error reporting.
                             span: i.span,
                             associated_consts: impl_assoc_consts,
+                            where_clauses: impl_where_clauses,
                         };
 
                         // Stage 5.5: Build and store vtable if this is a trait impl.

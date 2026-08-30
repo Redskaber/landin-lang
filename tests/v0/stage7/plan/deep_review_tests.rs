@@ -136,6 +136,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             is_unsafe: false,
             span: Span::DUMMY,
             associated_consts: Vec::new(),
+            where_clauses: Vec::new(),
         },
     );
     resolver
@@ -255,6 +256,7 @@ fn stage7_deep_review_design_alignment_dyn_trait() {
             is_unsafe: false,
             span: Span::DUMMY,
             associated_consts: Vec::new(),
+            where_clauses: Vec::new(),
         },
     );
     resolver

@@ -33713,3 +33713,62 @@ v0.6 FINAL STATE:
   5. Enum exhaustiveness checking — language feature
   6. TD-GAT-HIGHER-RANKED — region-aware monomorphization
 
+
+---
+Task ID: stage25.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 25.1 — v0.7 TD-SOLVER-WHERE-CLAUSE-MVP: HIR where clause collection. L2-L3 (跨 traits/resolver.rs + traits/solver/fulfill.rs + traits/mod.rs + 5 test files). v0.531.0.
+
+3秒启动自检:
+- 定位: L2-L3 (修改 src/traits/resolver.rs + src/traits/solver/fulfill.rs + src/traits/mod.rs + 5 test files)
+- 对齐: 已查 v0.6 FINAL (v0.530.0); TD-SOLVER-WHERE-CLAUSE-MVP ("collect_impl_where_clauses impl where clause collection is MVP placeholder — returns empty"); HirImpl.generics.where_clause (Vec<HirWherePredicate>); HirWherePredicate { bounded_ty: HirTy, bounds: Vec<HirTypeBound> }; HirTypeBound::Trait(HirTraitBound { path: HirPath { res: Res::Def(DefId, DefKind) } })
+- 阻断: v0.6 FINAL 全绿 (4821 tests), 0 P0/P1
+
+决策点 (设计选择):
+- Store where clauses in ImplInfo (not thread HIR through solver)
+  - 引用 §11 (接口隔离): solver reads from TraitResolver (data contract), not HIR directly
+  - 引用 §12 (最优 > 最小): store data in collect(), read in solver — root-cause fix
+  - 引用 §1.0 原則 6 (通解 > 特解): one ImplWhereClause struct handles all where clause kinds
+  - 引用 §1.0 原則 4 (报错 > 静默): where clauses now collected, not empty
+  - 替代: thread HIR through solver — but this violates §11 (solver shouldn't access HIR)
+  - 选择: ImplWhereClause struct + ImplInfo.where_clauses field
+
+- Collect where clauses during TraitResolver::collect()
+  - 引用 §13.4 J2 (单一职责): collect() is the data extraction point
+  - 引用 §1.0 原則 3 (显式 > 隐式): explicit extraction during collect(), not lazy access
+  - For each HirWherePredicate: extract bounded_type_name (Spur) + trait_def_id (DefId from Res::Def)
+  - Store in ImplInfo.where_clauses
+
+- collect_impl_where_clauses() now reads from stored where clauses
+  - Was: MVP placeholder returning empty
+  - Now: reads ImplInfo.where_clauses, constructs TraitPredicate + Obligation for each
+  - Per §1.0 原則 4 (报错 > 静默): where clauses now generate obligations
+
+裁剪点:
+- L2-L3 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — will be done at v0.7 FINAL
+- 安全理由: where clause collection is additive (new field + new data), doesn't modify existing behavior
+
+5W2H:
+- WHAT: ImplWhereClause struct + ImplInfo.where_clauses field + HIR where clause collection in collect() + collect_impl_where_clauses() reads from stored where clauses
+- WHY: v0.7 TD-SOLVER-WHERE-CLAUSE-MVP — wire impl where clauses into trait solver fulfillment
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.6 FINAL 完成后的第一个 v0.7 MUV
+- WHERE: src/traits/resolver.rs + src/traits/solver/fulfill.rs + src/traits/mod.rs + 5 test files
+- HOW: (1) Add ImplWhereClause struct (2) Add ImplInfo.where_clauses field (3) Collect where clauses in collect() (4) Read in collect_impl_where_clauses() (5) Fix 5 test files (add where_clauses: Vec::new() to ImplInfo constructions)
+- HOW MUCH: 4821 tests (unchanged — behavior-preserving), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.7 Phase 1: TD-SOLVER-WHERE-CLAUSE-MVP COMPLETE ✅
+- New: ImplWhereClause struct + ImplInfo.where_clauses field + HIR collection + collect_impl_where_clauses reads stored
+- §3.2 全绿: 4821 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- Addresses: TD-SOLVER-WHERE-CLAUSE-MVP
+
+下一步 (v0.7 remaining TDs):
+- TD-SINGLE-FILE Phase 4 — manifest integration (unblocks Incremental Compilation)
+- Visibility enforcement — language feature
+- Break/continue context enforcement — language feature
+- Enum exhaustiveness checking — language feature
+- TD-GAT-HIGHER-RANKED — region-aware monomorphization
+

@@ -64,6 +64,7 @@ fn make_resolver_with_user_trait(
             is_unsafe: false,
             span: Span::DUMMY,
             associated_consts: Vec::new(),
+            where_clauses: Vec::new(),
         },
     );
     resolver
@@ -223,6 +224,7 @@ fn stage7_user_defined_trait_multiple_traits() {
             is_unsafe: false,
             span: Span::DUMMY,
             associated_consts: Vec::new(),
+            where_clauses: Vec::new(),
         },
     );
     resolver
@@ -321,6 +323,7 @@ fn stage7_user_defined_trait_multiple_types_same_trait() {
             is_unsafe: false,
             span: Span::DUMMY,
             associated_consts: Vec::new(),
+            where_clauses: Vec::new(),
         },
     );
     resolver

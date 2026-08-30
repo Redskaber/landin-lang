@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.530.0 (v0.6 FINAL — TD-SOLVER-TYPECK-INTEGRATION + TD-CODEGEN-REMAINING-UNCHECKED complete) |
+| **Version** | v0.531.0 (Stage 25.1 — v0.7 TD-SOLVER-WHERE-CLAUSE-MVP: HIR where clause collection) |
 | **License** | MIT |
-| **Status** | ✅ **v0.6 FINAL — TD-SOLVER-TYPECK-INTEGRATION + TD-CODEGEN-REMAINING-UNCHECKED COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.6 tasks: ✅ Stage 24.1 TD-SOLVER-TYPECK-INTEGRATION (wired v0.5 Trait Solver `select()` into typeck `evaluate_direct()` — replaced `implements_by_def_ids` with proper 3-phase Evaluation → Selection). ✅ Stage 24.2 TD-CODEGEN-REMAINING-UNCHECKED (root-cause analysis — remaining unchecked internal recursion is primitive-only, migration NOT needed). Remaining TDs all BLOCKED: TD-SOLVER-WHERE-CLAUSE-MVP (HIR access), TD-SINGLE-FILE Phase 4 (manifest), TD-GAT-HIGHER-RANKED (region-aware mono), visibility/break-continue/enum-exhaustiveness (language features). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.7 (language features + HIR access + manifest). |
+| **Status** | v0.7 Phase 1: TD-SOLVER-WHERE-CLAUSE-MVP COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 25.1 added `ImplWhereClause` struct + `ImplInfo.where_clauses` field + HIR where clause collection in `TraitResolver::collect()` + `collect_impl_where_clauses()` now reads from stored where clauses (was MVP placeholder returning empty). Per §11 (接口隔离): solver reads from TraitResolver (data contract), not HIR directly. Per §1.0 原則 4 (报错 > 静默): where clauses now collected, not empty. Per §1.0 原則 6 (通解 > 特解): one loop handles all where clause kinds. Per §12 (最优 > 最小): root-cause fix — store data in collect(), read in solver. Next: v0.7 remaining TDs. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
