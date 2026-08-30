@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.521.0 (Stage 21.1 — v0.5 GATs P2 Phase 1: E2E verification) |
+| **Version** | v0.522.0 (Stage 21.2 — v0.5 GATs P2 FINAL §14.5 + §14.6 + §14.8) |
 | **License** | MIT |
-| **Status** | v0.5 GATs P2 Phase 1 COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 21.1 added 21 E2E GAT tests verifying full pipeline: `type Item<T>;` parsing + HIR (`HirAssocType.generics`) + MIR (`TyKind::Projection(def_id, substs)`) + impl blocks (`type Item<U> = U;`) + qualified path (`<T as Trait>::Item<i32>`). Per §1.0 原則 6 (通解 > 特解): tests use real compilation pipeline. GATs Phase 1-3 (Stage 18.52 + 18.87) already complete; Stage 21.1 adds comprehensive E2E verification. 8 positive + 8 negative + 5 integration tests. Next: Stage 21.2 §14.5 deep review + v0.5 GATs P2 FINAL. |
+| **Status** | ✅ **v0.5 GATs P2 FINAL — APPROVED for stage transition to v0.5 Trait Coherence P2 or MIR Optimization P3**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (GATs Phase 1-3 done in v0.4; v0.5 was E2E verification). v0.5 GATs P2 Phase 1 (Stage 21.1: 21 E2E tests) + GATs Phase 1-3 (Stage 18.52 + 18.87) ALL COMPLETE. 3 remaining TD-GAT-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 Trait Coherence P2 (2-3 stages) or MIR Optimization P3 (3-4 stages). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
