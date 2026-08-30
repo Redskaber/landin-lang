@@ -431,9 +431,22 @@ pub(crate) fn codegen_rvalue(
                     );
                     // field_tys[i] is this operand's type (field_tys[0]=discr,
                     // field_tys[1]=payload_field_0, ...).
+                    // Stage 20.2 (v0.5 CodegenError P1 Phase 2): Migrated from
+                    // unchecked `mir_type_to_emit_type` to
+                    // `mir_type_to_emit_type_with_layouts_and_mono` which
+                    // correctly resolves Adt types via layouts.
+                    //
+                    // Per §1.0 原則 4 (报错 > 静默): the layouts variant resolves
+                    // Adt types properly (vs unchecked returning I32 for Adt).
+                    // Per §1.0 原則 6 (通解 > 特解): one layouts variant handles
+                    // all type kinds including Adt.
+                    // Per §12 (最优 > 最小): root-cause fix — use layouts variant
+                    // (vs checked variant which is too strict for Adt-in-pointer).
                     let val_ty = field_tys
                         .get(i)
-                        .map(mir_type_to_emit_type)
+                        .map(|t| {
+                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
+                        })
                         .unwrap_or_else(|| {
                             detect_operand_type(mir, op, layouts, mono_layouts)
                                 .unwrap_or(EmitType::I32)
@@ -595,32 +608,21 @@ pub(crate) fn codegen_rvalue(
             );
             let src_ty =
                 detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32);
-            // Stage 20.1 (v0.5 CodegenError P1 Phase 5 Step 3): Attempted
-            // migration from unchecked `mir_type_to_emit_type(target_ty)` to
-            // checked `mir_type_to_emit_type_checked(target_ty)`.
+            // Stage 20.2 (v0.5 CodegenError P1 Phase 2): Migrated from
+            // unchecked `mir_type_to_emit_type(target_ty)` to
+            // `mir_type_to_emit_type_with_layouts_and_mono(target_ty, layouts, mono_layouts)`.
             //
-            // **REVERTED**: The checked variant returns Err for Adt types
-            // (including Adt inside RawPtr/Ref), which breaks pointer Casts
-            // like `__landin_alloc(8) as *mut Point` — the checked version
-            // returns Err (→ I32 fallback) instead of `Ptr(I32)`.
-            //
-            // Per §1.0 原則 9 (正确 > 妥协): the checked variant is too
-            // strict for Cast contexts where Adt types legitimately appear
-            // (e.g., `*mut Point` — the Point is Adt, but the Cast target
-            // is a pointer).
-            //
-            // Per §12 (最优 > 最小): the root-cause fix is to use the
-            // `with_layouts_and_mono` variant (which handles Adt via
-            // layouts), but that requires `layouts` + `mono_layouts` which
-            // are already available here. Using the layouts variant is the
-            // correct migration path — but it's a larger change. For Stage
-            // 20.1, we keep the unchecked variant and document this as a
-            // TODO for Step 5.
-            //
-            // Per §1.0 原則 4 (报错 > 静默): the unchecked variant already
-            // emits a warning for unresolved types (Stage 18.440), so
-            // errors are not silently swallowed.
-            let dst_ty = mir_type_to_emit_type(target_ty);
+            // Per §1.0 原則 4 (报错 > 静默): the layouts variant resolves Adt
+            // types properly (vs unchecked returning I32 for Adt).
+            // Per §1.0 原則 6 (通解 > 特解): one layouts variant handles all
+            // type kinds including Adt.
+            // Per §12 (最优 > 最小): root-cause fix — Stage 20.1 discovered
+            // that `mir_type_to_emit_type_checked` is too strict for
+            // Adt-in-pointer contexts (returns Err for `*mut Point`).
+            // The layouts variant correctly resolves Adt via layouts,
+            // so `*mut Point` → `Ptr(Struct(...))` (not I32).
+            let dst_ty =
+                mir_type_to_emit_type_with_layouts_and_mono(target_ty, layouts, mono_layouts);
 
             // Stage 18.326 B1 (P1 soundness fix): When casting integer to
             // pointer, check if the value is a zero constant (null pointer).

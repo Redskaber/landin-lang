@@ -52,7 +52,17 @@ pub(crate) fn emit_drop_glue_functions(
     adt_layouts: &crate::mir::body::AdtLayouts,
     emitter: &mut dyn Emitter,
 ) {
-    use crate::codegen::emitter::{mir_type_to_emit_type, EmitType};
+    use crate::codegen::emitter::EmitType;
+    // Stage 20.2 (v0.5 CodegenError P1 Phase 2): Migrated from
+    // `mir_type_to_emit_type` (unchecked) to
+    // `mir_type_to_emit_type_with_layouts` which resolves Adt types via layouts.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): layouts variant resolves Adt properly
+    // (vs unchecked returning I32 for Adt).
+    // Per §1.0 原則 6 (通解 > 特解): one layouts variant handles all type kinds.
+    // Per §12 (最优 > 最小): root-cause fix — drop_glue has adt_layouts but
+    // not mono_layouts, so use the _with_layouts variant (no mono).
+    use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts;
     use crate::mir::body::AdtLayout;
     use crate::mir::drop_elaboration::ty_needs_drop;
     use crate::mir::ty::{Ty, TyKind};
@@ -143,7 +153,8 @@ pub(crate) fn emit_drop_glue_functions(
                                 TyKind::Adt(fid, _) => Some(*fid),
                                 _ => None,
                             };
-                            let field_emit_ty = mir_type_to_emit_type(field_ty);
+                            let field_emit_ty =
+                                mir_type_to_emit_type_with_layouts(field_ty, adt_layouts);
                             fields_to_drop.push((idx as u32, field_def_id, field_emit_ty));
                         }
                     }
@@ -191,8 +202,10 @@ pub(crate) fn emit_drop_glue_functions(
         // Build the struct's LLVM type string for GEP (from field types).
         let struct_llvm_ty = match &layout {
             Some(AdtLayout::Struct { field_tys }) => {
-                let field_emit_tys: Vec<EmitType> =
-                    field_tys.iter().map(mir_type_to_emit_type).collect();
+                let field_emit_tys: Vec<EmitType> = field_tys
+                    .iter()
+                    .map(|t| mir_type_to_emit_type_with_layouts(t, adt_layouts))
+                    .collect();
                 EmitType::Struct(field_emit_tys)
             }
             Some(AdtLayout::Enum {
@@ -200,10 +213,13 @@ pub(crate) fn emit_drop_glue_functions(
                 variant_payloads,
             }) => {
                 // Flatten: { discriminant, all variant payload fields... }
-                let mut field_emit_tys = vec![mir_type_to_emit_type(discriminant_ty)];
+                let mut field_emit_tys = vec![mir_type_to_emit_type_with_layouts(
+                    discriminant_ty,
+                    adt_layouts,
+                )];
                 for payload in variant_payloads {
                     for t in payload {
-                        field_emit_tys.push(mir_type_to_emit_type(t));
+                        field_emit_tys.push(mir_type_to_emit_type_with_layouts(t, adt_layouts));
                     }
                 }
                 EmitType::Struct(field_emit_tys)
@@ -269,7 +285,7 @@ pub(crate) fn emit_drop_glue_functions(
             let discr_ty = match &layout {
                 Some(AdtLayout::Enum {
                     discriminant_ty, ..
-                }) => mir_type_to_emit_type(discriminant_ty),
+                }) => mir_type_to_emit_type_with_layouts(discriminant_ty, adt_layouts),
                 _ => EmitType::I32,
             };
             let discr_val = emitter.emit_load(&discr_ty, &discr_addr);

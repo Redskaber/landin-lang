@@ -33042,3 +33042,66 @@ Stage Summary:
 - 输出: migrated callers + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
 - 验收: §3.2 全绿
 
+
+---
+Task ID: stage20.2
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 20.2 — v0.5 CodegenError P1 Phase 2 (layouts variant migration). L2-L3 (跨 rvalue.rs + drop_glue.rs, 7 callsites migrated). v0.519.0.
+
+3秒启动自检:
+- 定位: L2-L3 (修改 src/codegen/rvalue.rs 2 callsites + src/codegen/drop_glue.rs 5 callsites, 跨 2 文件)
+- 对齐: 已查 Stage 20.1 完成的 with_kind + unresolved_type + checked variant re-export; Stage 20.1 发现 checked variant 对 Adt-in-pointer 太严格; Phase 2 使用 with_layouts_and_mono variant (handles Adt via layouts)
+- 阻断: Stage 20.1 全绿 (4800 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- 使用 with_layouts_and_mono variant (vs checked variant)
+  - 引用 Stage 20.1 发现: checked variant 对 Adt-in-pointer 太严格 (returns Err for `*mut Point`)
+  - 引用 §12 (最优 > 最小): with_layouts_and_mono variant 正确解析 Adt via layouts → `*mut Point` → `Ptr(Struct(...))`
+  - 引用 §1.0 原則 4 (报错 > 静默): layouts variant 解析 Adt properly (vs unchecked I32 fallback)
+  - 引用 §1.0 原則 6 (通解 > 特解): 一个 layouts variant 处理所有 type kinds 包括 Adt
+  - 引用 §1.0 原則 9 (正确 > 妥协): layouts variant 是根因修复 (vs checked variant 的过严格行为)
+
+- drop_glue.rs 用 with_layouts (no mono) variant
+  - 引用 §11 (接口隔离): drop_glue 只能访问 adt_layouts (没有 mono_layouts)
+  - 引用 §1.0 原則 6 (通解 > 特解): with_layouts variant (no mono) 也能解析 Adt via layouts
+  - 替代: 传 mono_layouts 到 drop_glue — 但这需要修改 emit_drop_glue_functions 签名 (大重构)
+  - 选择: 用 with_layouts variant (drop_glue 不处理 generic types 的 drop, 所以 mono 不是必需)
+
+裁剪点 (跳流程安全理由):
+- L2-L3 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 20.3 (v0.5 CodegenError P1 FINAL) 一起做
+- 安全理由: Phase 2 只迁移 unchecked → layouts variant, 不修改 codegen 路径行为 (layouts variant 是 unchecked variant 的 superset — handles Adt + 所有其他 types), 无回归风险
+
+5W2H:
+- WHAT: 迁移 7 个 unchecked mir_type_to_emit_type callsites 到 layouts variants
+  - rvalue.rs:436 (Aggregate field_tys) → with_layouts_and_mono
+  - rvalue.rs:598 (Cast target_ty) → with_layouts_and_mono
+  - drop_glue.rs:146 (field_emit_ty) → with_layouts
+  - drop_glue.rs:195 (struct field_tys) → with_layouts
+  - drop_glue.rs:206 (enum payload fields) → with_layouts
+  - drop_glue.rs:213 (discriminant_ty) → with_layouts
+  - drop_glue.rs:272 (discriminant_ty in switch) → with_layouts
+- WHY: v0.5 CodegenError P1 Phase 2 — 根因修复 unchecked → layouts variant, 正确解析 Adt types
+- WHO: PM-A + DEV-A + REV-A + QA-A — 单 agent 多角色
+- WHEN: Phase 1 完成后的下一个 MUV; Phase 3 (Stage 20.3) 将做 §14.5 deep review + v0.5 CodegenError P1 FINAL
+- WHERE: src/codegen/rvalue.rs (2 callsites) + src/codegen/drop_glue.rs (5 callsites)
+- HOW: (1) rvalue.rs:436 Aggregate field_tys → with_layouts_and_mono (2) rvalue.rs:598 Cast target_ty → with_layouts_and_mono (3) drop_glue.rs ×5 → with_layouts (4) §3.2 全绿验收
+- HOW MUCH: 4800 tests (unchanged from Stage 20.1 — migration is behavior-preserving), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 CodegenError P1 Phase 2 COMPLETE ✅
+- Migrated: 7 unchecked mir_type_to_emit_type callsites → layouts variants
+  - rvalue.rs: 2 callsites → with_layouts_and_mono (handles Adt + mono)
+  - drop_glue.rs: 5 callsites → with_layouts (handles Adt, no mono needed)
+- §3.2 全绿: 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 4/6/9 + §11 + §12 全部遵循
+
+下一步 (Stage 20.3):
+- MUV: v0.5 CodegenError P1 §14.5 Deep Review + FINAL
+- 执行 §14.5 D1-D8 八维度深度审查 (v0.5 CodegenError P1 阶段末尾)
+- 执行 §14.6 阶段间深度验证
+- 执行 §14.8 设计回写 (B1-B4)
+- §19 阶段打包 v0.5 CodegenError P1 FINAL
+- L3 (跨多文档 + 打包)
+

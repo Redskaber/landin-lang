@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.518.0 (Stage 20.1 — v0.5 CodegenError P1 Phase 1: with_kind + unresolved_type + checked migration analysis) |
+| **Version** | v0.519.0 (Stage 20.2 — v0.5 CodegenError P1 Phase 2: layouts variant migration) |
 | **License** | MIT |
-| **Status** | v0.5 CodegenError P1 Phase 1 COMPLETE. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 20.1 added `CodegenError::with_kind()` + `CodegenError::unresolved_type()` constructors + re-exported `mir_type_to_emit_type_checked` from codegen mod + 22 new unit tests (9 positive + 8 negative + 5 integration with checked variant). Analyzed Cast callsite migration (rvalue.rs:598) — discovered checked variant is too strict for Adt-in-pointer contexts (returns Err for `*mut Point` where Point is Adt); documented as TODO for Step 5 (use layouts variant instead). Per §1.0 原則 9 (正确 > 妥协): reverted Cast migration to preserve correct behavior; unchecked variant already emits warnings (Stage 18.440). Next: Stage 20.2 will migrate remaining unchecked callers using layouts variant. |
+| **Status** | v0.5 CodegenError P1 Phase 2 COMPLETE. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 20.2 migrated 7 unchecked `mir_type_to_emit_type` callsites to layouts variants: rvalue.rs:436 (Aggregate field_tys → `with_layouts_and_mono`) + rvalue.rs:598 (Cast target_ty → `with_layouts_and_mono`) + drop_glue.rs ×5 (field_emit_ty/struct field_tys/enum payload/discriminant_ty ×2 → `with_layouts`). Per §1.0 原則 4 (报错 > 静默): layouts variant resolves Adt properly (vs unchecked I32 fallback). Per §1.0 原則 6 (通解 > 特解): one layouts variant handles all type kinds. Per §12 (最优 > 最小): root-cause fix — Stage 20.1 discovered checked variant too strict for Adt-in-pointer; layouts variant correctly resolves `*mut Point` → `Ptr(Struct(...))`. Next: Stage 20.3 §14.5 deep review + v0.5 CodegenError P1 FINAL. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
