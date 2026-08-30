@@ -195,10 +195,13 @@ impl TypeChecker {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
 
-            // Stage 18.396 (v0.5+ Phase 2 step 1): Phase 3.5 step 2 STILL required.
-            // expected_ty fallback in lower_expr_to_operand Field arm doesn't help
-            // because callers pass None for expected_ty (Phase 2 threading incomplete).
-            // Full Phase 2 requires threading expected_ty through ALL lower_expr_* callsites.
+            // Stage 18.398: Phase 3.5 step 2 STILL required (5 failures).
+            // HIR param type fallback in find_receiver_struct_def_id +
+            // find_receiver_substs resolves struct DefId + substs, but
+            // step 2 also writes dest_local.ty for non-field-load paths
+            // (e.g., `let p = b.a + 1` where dest is not a direct field load).
+            // The 5 failures are typeck error reporting (missed type errors
+            // when dest_local.ty is Infer). Full fix needs Phase 2 threading.
             self.writeback_field_load_locals_with_table(mir, table);
         }
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.

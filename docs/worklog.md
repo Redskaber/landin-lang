@@ -29950,3 +29950,127 @@ Stage Summary:
   - lower_method_call_expr (method_call_lower.rs)
   - 等 (~51 callsites)
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.397
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.397 — v0.5+ Phase 2 step 2: let binding expected_ty → field access 路径分析 + 收敛. L2 (根因分析). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (根因分析 — 代码阅读 + 判断)
+- 对齐: Stage 18.396 确认 callers 传 None; §20.6 实验方法论
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: Stage 18.396 说 "callers 传 None" — 深挖为什么
+- 引用 §20: 同类路径深挖 — let binding 路径如何传 expected_ty
+- 引用 §5.2: 如果 Phase 2 仍无法消除 step 2 → 收敛
+
+裁剪点:
+- L2 根因分析 — 代码阅读; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 分析 let binding 路径如何传 expected_ty 到 field access
+- WHY: Stage 18.396 发现 callers 传 None — 需要确认 let binding 是否已传
+- HOW: 代码阅读 control_flow.rs:325 — 已传 expected_ty (当有类型注解时)
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures
+
+Work Log:
+- 代码分析:
+  - control_flow.rs:325 — `lower_expr_to_operand(cx, init, expected_ty.as_ref())` — **已传 expected_ty**
+  - control_flow.rs:313-321 — expected_ty 只在 `local.ty` 存在且有类型注解时才非 None
+  - 对于 `let p = b.a`（无类型注解）→ expected_ty = None → Field arm fallback 不触发
+- 根因确认:
+  * `let p: i64 = b.a` — expected_ty = Some(i64) → Field arm fallback 触发 ✅
+  * `let p = b.a` — expected_ty = None → Field arm fallback 不触发 ❌
+  * 即使 expected_ty = Some(i64), 它是 **dest** 的类型, 不是 **field** 的类型
+  * expected_ty fallback 给 field_ty 赋值 dest 的类型 — 但 field 类型可能与 dest 不同
+  * 例如: `let p: *mut i64 = h.ptr` — expected_ty = *mut i64, field_ty 应该也是 *mut i64 (但 resolve_field_type 返回的应该是这个)
+  * 真正问题: 函数参数类型在 lower 时是 Infer → resolve_field_type 返回 None
+  * Phase 2 (expected_ty propagation) 只能在有类型注解时帮助, 不能在无注解时帮助
+- §5.2 收敛:
+  * Phase 2 step 1 (expected_ty fallback) — 不完整 (callers 传 None)
+  * Phase 2 step 2 (let binding expected_ty) — 已传, 但只在有注解时
+  * Phase 2 完整实施需要: 让函数参数类型在 lower 时不是 Infer (L4 架构变更)
+  * 连续多轮确认 → §5.2 收敛
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Stage Summary:
+- Phase 2 分析完成 — expected_ty threading 已部分实现 (let binding 有注解时)
+- 真正根因: 函数参数类型在 lower 时是 Infer → resolve_field_type 返回 None
+- Phase 2 完整实施需要让参数类型在 lower 时不是 Infer (L4 架构变更)
+- §5.2 收敛 — v0.5+ Phase 1+3+2 已达极限
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+下一步:
+- v0.5+ Phase 2 完整实施 (L4): 让函数参数类型在 MIR lower 时不是 Infer — 需要重新排序 driver (lower after resolve, not before)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.398
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.398 — v0.5+ Phase 2 step 3: HIR param type fallback in find_receiver_struct_def_id + find_receiver_substs. L2 (架构改进). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (HIR fallback — ~60 行新增)
+- 对齐: §1.6 终极检验 — 不接受 "需要 L4 driver reorder" 的结论, 深挖 L2 修复
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: Stage 18.397 说 "需要 L4 driver reorder" — 深挖是否有 L2 修复
+- 引用 §1.0 原則 10 (唯一可信数据源): HIR 是类型注解的唯一来源; MIR local_decl.ty 是派生
+- 引用 §12 (最优 > 最小): 从 HIR 解析 > driver reorder
+
+裁剪点:
+- L2 — HIR fallback 在现有函数中; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 在 find_receiver_struct_def_id + find_receiver_substs 添加 HIR param type fallback
+- WHY: 当 ld.ty 是 Infer 时, 从 HIR param.ty 解析 struct DefId + substs
+- HOW: 遍历 hir.bodies 查找匹配 hir_id 的 param, 用 lower_hir_ty_to_mir_ty_with_hir 解析
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §1.6 终极检验:
+  - Stage 18.397 说 "需要 L4 driver reorder" — 表面结论
+  - 深挖: find_receiver_struct_def_id 可以从 HIR 解析, 不需要 driver reorder
+  - §1.0 原則 10: HIR 是类型注解的唯一来源 — 应该直接从 HIR 读取
+- 实现:
+  - find_receiver_struct_def_id: 添加 HIR fallback (field_resolution.rs:270-298)
+    - 当 ld.ty 是 Infer 时, 遍历 hir.bodies 查找匹配 hir_id 的 param
+    - 用 lower_hir_ty_to_mir_ty_with_hir 解析 param.ty
+    - 返回 Adt DefId
+  - find_receiver_substs: 添加 HIR fallback (field_resolution.rs:97-125)
+    - 同样的逻辑, 返回 substs
+- 实验:
+  - 禁用 Phase 3.5 step 2 + 两个 HIR fallback → 5 失败
+  - 原因: step 2 也写 dest_local.ty 用于非 field-load 路径 (如 `let p = b.a + 1`)
+  - 5 失败是 typeck 错误报告 (当 dest_local.ty 是 Infer 时, typeck 漏报错误)
+- 恢复 step 2 + 保留 HIR fallback (无害, 改进了 resolve_field_type 成功率)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 架构影响:
+  - resolve_field_type 现在能从 HIR 解析 — 减少返回 None 的频率
+  - 但 Phase 3.5 step 2 仍必需 — 它写 dest_local.ty 用于 typeck 错误报告
+  - 真正根因: typeck 需要 dest_local.ty 是具体类型才能检测类型错误
+  - 完整修复需要 Phase 2 (expected_ty propagation) 或让 typeck 不依赖 dest_local.ty
+
+Stage Summary:
+- HIR param type fallback added ✅ (find_receiver_struct_def_id + find_receiver_substs)
+- Phase 3.5 step 2 STILL required (5 failures — typeck error reporting)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §1.6 终极检验: 不接受 L4 结论, 深挖 L2 修复
+  * §1.0 原則 10: HIR 是类型注解的唯一来源
+  * §12: 从 HIR 解析 > driver reorder
+  * §20.6: 实验性探索方法论
+- 架构洞察:
+  * HIR fallback 让 resolve_field_type 从 HIR 解析 — 减少返回 None
+  * 但 typeck 错误报告依赖 dest_local.ty — step 2 仍必需
+  * 完整修复: Phase 2 (expected_ty propagation) 或让 typeck 从 HIR 读取
+
+下一步:
+- v0.5+ Phase 2 完整实施: threading expected_ty 通过 ALL lower_expr_* callsites
+- 或: 让 typeck 从 HIR 读取 dest_local 类型 (而非从 MIR local_decl.ty)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5

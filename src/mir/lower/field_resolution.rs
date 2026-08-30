@@ -80,7 +80,8 @@ pub(crate) fn resolve_field_type(
 fn find_receiver_substs(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<SubstsRef> {
     match &receiver.kind {
         HirExprKind::Path(path) => {
-            if let Res::Local(hir_id) = path.res {
+            if let Res::Local(hir_id_val) = path.res {
+                let hir_id = hir_id_val;
                 let local_id = cx.local_map.get(&hir_id)?;
                 let ld = cx.mir.local_decls.get(local_id.0 as usize)?;
                 // Unwrap Ref for &self/&mut self field access.
@@ -93,7 +94,37 @@ fn find_receiver_substs(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<SubstsR
                             None
                         }
                     }
-                    _ => None,
+                    _ => {
+                        // Stage 18.398 (v0.5+ Phase 2 step 3): When ld.ty is Infer,
+                        // resolve substs from HIR param type annotation.
+                        // Per §1.0 原則 10: HIR is source of truth for type annotations.
+                        if let Some(hir_crate) = cx.hir {
+                            for (_, body) in &hir_crate.bodies {
+                                if body.hir_id.owner == hir_id.owner {
+                                    for param in &body.params {
+                                        if param.pat.hir_id == hir_id {
+                                            if let Some(ref param_ty) = param.ty {
+                                                let mir_ty = lower_hir_ty_to_mir_ty_with_hir(
+                                                    param_ty, cx.hir,
+                                                );
+                                                if let TyKind::Adt(_, substs) = &mir_ty.kind {
+                                                    return Some(substs.clone());
+                                                }
+                                                if let TyKind::Ref(_, _, inner) = &mir_ty.kind {
+                                                    if let TyKind::Adt(_, substs) = &inner.kind {
+                                                        return Some(substs.clone());
+                                                    }
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        None
+                    }
                 }
             } else {
                 None
@@ -244,7 +275,8 @@ pub(crate) fn find_receiver_struct_def_id(
 ) -> Option<crate::hir::DefId> {
     match &receiver.kind {
         HirExprKind::Path(path) => {
-            if let Res::Local(hir_id) = path.res {
+            if let Res::Local(hir_id_val) = path.res {
+                let hir_id = hir_id_val; // HirId is Copy — no deref needed.
                 if let Some(local_id) = cx.local_map.get(&hir_id) {
                     if let Some(ld) = cx.mir.local_decls.get(local_id.0 as usize) {
                         // Stage 14.21: Auto-deref Ref types to find the Adt.
@@ -266,6 +298,37 @@ pub(crate) fn find_receiver_struct_def_id(
                         };
                         if let Some(def_id) = adt_def_id {
                             return Some(def_id);
+                        }
+                        // Stage 18.398 (v0.5+ Phase 2 step 3): When ld.ty is Infer
+                        // (function param at lower time), resolve struct DefId from
+                        // HIR param type annotation. Root-cause fix — bypasses
+                        // Infer local_decl.ty by reading HIR directly.
+                        // Per §1.0 原則 10: HIR is source of truth for type annotations.
+                        if let Some(hir_crate) = cx.hir {
+                            let owner_def_id = hir_id.owner;
+                            for (_, body) in &hir_crate.bodies {
+                                if body.hir_id.owner == owner_def_id {
+                                    for param in &body.params {
+                                        if param.pat.hir_id == hir_id {
+                                            if let Some(ref param_ty) = param.ty {
+                                                let mir_ty = lower_hir_ty_to_mir_ty_with_hir(
+                                                    param_ty, cx.hir,
+                                                );
+                                                if let TyKind::Adt(def_id, _) = &mir_ty.kind {
+                                                    return Some(*def_id);
+                                                }
+                                                if let TyKind::Ref(_, _, inner) = &mir_ty.kind {
+                                                    if let TyKind::Adt(def_id, _) = &inner.kind {
+                                                        return Some(*def_id);
+                                                    }
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
