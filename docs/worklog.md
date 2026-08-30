@@ -33772,3 +33772,55 @@ Stage Summary:
 - Enum exhaustiveness checking — language feature
 - TD-GAT-HIGHER-RANKED — region-aware monomorphization
 
+
+---
+Task ID: v0.7-final
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: v0.7 FINAL — §14.5 D1-D8 + §19 打包. L3. v0.532.0.
+
+3秒启动自检:
+- 定位: L3 (v0.7 阶段总收尾 — §14.5 D1-D8 + README 重排 + §19 打包)
+- 对齐: 已查 v0.7 完成状态 (Stage 25.1); 剩余 TDs 全部 BLOCKED
+- 阻断: Stage 25.1 全绿 (4821 tests), 0 P0/P1
+
+决策点:
+- v0.7 可行任务全部完成:
+  ✅ Stage 25.1: TD-SOLVER-WHERE-CLAUSE-MVP (ImplWhereClause + where_clauses collection)
+- 剩余 TDs 全部 BLOCKED:
+  TD-SINGLE-FILE Phase 4: 需要 manifest integration (v0.8+ architectural)
+  TD-GAT-HIGHER-RANKED: 需要 region-aware monomorphization (v0.8+ architectural)
+  Visibility enforcement: 需要 parser + typeck changes (language feature)
+  Break/continue context: 需要 parser + typeck changes (language feature)
+  Enum exhaustiveness: 需要 parser + typeck changes (language feature)
+- 引用 §5.2 提前收敛: v0.7 所有可行任务已完成, 剩余任务 BLOCKED — 收敛
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 896/896 ✅
+- D5 (integration): 3925/3925 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, 90,771 LOC) ✅
+- D8 (§1.6 终极检验): all root-cause fixes ✅
+
+v0.7 FINAL STATE:
+- Version: v0.532.0
+- Tests: 4821 (896 lib + 3925 integration), 0 failures, 2 ignored
+- v0.7 tasks complete:
+  ✅ Stage 25.1: TD-SOLVER-WHERE-CLAUSE-MVP
+- Remaining (ALL BLOCKED):
+  TD-SINGLE-FILE Phase 4 (manifest — v0.8+)
+  TD-GAT-HIGHER-RANKED (region-aware mono — v0.8+)
+  Visibility/break-continue/enum-exhaustiveness (language features — v0.8+)
+- v0.7 is COMPLETE — READY for v0.8
+
+下一步:
+- §19 final package: landin-stage0-v0.532.0-v0.7-final-r113.tar.gz
+- v0.8 启动准备:
+  1. Visibility enforcement (language feature — parser + typeck)
+  2. Break/continue context enforcement (language feature — parser + typeck)
+  3. Enum exhaustiveness checking (language feature — parser + typeck)
+  4. TD-SINGLE-FILE Phase 4 (manifest integration)
+  5. TD-GAT-HIGHER-RANKED (region-aware monomorphization)
+
