@@ -767,6 +767,8 @@ impl SelectionResult {
 
 // Stage 19.2 (v0.5 Phase 2): Evaluation phase — evaluate_one + evaluate.
 pub mod eval;
+// Stage 19.3 (v0.5 Phase 3): Selection phase — select + bind_inference_vars.
+pub mod select;
 
 // =====================================================================
 // Tests

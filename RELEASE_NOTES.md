@@ -3,86 +3,84 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.512.0 (Stage 19.2 — v0.5 Phase 2 Trait Solver Evaluation) |
+| **Current version** | v0.513.0 (Stage 19.3 — v0.5 Phase 3 Trait Solver Selection) |
 | **Date** | 2026-08-30 |
-| **Test count** | 754 lib tests + 3904 integration tests = 4658 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 784 lib tests + 3904 integration tests = 4688 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) complete |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) complete |
 
 ---
 
-## v0.512.0 — v0.5 Phase 2: Trait Solver Evaluation (Stage 19.2)
+## v0.513.0 — v0.5 Phase 3: Trait Solver Selection (Stage 19.3)
 
 ### Overview
 
-Stage 19.2 implements v0.5 Trait Solver Phase 2 (Evaluation) — adds the Evaluation algorithm that assesses candidate impls against obligations. Per `docs/lang-design/03-type-system.md` §5.2 rustc 老 solver Evaluation phase: collect all candidate impls for an obligation, evaluate each, then return Ok (unique match) / Ambiguous (multiple matches or deferred) / Err (no match).
+Stage 19.3 implements v0.5 Trait Solver Phase 3 (Selection) — adds the Selection algorithm that picks the unique candidate impl from the EvalAllResult produced by Phase 2. Per `docs/lang-design/03-type-system.md` §5.3: MVP forbids overlapping impls (R3 陷阱 #5), so Selection degenerates to "unique candidate = selected".
 
-### New module: `src/traits/solver/eval.rs` (~660 LOC, 30 tests)
+### New module: `src/traits/solver/select.rs` (~470 LOC, 30 tests)
 
 | Item | Purpose |
 |------|---------|
-| `EvalOneResult` | Single-candidate evaluation result (Ok + inferred substs / Ambiguous / Err) |
-| `EvalCtxt<'a>` | Evaluation context: TraitResolver + InferCtxt + ParamEnv |
-| `EvalAllResult` | Multi-candidate collection result with `unique_ok()`, `ok_count()`, `ambiguous_count()`, `err_count()` |
-| `UniverseGuard` | RAII guard ensuring placeholder universe is restored on function exit |
-| `evaluate_one(impl_def_id, obligation, cx)` | Evaluate a single candidate impl: trait match → self type name match → subst inference → (TODO Phase 4: where clause check) |
-| `evaluate(goal, cx)` | Iterate all impls for the goal's trait, calling evaluate_one on each |
-| `eval_all_to_result(eval_result)` | Convert EvalAllResult to tri-state EvalResult (Ok/Ambiguous/Err) |
-| `self_type_name_for_obligation(ty, resolver)` | Extract type name for matching (Adt → resolver lookup; primitives → static names; Infer/Param/Error/composite → None = defer) |
-| `infer_substs_from_self_type(ty)` | Extract substs from Adt self type (e.g., `Vec<i32>` → [i32]) |
+| `select(goal, cx)` | Main entry: evaluate + select_from_eval. Returns SelectionResult (Ok/Ambiguous/NoImpl) |
+| `select_from_eval(eval_result, infer_ctxt)` | Core algorithm: ok_count==1 → Ok+bind; >1 → Ambiguous; 0 Ok + ≥1 Ambig → Ambiguous; 0 Ok + 0 Ambig → NoImpl |
+| `bind_inference_vars(impl_def_id, substs, infer_ctxt)` | Commit inferred substs to InferCtxt (MVP placeholder — records count for stats; real T=i32 binding deferred to future phase with typeck unify integration) |
+| `SelectionCtxt<'a>` | Wraps EvalCtxt with select() and select_from_eval() methods |
+| `select_to_eval_result(selection)` | Convert SelectionResult to EvalResult tri-state |
+| `describe_selection(selection)` | Human-readable diagnostic string (e.g., "selected impl #42" / "ambiguous: 3 candidates matched" / "no impl matched") |
+| `would_select_uniquely(goal, cx)` | Peek (no commit) — useful for typeck diagnostics that need to know if Selection would succeed without committing |
+| `collect_ok_candidates(eval_result)` | Diagnostic helper: list all Ok candidates with their substs |
+| `collect_ambiguous_candidates(eval_result)` | Diagnostic helper: list all Ambiguous (deferred) candidates |
+| `collect_err_candidates(eval_result)` | Diagnostic helper: list all Err candidates with their errors |
 
-### Algorithm (per §5.2 + §5.5)
+### Algorithm (per §5.3 + §5.5)
 
 ```text
-evaluate(goal, cx) -> EvalAllResult:
-    for each impl in trait_resolver.impls where impl.trait matches goal.predicate.trait_def_id:
-        result = evaluate_one(impl, goal.obligation, cx)
-        collect (impl_def_id, result) into EvalAllResult
+select(goal, cx) -> SelectionResult:
+    eval_result = evaluate(goal, cx)
+    select_from_eval(eval_result, infer_ctxt)
 
-eval_all_to_result(eval_result) -> EvalResult:
-    if ok_count == 1:    return Ok
-    if ok_count > 1:      return Ambiguous  (MVP禁 overlapping)
-    if ambiguous_count > 0: return Ambiguous  (defer for more info)
-    else:                  return Err (no impl matched)
+select_from_eval(eval_result, infer_ctxt) -> SelectionResult:
+    if ok_count == 1:    return Ok { impl_def_id } + bind_inference_vars(substs)
+    if ok_count > 1:      return Ambiguous { candidate_count: ok_count }  (MVP禁 overlapping)
+    if ambiguous_count > 0: return Ambiguous { candidate_count: ambiguous_count }  (defer)
+    else:                  return NoImpl
 ```
 
 ### Design principles followed
 
-- §1.0 原則 3 (显式 > 隐式): UniverseGuard RAII + SAFETY comment (vs silent unbounded lifetime)
-- §1.0 原則 4 (报错 > 静默): All evaluate_one failures return explicit EvalError variants
-- §1.0 原則 6 (通解 > 特解): `self_type_name_for_obligation` handles all TyKind variants in one function
-- §1.0 原則 9 (正确 > 妥协): MVP禁 overlapping (multiple Ok = Ambiguous, not silent pick)
-- §1.0 原則 10 (唯一可信数据源): TraitResolver is single source of truth; evaluator doesn't read HIR
-- §11 (接口隔离): eval.rs reads TraitResolver (data contract); doesn't cross-call typeck/codegen
-- §12 (最优 > 最小): Three-layer design (evaluate_one / evaluate / eval_all_to_result) + RAII guard
+- §1.0 原則 3 (显式 > 隐式): describe_selection + collect_*_candidates provide explicit diagnostic helpers; would_select_uniquely is explicit peek (no commit)
+- §1.0 原則 4 (报错 > 静默): All non-Ok cases return explicit SelectionResult variants (Ambiguous/NoImpl); bind_inference_vars MVP limitation documented, not silent
+- §1.0 原則 6 (通解 > 特解): One `select` function handles all goal kinds; one `select_from_eval` handles all EvalAllResult shapes
+- §1.0 原則 9 (正确 > 妥协): MVP禁 overlapping (multiple Ok = Ambiguous, not silent first-match)
+- §1.0 原則 10 (唯一可信数据源): infer_ctxt is single source of truth for bound state; selector never maintains parallel map
+- §11 (接口隔离): select.rs reads Phase 2 evaluate + EvalCtxt (data contract); doesn't cross-call typeck/codegen
+- §12 (最优 > 最小): select = evaluate + uniqueness + bind three-layer composition (vs re-implementing loop); SelectionCtxt wraps rather than duplicates
 
-### MVP scope (Phase 2)
+### MVP scope (Phase 3)
 
 | Item | MVP | Future |
 |------|-----|--------|
-| Trait matching | DefId exact match | Phase 4: param_env short-circuit |
-| Self type matching | name-based (Adt name + primitive names) | Phase 3: full unification with typeck |
-| Where clause checking | TODO (Phase 4 will add recursive evaluate) | Phase 4: Fulfillment |
-| Substitution inference | from Adt substs | Phase 3: full unification |
-| Universe | counter + RAII guard | Phase 5: proper escalation for higher-ranked |
-| Placeholder | fresh InferVar::TyVar | Phase 5: proper placeholder types |
+| Uniqueness check | ok_count == 1 | Phase 4: param_env short-circuit |
+| Binding | record substs count in infer_ctxt (placeholder) | Future: proper T=i32 binding via typeck unify |
+| Ambiguous handling | >1 Ok or any Ambiguous → Ambiguous | Phase 5: proper precedence / specialization |
+| NoImpl | 0 Ok + 0 Ambiguous | (no future change) |
 
 ### Test results
 
-- 754 lib tests (was 724, +30 new Phase 2 tests)
+- 784 lib tests (was 754, +30 new Phase 3 tests)
 - 3904 integration tests (unchanged)
-- 4658 total, 0 failures, 2 ignored
+- 4688 total, 0 failures, 2 ignored
 - fmt clean, 0 clippy warnings
 
 ### Next stage
 
-Stage 19.3 — Trait Solver Phase 3 (Selection):
-- Implement `select(goal, cx) -> SelectionResult` to pick the unique impl from EvalAllResult
-- MVP禁 overlapping — multiple candidates = SelectionResult::Ambiguous
-- Integrate typeck unify table for real substs inference (e.g., T=i32 from Vec<T> ↔ Vec<i32>)
-- L2 (50-500 LOC, single file `src/traits/solver/select.rs`)
+Stage 19.4 — Trait Solver Phase 4 (Fulfillment + Where Clause Integration):
+- Implement `fulfillment_loop(obligation_queue, cx)` — main loop
+- Add selected impl's where clauses to obligation queue (recursive evaluation)
+- Integrate ParamEnv.assumes short-circuit (where clause already assumed → Ok)
+- L2 (50-500 LOC, single file `src/traits/solver/fulfill.rs`)
 
 ---
 

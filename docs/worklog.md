@@ -32636,3 +32636,72 @@ Stage Summary:
 - 输出: select 函数 + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
 - 验收: §3.2 全绿
 
+
+---
+Task ID: stage19.3
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 19.3 — v0.5 Trait Solver Phase 3 (Selection). L2 (single new module + 1 wiring line). v0.513.0.
+
+3秒启动自检:
+- 定位: L2 (新增 src/traits/solver/select.rs ~470 LOC; 修改 src/traits/solver/mod.rs 1 行添加 pub mod select;)
+- 对齐: 已查 docs/lang-design/03-type-system.md §5.3 (Selection 算法 MVP禁 overlapping "唯一候选即选中") + §5.5 (Impl matching bind); Stage 19.2 evaluate 输出 EvalAllResult
+- 阻断: Stage 19.2 全绿 (4658 tests), 0 P0/P1, 解阻条件达成. Phase 2 evaluate 是 Phase 3 的直接输入
+
+决策点 (设计选择):
+- select = evaluate + select_from_eval 而非单函数
+  - 引用 §12 (最优 > 最小): 分层让 select_from_eval 可独立测试 (不依赖 evaluate)
+  - 引用 §1.0 原則 6 (通解 > 特解): select_from_eval 接受 pre-computed EvalAllResult, 支持缓存 (Canonical query Phase 6)
+  - 替代: 单函数 select 直接调用 evaluate 内联 — 但这会让 select_from_eval 不可独立测试, 也阻碍缓存
+
+- bind_inference_vars 是 MVP placeholder (只记录 count)
+  - 引用 §5.5: "bind(impl, obligation)" — rustc 真正的 binding 是 T=i32
+  - v0.5 Phase 3 没有 typeck unify table 集成 — 无法做真正的 unification
+  - 替代 1: 直接调用 typeck unify — 但会破坏 §11 接口隔离
+  - 替代 2: 等到 Phase 5 集成 typeck — 但这会让 Phase 3-4 都无法 commit binding
+  - 选择: MVP placeholder (记录 count for stats) + documented limitation
+  - 引用 §1.0 原則 4 (报错 > 静默): documented limitation, 不是 silent failure
+
+- would_select_uniquely (peek) 和 select (commit) 分离
+  - 引用 §1.0 原則 3 (显式 > 隐式): peek vs commit 是不同语义, 应有不同 API
+  - 用例: typeck 可能需要 peek 判断是否会有唯一 impl (用于 diagnostics), 而不真正 commit binding
+  - 替代: 单函数 select 返回 (result, was_committed) — 但这违反单一职责
+  - 选择: 显式 would_select_uniquely (peek) + select (commit)
+
+- collect_ok/ambiguous/err_candidates 三个 diagnostic helpers
+  - 引用 §1.0 原則 3 (显式 > 隐式): diagnostic helpers 显式提供 candidate lists
+  - 用例: 当 select 返回 Ambiguous, 诊断消息需要列出所有候选
+  - 替代: 让 EvalAllResult 自己提供这些 helper — 但这会让 EvalAllResult 膨胀 (违反单一职责)
+  - 选择: select.rs 提供 diagnostic helpers (单一职责: Selection + 诊断)
+
+裁剪点 (跳流程安全理由):
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 19.7 (Trait Solver Phase 6 完成后) 一起做
+- 安全理由: Phase 3 只添加新模块, 不修改现有 codegen/typeck 路径, 无集成, 无回归风险
+
+5W2H:
+- WHAT: src/traits/solver/select.rs 新模块 — select + select_from_eval + bind_inference_vars + SelectionCtxt + select_to_eval_result + describe_selection + would_select_uniquely + collect_ok/ambiguous/err_candidates + 30 unit tests
+- WHY: v0.5 P1 Trait Solver Phase 3 — Selection 从候选 impls 中选定唯一 impl (MVP禁 overlapping), 并 commit 推断的 substs 到 InferCtxt
+- WHO: PM-A + DEV-A + REV-A + QA-A — 单 agent 多角色
+- WHEN: Phase 2 完成后的下一个 MUV; Phase 4 (Fulfillment) 将使用 select 处理 obligation queue
+- WHERE: src/traits/solver/select.rs + wiring via pub mod select; in src/traits/solver/mod.rs
+- HOW: (1) 查 rustc 老 solver §5.3 Selection 算法 (2) 设计 select = evaluate + uniqueness check + bind (3) bind_inference_vars MVP placeholder (4) SelectionCtxt 包装 EvalCtxt (5) diagnostic helpers (describe + collect_*) (6) §3.2 全绿验收
+- HOW MUCH: 4688 tests (was 4658, +30 new Phase 3 tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 Phase 3 Trait Solver Selection COMPLETE ✅
+- New module: src/traits/solver/select.rs (~470 LOC, 30 tests)
+- 10 new items: select + select_from_eval + bind_inference_vars + SelectionCtxt + select_to_eval_result + describe_selection + would_select_uniquely + collect_ok_candidates + collect_ambiguous_candidates + collect_err_candidates
+- §3.2 全绿: 4688 tests (784 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 3/4/6/9/10 + §11 + §12 全部遵循
+
+下一步 (Stage 19.4):
+- MUV: Trait Solver Phase 4 (Fulfillment + Where Clause Integration)
+- 实现 fulfillment_loop(obligation_queue, cx) 主循环
+- 把 selected impl 的 where clauses 加入 obligation queue 递归求解
+- 集成 ParamEnv.assumes 短路 (where clause 已经是 assumption 时直接 Ok)
+- L2 (50-500 LOC, 单文件 src/traits/solver/fulfill.rs)
+- 输入: Phase 3 select + Phase 1 ObligationQueue
+- 输出: fulfill 函数 + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
+- 验收: §3.2 全绿
+

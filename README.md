@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.512.0 (Stage 19.2 — v0.5 Phase 2 Trait Solver Evaluation) |
+| **Version** | v0.513.0 (Stage 19.3 — v0.5 Phase 3 Trait Solver Selection) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 2 (Trait Solver Evaluation) COMPLETE. 4658 tests (754 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.2 added `src/traits/solver/eval.rs` (~660 LOC, 30 tests) — evaluate_one + evaluate + eval_all_to_result + EvalCtxt + EvalOneResult + EvalAllResult + UniverseGuard (RAII) + self_type_name_for_obligation + infer_substs_from_self_type. Per `docs/lang-design/03-type-system.md` §5.2 (rustc 老 solver Evaluation phase: 0 candidates → Err, 1 Ok → Ok, >1 Ok → Ambiguous MVP禁 overlapping). Phase 2 implements Evaluation; Phase 3 (Stage 19.3) will add Selection. |
+| **Status** | v0.5 Phase 3 (Trait Solver Selection) COMPLETE. 4688 tests (784 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.3 added `src/traits/solver/select.rs` (~470 LOC, 30 tests) — select + select_from_eval + bind_inference_vars + SelectionCtxt + select_to_eval_result + describe_selection + would_select_uniquely + collect_ok/ambiguous/err_candidates. Per `docs/lang-design/03-type-system.md` §5.3 (rustc 老 solver Selection: MVP禁 overlapping, “唯一候选即选中”). Phase 3 implements Selection; Phase 4 (Stage 19.4) will add Fulfillment + Where Clause integration. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
