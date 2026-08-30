@@ -1137,11 +1137,24 @@ pub(crate) fn lower_expr_to_operand(
                         );
                     }
                     cx.terminate_kind(TerminatorKind::Goto(break_target));
+                } else {
+                    // Stage 27.1 (v0.9): break outside loop — report error.
+                    // Per §1.0 原則 4 (报错 > 静默): must report, not silently ignore.
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        "`break` outside of a loop".to_string(),
+                        expr.span,
+                    ));
                 }
             } else {
                 // Get the break target from the loop stack.
                 if let Some((_, break_target)) = cx.loop_stack.last().copied() {
                     cx.terminate_kind(TerminatorKind::Goto(break_target));
+                } else {
+                    // Stage 27.1 (v0.9): break outside loop — report error.
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        "`break` outside of a loop".to_string(),
+                        expr.span,
+                    ));
                 }
             }
             // Allocate a fresh block for any code after the break (unreachable
@@ -1157,6 +1170,13 @@ pub(crate) fn lower_expr_to_operand(
         HirExprKind::Continue => {
             if let Some((continue_target, _)) = cx.loop_stack.last().copied() {
                 cx.terminate_kind(TerminatorKind::Goto(continue_target));
+            } else {
+                // Stage 27.1 (v0.9): continue outside loop — report error.
+                // Per §1.0 原則 4 (报错 > 静默): must report, not silently ignore.
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    "`continue` outside of a loop".to_string(),
+                    expr.span,
+                ));
             }
             cx.current_block = cx.new_block();
             cx.mir

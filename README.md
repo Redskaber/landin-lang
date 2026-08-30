@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.533.0 (Stage 26.1 — v0.8 Visibility enforcement) |
+| **Version** | v0.535.0 (Stage 27.1 — v0.9 Break/continue context enforcement) |
 | **License** | MIT |
-| **Status** | v0.8 Phase 1: Visibility enforcement COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 26.1 added `def_owner_module` field to Resolver + populated during `build_module_tree` + `check_visibility` now enforces private items: private item accessed from outside its defining module → `ResolveError` (was: always Ok). Per §1.0 原則 4 (报错 > 静默): private violations now reported. Per §1.0 原則 9 (正确 > 妥协): no false positives — items without owner module (prelude/builtin) are allowed. Per §1.0 原則 10 (唯一可信数据源): `def_owner_module` is the SSOT for module ownership. Addresses TD-VISIBILITY-NOOP. Next: v0.8 remaining language features. |
+| **Status** | v0.9 Phase 1: Break/continue context enforcement COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 27.1 added break/continue outside loop error reporting — when `loop_stack` is empty (break/continue outside loop), now pushes `TypeError` ("`break` outside of a loop" / "`continue` outside of a loop") instead of silently doing nothing. Per §1.0 原則 4 (报错 > 静默): errors are now reported. Per §1.0 原則 6 (通解 > 特解): one check for both break and continue via loop_stack emptiness. Per §12 (最优 > 最小): root-cause fix at the lowering boundary. Addresses TD-BREAK-CONTINUE-CONTEXT. Next: v0.9 remaining language features. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
