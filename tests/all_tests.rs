@@ -740,6 +740,10 @@ mod stage18_422_str_index_rejection_tests;
 #[path = "v0/stage18/plan/stage18_424_425_index_typeck_tests.rs"]
 mod stage18_424_425_index_typeck_tests;
 
+// === Stage 18.426: §20 iterative audit — Cast validity check ===
+#[path = "v0/stage18/plan/stage18_426_cast_validity_tests.rs"]
+mod stage18_426_cast_validity_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

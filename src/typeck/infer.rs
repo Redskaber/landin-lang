@@ -703,7 +703,39 @@ impl TypeChecker {
                 };
                 Ty::from_kind(TyKind::Ref(Region::Erased, mutability, Box::new(inner_ty)))
             }
-            Rvalue::Cast(_, _, target_ty) => target_ty.clone(),
+            Rvalue::Cast(kind, operand, target_ty) => {
+                // Stage 18.426 (§20 iterative audit): Validate cast
+                // validity — reject invalid casts like `"hello" as i32`
+                // (Str→Int), `true as &str` (Bool→Str), `(1,2) as i32`
+                // (Tuple→Int), `42 as Foo` (Int→Adt), etc.
+                //
+                // Was: `Rvalue::Cast(_, _, target_ty) => target_ty.clone()`
+                // — returned target_ty without checking source type →
+                // silently accepted invalid casts, codegen fell through to
+                // `_ => "bitcast"` fallback producing wrong/invalid LLVM IR.
+                //
+                // Per §20 (iterative audit): same class as Stage 18.412/
+                // 18.416/18.420/18.422/18.425 — silent acceptance of invalid
+                // operations.
+                // Per §1.0 原則 4 (报错 > 静默): invalid casts must be rejected.
+                // Per §1.0 原則 6 (通解 > 特解): one check covers all invalid
+                // cast pairs.
+                // Per §1.6 终极检验: root-cause fix at typeck, not codegen.
+                let src_ty = self.infer_operand(mir, operand);
+                let src_ty = self.unify.resolve(&src_ty);
+                let dst_ty = self.unify.resolve(target_ty);
+                if !Self::is_valid_cast(&src_ty, &dst_ty, *kind) {
+                    self.errors.push(TypeError::new(
+                        format!(
+                            "invalid cast: `{}` as `{}` — non-numeric/non-pointer types cannot be cast",
+                            self.format_ty(&src_ty),
+                            self.format_ty(&dst_ty)
+                        ),
+                        stmt_span,
+                    ));
+                }
+                target_ty.clone()
+            }
             Rvalue::Aggregate(kind, operands) => match kind {
                 AggregateKind::Tuple => {
                     let elem_tys: Vec<Ty> = operands
@@ -809,4 +841,147 @@ impl TypeChecker {
     // `crate::mir::place::operand_span(op)` directly. Previously duplicated
     // as a private method here (Stage 15.81) and in `borrowck::mod` (Stage
     // 15.85).
+
+    /// Stage 18.426 (§20 iterative audit): Check if a cast from `src_ty` to
+    /// `dst_ty` with `kind` is valid.
+    ///
+    /// Valid casts (matching Rust semantics + Landin codegen support):
+    /// - Numeric: Int↔Int, Int↔Uint, Uint↔Uint, Float↔Float, Int↔Float,
+    ///   Uint↔Float
+    /// - Bool→Int/Uint (Rust allows `true as i32`)
+    /// - Int↔Ptr (inttoptr / ptrtoint)
+    /// - Ptr↔Ptr (bitcast)
+    /// - Unsize: &[T; N] → &[T], &str → &[u8] (CastKind::Unsize)
+    ///
+    /// Invalid casts (rejected):
+    /// - Str→anything, anything→Str (use .as_bytes() / .to_string())
+    /// - Tuple→anything, anything→Tuple
+    /// - Adt→anything, anything→Adt (except via Unsize/Deref)
+    /// - Array→anything (except via Unsize to slice)
+    /// - FnDef→anything (except FnDef→FnPtr via Unsize/reify)
+    ///
+    /// Per §1.0 原則 4 (报错 > 静默): invalid casts must be rejected.
+    /// Per §1.0 原則 6 (通解 > 特解): one validity check covers all pairs.
+    /// Per §1.0 原則 9 (正确 > 妥协): defer for Infer/Error (don't push
+    /// false-positive errors on unresolved types).
+    fn is_valid_cast(src_ty: &Ty, dst_ty: &Ty, kind: CastKind) -> bool {
+        // Defer for unresolved types — don't push false-positive errors.
+        // Stage 18.426: if src is Infer (e.g., `42` without suffix), allow
+        // cast to any castable dst type (numeric, pointer). Reject only
+        // when dst is a clearly non-castable concrete type (Adt, Array,
+        // Tuple, Str, etc.).
+        let src_defers = matches!(
+            &src_ty.kind,
+            TyKind::Infer(_) | TyKind::Error | TyKind::Param(_)
+        );
+        let dst_defers = matches!(
+            &dst_ty.kind,
+            TyKind::Infer(_) | TyKind::Error | TyKind::Param(_)
+        );
+        if src_defers && dst_defers {
+            return true;
+        }
+        // Unsize casts are always valid (checked at codegen level).
+        if matches!(kind, CastKind::Unsize) {
+            return true;
+        }
+        // Stage 18.426: If src is Infer, allow cast to any castable dst
+        // (numeric, pointer, char, bool). Reject only for non-castable
+        // concrete dst (Str, Tuple, Adt, Array).
+        if src_defers {
+            let dst_is_castable = matches!(
+                &dst_ty.kind,
+                TyKind::Int(_)
+                    | TyKind::Uint(_)
+                    | TyKind::Float(_)
+                    | TyKind::Bool
+                    | TyKind::Char
+                    | TyKind::RawPtr(_, _)
+                    | TyKind::Ref(_, _, _)
+            );
+            return dst_is_castable;
+        }
+        // Numeric casts (matching Rust Reference §5.2.7):
+        // - Int/Uint <-> Int/Uint: OK
+        // - Float <-> Float: OK
+        // - Int/Uint -> Float: OK
+        // - Float -> Int/Uint: OK
+        // - Char -> Int/Uint: OK
+        // - Int/Uint -> Char: OK
+        // - Bool -> Int/Uint: OK (Rust allows `true as i32`)
+        // - Int/Uint -> Bool: OK (Rust allows `1 as bool`)
+        // - Bool -> Bool/Float/Char: NOT OK (Rust rejects)
+        // - Float -> Bool/Char: NOT OK (Rust rejects)
+        let src_is_int_uint = matches!(&src_ty.kind, TyKind::Int(_) | TyKind::Uint(_));
+        let dst_is_int_uint = matches!(&dst_ty.kind, TyKind::Int(_) | TyKind::Uint(_));
+        let src_is_float = matches!(&src_ty.kind, TyKind::Float(_));
+        let dst_is_float = matches!(&dst_ty.kind, TyKind::Float(_));
+        let src_is_char = matches!(&src_ty.kind, TyKind::Char);
+        let dst_is_char = matches!(&dst_ty.kind, TyKind::Char);
+        let src_is_bool = matches!(&src_ty.kind, TyKind::Bool);
+        let dst_is_bool = matches!(&dst_ty.kind, TyKind::Bool);
+        if src_is_int_uint && dst_is_int_uint {
+            return true;
+        }
+        if src_is_float && dst_is_float {
+            return true;
+        }
+        if src_is_int_uint && dst_is_float {
+            return true;
+        }
+        if src_is_float && dst_is_int_uint {
+            return true;
+        }
+        if src_is_char && dst_is_int_uint {
+            return true;
+        }
+        if src_is_int_uint && dst_is_char {
+            return true;
+        }
+        if src_is_bool && dst_is_int_uint {
+            return true;
+        }
+        if src_is_int_uint && dst_is_bool {
+            return true;
+        }
+        // Int <-> Ptr casts.
+        // Stage 18.426: Int -> &str is INVALID (cannot cast int to string ref).
+        // Other Int -> Ptr casts are valid (inttoptr / ptrtoint).
+        // Stage 18.426: Ptr -> Int is allowed (including &str -> usize) because
+        // the format! variadic intrinsic casts all args to usize for printf.
+        // This is a pragmatic allowance — the root-cause fix is to make the
+        // format intrinsic handle &str args via .len() instead of cast.
+        // Per §1.0 原則 9 (正确 > 妥协): allow Ptr→Int for format! intrinsic.
+        // Per §5.2: documented as known limitation (format intrinsic design).
+        let dst_is_ptr = matches!(&dst_ty.kind, TyKind::RawPtr(_, _) | TyKind::Ref(_, _, _));
+        let dst_is_str_ref = matches!(
+            &dst_ty.kind,
+            TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str)
+        );
+        let src_is_ptr = matches!(&src_ty.kind, TyKind::RawPtr(_, _) | TyKind::Ref(_, _, _));
+        let src_is_str_ref = matches!(
+            &src_ty.kind,
+            TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str)
+        );
+        // Int -> Ptr (but NOT Int -> &str)
+        if src_is_int_uint && dst_is_ptr && !dst_is_str_ref {
+            return true;
+        }
+        // Ptr -> Int (allow all, including &str -> usize for format! intrinsic)
+        if src_is_ptr && dst_is_int_uint {
+            return true;
+        }
+        // Ptr <-> Ptr casts (but NOT involving &str).
+        // Stage 18.426: &str <-> &T is invalid (str is unsized, cannot cast).
+        if src_is_ptr && dst_is_ptr && !src_is_str_ref && !dst_is_str_ref {
+            return true;
+        }
+        // FnDef -> FnPtr (reify pointer).
+        if matches!(&src_ty.kind, TyKind::FnDef(_, _)) && matches!(&dst_ty.kind, TyKind::FnPtr(_)) {
+            return true;
+        }
+        // All other casts are invalid (Str, Tuple, Adt, Array,
+        // Bool->Bool/Float/Char, Float->Bool/Char, etc.).
+        false
+    }
 }
