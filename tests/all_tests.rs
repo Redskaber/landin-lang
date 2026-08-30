@@ -728,6 +728,10 @@ mod stage18_351_recursive_param_tests;
 #[path = "v0/stage18/plan/stage18_416_bitwise_type_check_tests.rs"]
 mod stage18_416_bitwise_type_check_tests;
 
+// === Stage 18.420: §20 iterative audit — Field access syntax validation ===
+#[path = "v0/stage18/plan/stage18_420_field_access_syntax_tests.rs"]
+mod stage18_420_field_access_syntax_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

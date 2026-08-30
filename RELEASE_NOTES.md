@@ -5,11 +5,95 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3766 integration tests = 4448 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 682 lib tests + 3795 integration tests = 4477 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 + Phase 3.5 step 2 Pass 2 removed via root-cause fixes); §20 iterative audit: BitAnd/BitOr/BitXor type check |
+| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (3 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax) |
+
+---
+
+## v0.510.0 — §20 Iterative Audit: Field Access Syntax Mismatch (Stage 18.420)
+
+### Overview
+
+Stage 18.416 fixed the BitAnd/BitOr/BitXor type check. Per §20 (iterative
+audit), this stage audited field access paths for similar silent-acceptance
+bugs. Found `resolve_field_index` returned tuple index unconditionally for
+any integer-parsed name, even on named-field structs.
+
+**Confirmed bugs** (before fix):
+- `struct Foo { x: i32 }; Foo { x: 42 }.0` → silently compiled, printed 42
+- `(1, 2).x` → silently compiled
+
+### Root-Cause Fix
+
+Added `FieldAccessCategory` enum + `check_field_access_syntax` helper in
+`src/mir/lower/expr_operand.rs`:
+
+```rust
+enum FieldAccessCategory {
+    Tuple,           // TyKind::Tuple — allows tuple index access only
+    NamedFieldStruct, // All fields have ident=Some — named field access only
+    TupleStruct,     // All fields have ident=None — tuple index access only
+    Unknown,         // Infer/primitive/mixed — defer to existing logic
+}
+
+pub(crate) fn check_field_access_syntax(
+    cx: &MirLowerCtxt,
+    base_local: LocalId,
+    field_name: &crate::lexer::Symbol,
+) -> Option<String> { ... }
+```
+
+The helper is shared between:
+- `lower_expr_to_operand` Field arm (read path)
+- `lower_expr_to_place` Field arm (assignment path) — via `super::expr_operand::check_field_access_syntax`
+
+Per §10 (DRY): one helper for both paths. Per §1.0 原則 6 (通解 > 特解): one
+check covers all receiver types.
+
+### Test Coverage
+
+New test file: `tests/v0/stage18/plan/stage18_420_field_access_syntax_tests.rs`
+
+| Category | Positive | Negative |
+|----------|----------|----------|
+| Tuple index on tuple / named field on struct (valid) | 7 | — |
+| Tuple index on named-field struct | — | 6 |
+| Named field on tuple | — | 5 |
+| Non-existent field on struct | — | 4 |
+| Tuple index out of bounds | — | 3 |
+| Field result to wrong type | — | 3 |
+| Assignment path (documentation for limitation) | — | 1 |
+| **Total** | **7** | **22** |
+
+Ratio: 7:22 = 1:3.1 (exceeds 1:3 target per §9.4.3).
+
+### Known Limitations (documented, §5.2)
+
+- `t.0.x` (chained): `t.0` produces Infer result local (`resolve_field_type`
+  doesn't handle tuple receivers), so syntax check sees Unknown category.
+  Future work: v0.6+ typeck前置 refactor.
+- `t.0.1` (nested tuple index): parser parses `.1` as float literal, not
+  field index. Separate parser issue.
+- `t.0` to wrong type: `t.0` returns Infer, so `can_coerce` accepts. Use
+  struct field access for type-check test instead.
+
+### §20 Iterative Audit Chain (complete for BinaryOp + field access)
+
+| Stage | Bug | Class | Fix |
+|-------|-----|-------|-----|
+| 18.412 | Shl/Shr arm lacked LHS type check | Silent acceptance of invalid BinaryOp | `is_shift_count_ty(&a_ty)` check |
+| 18.416 | BitAnd/BitOr/BitXor arm lacked `is_notable_ty` check | Silent acceptance of invalid BinaryOp | `is_notable_ty(&a_ty)` check; float bitcast removed |
+| 18.420 | `resolve_field_index` returned tuple index on named-field structs | Silent acceptance of invalid field access | `check_field_access_syntax` helper + `FieldAccessCategory` enum |
+
+### Verification
+
+- 4477 tests (682 lib + 3795 integration), 0 failures, 2 ignored
+- fmt clean (0 lines diff)
+- 0 clippy warnings
+- §14.5 D1-D8 deep review PASSED
 
 ---
 

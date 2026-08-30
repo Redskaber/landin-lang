@@ -28,6 +28,8 @@ use super::MirLowerCtxt;
 // Stage 18.132: lower_expr_to_operand is recursive (called by lower_expr_to_place + lower_closure_call_to_synthesized)
 use super::field_resolution;
 use super::lower_expr_to_operand;
+// Stage 18.420: shared field syntax validation helper (§10 DRY)
+use super::expr_operand::check_field_access_syntax;
 
 /// Lower a HIR expression to a MIR Place (a place that can be assigned to).
 ///
@@ -65,6 +67,19 @@ pub(super) fn lower_expr_to_place(
         }
         HirExprKind::Field { receiver, ident } => {
             let base = lower_expr_to_place(cx, receiver, None);
+            // Stage 18.420 (§20 iterative audit): Validate field access syntax
+            // for assignment path too. `t.x = 5` where t is a tuple, or
+            // `f.0 = 5` where f is a named-field struct, must be rejected.
+            //
+            // Per §10 (DRY): shared `check_field_access_syntax` helper.
+            // Per §1.0 原則 4 (报错 > 静默): assignment path must report
+            // syntax mismatch, not silently coerce.
+            if let PlaceKind::Local(base_local) = &base.kind {
+                if let Some(msg) = check_field_access_syntax(cx, *base_local, &ident.name) {
+                    cx.type_errors
+                        .push(crate::typeck::TypeError::new(msg, expr.span));
+                }
+            }
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
             let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)

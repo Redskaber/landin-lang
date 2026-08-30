@@ -57,6 +57,100 @@ use super::method_resolution::{auto_deref_if_ref, resolve_enum_variant};
 use super::call_lower::lower_expr_to_place;
 // Stage 18.133: expression variant functions extracted to expr_variants.rs
 
+/// Stage 18.420 (§20 iterative audit): Category of field access receiver.
+///
+/// Used to validate that field access syntax (tuple index `.0` vs named
+/// field `.x`) matches the receiver type. Rejects:
+/// - Tuple index on named-field struct (e.g., `Foo { x: 1 }.0`)
+/// - Named field on tuple or tuple-struct (e.g., `(1, 2).x`)
+///
+/// Per §1.0 原則 4 (报错 > 静默): field syntax mismatch must be reported.
+/// Per §1.0 原則 6 (通解 > 特解): one enum covers all receiver categories.
+enum FieldAccessCategory {
+    /// `TyKind::Tuple` — allows tuple index access only.
+    Tuple,
+    /// Struct where ALL fields have `ident: Some` — allows named field access only.
+    NamedFieldStruct,
+    /// Struct where ALL fields have `ident: None` — allows tuple index access only.
+    TupleStruct,
+    /// Unknown (Infer, primitive, mixed fields, etc.) — defer to existing logic.
+    Unknown,
+}
+
+/// Stage 18.420 (§20 iterative audit): Check that field access syntax matches
+/// the receiver type. Returns `Some(error_message)` if the syntax is invalid,
+/// `None` if the access is valid (or receiver category is Unknown — defer).
+///
+/// Shared between `lower_expr_to_operand` (read path) and `lower_expr_to_place`
+/// (assignment path). Per §10 (DRY): one helper for both paths.
+/// Per §1.0 原則 6 (通解 > 特解): one check covers all field access paths.
+pub(crate) fn check_field_access_syntax(
+    cx: &MirLowerCtxt,
+    base_local: LocalId,
+    field_name: &crate::lexer::Symbol,
+) -> Option<String> {
+    let field_name_str = cx.interner.try_resolve(field_name).unwrap_or("<unknown>");
+    let is_tuple_index = field_name_str.parse::<u32>().is_ok();
+    let base_ty = cx.mir.local(base_local).ty.clone();
+    let inner_ty: Ty = match &base_ty.kind {
+        // Auto-deref Ref to check inner type.
+        crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),
+        _ => base_ty.clone(),
+    };
+    let mut receiver_category: FieldAccessCategory = FieldAccessCategory::Unknown;
+    {
+        let struct_def_id_opt: Option<crate::hir::DefId> = match &inner_ty.kind {
+            crate::mir::ty::TyKind::Tuple(_) => {
+                receiver_category = FieldAccessCategory::Tuple;
+                None
+            }
+            crate::mir::ty::TyKind::Adt(def_id, _) => Some(*def_id),
+            _ => None,
+        };
+        if let Some(struct_def_id) = struct_def_id_opt {
+            if let Some(hir_crate) = cx.hir {
+                if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                    hir_crate.find_owner(struct_def_id)
+                {
+                    let all_named =
+                        !s.fields.is_empty() && s.fields.iter().all(|f| f.ident.is_some());
+                    let all_unnamed =
+                        !s.fields.is_empty() && s.fields.iter().all(|f| f.ident.is_none());
+                    receiver_category = if all_named {
+                        FieldAccessCategory::NamedFieldStruct
+                    } else if all_unnamed {
+                        FieldAccessCategory::TupleStruct
+                    } else {
+                        FieldAccessCategory::Unknown
+                    };
+                }
+            }
+        }
+    }
+    // Validate: tuple index only valid on Tuple or TupleStruct.
+    // Named field only valid on NamedFieldStruct.
+    let syntax_mismatch = matches!(
+        (is_tuple_index, &receiver_category),
+        (true, FieldAccessCategory::NamedFieldStruct)
+            | (false, FieldAccessCategory::Tuple)
+            | (false, FieldAccessCategory::TupleStruct)
+    );
+    if syntax_mismatch {
+        let type_str = cx.format_ty(&base_ty);
+        let expected = if is_tuple_index {
+            "tuple or tuple struct"
+        } else {
+            "named-field struct"
+        };
+        Some(format!(
+            "no field `{}` on type `{}` — {} access requires {}",
+            field_name_str, type_str, field_name_str, expected
+        ))
+    } else {
+        None
+    }
+}
+
 pub(crate) fn lower_expr_to_operand(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,
@@ -531,37 +625,48 @@ pub(crate) fn lower_expr_to_operand(
             // Per §2 原則 4 (报错>静默): field access on primitive types
             // (i32, bool, etc.) must report error, not silently return field 0.
             // Per §12 (最优>最小): root cause fix — check type before resolving field.
-            {
-                let base_ty = cx.mir.local(base_local).ty.clone();
-                let inner_ty = match &base_ty.kind {
-                    // Auto-deref Ref to check inner type.
-                    crate::mir::ty::TyKind::Ref(_, _, inner) => inner.as_ref(),
-                    _ => &base_ty,
-                };
-                let is_primitive = matches!(
-                    &inner_ty.kind,
-                    crate::mir::ty::TyKind::Int(_)
-                        | crate::mir::ty::TyKind::Uint(_)
-                        | crate::mir::ty::TyKind::Bool
-                        | crate::mir::ty::TyKind::Char
-                        | crate::mir::ty::TyKind::Float(_)
-                        | crate::mir::ty::TyKind::Str
-                );
-                if is_primitive {
-                    let field_name_str =
-                        cx.interner.try_resolve(&ident.name).unwrap_or("<unknown>");
-                    let type_str = cx.format_ty(&base_ty);
-                    cx.type_errors.push(crate::typeck::TypeError::new(
-                        format!(
-                            "no field `{}` on type `{}` — primitive types have no fields",
-                            field_name_str, type_str
-                        ),
-                        expr.span,
-                    ));
-                    // Return Error placeholder local — compilation will abort.
-                    let err_ty = Ty::new(crate::mir::ty::TyKind::Error, expr.span);
-                    return cx.mir.new_local(err_ty, None, expr.span);
-                }
+            let base_ty = cx.mir.local(base_local).ty.clone();
+            let inner_ty: Ty = match &base_ty.kind {
+                // Auto-deref Ref to check inner type.
+                crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),
+                _ => base_ty.clone(),
+            };
+            let is_primitive = matches!(
+                &inner_ty.kind,
+                crate::mir::ty::TyKind::Int(_)
+                    | crate::mir::ty::TyKind::Uint(_)
+                    | crate::mir::ty::TyKind::Bool
+                    | crate::mir::ty::TyKind::Char
+                    | crate::mir::ty::TyKind::Float(_)
+                    | crate::mir::ty::TyKind::Str
+            );
+            if is_primitive {
+                let field_name_str = cx.interner.try_resolve(&ident.name).unwrap_or("<unknown>");
+                let type_str = cx.format_ty(&base_ty);
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    format!(
+                        "no field `{}` on type `{}` — primitive types have no fields",
+                        field_name_str, type_str
+                    ),
+                    expr.span,
+                ));
+                // Return Error placeholder local — compilation will abort.
+                let err_ty = Ty::new(crate::mir::ty::TyKind::Error, expr.span);
+                return cx.mir.new_local(err_ty, None, expr.span);
+            }
+            // Stage 18.420 (§20 iterative audit): Validate field access syntax
+            // matches the receiver type — reject tuple index on named-field
+            // structs, and reject named fields on tuples/tuple-structs.
+            //
+            // Per §10 (DRY): shared `check_field_access_syntax` helper used by
+            // both `lower_expr_to_operand` (read path) and `lower_expr_to_place`
+            // (assignment path). Per §1.0 原則 6 (通解 > 特解): one check covers
+            // all field access paths.
+            if let Some(msg) = check_field_access_syntax(cx, base_local, &ident.name) {
+                cx.type_errors
+                    .push(crate::typeck::TypeError::new(msg, expr.span));
+                let err_ty = Ty::new(crate::mir::ty::TyKind::Error, expr.span);
+                return cx.mir.new_local(err_ty, None, expr.span);
             }
             // Resolve the field index from the ident name.
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);

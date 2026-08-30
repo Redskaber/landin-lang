@@ -30937,3 +30937,78 @@ Stage Summary:
 下一步:
 - Stage 18.418: §14.5 deep review + doc sync + README restructure + package r66
 - Future: v0.5+ Phase 4/5 or v0.6+ typeck前置重构
+
+---
+Task ID: stage18.419-18.421
+Agent: Super Z (main) — PM-A
+Task: Stage 18.419 §20 audit typeck+codegen; Stage 18.420 field access syntax fix; Stage 18.421 doc sync + package r67. L2 (MIR lower + tests). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (MIR lower field access syntax check + tests)
+- 对齐: §20 iterative audit after Stage 18.416 BitAnd/BitOr/BitXor; audit field access paths
+- 阻断: 4448 tests 全绿 (Stage 18.416 state)
+
+决策点 (§20 iterative audit):
+- 发现: `resolve_field_index` returned tuple index (`.0`) unconditionally for any integer-parsed name, even on named-field structs. And fallback searched ALL structs for named fields, accepting `t.x` on tuples.
+- 验证: `struct Foo { x: i32 }; Foo { x: 42 }.0` silently compiled + printed 42 (soundness false-positive). `(1, 2).x` silently compiled.
+- 选 A: Add `FieldAccessCategory` enum + `check_field_access_syntax` helper, shared between `lower_expr_to_operand` (read path) and `lower_expr_to_place` (assignment path).
+- 引用 §20: "finding one bug means there are many similar bugs"
+- 引用 §10 (DRY): one helper for both read + assignment paths
+- 引用 §1.0 原則 4 (报错 > 静默): syntax mismatch must be reported
+- 引用 §1.0 原則 6 (通解 > 特解): one check covers all receiver types
+
+裁剪点:
+- L2 — MIR lower fix; §14.5 D1-D8 verification required (Stage 18.421)
+
+5W2H:
+- WHAT: Add `check_field_access_syntax` helper; extract `FieldAccessCategory` enum; reject tuple index on named-field struct + named field on tuple/tuple-struct
+- WHY: §20 iterative audit — same class as Stage 18.412/18.416 (silent acceptance); Rust rejects these
+- WHO: ARCH-A (design: FieldAccessCategory enum) + DEV-A (implement helper + both paths) + REV-A (audit all field access)
+- WHEN: After Stage 18.416 (BitAnd/BitOr/BitXor fix)
+- WHERE: src/mir/lower/expr_operand.rs + src/mir/lower/call_lower.rs
+- HOW: Determine receiver category (Tuple/NamedFieldStruct/TupleStruct/Unknown); reject mismatched syntax; shared helper for read+assignment paths
+- HOW MUCH: §3.2 全绿 — 4477 tests (682 lib + 3795 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 iterative audit — audited field access paths:
+  - `resolve_field_index`: returns tuple index unconditionally (BUG confirmed)
+  - `lower_expr_to_operand` Field arm: had primitive check but no syntax mismatch check
+  - `lower_expr_to_place` Field arm: no syntax check at all (assignment path)
+- Stage 18.420 fix:
+  - Added `FieldAccessCategory` enum (Tuple, NamedFieldStruct, TupleStruct, Unknown)
+  - Added `check_field_access_syntax` helper (pub(crate)) in expr_operand.rs
+  - Used in `lower_expr_to_operand` Field arm (read path)
+  - Used in `lower_expr_to_place` Field arm (assignment path) — via `super::expr_operand::check_field_access_syntax`
+  - Rejects: tuple index on NamedFieldStruct, named field on Tuple/TupleStruct
+  - Returns `Some(error_msg)` on mismatch, `None` otherwise (Unknown category defers)
+- Test file: tests/v0/stage18/plan/stage18_420_field_access_syntax_tests.rs
+  - 7 positive tests (tuple index on tuple, named field on struct, refs)
+  - 22 negative tests covering 6 categories:
+    * Tuple index on named-field struct: 6 cases
+    * Named field on tuple: 5 cases
+    * Non-existent field on struct: 4 cases
+    * Tuple index out of bounds: 3 cases
+    * Field result to wrong type: 3 cases
+    * Assignment path (tuple index on struct, named on tuple): 1 case (documentation for limitation)
+  - Ratio: 7 positive / 22 negative = 1:3.1 (exceeds 1:3 target)
+- Known limitations (documented in tests, §5.2):
+  - `t.0.x` (chained): `t.0` produces Infer result local (resolve_field_type doesn't handle tuple receivers), so syntax check sees Unknown category. Future work: v0.6+ typeck前置 refactor.
+  - `t.0.1` (nested tuple index): parser parses `.1` as float literal, not field index. Separate parser issue.
+  - `t.0` to wrong type: `t.0` returns Infer, so `can_coerce` accepts. Use struct field access for type-check test instead.
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4477 tests (682 lib + 3795 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- §20 iterative audit complete for field access paths ✅
+- `check_field_access_syntax` helper added (shared read+assignment paths, §10 DRY)
+- `FieldAccessCategory` enum covers Tuple/NamedFieldStruct/TupleStruct/Unknown
+- 29 new tests added (7 pos + 22 neg, ratio 1:3.1)
+- §3.2 全绿: 4477 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: root-cause fix (syntax validation before resolve_field_index), not a minimal patch
+
+下一步:
+- Stage 18.421: doc sync + README restructure + package r67
+- Future: v0.6+ typeck前置重构 (eliminate Infer result locals for tuple field access)
+- Future: parser fix for `t.0.1` nested tuple index (separate issue)
