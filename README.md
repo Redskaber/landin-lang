@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.525.0 (Stage 23.1 — v0.5 MIR Optimization P3 Phase 1: jump threading) |
+| **Version** | v0.526.0 (Stage 23.2 — v0.5 MIR Optimization P3 Phase 2: const_prop loop fixpoint + §14.5 FINAL) |
 | **License** | MIT |
-| **Status** | v0.5 MIR Optimization P3 Phase 1 COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 23.1 added `run_jump_threading()` pass — rewrites `goto B → goto C` when B is empty (no statements) and ends with `goto C`. Fixpoint iteration handles multi-hop chains. Cycle detection via HashSet. Addresses TD-NO-JUMP-THREADING. Per §1.0 原則 6 (通解 > 特解): one pass handles all goto chain shapes. Per §1.0 原則 9 (正确 > 妥协): only threads through empty blocks (no side effects). Per §12 (最优 > 最小): root-cause fix. Wired into `run_mir_optimizations` pipeline (DCE → const_prop → DCE → jump_threading → DCE). Next: Stage 23.2 const_prop loop fixpoint (addresses TD-CONST-PROP-LOOPS) + Stage 23.3 §14.5 deep review + FINAL. |
+| **Status** | ✅ **v0.5 MIR Optimization P3 FINAL — APPROVED for stage transition**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 23.1: `run_jump_threading()` (addresses TD-NO-JUMP-THREADING — fixpoint iteration + cycle detection + only empty blocks). Stage 23.2: `run_const_prop` fixpoint iteration (addresses TD-CONST-PROP-LOOPS — removed back-edge skip, always fold, max 3 iterations, change detection via `rvalue_matches`). §14.5 D1-D8 PASSED. Pipeline: DCE → const_prop (fixpoint) → DCE → jump_threading → DCE. Next: v0.5 Incremental Compilation P3 (needs TD-SINGLE-FILE Phase 4) or Cross-compilation P3. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

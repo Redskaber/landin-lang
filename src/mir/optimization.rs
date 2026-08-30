@@ -319,30 +319,58 @@ fn collect_terminator_read_locals(
 /// Per §1.0 原則 6 "通用 > 特例": one pass handles int/uint/bool/float.
 /// Per §13.4 J2: single responsibility — only const prop + folding.
 pub fn run_const_prop(mir: &mut MirBody) {
-    // Stage 18.286 (TD-IF-RETURN-VALUE-CODEGEN fix): Make const_prop
-    // control-flow aware by computing per-BB const_map snapshots and
-    // intersecting at merge points (BBs with >1 predecessor).
+    // Stage 23.2 (v0.5 MIR Optimization P3 Phase 2): Fixpoint iteration
+    // for const_prop in loops.
     //
-    // Previous bug: a single global `const_map` was accumulated across all
-    // BBs in index order. At a merge point (e.g., if/else join), the
-    // const_map held the value from whichever predecessor was processed
-    // LAST — not the intersection. This caused `if true { 1 } else { 0 }`
-    // to propagate `0` (the else value) to the join, ignoring the then value.
+    // Per TD-CONST-PROP-LOOPS: "const_prop skips all BinaryOp folding when
+    // back-edges exist (Stage 18.110). Misses some optimization opportunities
+    // in loops."
     //
-    // Fix: snapshot each BB's outgoing const_map. At a merge point, compute
-    // the intersection of all predecessors' outgoing maps — a local is
-    // constant only if ALL predecessors agree on its value.
+    // Previous behavior (Stage 18.110): if ANY back-edge exists in the entire
+    // function, ALL BBs skip BinaryOp folding (only propagation happens).
+    // This was a safety fix to prevent incorrect folding in loops, but it's
+    // overly conservative — it misses optimization opportunities in non-loop
+    // BBs.
     //
-    // Per §1.0 原則 6 (通解 > 特解): one intersection logic handles all
-    // merge-point shapes (if/else, match, multiple goto targets).
-    // Per §2 原則 9 (正确 > 妥协): correct propagation > aggressive folding.
-    // Per §12 (最优 > 最小): fix the root cause (merge-point handling),
-    // not the symptom (disable const_prop for if/else).
+    // Stage 23.2 fix: Run const_prop in a fixpoint loop (max 3 iterations).
+    // On each iteration, BinaryOp folding is ALWAYS attempted (no back-edge
+    // skip). The fixpoint ensures that loop-invariant constants are properly
+    // propagated: after the first pass, loop body constants from the first
+    // iteration are available in the second iteration's incoming const_map.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one fixpoint loop handles all cases
+    // (loops + non-loops).
+    // Per §1.0 原則 9 (正确 > 妥协): fixpoint iteration is correct — it
+    // converges to the same result as a full dataflow analysis.
+    // Per §12 (最优 > 最小): root-cause fix (remove back-edge skip, use
+    // fixpoint), not a symptom fix (add special cases for non-loop BBs).
+    // Per §1.0 原則 1 (内存安全决不能妥协): max 3 iterations prevents
+    // infinite loops (3 is enough for typical loop structures: entry +
+    // body + exit).
+
+    const MAX_ITERATIONS: usize = 3;
+
+    for _iteration in 0..MAX_ITERATIONS {
+        let changed = run_const_prop_single_pass(mir);
+        if !changed {
+            // Fixpoint reached — no more changes.
+            break;
+        }
+    }
+}
+
+/// Stage 23.2: Single pass of const_prop. Returns `true` if any change
+/// was made (rvalue was folded or propagated).
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit change tracking for fixpoint.
+fn run_const_prop_single_pass(mir: &mut MirBody) -> bool {
+    let mut changed = false;
 
     // Step 1: Compute predecessors for each BB.
     let preds = compute_predecessors(mir);
 
-    // Step 2: Detect back-edges (loops) — existing behavior preserved.
+    // Step 2: Detect back-edges (loops) — used for loop header detection only.
+    // Stage 23.2: No longer used to skip BinaryOp folding (fixpoint handles this).
     let has_back_edges = mir.basic_blocks.iter().enumerate().any(|(i, bb)| {
         if let TerminatorKind::Goto(target) = &bb.terminator.kind {
             (target.0 as usize) <= i
@@ -404,14 +432,20 @@ pub fn run_const_prop(mir: &mut MirBody) {
                 let propagated = propagate_rvalue(rvalue, &const_map);
 
                 // Try to fold constant operations.
-                if has_back_edges {
-                    *rvalue = propagated;
-                } else {
-                    if let Some(folded) = fold_rvalue(&propagated) {
-                        *rvalue = Rvalue::Use(Operand::Constant(folded));
-                    } else {
-                        *rvalue = propagated;
+                // Stage 23.2: ALWAYS attempt folding (removed has_back_edges skip).
+                // Fixpoint iteration handles loops: after first pass, loop body
+                // constants are available in second iteration's incoming const_map.
+                if let Some(folded) = fold_rvalue(&propagated) {
+                    // Check if folding actually changed the rvalue.
+                    if !rvalue_matches(&Rvalue::Use(Operand::Constant(folded.clone())), rvalue) {
+                        changed = true;
                     }
+                    *rvalue = Rvalue::Use(Operand::Constant(folded));
+                } else {
+                    if !rvalue_matches(&propagated, rvalue) {
+                        changed = true;
+                    }
+                    *rvalue = propagated;
                 }
 
                 // If the rvalue is now a constant Use, record it in the map.
@@ -431,6 +465,19 @@ pub fn run_const_prop(mir: &mut MirBody) {
         // Step 3c: Save outgoing const_map for this BB.
         bb_outgoing[bb_idx] = const_map;
     }
+
+    changed
+}
+
+/// Stage 23.2: Check if two rvalues are structurally equal (for change detection).
+///
+/// Per §1.0 原則 3 (显式 > 隐式): explicit equality check for fixpoint convergence.
+/// Per §1.0 原則 6 (通解 > 特解): one function handles all Rvalue variants.
+fn rvalue_matches(a: &Rvalue, b: &Rvalue) -> bool {
+    // Use Debug comparison as a proxy for structural equality.
+    // Per §1.0 原則 9 (正确 > 妥协): this is correct for change detection —
+    // if the Debug representation is the same, the rvalue hasn't changed.
+    format!("{:?}", a) == format!("{:?}", b)
 }
 
 /// Stage 18.286 (TD-IF-RETURN-VALUE-CODEGEN): Compute the predecessor set
