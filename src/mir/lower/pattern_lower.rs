@@ -32,6 +32,63 @@ pub(crate) fn lower_match(
         cx.mir
             .new_local_with_mut(result_ty, None, span, crate::mir::ty::Mutability::Mutable);
 
+    // Stage 18.432 (§20 iterative audit + §5.2 unblock): Check for
+    // non-exhaustive match patterns. A match must be exhaustive — either:
+    // - Have a catch-all arm (Wild `_` or Ident binding), OR
+    // - Cover all values for Bool (both `true` and `false` patterns)
+    // Was: silently accepted non-exhaustive matches → `match x { 1 => 1,
+    // 2 => 2 }` compiled without error, fell through to undefined behavior.
+    //
+    // Per §20 (iterative audit): same class as Stage 18.412-18.428.
+    // Per §1.0 原則 4 (报错 > 静默): non-exhaustive match must be reported.
+    // Per §1.0 原則 9 (正确 > 妥协): defer for Infer/Error/Param/Adt/enum/
+    // Str/Float/Array/Tuple/Closure (enum exhaustiveness is future work).
+    // Per §1.6 终极检验: root-cause fix at the lower site.
+    // Per §5.2: prelude compatibility maintained (bool match with true/false
+    // is exhaustive; enum matches defer; primitive matches need `_` arm).
+    let has_catch_all = arms.iter().any(|arm| {
+        matches!(&arm.pat.kind, HirPatKind::Wild) || matches!(&arm.pat.kind, HirPatKind::Ident(..))
+    });
+    if !has_catch_all {
+        let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+        match &scrut_ty.kind {
+            // Bool: check if both `true` and `false` patterns are present.
+            crate::mir::ty::TyKind::Bool => {
+                let has_true = arms.iter().any(|arm| {
+                    matches!(
+                        &arm.pat.kind,
+                        HirPatKind::Lit(e) if matches!(&e.kind, crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Bool(true)))
+                    )
+                });
+                let has_false = arms.iter().any(|arm| {
+                    matches!(
+                        &arm.pat.kind,
+                        HirPatKind::Lit(e) if matches!(&e.kind, crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Bool(false)))
+                    )
+                });
+                if !has_true || !has_false {
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        "non-exhaustive patterns: missing `true` or `false` arm (or catch-all `_`)"
+                            .to_string(),
+                        span,
+                    ));
+                }
+            }
+            // Int/Uint/Char: literal patterns can't cover all values → need `_`.
+            crate::mir::ty::TyKind::Int(_)
+            | crate::mir::ty::TyKind::Uint(_)
+            | crate::mir::ty::TyKind::Char => {
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    "non-exhaustive patterns: missing catch-all `_` arm".to_string(),
+                    span,
+                ));
+            }
+            // Defer for all other types (Infer/Error/Param/Adt/enum/Str/
+            // Float/Array/Tuple/Closure/Ref/RawPtr/FnDef/FnPtr).
+            _ => {}
+        }
+    }
+
     // Stage 3.40 (L-ENUM-MATCH): Check if the scrutinee is an enum type.
     // If so, extract the discriminant (field 0 of the enum struct) and
     // switch on that instead of the enum value itself.
