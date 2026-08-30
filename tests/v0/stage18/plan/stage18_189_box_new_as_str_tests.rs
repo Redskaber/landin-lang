@@ -136,14 +136,16 @@ fn main() -> i32 {
 
 #[test]
 fn stage18_189_string_as_str_byte_index() {
+    // Stage 18.422: sref[0] changed to sref.as_bytes()[0] (&str indexing
+    // is now a typeck error; use as_bytes() for byte access).
     assert_runtime(
         "string-as-str-byte-index",
         r#"
 fn main() -> i32 {
     let s: String = String::from_str("hello");
     let sref: &str = s.as_str();
-    println!("{}", sref[0]);
-    println!("{}", sref[4]);
+    println!("{}", sref.as_bytes()[0]);
+    println!("{}", sref.as_bytes()[4]);
     0
 }
 "#,

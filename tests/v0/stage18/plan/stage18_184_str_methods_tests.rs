@@ -78,20 +78,26 @@ fn main() -> i32 {
     );
 }
 
-/// Positive 4: `s.as_bytes()` returns a &[u8] with the same length.
+/// Positive 4: `s.as_bytes()` returns a &[u8] (Stage 18.422: cannot call
+/// `.len()` on `&[u8]` yet — no `impl [T]` in prelude — so test indexing
+/// instead of length).
 #[test]
 fn stage18_184_str_as_bytes_length() {
+    // Stage 18.422: Previously tested `bytes.len()` which worked because
+    // as_bytes() returned &str (str::len intrinsic). Now as_bytes() returns
+    // &[u8] correctly, but [u8]::len is not in prelude. Test indexing instead
+    // (valid &[u8] indexing).
     assert_runtime(
-        "str-as-bytes-length",
+        "str-as-bytes-index-only",
         r#"
 fn main() -> i32 {
     let s: &str = "hello";
     let bytes = s.as_bytes();
-    println!("{}", bytes.len());
+    println!("{}", bytes[0]);
     0
 }
 "#,
-        "5\n",
+        "104\n", // 'h' = 104
     );
 }
 

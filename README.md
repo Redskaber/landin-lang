@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.420) |
+| **Version** | v0.510.0 (Stage 18.422) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3795 integration tests = 4477 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (3 rounds): Stage 18.412 (Shl/Shr lhs check) → Stage 18.416 (BitAnd/BitOr/BitXor is_notable_ty check) → Stage 18.420 (field access syntax mismatch check). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3824 integration tests = 4506 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (4 rounds): Stage 18.412 (Shl/Shr lhs check) → 18.416 (BitAnd/BitOr/BitXor is_notable_ty check) → 18.420 (field access syntax mismatch) → 18.422 (&str indexing rejection + as_bytes Cast fix). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -181,8 +181,8 @@ resolved only at dereference sites via `detect_place_storage_type`.
 
 ### Test count
 - 682 unit tests (lib)
-- 3795 integration tests (`tests/all_tests.rs`)
-- **4477 total** (100% pass rate single-thread, 0 skipped, 2 ignored)
+- 3824 integration tests (`tests/all_tests.rs`)
+- **4506 total** (100% pass rate single-thread, 0 skipped, 2 ignored)
 
 ### Running tests
 ```bash
@@ -198,7 +198,7 @@ bash scripts/run_tests.sh
 |-----------|--------|---------|
 | D1 Architecture | ✅ | 177 files, 83K LOC, no circular deps |
 | D2 Tech Debt | ✅ | All P0/P1/P2 resolved. 10 stubs/limitations documented for v0.5+ |
-| D3 Test Coverage | ✅ | 4477 tests, 1:3+ pos:neg ratio |
+| D3 Test Coverage | ✅ | 4506 tests, 1:3+ pos:neg ratio |
 | D4 Next Stage Readiness | ✅ | v0.4 release-ready |
 | D5 Design Soundness | ✅ | sret+byval, ZST elision, recursive struct, TextEmitter IR validated, typeck lhs/rhs checks |
 | D6 Performance | ✅ | ~30s build, ~23s test single-thread |
@@ -281,6 +281,7 @@ to 2 after v0.5+ Phase 1+3+2-L3 (Stage 18.380-18.413):
 | 18.413 | Pass 2 REMOVED + dead code cleanup | 7 (Phase 3.5 step 2 streamlined) |
 | 18.416 | §20 iterative audit: BitAnd/BitOr/BitXor type check (same class as 18.412) | 7 |
 | 18.420 | §20 iterative audit: Field access syntax mismatch check (same class as 18.412/18.416) | 7 |
+| 18.422 | §20 iterative audit: &str indexing rejection + as_bytes Cast fix (same class as 18.412/18.416/18.420) | 7 |
 
 **Current**: 7 phases (Phase 1, 2, 3, 3.5-step2-Pass1, 4, 5 + writeback_closures + writeback_fndef_substs).
 
@@ -301,10 +302,10 @@ originally bundled **two independent concerns**:
 redundant", execute surgical split experiments (env var guards per pass)
 to distinguish TRUE LIMIT vs WORKAROUND.
 
-### §20 iterative audit chain (Stage 18.412 → 18.416 → 18.420)
+### §20 iterative audit chain (Stage 18.412 → 18.416 → 18.420 → 18.422)
 
 Per §20 ("finding one bug means there are many similar bugs"), each soundness
-fix triggered an audit of ALL similar paths. Three same-class bugs found and
+fix triggered an audit of ALL similar paths. Four same-class bugs found and
 fixed:
 
 | Stage | Bug | Class | Fix |
@@ -312,10 +313,11 @@ fixed:
 | 18.412 | Shl/Shr arm lacked LHS type check; `&str << 2` silently accepted | Silent acceptance of invalid BinaryOp | Added `is_shift_count_ty(&a_ty)` check |
 | 18.416 | BitAnd/BitOr/BitXor arm lacked `is_notable_ty` check; `"hello" & "world"` silently accepted | Silent acceptance of invalid BinaryOp | Added `is_notable_ty(&a_ty)` check before unify; float bitcast path removed |
 | 18.420 | `resolve_field_index` returned tuple index unconditionally on named-field structs; `Foo { x: 1 }.0` silently accepted | Silent acceptance of invalid field access | Added `check_field_access_syntax` helper + `FieldAccessCategory` enum; shared between read + assignment paths |
+| 18.422 | `resolve_index_element_type` had `TyKind::Str => Some(u8)` arm; `s[0]` silently treated `&str` as `&[u8]` (design divergence from Rust) | Silent acceptance of invalid Index | Removed Str arm; `&str` indexing now errors; `emit_str_as_bytes` fixed to return `&[u8]`-typed dest via `Rvalue::Cast(Unsize, ...)` |
 
-All three are "silent acceptance of invalid operations that should be typeck
-errors" — same architectural class. The audit chain is complete for BinaryOp
-arms and field access paths.
+All four are "silent acceptance of invalid operations / design divergence from
+Rust" — same architectural class. The audit chain is complete for BinaryOp
+arms, field access paths, and Index operations.
 
 ### Design principles (§2.2, 11 principles)
 
@@ -372,6 +374,7 @@ Remaining items are v0.5+ architecture limitations (documented in
 | TD-PASS2-BINARYOP-WORKAROUND | `writeback_binaryop_results` masked typeck Shl/Shr lhs check deficiency | ✅ Resolved (Stage 18.413) | typeck `infer_rvalue` Shl/Shr arm lhs check (Stage 18.412) + writeback Pass 2 removal + dead code cleanup |
 | TD-BITWISE-NOTABLE-CHECK | BitAnd/BitOr/BitXor arm lacked `is_notable_ty` check; `"hello" & "world"` silently accepted | ✅ Resolved (Stage 18.416) | §20 iterative audit — added `is_notable_ty` check before unify; float bitwise bitcast path removed from codegen |
 | TD-FIELD-ACCESS-SYNTAX-MISMATCH | `resolve_field_index` returned tuple index unconditionally on named-field structs; `Foo { x: 1 }.0` silently accepted | ✅ Resolved (Stage 18.420) | §20 iterative audit — added `check_field_access_syntax` helper + `FieldAccessCategory` enum; shared between read path (`lower_expr_to_operand`) and assignment path (`lower_expr_to_place`) |
+| TD-STR-INDEX-SILENT-ACCEPT | `resolve_index_element_type` had `TyKind::Str => Some(u8)` arm; `s[0]` silently treated `&str` as `&[u8]` (design divergence from Rust) | ✅ Resolved (Stage 18.422) | §20 iterative audit — removed Str arm; `&str` indexing now reports error; `emit_str_as_bytes` intrinsic fixed to return `&[u8]`-typed dest via `Rvalue::Cast(Unsize, ...)` |
 
 ---
 

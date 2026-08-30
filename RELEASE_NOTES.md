@@ -5,11 +5,62 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3795 integration tests = 4477 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 682 lib tests + 3824 integration tests = 4506 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (3 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax) |
+| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (4 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax → &str indexing rejection)
+
+---
+
+## v0.510.0 — §20 Iterative Audit: &str Indexing Rejection + as_bytes Cast Fix (Stage 18.422)
+
+### Overview
+
+Stage 18.420 fixed the field access syntax mismatch. Per §20 (iterative audit), this stage audited Index operations (`arr[idx]`) for similar silent-acceptance bugs. Found `resolve_index_element_type` had a `TyKind::Str => Some(u8)` arm that silently treated `&str` as `&[u8]`, allowing `s[0]` to compile (returning the first byte via raw pointer read).
+
+**Confirmed bug** (before fix): `s[0]` silently compiled and produced 104 (ASCII 'h') via raw pointer read — soundness false-positive.
+
+### Root-Cause Fix 1: Remove \`&str\` Indexing Arm
+
+Removed `TyKind::Str => Some(u8)` arm in `resolve_index_element_type` (`src/mir/lower/field_resolution.rs`). `&str` indexing now reports: "cannot index into type `str` — use `.as_bytes()[i]` for byte access or `.chars().nth(i)` for char access".
+
+Per §1.0 原則 5 (去除兼容思维): byte-indexing behavior removed, not kept as fallback. Per §1.6 终极检验: root-cause fix at the resolution site.
+
+### Root-Cause Fix 2: `emit_str_as_bytes` Intrinsic Returns `&[u8]`
+
+The `emit_str_as_bytes` intrinsic was returning `recv_local` directly (which has type `&str`), causing `s.as_bytes()[0]` to fail. Fix: Create a new dest local with type `&[u8]` and use `Rvalue::Cast(Unsize, Copy(recv_local), &[u8])` so typeck sees `&[u8]` (not `&str`). The fat pointer layout is identical, so the cast is a no-op at runtime.
+
+Per §12 (最优 > 最小): `Cast` is the architecturally correct MIR construct for type-changing no-op conversions.
+
+### Test Coverage
+
+New test file: `tests/v0/stage18/plan/stage18_422_str_index_rejection_tests.rs`
+
+| Category | Positive | Negative |
+|----------|----------|----------|
+| Array/slice/as_bytes indexing (valid) | 8 | — |
+| &str indexing directly | — | 10 |
+| Indexing non-indexable types (struct, tuple, int, bool) | — | 4 (2 documented limitations) |
+| Invalid index type (string, bool, float, struct) | — | 4 |
+| Index result to wrong type | — | 3 |
+| **Total** | **8** | **21** |
+
+### Known Limitations (documented, §5.2)
+
+- `n[0]` on integer: silently accepted (pre-existing typeck limitation).
+- `s[0] = 65` assignment: silently accepted on assignment path (pre-existing).
+- `bytes.len()` on `&[u8]`: fails (no `impl [T]` in prelude, pre-existing).
+
+### Verification
+
+- 4506 tests (682 lib + 3824 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- §14.5 D1-D8 deep review PASSED
+
+---
+
+## v0.510.0 — §20 Iterative Audit: Field Access Syntax Mismatch (Stage 18.420) |
 
 ---
 

@@ -42,7 +42,7 @@ fn stage18_183_str_index_first_byte() {
         r#"
 fn main() -> i32 {
     let s: &str = "hello";
-    let b: u8 = s[0];
+    let b: u8 = s.as_bytes()[0];
     println!("{}", b);
     0
 }
@@ -61,11 +61,11 @@ fn stage18_183_str_index_various_positions() {
         r#"
 fn main() -> i32 {
     let s: &str = "hello";
-    println!("{}", s[0]);
-    println!("{}", s[1]);
-    println!("{}", s[2]);
-    println!("{}", s[3]);
-    println!("{}", s[4]);
+    println!("{}", s.as_bytes()[0]);
+    println!("{}", s.as_bytes()[1]);
+    println!("{}", s.as_bytes()[2]);
+    println!("{}", s.as_bytes()[3]);
+    println!("{}", s.as_bytes()[4]);
     0
 }
 "#,
@@ -83,7 +83,7 @@ fn stage18_183_str_multi_index_one_expr() {
         r#"
 fn main() -> i32 {
     let s: &str = "world";
-    println!("{} {}", s[0], s[4]);
+    println!("{} {}", s.as_bytes()[0], s.as_bytes()[4]);
     0
 }
 "#,
@@ -102,7 +102,7 @@ fn stage18_183_str_index_via_let_var() {
 fn main() -> i32 {
     let s: &str = "hello";
     let i = 2;
-    println!("{}", s[i]);
+    println!("{}", s.as_bytes()[i]);
     0
 }
 "#,
@@ -121,8 +121,8 @@ fn stage18_183_str_index_returns_u8() {
         r#"
 fn main() -> i32 {
     let s: &str = "AB";
-    let a: u8 = s[0];
-    let b: u8 = s[1];
+    let a: u8 = s.as_bytes()[0];
+    let b: u8 = s.as_bytes()[1];
     println!("{} {}", a, b);
     0
 }
@@ -140,7 +140,7 @@ fn stage18_183_str_index_empty_soft() {
     let code = r#"
 fn main() -> i32 {
     let s: &str = "";
-    let b: u8 = s[0];
+    let b: u8 = s.as_bytes()[0];
     println!("{}", b);
     0
 }
@@ -165,7 +165,7 @@ fn stage18_183_str_len_and_index_combined() {
 fn main() -> i32 {
     let s: &str = "hello";
     let len = s.len();
-    let first = s[0];
+    let first = s.as_bytes()[0];
     println!("{} {}", len, first);
     0
 }

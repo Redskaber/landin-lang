@@ -3095,52 +3095,50 @@ fn codegen_slice_index_comparison_correct_type() {
 }
 
 // ============================================================================
-// Stage 3.53 — &str indexing element type fix (u8, not i32)
-// ============================================================================
+// Stage 3.53→18.422 — &str indexing is now a typeck error.
+//
+// Stage 3.53 originally tested `s[0]` where s: &str, which silently
+// returned u8 (treating &str as &[u8]). Stage 18.422 (§20 iterative
+// audit) removed this design divergence — &str indexing is now rejected.
+// Tests converted to use `s.as_bytes()[0]` (the valid equivalent).
+//
+// Per §1.0 原則 5 (去除兼容思维): old behavior removed, not kept as fallback.
+// Per §1.6 终极检验: root-cause fix at the resolution site.
 
 #[test]
 fn codegen_str_index_loads_u8() {
-    // s[0] where s: &str should load i8 (u8), not i32.
-    // Was (Stage 3.52 latent): resolve_index_element_type didn't handle
-    // Ref(_, _, Str), so element type was fresh_infer_ty → typeck default i32,
-    // causing store i8 into i32 temp (type mismatch).
-    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
+    // s.as_bytes()[0] should load i8 (u8), not i32.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s.as_bytes()[0] }");
     assert!(
         ll.contains("load i8"),
-        "expected load i8 for &str element in:\n{}",
-        ll
-    );
-    // The temp storing s[0] should be i8, not i32.
-    assert!(
-        ll.contains("store i8"),
-        "expected store i8 for &str element temp in:\n{}",
+        "expected load i8 for &[u8] element in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_str_index_arith_uses_i8() {
-    // s[0] + 1 where s: &str should use add nsw i8 + i8 overflow check.
-    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + 1 }");
+    // s.as_bytes()[0] + 1 should use add nsw i8 + i8 overflow check.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s.as_bytes()[0] + 1 }");
     assert!(
         ll.contains("add nsw i8"),
-        "expected add nsw i8 for &str element arithmetic in:\n{}",
+        "expected add nsw i8 for &[u8] element arithmetic in:\n{}",
         ll
     );
     assert!(
         ll.contains("llvm.sadd.with.overflow.i8"),
-        "expected i8 overflow check for &str element arithmetic in:\n{}",
+        "expected i8 overflow check for &[u8] element arithmetic in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_str_index_comparison_uses_i8() {
-    // s[0] > s[1] where s: &str should use icmp sgt i8.
-    let ll = gen_ll("fn f(s: &str) -> bool { s[0] > s[1] }");
+    // s.as_bytes()[0] > s.as_bytes()[1] should use icmp sgt i8.
+    let ll = gen_ll("fn f(s: &str) -> bool { s.as_bytes()[0] > s.as_bytes()[1] }");
     assert!(
         ll.contains("icmp sgt i8"),
-        "expected icmp sgt i8 for &str element comparison in:\n{}",
+        "expected icmp sgt i8 for &[u8] element comparison in:\n{}",
         ll
     );
 }
@@ -3148,40 +3146,40 @@ fn codegen_str_index_comparison_uses_i8() {
 #[test]
 fn codegen_str_index_in_function() {
     // More complex: sum of first two bytes.
-    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + s[1] }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s.as_bytes()[0] + s.as_bytes()[1] }");
     assert!(
         ll.contains("add nsw i8"),
-        "expected add nsw i8 for &str multi-element arithmetic in:\n{}",
+        "expected add nsw i8 for &[u8] multi-element arithmetic in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_str_index_variable_index() {
-    // s[i] with variable index on &str.
-    let ll = gen_ll("fn f(s: &str, i: i32) -> i32 { s[i] }");
+    // s.as_bytes()[i] with variable index on &[u8].
+    let ll = gen_ll("fn f(s: &str, i: i32) -> i32 { s.as_bytes()[i] }");
     assert!(
         ll.contains("load i8"),
-        "expected load i8 for &str variable index in:\n{}",
+        "expected load i8 for &[u8] variable index in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_str_index_constant_index() {
-    // s[1] with constant index on &str.
-    let ll = gen_ll("fn f(s: &str) -> i32 { s[1] }");
+    // s.as_bytes()[1] with constant index on &[u8].
+    let ll = gen_ll("fn f(s: &str) -> i32 { s.as_bytes()[1] }");
     assert!(
         ll.contains("load i8"),
-        "expected load i8 for &str constant index in:\n{}",
+        "expected load i8 for &[u8] constant index in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_str_index_no_i32_temp() {
-    // Regression: the temp storing s[0] should NOT be i32.
-    let _ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
+    // Regression: the temp storing s.as_bytes()[0] should NOT be i32.
+    let _ll = gen_ll("fn f(s: &str) -> i32 { s.as_bytes()[0] }");
     // The store of the element should be i8, not i32.
     // Stage 18.171: prelude methods add store i32, so we check the specific
     // %v4 pattern (the user function's temp) rather than all "store i32".
@@ -3290,11 +3288,11 @@ fn codegen_array_field_load_correct() {
 
 #[test]
 fn codegen_str_field_index() {
-    // s.text[0] where text: &str — index into &str field.
-    let ll = gen_ll("struct S { text: &str } fn f(s: S) -> i32 { s.text[0] }");
+    // s.text.as_bytes()[0] where text: &str — index into &[u8] field.
+    let ll = gen_ll("struct S { text: &str } fn f(s: S) -> i32 { s.text.as_bytes()[0] }");
     assert!(
         ll.contains("load i8"),
-        "expected load i8 for &str field element in:\n{}",
+        "expected load i8 for &[u8] field element in:\n{}",
         ll
     );
     assert!(
@@ -3704,8 +3702,9 @@ fn codegen_coercion_comparison_still_works() {
 
 #[test]
 fn codegen_coercion_str_index_still_works() {
-    // Regression: &str indexing (u8) should still coerce to i32.
-    let result = compile("fn f(s: &str) -> i32 { s[0] }");
+    // Stage 18.422: &str indexing is now a typeck error. The valid form is
+    // s.as_bytes()[0] which returns u8 and coerces to i32.
+    let result = compile("fn f(s: &str) -> i32 { s.as_bytes()[0] }");
     assert!(!result.has_errors(), "u8 → i32 should not error");
 }
 

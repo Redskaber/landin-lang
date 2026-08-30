@@ -285,14 +285,61 @@ fn emit_str_is_empty(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> 
 ///
 /// `&str` and `&[u8]` have the SAME LLVM fat pointer layout `{ ptr, usize }`.
 /// The conversion is a no-op at the MIR level — just return the receiver
-/// local. The type system handles the type change (str → [u8]).
+/// `str::as_bytes()` → return a `&[u8]` view of the `&str` fat pointer.
 ///
-/// Per §1.0 原則 6 (通解>特例): one fat pointer layout for all byte slices.
-fn emit_str_as_bytes(_cx: &mut MirLowerCtxt, recv_local: LocalId, _span: Span) -> LocalId {
-    // No-op: return the receiver local directly. The caller's dest local
-    // was already created with the appropriate `&[u8]` type by the caller's
-    // `query_method_return_type` lookup on the prelude impl's `as_bytes`
-    // signature. We just need to return the same local — the caller's
-    // terminator setup uses our returned local as the destination.
-    recv_local
+/// Stage 18.422 (§20 iterative audit): FIXED — was returning `recv_local`
+/// directly (which has type `&str`), causing `s.as_bytes()[0]` to fail
+/// because the result local's type was `Ref(_, _, Str)` not `Ref(_, _,
+/// Slice(U8))`. The "same fat pointer layout" comment was correct at the
+/// LLVM level but wrong at the MIR type level — typeck/codegen read the
+/// MIR type to decide indexing behavior.
+///
+/// Fix: Create a new dest local with type `&[u8]` (= `Ref(_, _, Slice(U8))`)
+/// and copy the receiver's value into it. The fat pointer layout is
+/// identical (`{ptr, len}`), so the copy is a no-op at runtime, but the
+/// MIR type is now correct for downstream typeck/codegen.
+///
+/// Per §20 (iterative audit): same class as Stage 18.420 (field access
+/// syntax mismatch — type-level correctness matters, not just layout).
+/// Per §1.0 原則 4 (报错 > 静默): the MIR type must accurately reflect the
+/// logical type, not just the physical layout.
+/// Per §1.6 终极检验: root-cause fix at the intrinsic emission site.
+/// Per §12 (最优 > 最小): create a correctly-typed dest local rather than
+/// relying on callers to reinterpret the `&str` local.
+fn emit_str_as_bytes(cx: &mut MirLowerCtxt, recv_local: LocalId, span: Span) -> LocalId {
+    // Create dest local with type `&[u8]` = `Ref(_, _, Slice(Uint(U8)))`.
+    let dest_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(Ty::new(
+                TyKind::Slice(Box::new(Ty::new(
+                    TyKind::Uint(crate::ast::UintTy::U8),
+                    span,
+                ))),
+                span,
+            )),
+        ),
+        span,
+    );
+    let dest = cx.mir.new_local(dest_ty.clone(), None, span);
+    // Use Rvalue::Cast (not Use) so typeck sees `dest_ty` (= &[u8]) as the
+    // rvalue type, not `recv_local.ty` (= &str). The fat pointer layout is
+    // identical (`{ptr, len}`), so the cast is a no-op at runtime.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): MIR type must accurately reflect the
+    // logical type. Using `Use(Copy(recv_local))` would make typeck see
+    // `&str` (recv_local's type) → mismatch with `&[u8]` place type.
+    // Per §12 (最优 > 最小): Cast is the architecturally correct MIR
+    // construct for type-changing no-op conversions.
+    cx.push_assign(
+        Place::local(dest, span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Unsize,
+            Operand::Copy(Place::local(recv_local, span)),
+            dest_ty,
+        ),
+        span,
+    );
+    dest
 }

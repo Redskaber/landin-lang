@@ -11,7 +11,6 @@
 //! `Param(ParamTy { index: 0, .. })` and then substituted with the Adt's
 //! substs (e.g., `[i32]`) to produce the concrete field type `i32`.
 
-use crate::ast;
 use crate::hir::*;
 use crate::mir::place::LocalId;
 use crate::mir::ty::*;
@@ -351,6 +350,21 @@ pub(crate) fn find_receiver_struct_def_id(
 ///
 /// Stage 18.80 P2-D: Added `expr_span` parameter for accurate error spans
 /// (was Span::DUMMY, producing "1:1" in error messages).
+///
+/// Stage 18.422 (§20 iterative audit): REMOVED `TyKind::Str => Some(u8)` arm.
+/// Was: `&str` indexing silently returned `u8` (treating `&str` as `&[u8]`).
+/// This was a design divergence from Rust, where `"hello"[0]` is a compile
+/// error (cannot index `&str` directly — must use `.as_bytes()[i]` or
+/// `.chars().nth(i)`). Confirmed bug: `s[0]` silently compiled and produced
+/// 104 (ASCII 'h') via raw pointer read.
+///
+/// Per §20 (iterative audit): same class as Stage 18.416 (float bitwise via
+/// bitcast was a design divergence from Rust).
+/// Per §1.0 原則 5 (去除兼容思维): the byte-indexing behavior is removed, not
+/// kept as a fallback.
+/// Per §1.0 原則 4 (报错 > 静默): `&str` indexing must be rejected, not
+/// silently coerced to `&[u8]`.
+/// Per §1.6 终极检验: root-cause fix at the resolution site.
 pub(crate) fn resolve_index_element_type(
     cx: &mut MirLowerCtxt,
     base_local: LocalId,
@@ -361,7 +375,10 @@ pub(crate) fn resolve_index_element_type(
         TyKind::Ref(_, _, inner) => match &inner.kind {
             TyKind::Slice(elem) => Some((**elem).clone()),
             TyKind::Array(elem, _) => Some((**elem).clone()),
-            TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), expr_span)),
+            // Stage 18.422: REMOVED `TyKind::Str => Some(u8)` — `&str` indexing
+            // is now a type error (matches Rust semantics). Users must use
+            // `.as_bytes()[i]` for byte access or `.chars().nth(i)` for char
+            // access.
             // Stage 18.62: Infer/Error/Param are acceptable fallbacks (typeck
             // will resolve them later). Per §1.0 原則 4: only push error for
             // truly non-indexable concrete types.
@@ -369,9 +386,13 @@ pub(crate) fn resolve_index_element_type(
             _ => {
                 // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
                 // Stage 18.80 P2-D: Use expr_span instead of Span::DUMMY.
+                // Stage 18.422: This arm now catches `TyKind::Str` (previously
+                // had its own arm returning u8). `&str` indexing reports:
+                // "cannot index into type `str`" — guiding users to
+                // `.as_bytes()` or `.chars()`.
                 cx.type_errors.push(crate::typeck::TypeError::new(
                     format!(
-                        "cannot index into type `{}`",
+                        "cannot index into type `{}` — use `.as_bytes()[i]` for byte access or `.chars().nth(i)` for char access",
                         crate::mir::ty::type_to_string(inner)
                     ),
                     expr_span,
