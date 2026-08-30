@@ -33554,3 +33554,55 @@ v0.5 FINAL STATE:
   - Break/continue context enforcement (language feature)
   - Enum exhaustiveness checking (language feature)
 
+
+---
+Task ID: stage24.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 24.1 — v0.6 TD-SOLVER-TYPECK-INTEGRATION: wire v0.5 Trait Solver select() into typeck. L2 (single file modification). v0.528.0.
+
+3秒启动自检:
+- 定位: L2 (修改 src/typeck/solver.rs — evaluate_direct function ~60 LOC changed)
+- 对齐: 已查 v0.5 FINAL (v0.527.0); TD-SOLVER-TYPECK-INTEGRATION (v0.6+ priority #1); existing TraitSolverCtxt::evaluate_direct uses implements_by_def_ids (name-based lookup); v0.5 Trait Solver provides select(goal, cx) -> SelectionResult (proper 3-phase Evaluation → Selection)
+- 阻断: v0.5 FINAL 全绿 (4821 tests), 0 P0/P1
+
+决策点 (设计选择):
+- Replaced implements_by_def_ids with select() in evaluate_direct
+  - 引用 §1.0 原則 9 (正确 > 妥协): v0.5 solver uses proper 3-phase (Evaluation → Selection), more correct than name-based lookup
+  - 引用 §12 (最优 > 最小): root-cause integration — use the proper solver, not just name-based lookup
+  - 引用 §1.0 原則 6 (通解 > 特解): one select() handles all impl kinds, including future generic types
+  - 替代: keep implements_by_def_ids + add select() as secondary check — but this is redundant (select() is a superset of implements_by_def_ids)
+
+- Built EvalCtxt + InferCtxt + ParamEnv inline (vs threading through typeck)
+  - 引用 §11 (接口隔离): typeck solver creates its own EvalCtxt (doesn't share with codegen)
+  - 引用 §1.0 原則 3 (显式 > 隐式): explicit context creation for each evaluate_direct call
+  - 替代: thread EvalCtxt through typeck pipeline — but this is a large refactor (all typeck functions would need EvalCtxt param)
+  - 选择: inline creation (MVP — each call creates fresh InferCtxt; future optimization can cache)
+
+裁剪点:
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — will be done at v0.6 FINAL
+- 安全理由: evaluate_direct is called from where_clause checking; existing tests verify no regression (4821 tests all pass)
+
+5W2H:
+- WHAT: Modified src/typeck/solver.rs evaluate_direct() — replaced implements_by_def_ids with v0.5 Trait Solver select()
+- WHY: v0.6 TD-SOLVER-TYPECK-INTEGRATION — wire v0.5 Trait Solver into typeck for proper trait bound checking
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.5 FINAL 完成后的第一个 v0.6 MUV
+- WHERE: src/typeck/solver.rs (evaluate_direct function)
+- HOW: (1) Build SolverPredicate + ParamEnv + InferCtxt + EvalCtxt (2) Call select(goal, cx) (3) Map SelectionResult → GoalEvaluationResult
+- HOW MUCH: 4821 tests (unchanged — behavior-preserving integration), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.6 Phase 1: TD-SOLVER-TYPECK-INTEGRATION COMPLETE ✅
+- Modified: src/typeck/solver.rs (evaluate_direct — replaced implements_by_def_ids with select())
+- §3.2 全绿: 4821 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- Addresses: TD-SOLVER-TYPECK-INTEGRATION
+
+下一步 (v0.6 remaining TDs):
+- TD-CODEGEN-REMAINING-UNCHECKED — full Result propagation through codegen pipeline
+- TD-SOLVER-WHERE-CLAUSE-MVP — HIR access for impl where clauses
+- TD-SINGLE-FILE Phase 4 — manifest integration (unblocks Incremental Compilation)
+- TD-GAT-HIGHER-RANKED — region-aware monomorphization
+- Language features: visibility enforcement + break/continue context + enum exhaustiveness
+

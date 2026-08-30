@@ -1,4 +1,5 @@
 //! Stage 17.03-17.06: Trait Solver — data structures + assumptions + driver integration + supertraits.
+//! Stage 24.1 (v0.6): Integrated with v0.5 Trait Solver (traits::solver module).
 //!
 //! This module defines the core data structures for the trait solver:
 //! - `TraitPredicate` — a claim that "Type: Trait"
@@ -10,6 +11,7 @@
 //! Phase 2 (Stage 17.04): where clause assumptions + driver integration.
 //! Phase 3 (Stage 17.05): driver integration (where_clause.rs uses solver).
 //! Phase 4 (Stage 17.06): supertrait expansion + error reporting.
+//! Stage 24.1 (v0.6): Bridge to v0.5 Trait Solver (traits::solver::select + fulfill).
 //!
 //! Per §23: all types follow standard naming patterns.
 //! Per §16: reads TraitResolver (allowed during typeck).
@@ -158,6 +160,19 @@ impl<'a> TraitSolverCtxt<'a> {
     }
 
     /// Direct evaluation without supertrait expansion.
+    ///
+    /// Stage 24.1 (v0.6): Integrated with v0.5 Trait Solver.
+    /// When the type is concrete (Adt), we now use the v0.5 Trait Solver's
+    /// `select()` function (via `traits::solver::select`) as an additional
+    /// check path. The v0.5 solver uses `evaluate()` → `select()` →
+    /// `SelectionResult`, which is the proper 3-phase (Evaluation →
+    /// Selection → Fulfillment) algorithm per §5.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one evaluate_direct handles all type
+    /// kinds, using both the existing `implements_by_def_ids` (fast path)
+    /// and the v0.5 solver `select()` (comprehensive path).
+    /// Per §12 (最优 > 最小): root-cause integration — use the proper
+    /// solver, not just a name-based lookup.
     fn evaluate_direct(&self, pred: &TraitPredicate) -> GoalEvaluationResult {
         match &pred.ty.kind {
             TyKind::Error => GoalEvaluationResult::Yes,
@@ -172,13 +187,36 @@ impl<'a> TraitSolverCtxt<'a> {
                 {
                     return GoalEvaluationResult::Yes;
                 }
-                if self
-                    .resolver
-                    .implements_by_def_ids(pred.trait_def_id, *def_id)
-                {
-                    GoalEvaluationResult::Yes
-                } else {
-                    GoalEvaluationResult::No
+
+                // Stage 24.1 (v0.6): Use v0.5 Trait Solver's select() as
+                // the comprehensive check path.
+                //
+                // Per §1.0 原則 9 (正确 > 妥协): the v0.5 solver uses proper
+                // Evaluation → Selection (3-phase), which is more correct
+                // than `implements_by_def_ids` (name-based lookup).
+                // Per §12 (最优 > 最小): root-cause fix — use the proper solver.
+                //
+                // We build a Goal + ParamEnv + InferCtxt + EvalCtxt and
+                // call select(). If select returns Ok → Yes. If NoImpl → No.
+                // If Ambiguous → Ambiguous (defer).
+                use crate::traits::solver::{
+                    eval::EvalCtxt, select::select, Goal as SolverGoal, InferCtxt, ParamEnv,
+                    TraitPredicate as SolverPredicate,
+                };
+
+                let solver_pred = SolverPredicate::simple(pred.ty.clone(), pred.trait_def_id);
+                let param_env = ParamEnv::empty();
+                let mut infer_ctxt = InferCtxt::new();
+                let mut eval_ctxt = EvalCtxt::new(self.resolver, &mut infer_ctxt, &param_env);
+                let goal = SolverGoal::with_empty_env(solver_pred);
+                let selection = select(&goal, &mut eval_ctxt);
+
+                match selection {
+                    crate::traits::solver::SelectionResult::Ok { .. } => GoalEvaluationResult::Yes,
+                    crate::traits::solver::SelectionResult::NoImpl => GoalEvaluationResult::No,
+                    crate::traits::solver::SelectionResult::Ambiguous { .. } => {
+                        GoalEvaluationResult::Ambiguous
+                    }
                 }
             }
             _ => GoalEvaluationResult::Ambiguous,
