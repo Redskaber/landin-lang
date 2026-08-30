@@ -189,6 +189,18 @@ pub fn writeback_type_propagation(
                 if let PlaceKind::Local(id) = &destination.kind {
                     let dest_idx = id.0 as usize;
                     let dest_ty = &mir.local_decls[dest_idx].ty;
+                    // Stage 18.404 (v0.5+ Phase 2 L3): Skip writeback when
+                    // dest already has expected_ty (concrete from let annotation).
+                    // The Call dest was lowered with expected_ty (Stage 18.404),
+                    // so it's already concrete. writeback's compute_call_dest_ty
+                    // would overwrite it with the fn's return type (sig.output),
+                    // which may differ from expected_ty when there's a type mismatch.
+                    // In that case, typeck should report "expected <annotation>,
+                    // found <sig.output>" — writeback should NOT overwrite dest_ty
+                    // with sig.output, as that would hide the mismatch from typeck.
+                    //
+                    // Per §1.0 原則 9 (正确 > 妥协): don't overwrite concrete dest_ty.
+                    // Per §12 (最优 > 最小): root-cause fix — skip writeback for concrete.
                     if !needs_writeback(dest_ty) {
                         continue;
                     }

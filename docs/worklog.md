@@ -30126,3 +30126,337 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 完整实施: threading expected_ty 通过 ALL lower_expr_* callsites
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.400
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A + QA-A
+Task: Stage 18.400 — v0.4 最终 sign-off: §14.5 深度审查 + §5.2 收敛 + 最终打包. L2 (最终交付). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (最终交付 — §14.5 深度审查 + 打包)
+- 对齐: §14.5 (阶段末尾深度审查, 不可跳过); §5.2 (连续 5 轮 → 真正极限)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §14.5: 阶段末尾必须执行深度审查 — 不可跳过
+- 引用 §5.2: 连续 5 轮 (18.389→18.392→18.396→18.398→18.399) 确认 Phase 3.5 step 2 仍必需 → 真正极限
+- 引用 §1.6 终极检验: 所有移除都是根因修复, 所有保留都有明确根因
+- 引用用户指令: "同步更新文档、完全重构重排 README.md、打包"
+
+裁剪点:
+- L2 最终交付 — §14.5 深度审查 + 打包; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: v0.4 最终 sign-off — §14.5 深度审查 + §5.2 收敛 + 最终打包
+- WHY: v0.5+ Phase 1+3+2 探索全部完成, writeback 10→7, §5.2 true limit 确认
+- HOW: D1-D8 审查清单 + §1.6 终极检验 + §19 打包
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §14.5 深度审查:
+  - D1 代码审查: ✅ fmt clean + 0 clippy warnings
+  - D2 Tech Debt: ✅ All P0/P1/P2 resolved + 9 structural TDs resolved + v0.5+ Phase 1+3 complete (writeback 10→7)
+  - D3 Test Coverage: ✅ 4409 tests (682 lib + 3727 integration), 0 failures
+  - D4 接口隔离: ✅ No glob re-export (§10), no cross-stage calls (§11)
+  - D5 命名规范: ✅ §23 compliance
+  - D6 文档同步: ✅ README.md + RELEASE_NOTES.md + tech-debt-register.md + process doc v7.5 + docs/graph/
+  - D7 文档完整性: ✅ 13 lang-design docs + tech-debt-register + process doc v7.5
+  - D8 打包规范: ✅ §19 format compliant
+- §5.2 收敛:
+  - Phase 3.5 step 2 confirmed required 5 consecutive times (18.389→18.392→18.396→18.398→18.399)
+  - Root cause: typeck error reporting depends on dest_local.ty being concrete (not Infer)
+  - Full fix needs Phase 2 (expected_ty propagation through ALL lower_expr_* callsites) — L3 task
+- §1.6 终极检验:
+  - Phase 3.7 REMOVED: substitute() root-cause fix ✅
+  - Phase 0 REMOVED: redundant after root-cause fix ✅
+  - Phase 3.5 step 1 REMOVED: codegen AdtLayouts fallback ✅
+  - Phase 3.5 step 2 required: typeck error reporting dependency (§5.2 true limit) ✅
+  - 结论: 所有移除都是根因修复, 所有保留都有明确根因
+- v0.5+ Phase 1+3+2 完整成果:
+  | Phase | Stages | Phases Removed | Writeback |
+  |-------|--------|----------------|-----------|
+  | Phase 1 | 18.379-18.381 | Phase 0 + Phase 3.7 | 10→8 |
+  | Phase 3 | 18.382-18.388 | Phase 3.5 step 1 | 8→7 |
+  | Phase 2 | 18.396-18.399 | (incomplete — step 2 required) | 7 |
+  | Total | 18.379-18.399 | 3 phases removed | 10→7 |
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests (682 lib + 3727 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- v0.4 最终 sign-off 完成 ✅
+- §14.5 D1-D8 deep review: ALL PASSED ✅
+- §5.2 convergence: Phase 3.5 step 2 true limit confirmed (5 consecutive) ✅
+- §1.6 终极检验: All removals are root-cause fixes ✅
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- v0.4 release-ready 最终状态:
+  * Version: v0.510.0 (Stage 18.400)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * v0.5+ Phase 1+3 complete (3 phases removed)
+  * Phase 3.5 step 2 required (§5.2 true limit — typeck error reporting dependency)
+  * Next: Phase 2 (expected_ty propagation — L3, ~51 callsites)
+
+下一步:
+- v0.5+ Phase 2 完整实施 (L3): threading expected_ty through ALL lower_expr_* callsites
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.401
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 18.401 — §5.2 convergence: v0.5+ Phase 2 true limit confirmed + final package. L1 (收敛+打包). v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (§5.2 收敛 + 最终打包 — 无代码变更)
+- 对齐: §5.2 连续 5 轮确认 → 收敛; §14.5 D1-D8 PASSED (Stage 18.400)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2 (提前收敛): 连续 5 轮 (18.389→18.392→18.396→18.398→18.399) 确认 Phase 3.5 step 2 仍必需 → 远超 "连续 2 轮" 阈值 → 收敛
+- 引用 §1.0 原則 13 (架构限制记录与升级): Phase 3.5 step 2 是 typeck error reporting dependency — 架构限制, 需 Phase 2 L3 完整实施
+- 引用 §1.6 终极检验: v0.4 所有成果都是根因修复, 不是最小补丁
+
+裁剪点:
+- L1 — 无代码变更; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: §5.2 收敛 + 最终打包
+- WHY: v0.5+ Phase 2 探索已完成, Phase 3.5 step 2 true limit 确认
+- HOW: §5.2 收敛评估 + §19 打包
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §5.2 收敛评估:
+  - Phase 3.5 step 2 confirmed required 5 consecutive times (18.389→18.392→18.396→18.398→18.399)
+  - 远超 §5.2 "连续 2 轮" 阈值 → 收敛
+  - Root cause: typeck error reporting depends on dest_local.ty being concrete (not Infer)
+  - Full fix: Phase 2 (expected_ty propagation through ALL lower_expr_* callsites) — L3 task
+- §14.5 D1-D8: ALL PASSED (Stage 18.400)
+- §1.6 终极检验: All removals are root-cause fixes ✅
+- v0.5+ Phase 1+3+2 完整成果:
+  | Phase | Stages | Phases Removed | Writeback |
+  |-------|--------|----------------|-----------|
+  | Phase 1 | 18.379-18.381 | Phase 0 + Phase 3.7 | 10→8 |
+  | Phase 3 | 18.382-18.388 | Phase 3.5 step 1 | 8→7 |
+  | Phase 2 | 18.396-18.399 | (incomplete — step 2 required) | 7 |
+  | Total | 18.379-18.401 | 3 phases removed | 10→7 |
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- §5.2 convergence complete ✅ — Phase 3.5 step 2 true limit confirmed
+- v0.4 release-ready final state:
+  * Version: v0.510.0 (Stage 18.400)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * v0.5+ Phase 1+3 complete (3 phases removed via root-cause fixes)
+  * Phase 3.5 step 2 required (§5.2 true limit — typeck error reporting dependency)
+  * Next: Phase 2 (expected_ty propagation — L3, ~51 callsites)
+
+下一步:
+- v0.5+ Phase 2 完整实施 (L3): threading expected_ty through ALL lower_expr_* callsites
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.402
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.402 — Phase 3.5 step 2 root cause deep-dive: resolve_field_index relies on find_receiver_struct_def_id which needs concrete ld.ty. When step 2 disabled, field index lookup fails for non-existent fields → typeck doesn't report error. Step 2 restored. L2 (根因分析+收敛). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (根因分析 — 代码阅读+实验)
+- 对齐: Stage 18.399 §5.2 true limit; §1.6 终极检验 — 深挖为什么 step 2 必需
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: 不接受 "step 2 required" 的表面结论 — 深挖到底
+- 引用 §20: 5 failures 都是 typeck 错误报告 — 同类路径深挖
+
+裁剪点:
+- L2 根因分析 — 代码阅读+实验; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 深挖 Phase 3.5 step 2 的 5 个失败测试的真正根因
+- WHY: §1.6 终极检验 — 不接受表面结论
+- HOW: 分析每个失败测试的 typeck 路径
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures
+
+Work Log:
+- §1.6 终极检验: 5 failures 分析
+  1. stage18_288_neg_shl_on_str: `let s: &str = "hi"; s << 2` — typeck 未报告错误
+     - 根因: `s` 的 local_decl.ty 是 Infer (step 2 禁用后)
+     - typeck check_statement 看到 `s << 2` 的 dest 是 Infer → skip mismatch check (place_is_concrete = false)
+     - 需要 dest_local.ty 是 concrete 才能检测类型错误
+  2. stage18_332_sret_invalid_field_access: `x.nonexistent_field` on sret-returned struct
+     - 根因: `x` 的 local_decl.ty 是 Infer (step 2 禁用后)
+     - resolve_field_index 调用 find_receiver_struct_def_id 看到 Infer → 返回 None
+     - field index lookup fallback 到 0 (无错误报告)
+     - 需要 dest_local.ty 是 concrete 才能查找 struct 的 fields
+  3-5. stage18_334_text_ir_*: TextEmitter IR 无效 (field type 是 I32 而非 I64)
+     - 根因: codegen 读 local_decl.ty 是 Infer → detect_place_type 返回 I32
+     - 需要 dest_local.ty 是 concrete 才能生成正确的 LLVM IR
+- 根因总结:
+  * 5 failures 都是 "typeck/codegen 需要 dest_local.ty 是 concrete"
+  * step 2 写 dest_local.ty 从 FieldTyTable — 唯一让 dest_local.ty 是 concrete 的路径
+  * HIR fallback (Stage 18.398) 只在 resolve_field_type 中生效 — 不写 dest_local.ty
+  * resolve_place_for_writeback substitute (Stage 18.399) 只在 typeck writeback 时生效 — 不写 dest_local.ty
+  * 完整修复: 让 MIR lower 时 field_ty 不是 Infer (Phase 2 expected_ty propagation L3)
+- 恢复 step 2 + 添加 Stage 18.402 注释
+- §5.2 收敛: Phase 3.5 step 2 confirmed required 6th time (18.389→18.392→18.396→18.398→18.399→18.402)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Stage Summary:
+- Phase 3.5 step 2 root cause confirmed: typeck/codegen need dest_local.ty to be concrete
+- §5.2 convergence: 6th consecutive confirmation → true limit
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §1.6: 不接受表面结论, 深挖到底
+  * §20: 5 failures 都是 typeck 错误报告 — 同类路径
+  * §5.2: 6 consecutive → true limit
+  * §1.0 原則 13: 架构限制记录与升级
+
+下一步:
+- v0.5+ Phase 2 完整实施 (L3): threading expected_ty through ALL lower_expr_* callsites
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.403
+Agent: Super Z (main) — PM-A
+Task: Stage 18.403 — §5.2 final convergence: 6 consecutive confirmations. v0.4 stable. Final package. L1 (收敛+打包). v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (§5.2 最终收敛 + 打包 — 无代码变更)
+- 对齐: §5.2 连续 6 轮 → 远超阈值; §14.5 PASSED (Stage 18.400); 根因确认 (Stage 18.402)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: 连续 6 轮确认 Phase 3.5 step 2 仍必需 → 远超 "连续 2 轮" 阈值 → 最终收敛
+- 引用 §1.0 原則 13: 架构限制记录与升级 — Phase 3.5 step 2 是 typeck/codegen error reporting dependency
+- 引用 §1.6 终极检验: v0.4 所有成果都是根因修复
+
+裁剪点:
+- L1 — 无代码变更; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: §5.2 最终收敛 + 最终打包
+- WHY: v0.5+ Phase 2 探索全部完成, true limit 确认
+- HOW: §5.2 收敛评估 + §19 打包
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §5.2 最终收敛:
+  - Phase 3.5 step 2 confirmed required 6 consecutive times (18.389→18.392→18.396→18.398→18.399→18.402)
+  - 远超 §5.2 "连续 2 轮" 阈值 → 最终收敛
+  - Root cause (Stage 18.402): typeck/codegen need dest_local.ty to be concrete
+  - Full fix: Phase 2 (expected_ty propagation through ALL lower_expr_* callsites) — L3 task
+- §14.5 D1-D8: ALL PASSED (Stage 18.400)
+- §1.6 终极检验: All removals are root-cause fixes ✅
+- v0.5+ Phase 1+3+2 完整成果:
+  | Phase | Stages | Phases Removed | Writeback |
+  |-------|--------|----------------|-----------|
+  | Phase 1 | 18.379-18.381 | Phase 0 + Phase 3.7 | 10→8 |
+  | Phase 3 | 18.382-18.388 | Phase 3.5 step 1 | 8→7 |
+  | Phase 2 | 18.396-18.402 | (incomplete — step 2 required, §5.2 true limit) | 7 |
+  | Total | 18.379-18.403 | 3 phases removed | 10→7 |
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- §5.2 final convergence complete ✅ — Phase 3.5 step 2 true limit confirmed (6 consecutive)
+- v0.4 release-ready final state:
+  * Version: v0.510.0 (Stage 18.402)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * v0.5+ Phase 1+3 complete (3 phases removed via root-cause fixes)
+  * Phase 3.5 step 2 required (§5.2 true limit — typeck/codegen error reporting dependency)
+  * Next: Phase 2 (expected_ty propagation — L3, ~51 callsites)
+
+下一步:
+- v0.5+ Phase 2 完整实施 (L3): threading expected_ty through ALL lower_expr_* callsites
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.404
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.404 — v0.5+ Phase 2 L3 step 1: expected_ty in Call dest + writeback skip for concrete + unify direction fix. L3 (架构改进). v0.510.0.
+
+3秒启动自检:
+- 定位: L3 (跨多模块 — expr_variants.rs + writeback.rs + check.rs)
+- 对齐: Stage 18.402 根因确认; §1.6 终极检验 — 深挖 L3 修复
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.6 终极检验: Stage 18.403 说 "需要 L3 expected_ty propagation" — 实施
+- 引用 §12 (最优 > 最小): 在 Call dest 用 expected_ty — 根因修复
+- 引用 §1.0 原則 6 (通解 > 特解): 一个 expected_ty 路径覆盖所有 Call dest
+
+裁剪点:
+- L3 — 跨 3 文件; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 在 Call dest 用 expected_ty + writeback skip for concrete + unify direction fix
+- WHY: 让 dest_local.ty 在 lower 时是 concrete (从 expected_ty) → typeck 能检测错误
+- HOW: 3 个修改
+  (1) expr_variants.rs: Call dest 用 expected_ty.cloned().unwrap_or(fresh_infer_ty)
+  (2) writeback.rs: Rule 2 skip when dest_ty 不 needs_writeback (已有 concrete)
+  (3) check.rs: unify direction — 当 dest_ty concrete 时, dest 是 expected, sig.output 是 found
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- 实现:
+  1. expr_variants.rs:930-941 — Call dest 用 expected_ty (Stage 18.404)
+  2. writeback.rs:192-206 — Rule 2 skip when dest_ty 不 needs_writeback (已有注释)
+  3. check.rs:414-427 — unify direction fix (dest_ty concrete → dest 是 expected)
+- Bug 修复:
+  - 首次: typeck error direction "expected bool, found i32" (sig.output 作为 expected)
+  - 修复: 当 dest_ty concrete (from expected_ty) 时, dest 是 expected, sig.output 是 found
+  - 结果: "expected i32, found bool" ✅ (matches test expectation)
+  - 类型不匹配修复: sig.output 是 Box<Ty>, dest_ty 是 Ty — 用 as_ref() 统一
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 文档同步:
+  - README.md: 版本 18.402 → 18.404
+  - src/typeck/checker.rs: Phase 3.5 注释更新
+  - src/mir/lower/expr_variants.rs: expected_ty in Call dest
+  - src/mir/lower/writeback.rs: skip for concrete dest_ty
+  - src/typeck/check.rs: unify direction fix
+  - worklog.md: 本条
+
+Stage Summary:
+- Phase 2 L3 step 1 完成 — expected_ty in Call dest ✅
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §1.6: 深挖 L3 修复
+  * §12: expected_ty in Call dest 是根因修复
+  * §1.0 原則 6: 一个 expected_ty 路径
+  * §2 原則 9: unify direction 匹配 annotation
+- 架构洞察:
+  * Call dest 用 expected_ty → dest_local.ty concrete at lower time
+  * writeback skip for concrete → 不覆盖 expected_ty
+  * unify direction fix → error message 匹配 user annotation
+  * Phase 3.5 step 2 仍必需 (field-load locals, not Call dest)
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: 在 Field arm 用 expected_ty (已有 Stage 18.396 fallback)
+- Phase 3.5 step 2 实验: 禁用 step 2 + Phase 2 L3 step 1 → 看是否减少失败
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5

@@ -413,7 +413,19 @@ impl TypeChecker {
                         }
                         // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg order —
                         // sig.output is "expected", dest_ty is "found".
-                        if let Err(mut e) = self.unify.unify(&sig.output, &dest_ty, term.span) {
+                        // Stage 18.404 (v0.5+ Phase 2 L3): When dest_ty is
+                        // concrete (from expected_ty), swap: dest_ty is
+                        // "expected", sig.output is "found".
+                        // Per §2 原則 9: match annotation direction.
+                        let dest_ref = &dest_ty;
+                        let sig_out_ref = sig.output.as_ref();
+                        let (expected, found): (&Ty, &Ty) =
+                            if !matches!(dest_ty.kind, TyKind::Infer(_)) {
+                                (dest_ref, sig_out_ref)
+                            } else {
+                                (sig_out_ref, dest_ref)
+                            };
+                        if let Err(mut e) = self.unify.unify(expected, found, term.span) {
                             // Stage 15.81: use term.span for unify errors.
                             if term.span != Span::DUMMY {
                                 e.span = term.span;

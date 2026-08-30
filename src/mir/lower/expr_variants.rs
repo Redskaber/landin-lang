@@ -927,11 +927,29 @@ pub(super) fn lower_call_expr(
         // Per §1.0 原則 5 "去除兼容思维": dead code is removed.
         // Per §1.0 原則 6 "通用 > 特例": one codegen path for
         // all closure-typed calls.
-        // Stage 18.374 (TD-TY-INFER-SPAN): use expr.span instead of Span::DUMMY
-        // so typeck errors on this InferTy point to the call's source location.
-        // Per §1.0 原則 4 "报错 > 静默": errors should carry diagnostic span.
-        // Per §2 原则 3 "显式 > 隐式": span is available in scope (expr.span), use it.
-        let dest_ty = cx.fresh_infer_ty(expr.span);
+        // Stage 18.404 (v0.5+ Phase 2 L3): Use expected_ty for dest_ty when
+        // available AND when it's not from a type annotation (let : T = call()).
+        // When expected_ty comes from `let x: i32 = g()` and g() returns bool,
+        // using expected_ty (i32) as dest_ty would make typeck see dest=i32,
+        // rvalue=bool → mismatch. But the error message direction would be
+        // "expected i32, found bool" — which is CORRECT per §2 原則 9.
+        //
+        // However, this changes the error message direction from the test's
+        // expectation. The test expects "expected i32, found bool" but with
+        // expected_ty as dest_ty, the rvalue (call result) would have the
+        // fn's return type (bool) while the place has expected_ty (i32).
+        // So the message would be "expected i32, found bool" — correct!
+        //
+        // The actual issue is that with expected_ty, the dest_local.ty is
+        // already i32 (concrete), so typeck doesn't need the rvalue type at
+        // all — it sees dest=i32, rvalue=bool → mismatch with correct direction.
+        //
+        // Per §1.6 终极检验: this IS the root-cause fix.
+        // Per §12 (最优 > 最小): root-cause fix at the lower site.
+        // Per §1.0 原則 6 (通解 > 特解): one expected_ty path for all call dests.
+        let dest_ty = expected_ty
+            .cloned()
+            .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
         let dest = cx.mir.new_local(dest_ty, None, expr.span);
         let cont = cx.new_block();
         cx.terminate_kind_and_goto(
