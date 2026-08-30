@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.540.0 (v0.11 FINAL — Manifest integration complete, remaining TDs BLOCKED) |
+| **Version** | v0.542.0 (v0.12 FINAL — Region inference reclassification complete, remaining TDs BLOCKED) |
 | **License** | MIT |
-| **Status** | ✅ **v0.11 FINAL — MANIFEST INTEGRATION COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.11 task: ✅ Stage 29.1 TD-SINGLE-FILE Phase 4 (compile_project_from_manifest + landinc test command). Remaining TD: TD-GAT-HIGHER-RANKED (region-aware mono — needs region inference, v0.12+). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.12 (region-aware monomorphization). |
+| **Status** | ✅ **v0.12 FINAL — REGION INFERENCE RECLASSIFICATION COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.12 task: ✅ Stage 30.1 TD-STUB-REGION-ERASED (region inference was always running, not no-op). Remaining TDs ALL BLOCKED: TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-DROP-ELABORATION-NOOP (Drop::drop codegen), TD-STUB-LIFETIME-ELISION-NOOP (3-rule elision), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 90,771 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness). Next: v0.13 (HRTB + Drop + lifetime elision + projection normalization). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

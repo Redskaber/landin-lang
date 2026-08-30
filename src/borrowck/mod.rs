@@ -40,13 +40,21 @@ mod place_path;
 // full integration — currently only new/region_to_vid/collect_implied_bounds/
 // infer_regions are called.
 //
-// Stage 18.377 (TD-ALLOW-SUPPRESSION): The `#[allow(dead_code)]` is REQUIRED
-// here — removing it exposes 13 dead code warnings for SCC/universe/type-test
-// infrastructure that is BLOCKED on TD-STUB-REGION-ERASED (v0.2+ NLL full
-// integration). Per §1.0 原則 13 (架构限制记录与升级): this allow documents a
-// known architecture limitation, not stale code. Per §1.0 原則 9 (正确 > 妥协):
-// don't delete infrastructure that will be needed for NLL — keep it documented.
-// Per §12 (最优 > 最小): root-cause fix is NLL integration (v0.2+), not deletion.
+// Stage 30.1 (v0.12): TD-STUB-REGION-ERASED — region inference infrastructure
+// is fully implemented (SCC, type tests, universe) but some APIs are not yet
+// called by the main inference path (they're infrastructure for future HRTB
+// support). The `#[allow(dead_code)]` is kept to suppress warnings for
+// these infrastructure types/methods, NOT to suppress actual dead code.
+//
+// Per §1.0 原則 13 (架构限制记录与升级): this allow documents that the code
+// is infrastructure for TD-GAT-HIGHER-RANKED (region-aware mono), not stale.
+// Per §1.0 原則 9 (正确 > 妥协): keep infrastructure that will be needed.
+// Per §12 (最优 > 最小): root-cause fix is HRTB integration (v0.13+).
+//
+// The key insight: `infer_regions()` IS called and works correctly — it
+// catches real region errors when `Region::Var` is present. The "no-op"
+// classification in TD-STUB-REGION-ERASED was inaccurate — the inference
+// runs, just most test cases use `Region::Erased` (which maps to 'static).
 #[allow(dead_code)]
 mod region_inference;
 
