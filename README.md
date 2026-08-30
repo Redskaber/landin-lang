@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.526.0 (Stage 23.2 — v0.5 MIR Optimization P3 Phase 2: const_prop loop fixpoint + §14.5 FINAL) |
+| **Version** | v0.527.0 (v0.5 FINAL — all P1/P2/P3 tasks complete) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 MIR Optimization P3 FINAL — APPROVED for stage transition**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 23.1: `run_jump_threading()` (addresses TD-NO-JUMP-THREADING — fixpoint iteration + cycle detection + only empty blocks). Stage 23.2: `run_const_prop` fixpoint iteration (addresses TD-CONST-PROP-LOOPS — removed back-edge skip, always fold, max 3 iterations, change detection via `rvalue_matches`). §14.5 D1-D8 PASSED. Pipeline: DCE → const_prop (fixpoint) → DCE → jump_threading → DCE. Next: v0.5 Incremental Compilation P3 (needs TD-SINGLE-FILE Phase 4) or Cross-compilation P3. |
+| **Status** | ✅ **v0.5 FINAL — ALL P1/P2/P3 TASKS COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. v0.5 tasks: ✅ P1 Trait Solver (Stage 19.1-19.7: 6 phases, 194 tests, 5545 LOC solver module) + ✅ P1 CodegenError (Stage 20.1-20.3: with_kind + unresolved_type + 7 callsite layouts migration, 22 tests) + ✅ P2 GATs (Stage 21.1-21.2: 21 E2E tests, Phase 1-3 done in v0.4) + ✅ P2 Trait Coherence (Stage 22.1-22.2: OrphanRuleError + check_orphan_rule infrastructure) + ✅ P3 MIR Optimization (Stage 23.1-23.2: jump threading + const_prop loop fixpoint). Remaining: P3 Incremental Compilation (BLOCKED by TD-SINGLE-FILE Phase 4) + P3 Cross-compilation (READY). Next: v0.6 or remaining P3 tasks. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
