@@ -339,14 +339,30 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // opaque pointer (function reference). Was: fell through to I32, causing
         // fn pointer params to be treated as i32 — function refs passed as `0`.
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
-        // ADTs and other complex types — Stage 3 treats as opaque i32 placeholder.
-        // Stage 18.438 (v0.5+ Phase 5 Step 1): This fallback is the target of
-        // Phase 5. The checked variant (`mir_type_to_emit_type_checked`)
-        // returns Err for these types. param_check (Stage 18.348) catches
-        // unresolved types BEFORE codegen, so this fallback is dead code in
-        // practice — but keeping it for backward compat during Phase 5
-        // incremental migration.
-        _ => EmitType::I32,
+        // Stage 18.440 (v0.5+ Phase 5 Step 2): Unresolved type kinds — emit
+        // warning instead of silently returning EmitType::I32. The checked
+        // variant (`mir_type_to_emit_type_checked`) returns Err for these
+        // types. param_check (Stage 18.348) catches them BEFORE codegen, so
+        // reaching here means a pipeline bug.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): emit warning, not silent fallback.
+        // Per §1.0 原則 5 (去除兼容思维): warning surfaces the issue, future
+        // Step 3 will make this a hard error.
+        // Per §12 (最优 > 最小): root-cause fix at the fallback site.
+        TyKind::Adt(_, _)
+        | TyKind::Infer(_)
+        | TyKind::Error
+        | TyKind::Param(_)
+        | TyKind::Projection(_, _)
+        | TyKind::Never
+        | TyKind::Foreign => {
+            eprintln!(
+                "warning: unresolved type kind `{:?}` in mir_type_to_emit_type — \
+                falling back to i32 (param_check should have caught this)",
+                ty.kind
+            );
+            EmitType::I32
+        }
     }
 }
 
