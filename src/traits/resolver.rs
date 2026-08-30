@@ -144,6 +144,35 @@ pub struct CoherenceError {
     pub span: crate::session::Span,
 }
 
+/// Stage 22.1 (v0.5 Trait Coherence P2): An orphan rule violation —
+/// `impl Trait for Type` where neither Trait nor Type is defined in the
+/// current crate.
+///
+/// Per `docs/lang-design/03-type-system.md` §5.6:
+/// - `Trait` must be in current crate, OR
+/// - `Type` must be in current crate (at least one component "local")
+///
+/// MVP scope (v0.5): Landin is single-crate compilation (prelude + user
+/// code in same crate), so orphan rule is auto-satisfied. This check is
+/// a no-op for now but provides infrastructure for future multi-crate
+/// support (TD-SINGLE-FILE Phase 4 manifest → v0.6+ multi-crate).
+///
+/// Per §1.0 原則 4 (报错 > 静默): orphan violations must be reported.
+/// Per §1.0 原則 6 (通解 > 特解): one check for all impl kinds.
+/// Per §12 (最优 > 最小): infrastructure for future multi-crate, not just
+/// a TODO comment.
+#[derive(Debug, Clone)]
+pub struct OrphanRuleError {
+    /// The trait name (interned symbol) that's not local.
+    pub trait_name: Spur,
+    /// The self type name (interned symbol) that's not local.
+    pub self_ty_name: Spur,
+    /// The DefId of the offending impl block.
+    pub impl_def_id: DefId,
+    /// Source span of the offending impl block.
+    pub span: crate::session::Span,
+}
+
 /// Stage 18.292 (类 Rust 架构修正): Error for duplicate inherent
 /// impl method definitions — two `impl Type { fn same_method {} }` blocks.
 ///
@@ -207,6 +236,9 @@ pub struct IncompleteImpl {
 /// 5.19) into a single report. The driver can call `validate_impls()`
 /// once after `collect()` to get all validation issues.
 ///
+/// Stage 22.1 (v0.5 Trait Coherence P2): Added `orphan_rule_errors` field
+/// for orphan rule violations (per §5.6).
+///
 /// Per API-naming-standard §3: `ImplValidationReport` follows the
 /// `<Noun>ValidationReport` pattern.
 #[derive(Debug, Clone)]
@@ -215,7 +247,11 @@ pub struct ImplValidationReport {
     pub coherence_errors: Vec<CoherenceError>,
     /// Incomplete impls — impls missing one or more trait methods.
     pub incomplete_impls: Vec<IncompleteImpl>,
-    /// Overall validity: true if no coherence errors AND no incomplete impls.
+    /// Stage 22.1 (v0.5 Trait Coherence P2): Orphan rule violations —
+    /// impls where neither trait nor type is local.
+    pub orphan_rule_errors: Vec<OrphanRuleError>,
+    /// Overall validity: true if no coherence errors AND no incomplete impls
+    /// AND no orphan rule errors.
     pub is_valid: bool,
 }
 

@@ -33277,3 +33277,56 @@ Stage Summary:
 - §19 final package: landin-stage0-v0.522.0-stage21.2-v0.5-gats-final-r103.tar.gz
 - v0.5 Trait Coherence P2 (2-3 stages) 或 MIR Optimization P3 (3-4 stages) 启动准备
 
+
+---
+Task ID: stage22.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 22.1 — v0.5 Trait Coherence P2 Phase 1 (orphan rule + overlap detection). L2 (3 files modified). v0.523.0.
+
+3秒启动自检:
+- 定位: L2 (修改 src/traits/resolver.rs + src/traits/resolver_queries.rs + src/traits/error.rs + src/traits/mod.rs + src/driver/driver_validations.rs + src/driver/mod.rs + 1 test fix)
+- 对齐: 已查 docs/lang-design/03-type-system.md §5.6 (Orphan rule) + §5.7 (Coherence check) + existing check_coherence() + check_inherent_impl_conflicts() + v0.5-roadmap §3.4
+- 阻断: Stage 21.2 v0.5 GATs P2 FINAL 全绿 (4821 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- orphan rule MVP returns empty (single-crate → all local)
+  - 引用 §5.6: "impl Trait for Type must have at least one local component"
+  - 引用 §12 (最优 > 最小): infrastructure for future multi-crate (v0.6+), not just TODO comment
+  - 引用 §1.0 原則 9 (正确 > 妥协): returns empty (no false positives) rather than guessing
+  - 引用 §1.0 原則 4 (报错 > 静默): documented as MVP no-op, not silent failure
+
+- added OrphanRuleError struct + TraitError::OrphanRule variant
+  - 引用 §1.0 原則 3 (显式 > 隐式): explicit error variant for orphan violations
+  - 引用 §1.0 原則 6 (通解 > 特解): one OrphanRuleError covers all impl kinds
+  - 引用 §23 (API Naming): OrphanRuleError follows <Noun>Error pattern
+
+- check_orphan_rule() in resolver_queries.rs (not resolver.rs)
+  - 引用 §13.4 J2 (单一职责): query methods in resolver_queries.rs (Stage 18.308 pattern)
+  - 引用 §11 (接口隔离): check_orphan_rule reads TraitResolver data (impls map), doesn't call HIR
+
+裁剪点:
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 22.2 (v0.5 Trait Coherence P2 FINAL) 一起做
+- 安全理由: Phase 1 只添加 orphan rule infrastructure (struct + check + variant + wiring), 不修改 existing coherence checking behavior, 无回归风险
+
+5W2H:
+- WHAT: OrphanRuleError struct + check_orphan_rule() function + TraitError::OrphanRule variant + ImplValidationReport.orphan_rule_errors field + driver wiring + error formatting
+- WHY: v0.5 Trait Coherence P2 Phase 1 — orphan rule enforcement infrastructure + overlap detection (existing check_coherence unchanged)
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.5 GATs P2 FINAL 后的下一个 MUV; Phase 2 (Stage 22.2) 将做 §14.5 deep review + FINAL
+- WHERE: src/traits/resolver.rs + resolver_queries.rs + error.rs + mod.rs + src/driver/driver_validations.rs + mod.rs
+- HOW: (1) Add OrphanRuleError struct (2) Add check_orphan_rule() (3) Add TraitError::OrphanRule variant (4) Update ImplValidationReport (5) Wire into driver (6) Add Display impl (7) Fix test match arm
+- HOW MUCH: 4821 tests (unchanged — MVP no-op returns empty), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 Trait Coherence P2 Phase 1 COMPLETE ✅
+- New: OrphanRuleError + check_orphan_rule() + TraitError::OrphanRule + ImplValidationReport.orphan_rule_errors
+- §3.2 全绿: 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+
+下一步 (Stage 22.2):
+- MUV: v0.5 Trait Coherence P2 §14.5 Deep Review + FINAL
+- 执行 §14.5 D1-D8 八维度深度审查
+- §19 阶段打包 v0.5 Trait Coherence P2 FINAL
+- L3 (跨多文档 + 打包)
+

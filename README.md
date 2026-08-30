@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.522.0 (Stage 21.2 — v0.5 GATs P2 FINAL §14.5 + §14.6 + §14.8) |
+| **Version** | v0.523.0 (Stage 22.1 — v0.5 Trait Coherence P2 Phase 1: orphan rule + overlap detection) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 GATs P2 FINAL — APPROVED for stage transition to v0.5 Trait Coherence P2 or MIR Optimization P3**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (GATs Phase 1-3 done in v0.4; v0.5 was E2E verification). v0.5 GATs P2 Phase 1 (Stage 21.1: 21 E2E tests) + GATs Phase 1-3 (Stage 18.52 + 18.87) ALL COMPLETE. 3 remaining TD-GAT-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 Trait Coherence P2 (2-3 stages) or MIR Optimization P3 (3-4 stages). |
+| **Status** | v0.5 Trait Coherence P2 Phase 1 COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 22.1 added `OrphanRuleError` struct + `check_orphan_rule()` function + `TraitError::OrphanRule` variant + `ImplValidationReport.orphan_rule_errors` field + driver wiring. Per §5.6 (orphan rule: impl Trait for Type must have at least one local component). MVP: single-crate → all local → no violations (infrastructure for v0.6+ multi-crate). Existing overlap detection (`check_coherence`) unchanged — handles exact duplicate (trait, type) pairs. Per §1.0 原則 4 (报错 > 静默) + §1.0 原則 6 (通解 > 特解) + §12 (最优 > 最小). Next: Stage 22.2 §14.5 deep review + v0.5 Trait Coherence P2 FINAL. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

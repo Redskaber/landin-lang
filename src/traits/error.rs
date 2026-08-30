@@ -9,7 +9,8 @@
 //! Per §23: `TraitError` follows the `<Noun>Error` pattern.
 
 use crate::traits::{
-    CoherenceError, IncompleteImpl, InherentImplConflict, PrimitiveInherentImplError,
+    CoherenceError, IncompleteImpl, InherentImplConflict, OrphanRuleError,
+    PrimitiveInherentImplError,
 };
 use lasso::Rodeo;
 
@@ -40,6 +41,10 @@ pub enum TraitError {
     /// 类 Rust: only prelude ("core") can define `impl i32 { fn method {} }`.
     /// Users must extend primitive types via traits: `impl MyTrait for i32`.
     PrimitiveInherentImpl(PrimitiveInherentImplError),
+    /// Stage 22.1 (v0.5 Trait Coherence P2): Orphan rule violation —
+    /// `impl Trait for Type` where neither is local.
+    /// Per §5.6: impl must have at least one local component.
+    OrphanRule(OrphanRuleError),
 }
 
 impl TraitError {
@@ -103,6 +108,14 @@ impl TraitError {
             TraitError::PrimitiveInherentImpl(_pie) => {
                 "cannot define inherent `impl` for primitive type — only prelude is allowed; use `impl Trait for Type` instead".to_string()
             }
+            TraitError::OrphanRule(ore) => {
+                let trait_str = interner.try_resolve(&ore.trait_name).unwrap_or("?");
+                let type_str = interner.try_resolve(&ore.self_ty_name).unwrap_or("?");
+                format!(
+                    "orphan rule violation: `impl {} for {}` — neither trait nor type is local to this crate",
+                    trait_str, type_str
+                )
+            }
         }
     }
 
@@ -136,6 +149,9 @@ impl TraitError {
             }
             TraitError::PrimitiveInherentImpl(_pie) => {
                 "cannot define inherent `impl` for primitive type — only prelude is allowed; use `impl Trait for Type` instead".to_string()
+            }
+            TraitError::OrphanRule(_ore) => {
+                "orphan rule violation: `impl <unknown> for <unknown>` — neither trait nor type is local to this crate".to_string()
             }
         }
     }

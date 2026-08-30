@@ -1013,6 +1013,13 @@ pub(super) fn run_post_typeck_validations(
     for inc in validation_report.incomplete_impls {
         errors.trait_errors.push(TraitError::Incomplete(inc));
     }
+    // Stage 22.1 (v0.5 Trait Coherence P2): Report orphan rule violations.
+    // Per §1.0 原則 4 (报错 > 静默): orphan violations must be reported.
+    // MVP: check_orphan_rule returns empty (single-crate → all local).
+    // Future v0.6+ multi-crate will populate this.
+    for ore in validation_report.orphan_rule_errors {
+        errors.trait_errors.push(TraitError::OrphanRule(ore));
+    }
     // Stage 18.292 (类 Rust 架构修正): Check for duplicate inherent impl
     // method definitions — two `impl Type { fn same_method {} }` blocks
     // with the same method name on the same type.

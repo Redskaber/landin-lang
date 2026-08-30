@@ -395,6 +395,7 @@ impl TraitResolver {
     /// pattern consistent with `check_coherence` (verb-first for action methods).
     pub fn validate_impls(&self) -> ImplValidationReport {
         let coherence_errors = self.check_coherence();
+        let orphan_rule_errors = self.check_orphan_rule();
 
         // Check completeness for every (trait, type) pair that has an impl
         let mut incomplete_impls: Vec<IncompleteImpl> = Vec::new();
@@ -419,13 +420,44 @@ impl TraitResolver {
             }
         }
 
-        let is_valid = coherence_errors.is_empty() && incomplete_impls.is_empty();
+        let is_valid = coherence_errors.is_empty()
+            && incomplete_impls.is_empty()
+            && orphan_rule_errors.is_empty();
 
         ImplValidationReport {
             coherence_errors,
             incomplete_impls,
+            orphan_rule_errors,
             is_valid,
         }
+    }
+
+    /// Stage 22.1 (v0.5 Trait Coherence P2): Check orphan rule violations.
+    ///
+    /// Per `docs/lang-design/03-type-system.md` §5.6:
+    /// `impl Trait for Type` must satisfy:
+    /// - `Trait` is defined in current crate, OR
+    /// - `Type` is defined in current crate (at least one "local")
+    ///
+    /// MVP scope (v0.5): Landin is single-crate (prelude + user code in
+    /// same crate), so all traits and types are local → orphan rule is
+    /// auto-satisfied. This function returns empty Vec for now.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one function handles all impl kinds.
+    /// Per §12 (最优 > 最小): infrastructure for future multi-crate support.
+    /// Per §1.0 原則 4 (报错 > 静默): future multi-crate will report violations.
+    pub fn check_orphan_rule(&self) -> Vec<OrphanRuleError> {
+        // MVP: single-crate compilation → all traits/types are local → no violations.
+        //
+        // Future (v0.6+ multi-crate):
+        // 1. For each impl, check if trait_def_id is in current crate
+        // 2. If not, check if self_ty_def_id is in current crate
+        // 3. If neither is local → OrphanRuleError
+        //
+        // Per §1.0 原則 4 (报错 > 静默): documented as MVP no-op, not silent failure.
+        // Per §1.0 原則 9 (正确 > 妥协): returns empty (no false positives) rather than
+        // guessing about crate ownership.
+        Vec::new()
     }
 
     /// Stage 18.73 P1-H: Get the associated consts missing from an impl.

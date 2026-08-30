@@ -38,7 +38,7 @@ pub use error::TraitError;
 pub use object_safety::{check_trait_object_safety, ObjectSafetyViolation};
 pub use resolver::{
     extract_impl_self_ty_name, CoherenceError, ImplInfo, ImplValidationReport, IncompleteImpl,
-    InherentImplConflict, PrimitiveInherentImplError, TraitInfo, TraitResolver,
+    InherentImplConflict, OrphanRuleError, PrimitiveInherentImplError, TraitInfo, TraitResolver,
 };
 pub use solver::{
     Binder, EvalError, EvalResult, Goal, InferCtxt, InferCtxtError, Obligation, ObligationCause,

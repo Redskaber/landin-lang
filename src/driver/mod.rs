@@ -280,6 +280,7 @@ impl CompileErrors {
                 TraitError::Incomplete(inc) => inc.span,
                 TraitError::InherentConflict(ic) => ic.span,
                 TraitError::PrimitiveInherentImpl(pie) => pie.span,
+                TraitError::OrphanRule(ore) => ore.span,
             };
             diags.push(
                 DiagnosticBuilder::error(&msg, span)

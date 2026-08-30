@@ -124,6 +124,7 @@ fn stage15_9_trait_error_coherence_structured() {
         TraitError::PrimitiveInherentImpl(_) => {
             panic!("expected Coherence, got PrimitiveInherentImpl")
         }
+        TraitError::OrphanRule(_) => panic!("expected Coherence, got OrphanRule"),
     }
 }
 
