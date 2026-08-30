@@ -3,84 +3,105 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.513.0 (Stage 19.3 — v0.5 Phase 3 Trait Solver Selection) |
+| **Current version** | v0.514.0 (Stage 19.4 — v0.5 Phase 4 Trait Solver Fulfillment) |
 | **Date** | 2026-08-30 |
-| **Test count** | 784 lib tests + 3904 integration tests = 4688 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 816 lib tests + 3904 integration tests = 4720 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) complete |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) + Phase 4 (Fulfillment) complete |
 
 ---
 
-## v0.513.0 — v0.5 Phase 3: Trait Solver Selection (Stage 19.3)
+## v0.514.0 — v0.5 Phase 4: Trait Solver Fulfillment (Stage 19.4)
 
 ### Overview
 
-Stage 19.3 implements v0.5 Trait Solver Phase 3 (Selection) — adds the Selection algorithm that picks the unique candidate impl from the EvalAllResult produced by Phase 2. Per `docs/lang-design/03-type-system.md` §5.3: MVP forbids overlapping impls (R3 陷阱 #5), so Selection degenerates to "unique candidate = selected".
+Stage 19.4 implements v0.5 Trait Solver Phase 4 (Fulfillment + Where Clause Integration) — adds the fulfillment loop that recursively solves an obligation queue. Per `docs/lang-design/03-type-system.md` §5.4: maintain an obligation queue, pop obligations, select impls, add their where clauses as new obligations, repeat until queue empties or fails.
 
-### New module: `src/traits/solver/select.rs` (~470 LOC, 30 tests)
+### New module: `src/traits/solver/fulfill.rs` (~640 LOC, 32 tests)
 
 | Item | Purpose |
 |------|---------|
-| `select(goal, cx)` | Main entry: evaluate + select_from_eval. Returns SelectionResult (Ok/Ambiguous/NoImpl) |
-| `select_from_eval(eval_result, infer_ctxt)` | Core algorithm: ok_count==1 → Ok+bind; >1 → Ambiguous; 0 Ok + ≥1 Ambig → Ambiguous; 0 Ok + 0 Ambig → NoImpl |
-| `bind_inference_vars(impl_def_id, substs, infer_ctxt)` | Commit inferred substs to InferCtxt (MVP placeholder — records count for stats; real T=i32 binding deferred to future phase with typeck unify integration) |
-| `SelectionCtxt<'a>` | Wraps EvalCtxt with select() and select_from_eval() methods |
-| `select_to_eval_result(selection)` | Convert SelectionResult to EvalResult tri-state |
-| `describe_selection(selection)` | Human-readable diagnostic string (e.g., "selected impl #42" / "ambiguous: 3 candidates matched" / "no impl matched") |
-| `would_select_uniquely(goal, cx)` | Peek (no commit) — useful for typeck diagnostics that need to know if Selection would succeed without committing |
-| `collect_ok_candidates(eval_result)` | Diagnostic helper: list all Ok candidates with their substs |
-| `collect_ambiguous_candidates(eval_result)` | Diagnostic helper: list all Ambiguous (deferred) candidates |
-| `collect_err_candidates(eval_result)` | Diagnostic helper: list all Err candidates with their errors |
+| `FulfillmentResult` | Tri-state: Ok (resolved_count + selected_count) / Errors (errors list) / Stalled (pending list) |
+| `FulfillmentError` | 3 variants: NoImpl / Ambiguous { candidate_count } / RecursionLimitExceeded { depth } |
+| `ObligationResult` | Tri-state for single obligation: Resolved { impl_def_id, new_obligations } / Error / Deferred |
+| `FulfillmentCtxt<'a>` | Wraps EvalCtxt + max_depth (default 128 per §5.8) |
+| `DEFAULT_MAX_DEPTH = 128` | Per §5.8: same as rustc default recursion limit |
+| `fulfillment_loop(queue, cx, max_depth)` | Main loop: iterative (vs recursive to avoid stack overflow) + depth check + per-obligation try_fulfill |
+| `try_fulfill_obligation(obl, cx)` | Single obligation: ParamEnv short-circuit → select → Resolved/Deferred/Error |
+| `collect_impl_where_clauses(impl_def_id, resolver)` | MVP placeholder (returns empty — ImplInfo doesn't store where clauses yet; future phase will integrate HIR access) |
+| `fulfill_obligation(obl, cx, max_depth)` | Convenience entry: creates temp queue + pushes + runs loop |
+| `is_assumed(obl, param_env)` | Peek (without fulfilling) — check if predicate is in ParamEnv assumptions |
+| `describe_fulfillment_result(result)` | Human-readable diagnostic string |
 
-### Algorithm (per §5.3 + §5.5)
+### Algorithm (per §5.4 + §5.5 + §5.8)
 
 ```text
-select(goal, cx) -> SelectionResult:
-    eval_result = evaluate(goal, cx)
-    select_from_eval(eval_result, infer_ctxt)
+fulfillment_loop(queue, cx, max_depth=128):
+    while obl = queue.pop_ready():
+        if depth >= max_depth: record RecursionLimitExceeded; continue
+        depth += 1
+        result = try_fulfill_obligation(obl, cx)
+        match result:
+            Resolved { impl_def_id, new_obligations }:
+                for new_obl in new_obligations: queue.push(new_obl)
+                resolved_count += 1
+                if impl_def_id != SENTINEL_ASSUMED: selected_count += 1
+            Error(err): errors.push((obl, err))
+            Deferred: queue.push(obl)  # back to pending
+    
+    if !errors.empty(): return Errors { errors, resolved_count, selected_count }
+    if queue.is_stalled(): return Stalled { pending, resolved_count, selected_count }
+    return Ok { resolved_count, selected_count }
 
-select_from_eval(eval_result, infer_ctxt) -> SelectionResult:
-    if ok_count == 1:    return Ok { impl_def_id } + bind_inference_vars(substs)
-    if ok_count > 1:      return Ambiguous { candidate_count: ok_count }  (MVP禁 overlapping)
-    if ambiguous_count > 0: return Ambiguous { candidate_count: ambiguous_count }  (defer)
-    else:                  return NoImpl
+try_fulfill_obligation(obl, cx):
+    if cx.param_env.assumes(&obl.predicate):
+        return Resolved { impl_def_id: SENTINEL_ASSUMED, new_obligations: [] }  # short-circuit
+    selection = select(goal, cx)
+    match selection:
+        Ok { impl_def_id }:
+            new_obligations = collect_impl_where_clauses(impl_def_id, resolver)
+            return Resolved { impl_def_id, new_obligations }
+        Ambiguous { .. }: return Deferred
+        NoImpl: return Error(NoImpl)
 ```
 
 ### Design principles followed
 
-- §1.0 原則 3 (显式 > 隐式): describe_selection + collect_*_candidates provide explicit diagnostic helpers; would_select_uniquely is explicit peek (no commit)
-- §1.0 原則 4 (报错 > 静默): All non-Ok cases return explicit SelectionResult variants (Ambiguous/NoImpl); bind_inference_vars MVP limitation documented, not silent
-- §1.0 原則 6 (通解 > 特解): One `select` function handles all goal kinds; one `select_from_eval` handles all EvalAllResult shapes
-- §1.0 原則 9 (正确 > 妥协): MVP禁 overlapping (multiple Ok = Ambiguous, not silent first-match)
-- §1.0 原則 10 (唯一可信数据源): infer_ctxt is single source of truth for bound state; selector never maintains parallel map
-- §11 (接口隔离): select.rs reads Phase 2 evaluate + EvalCtxt (data contract); doesn't cross-call typeck/codegen
-- §12 (最优 > 最小): select = evaluate + uniqueness + bind three-layer composition (vs re-implementing loop); SelectionCtxt wraps rather than duplicates
+- §1.0 原則 3 (显式 > 隐式): FulfillmentResult tri-state (Ok/Errors/Stalled); describe_fulfillment_result explicit diagnostics; is_assumed explicit peek
+- §1.0 原則 4 (报错 > 静默): All FulfillmentError variants explicit; collect_impl_where_clauses MVP limitation documented
+- §1.0 原則 6 (通解 > 特解): One fulfillment_loop handles all obligation kinds; one try_fulfill_obligation handles all selection results
+- §1.0 原則 9 (正确 > 妥协): ParamEnv.assumes short-circuit (don't re-prove assumed bounds); assumed not counted in selected_count (sentinel u32::MAX)
+- §1.0 原則 10 (唯一可信数据源): ObligationQueue is single source of truth for pending work; fulfiller never maintains parallel queue
+- §11 (接口隔离): fulfill.rs reads Phase 3 select + Phase 1 ObligationQueue + ParamEnv (data contract); doesn't cross-call typeck/codegen
+- §12 (最优 > 最小): fulfillment_loop iterative (vs recursive to avoid stack overflow); three-layer composition (fulfillment_loop + try_fulfill_obligation + collect_impl_where_clauses)
 
-### MVP scope (Phase 3)
+### MVP scope (Phase 4)
 
 | Item | MVP | Future |
 |------|-----|--------|
-| Uniqueness check | ok_count == 1 | Phase 4: param_env short-circuit |
-| Binding | record substs count in infer_ctxt (placeholder) | Future: proper T=i32 binding via typeck unify |
-| Ambiguous handling | >1 Ok or any Ambiguous → Ambiguous | Phase 5: proper precedence / specialization |
-| NoImpl | 0 Ok + 0 Ambiguous | (no future change) |
+| Loop | iterative (vs recursive) | (no change) |
+| Where clause collection | empty (ImplInfo doesn't store where clauses yet) | Future: HIR access + HirWherePredicate → Obligation |
+| ParamEnv short-circuit | exact match via `assumes` | Phase 5: smart matching (T: Clone assumption satisfies T: Clone query) |
+| Recursion limit | 128 (per §5.8) | (no change) |
+| Stalled handling | return Stalled with pending list | Phase 5: better "type annotations needed" error |
+| Pending refresh | defer via ObligationQueue.push (re-evaluation) | Phase 5: integrate with typeck unify (when var binds, refresh) |
 
 ### Test results
 
-- 784 lib tests (was 754, +30 new Phase 3 tests)
+- 816 lib tests (was 784, +32 new Phase 4 tests)
 - 3904 integration tests (unchanged)
-- 4688 total, 0 failures, 2 ignored
+- 4720 total, 0 failures, 2 ignored
 - fmt clean, 0 clippy warnings
 
 ### Next stage
 
-Stage 19.4 — Trait Solver Phase 4 (Fulfillment + Where Clause Integration):
-- Implement `fulfillment_loop(obligation_queue, cx)` — main loop
-- Add selected impl's where clauses to obligation queue (recursive evaluation)
-- Integrate ParamEnv.assumes short-circuit (where clause already assumed → Ok)
-- L2 (50-500 LOC, single file `src/traits/solver/fulfill.rs`)
+Stage 19.5 — Trait Solver Phase 5 (Supertrait Expansion + Error Reporting):
+- Implement `expand_supertraits(trait_def_id, resolver)` — auto-derive supertrait bounds
+- Implement `report_fulfillment_error(error, obl)` — high-quality diagnostic messages
+- Integrate supertrait obligations into fulfillment_loop (when trait T selected, add T's supertraits as new obligations)
+- L2 (50-500 LOC, single file `src/traits/solver/supertrait.rs`)
 
 ---
 

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.513.0 (Stage 19.3 — v0.5 Phase 3 Trait Solver Selection) |
+| **Version** | v0.514.0 (Stage 19.4 — v0.5 Phase 4 Trait Solver Fulfillment) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 3 (Trait Solver Selection) COMPLETE. 4688 tests (784 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.3 added `src/traits/solver/select.rs` (~470 LOC, 30 tests) — select + select_from_eval + bind_inference_vars + SelectionCtxt + select_to_eval_result + describe_selection + would_select_uniquely + collect_ok/ambiguous/err_candidates. Per `docs/lang-design/03-type-system.md` §5.3 (rustc 老 solver Selection: MVP禁 overlapping, “唯一候选即选中”). Phase 3 implements Selection; Phase 4 (Stage 19.4) will add Fulfillment + Where Clause integration. |
+| **Status** | v0.5 Phase 4 (Trait Solver Fulfillment) COMPLETE. 4720 tests (816 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.4 added `src/traits/solver/fulfill.rs` (~640 LOC, 32 tests) — fulfillment_loop + try_fulfill_obligation + collect_impl_where_clauses + FulfillmentCtxt + FulfillmentResult (Ok/Errors/Stalled) + FulfillmentError (NoImpl/Ambiguous/RecursionLimitExceeded) + ObligationResult (Resolved/Error/Deferred) + ParamEnv.assumes short-circuit + DEFAULT_MAX_DEPTH=128 (per §5.8) + fulfill_obligation + is_assumed + describe_fulfillment_result. Per `docs/lang-design/03-type-system.md` §5.4 (rustc 老 solver Fulfillment: obligation queue + recursion). Phase 4 implements Fulfillment; Phase 5 (Stage 19.5) will add supertrait expansion + error reporting. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

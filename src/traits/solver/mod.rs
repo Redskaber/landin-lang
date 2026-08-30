@@ -769,6 +769,8 @@ impl SelectionResult {
 pub mod eval;
 // Stage 19.3 (v0.5 Phase 3): Selection phase — select + bind_inference_vars.
 pub mod select;
+// Stage 19.4 (v0.5 Phase 4): Fulfillment phase — fulfillment_loop + where clause integration.
+pub mod fulfill;
 
 // =====================================================================
 // Tests
