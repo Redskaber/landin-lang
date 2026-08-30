@@ -278,34 +278,71 @@ impl TypeChecker {
                 field_ty.clone()
             }
             ProjectionElem::Index(idx_local) => {
-                // Stage 18.76 P1-A: Allow Array, Slice, Str, and Ref(_, _, Str)
-                // as indexable types. Str indexing returns u8 (byte).
-                // Per §1.0 原則 6 "通用 > 特例": one check covers all indexable types.
-                // Per §1.0 原則 9 "正确 > 妥协": defer for Infer/Error/Param types
+                // Stage 18.424 (§20 iterative audit): Align typeck with
+                // Stage 18.422 MIR lower fix — `&str` indexing is now a
+                // typeck error (was: returned u8 here, contradicting the
+                // MIR lower side which now rejects). Also push errors for
+                // non-indexable concrete types (Int, Bool, Float, Adt,
+                // Tuple) — was: silently returned None → no error.
+                //
+                // Per §20 (iterative audit): same class as Stage 18.422 —
+                // silent acceptance of invalid operations / design divergence.
+                // Per §1.0 原則 4 (报错 > 静默): non-indexable types must error.
+                // Per §1.0 原則 9 (正确 > 妥协): defer for Infer/Error/Param
                 // (don't push false-positive errors on unresolved types).
                 let inner_ty = match &base_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
-                    TyKind::Str => Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span)),
-                    TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str) => {
-                        Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
-                    }
+                    // Stage 18.424: REMOVED `TyKind::Str => Some(u8)` — &str
+                    // indexing is now a typeck error (consistency with Stage
+                    // 18.422 MIR lower fix). Users must use `.as_bytes()[i]`.
                     TyKind::Ref(_, _, inner) => {
-                        // For &Array, &Slice, or &Str, index returns element type.
-                        // For &Infer or &Error, defer (don't push error).
+                        // For &Array, &Slice: index returns element type.
+                        // For &Str: now an error (Stage 18.424).
+                        // For &Infer or &Error: defer (don't push error).
                         match &inner.kind {
                             TyKind::Array(inner, _) | TyKind::Slice(inner) => {
                                 Some((**inner).clone())
                             }
+                            // Stage 18.424: REMOVED `TyKind::Str => Some(u8)`.
                             TyKind::Str => {
-                                Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                                // &str indexing is now an error — push it.
+                                self.errors.push(TypeError::new(
+                                    "cannot index into type `&str` — use `.as_bytes()[i]` for byte access or `.chars().nth(i)` for char access".to_string(),
+                                    place_span,
+                                ));
+                                None
                             }
-                            TyKind::Infer(_) | TyKind::Error => None, // defer
-                            _ => None,
+                            TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None, // defer
+                            _ => {
+                                // Non-indexable concrete type behind &Ref
+                                // (e.g., &i32, &bool, &struct). Push error.
+                                self.errors.push(TypeError::new(
+                                    format!(
+                                        "cannot index into type `&{}`",
+                                        crate::mir::ty::type_to_string(inner)
+                                    ),
+                                    place_span,
+                                ));
+                                None
+                            }
                         }
                     }
-                    // Stage 18.76: Defer for unresolved types — don't push false-positive errors.
+                    // Stage 18.62: Infer/Error/Param are acceptable fallbacks.
                     TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
-                    _ => None,
+                    _ => {
+                        // Stage 18.424: Push error for non-indexable concrete
+                        // types (Int, Bool, Float, Adt, Tuple, etc.).
+                        // Was: silently returned None → no error → `n[0]`
+                        // on integer silently compiled.
+                        self.errors.push(TypeError::new(
+                            format!(
+                                "cannot index into type `{}`",
+                                crate::mir::ty::type_to_string(base_ty)
+                            ),
+                            place_span,
+                        ));
+                        None
+                    }
                 };
                 if let Some(inner) = inner_ty {
                     // Stage 18.73 P1-D: Validate array index type.
@@ -338,25 +375,47 @@ impl TypeChecker {
                 }
             }
             ProjectionElem::ConstantIndex { .. } | ProjectionElem::Subslice { .. } => {
-                // Stage 18.76 P1-A: Same indexable types as Index.
-                // Per §1.0 原則 9 "正确 > 妥协": defer for Infer/Error/Param types.
+                // Stage 18.424 (§20 iterative audit): Same alignment as Index arm
+                // — removed `TyKind::Str => Some(u8)` and push errors for
+                // non-indexable concrete types. Per §1.0 原則 4 (报错 > 静默).
                 let inner_ty = match &base_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
-                    TyKind::Str => Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span)),
-                    TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str) => {
-                        Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
-                    }
+                    // Stage 18.424: REMOVED `TyKind::Str => Some(u8)`.
                     TyKind::Ref(_, _, inner) => match &inner.kind {
                         TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
+                        // Stage 18.424: REMOVED `TyKind::Str => Some(u8)`.
                         TyKind::Str => {
-                            Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                            self.errors.push(TypeError::new(
+                                "cannot index into type `&str` — use `.as_bytes()[i]`".to_string(),
+                                place_span,
+                            ));
+                            None
                         }
-                        TyKind::Infer(_) | TyKind::Error => None, // defer
-                        _ => None,
+                        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None, // defer
+                        _ => {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "cannot index into type `&{}`",
+                                    crate::mir::ty::type_to_string(inner)
+                                ),
+                                place_span,
+                            ));
+                            None
+                        }
                     },
                     // Stage 18.76: Defer for unresolved types.
                     TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
-                    _ => None,
+                    _ => {
+                        // Stage 18.424: Push error for non-indexable concrete types.
+                        self.errors.push(TypeError::new(
+                            format!(
+                                "cannot index into type `{}`",
+                                crate::mir::ty::type_to_string(base_ty)
+                            ),
+                            place_span,
+                        ));
+                        None
+                    }
                 };
                 if let Some(inner) = inner_ty {
                     inner

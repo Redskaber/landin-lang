@@ -151,6 +151,48 @@ pub(crate) fn check_field_access_syntax(
     }
 }
 
+/// Stage 18.425 (§20 iterative audit): Check that Index assignment syntax
+/// (`base[idx] = val`) is valid — reject indexing on non-indexable types
+/// (Int, Bool, Float, &str, struct, tuple, etc.).
+///
+/// Shared between `lower_expr_to_operand` (read path, via
+/// `resolve_index_element_type` which already errors) and
+/// `lower_expr_to_place` (assignment path — was: no check, silently
+/// accepted `s[0] = 65` on &str).
+///
+/// Per §10 (DRY): one helper for the assignment path.
+/// Per §1.0 原則 4 (报错 > 静默): non-indexable types must error on assignment.
+/// Per §1.0 原則 6 (通解 > 特解): one check covers all receiver types.
+/// Per §20: same class as Stage 18.420/18.422 (silent acceptance).
+pub(crate) fn check_index_access_syntax(cx: &MirLowerCtxt, base_local: LocalId) -> Option<String> {
+    let base_ty = cx.mir.local(base_local).ty.clone();
+    let inner_ty: Ty = match &base_ty.kind {
+        // Auto-deref Ref to check inner type.
+        crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),
+        _ => base_ty.clone(),
+    };
+    let is_indexable = matches!(
+        &inner_ty.kind,
+        crate::mir::ty::TyKind::Array(_, _)
+            | crate::mir::ty::TyKind::Slice(_)
+            | crate::mir::ty::TyKind::Infer(_)
+            | crate::mir::ty::TyKind::Error
+            | crate::mir::ty::TyKind::Param(_)
+    );
+    if !is_indexable {
+        let type_str = cx.format_ty(&base_ty);
+        let extra = match &inner_ty.kind {
+            crate::mir::ty::TyKind::Str => {
+                " — use `.as_bytes()[i]` for byte access or `.chars().nth(i)` for char access"
+            }
+            _ => "",
+        };
+        Some(format!("cannot index into type `{}`{}", type_str, extra))
+    } else {
+        None
+    }
+}
+
 pub(crate) fn lower_expr_to_operand(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,

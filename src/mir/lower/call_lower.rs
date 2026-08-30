@@ -30,6 +30,8 @@ use super::field_resolution;
 use super::lower_expr_to_operand;
 // Stage 18.420: shared field syntax validation helper (§10 DRY)
 use super::expr_operand::check_field_access_syntax;
+// Stage 18.425: shared index syntax validation helper (§10 DRY)
+use super::expr_operand::check_index_access_syntax;
 
 /// Lower a HIR expression to a MIR Place (a place that can be assigned to).
 ///
@@ -99,6 +101,19 @@ pub(super) fn lower_expr_to_place(
             receiver, index, ..
         } => {
             let base = lower_expr_to_place(cx, receiver, None);
+            // Stage 18.425 (§20 iterative audit): Validate Index assignment
+            // syntax — reject indexing on non-indexable types (Int, Bool,
+            // Float, &str, struct, tuple). Was: silently accepted `s[0] = 65`
+            // on &str (assignment path had no receiver type check).
+            //
+            // Per §10 (DRY): shared `check_index_access_syntax` helper.
+            // Per §1.0 原則 4 (报错 > 静默): assignment path must report.
+            if let PlaceKind::Local(base_local) = &base.kind {
+                if let Some(msg) = check_index_access_syntax(cx, *base_local) {
+                    cx.type_errors
+                        .push(crate::typeck::TypeError::new(msg, expr.span));
+                }
+            }
             let idx_local = lower_expr_to_operand(cx, index, None);
             Place {
                 kind: PlaceKind::Projection(Box::new(base), ProjectionElem::Index(idx_local)),

@@ -736,6 +736,10 @@ mod stage18_420_field_access_syntax_tests;
 #[path = "v0/stage18/plan/stage18_422_str_index_rejection_tests.rs"]
 mod stage18_422_str_index_rejection_tests;
 
+// === Stage 18.424-18.425: §20 iterative audit — Index typeck + assignment path ===
+#[path = "v0/stage18/plan/stage18_424_425_index_typeck_tests.rs"]
+mod stage18_424_425_index_typeck_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

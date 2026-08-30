@@ -31093,3 +31093,75 @@ Stage Summary:
 - Future: v0.6+ add check_index_access_syntax to lower_expr_to_place (assignment path)
 - Future: v0.6+ fix resolve_index_element_type to error on Int/Bool receivers
 - Future: v0.6+ add `impl [T]` to prelude for [u8]::len support
+
+---
+Task ID: stage18.424-18.426
+Agent: Super Z (main) — PM-A
+Task: Stage 18.424 typeck Index check + Stage 18.425 assignment path check + Stage 18.426 doc sync + package r69. L2 (typeck + MIR lower + tests). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (typeck infer_projection + MIR lower call_lower + tests)
+- 对齐: §20 iterative audit; Stage 18.422 worklog "下一步" listed 2 known limitations
+- 阻断: 4506 tests 全绿 (Stage 18.422 state)
+
+决策点 (§20 iterative audit — fix known limitations):
+- 发现 1: typeck `infer_projection` for `ProjectionElem::Index` had `TyKind::Str => Some(u8)` (inconsistent with Stage 18.422 MIR lower fix) AND `_ => None` for non-indexable types (silent acceptance of `n[0]` on int)
+- 发现 2: `lower_expr_to_place` Index arm had no receiver type check → `s[0] = 65` on &str silently compiled
+- 选 A: Fix both typeck (remove Str arm + push errors for non-indexable) AND assignment path (add check_index_access_syntax helper)
+- 引用 §20: "发现一个 bug 意味着有许多类似 bug" — Stage 18.422 found &str indexing, audit typeck + assignment path
+- 引用 §1.0 原則 4 (报错 > 静默): non-indexable types must error
+- 引用 §10 (DRY): check_index_access_syntax shared helper
+- 引用 §1.6 终极检验: root-cause fix (typeck + assignment path), not minimal patch
+
+裁剪点:
+- L2 — typeck + MIR lower fix; §14.5 D1-D8 verification required (Stage 18.426)
+
+5W2H:
+- WHAT: Fix typeck infer_projection Index arm (remove Str→u8, push errors for non-indexable) + add check_index_access_syntax to lower_expr_to_place + 20 new tests
+- WHY: §20 iterative audit — 2 known limitations from Stage 18.422 worklog
+- WHO: ARCH-A (design: align typeck with MIR lower) + DEV-A (implement) + REV-A (audit all Index paths)
+- WHEN: After Stage 18.422 (&str indexing rejection)
+- WHERE: src/typeck/infer.rs + src/mir/lower/expr_operand.rs + src/mir/lower/call_lower.rs
+- HOW: Remove Str arm in typeck; push errors for non-indexable; add check_index_access_syntax helper for assignment path
+- HOW MUCH: §3.2 全绿 — 4526 tests (682 lib + 3844 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- Stage 18.424 — typeck infer_projection Index arm fix:
+  - Removed `TyKind::Str => Some(u8)` in Index arm (consistency with Stage 18.422 MIR lower)
+  - Removed `TyKind::Ref(_, _, inner) if matches!(inner.kind, Str) => Some(u8)`
+  - Added `_ =>` arm that pushes "cannot index into type `<type>`" error for non-indexable concrete types (Int, Bool, Float, Adt, Tuple, etc.)
+  - Same fix applied to ConstantIndex/Subslice arm
+  - Infer/Error/Param still defer (don't push false-positive errors on unresolved types)
+- Stage 18.425 — assignment path check:
+  - Added `check_index_access_syntax` helper in expr_operand.rs (pub(crate))
+  - Used in `lower_expr_to_place` Index arm — checks receiver type is indexable
+  - Rejects: Int, Bool, Float, &str, struct, tuple, char (all non-indexable)
+  - Returns Some(error_msg) on mismatch, None otherwise (Infer/Error/Param defer)
+- Stage 18.422 test file updated:
+  - `stage18_422_neg_int_index`: enabled assert_ne! (was: documented limitation)
+  - `stage18_422_neg_str_index_assign`: enabled assert_ne! (was: documented limitation)
+- New test file: tests/v0/stage18/plan/stage18_424_425_index_typeck_tests.rs
+  - 3 positive tests (array assign, array assign var idx, array read)
+  - 17 negative tests covering:
+    * Read path non-indexable (int, float, bool, struct, tuple, str, char): 7 cases
+    * Assignment path non-indexable (int, float, bool, struct, tuple, str, char): 7 cases
+    * Invalid index type on assignment (str, bool, float): 3 cases
+  - Ratio: 3 positive / 17 negative = 1:5.7 (exceeds 1:3 target)
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4526 tests (682 lib + 3844 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- §20 iterative audit — 2 known limitations from Stage 18.422 resolved ✅
+- typeck infer_projection Index arm aligned with MIR lower (Stage 18.422)
+- Assignment path Index check added (check_index_access_syntax helper, §10 DRY)
+- 20 new tests added (3 pos + 17 neg, ratio 1:5.7)
+- 2 Stage 18.422 tests upgraded from "documented limitation" to assert_ne!
+- §3.2 全绿: 4526 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: root-cause fix (typeck + assignment path), not minimal patch
+
+下一步:
+- Stage 18.426: doc sync + README restructure + package r69
+- Future: v0.6+ add `impl [T]` to prelude for [u8]::len support (remaining known limitation #3)
+- Future: v0.5+ Phase 5 (mir_type_to_emit_type returns Result)

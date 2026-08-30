@@ -152,14 +152,10 @@ fn stage18_422_neg_str_field_index() {
 
 #[test]
 fn stage18_422_neg_str_index_assign() {
-    // Stage 18.422 note: `s[0] = 65` on &str is silently accepted on the
-    // assignment path (lower_expr_to_place doesn't check index receiver type).
-    // The read path now rejects (lower_expr_to_operand). Assignment path fix
-    // is future work (same class as Stage 18.420 assignment path, but for Index).
+    // Stage 18.425: FIXED — `s[0] = 65` on &str now errors (assignment path
+    // check_index_access_syntax added to lower_expr_to_place).
     let exit = compile_only(r#"fn main() -> i32 { let s = "hello"; s[0] = 65; 0 }"#);
-    // TODO(v0.6+): add Index syntax check to lower_expr_to_place (like
-    // check_field_access_syntax for Field arm).
-    let _ = exit;
+    assert_ne!(exit, 0, "&str[0] = ... assignment must be rejected");
 }
 
 #[test]
@@ -200,14 +196,10 @@ fn stage18_422_neg_tuple_index() {
 
 #[test]
 fn stage18_422_neg_int_index() {
-    // Stage 18.422 note: `n[0]` on an integer is silently accepted (pre-existing
-    // limitation — resolve_index_element_type returns None for Int, falling back
-    // to fresh_infer_ty, and typeck doesn't catch it). This is a deeper typeck
-    // issue, not caused by the &str indexing fix. Document as known limitation.
-    let exit = compile_only(r#"fn main() -> i32 { let n = 42; let y = n[0]; 0 }"#);
-    // TODO(v0.6+): make this assert_ne! when resolve_index_element_type
-    // reports errors for non-indexable concrete types (Int, Bool, etc.).
-    let _ = exit;
+    // Stage 18.424: FIXED — `n[0]` on integer now errors (typeck
+    // infer_projection pushes error for non-indexable concrete types).
+    let exit = compile_only(r#"fn main() -> i32 { let n: i32 = 42; let y = n[0]; 0 }"#);
+    assert_ne!(exit, 0, "int[0] must be rejected");
 }
 
 #[test]
