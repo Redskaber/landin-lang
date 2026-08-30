@@ -195,8 +195,20 @@ impl TypeChecker {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
             // self.writeback_field_types_with_table(mir, table);
 
-            // Stage 18.404: Phase 3.5 step 2 restored — §5.2 true limit.
-            // (expected_ty in Call dest + writeback skip for concrete + unify direction fix)
+            // Stage 18.405: Phase 3.5 step 2 STILL required (5 failures).
+            // Phase 2 L3 step 1 (expected_ty in Call dest) doesn't help because
+            // the 5 failures are all field-access paths, not Call dest paths.
+            // The failures are:
+            // - neg_shl_on_str/unit: `s << 2` where s is from field access (not Call)
+            // - sret_invalid_field_access: `x.nonexistent_field` where x is from Call
+            //   but the Call dest now has expected_ty (i64) — but the field access
+            //   on x creates a NEW local with Infer field_ty (not from expected_ty)
+            // - text_ir_deterministic/byval_sret: field access in struct literal
+            //   construction — not Call dest path
+            // Root cause: field access (`b.a`) creates dest_local with Infer field_ty
+            // because resolve_field_type returns None (param types are Infer).
+            // Phase 2 L3 step 1 only helps Call dest, not field access dest.
+            // Full fix needs Phase 2 L3 step 2: expected_ty in Field arm.
             self.writeback_field_load_locals_with_table(mir, table);
         }
         // Stage 18.387 (v0.5+ Phase 3 step 4): Phase 3.5 step 1 STILL required.

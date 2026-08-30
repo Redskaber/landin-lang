@@ -30460,3 +30460,123 @@ Stage Summary:
 - v0.5+ Phase 2 L3 step 2: 在 Field arm 用 expected_ty (已有 Stage 18.396 fallback)
 - Phase 3.5 step 2 实验: 禁用 step 2 + Phase 2 L3 step 1 → 看是否减少失败
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.405
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.405 — v0.5+ Phase 2 L3 step 2 experiment: disable Phase 3.5 step 2 with Phase 2 L3 step 1 (expected_ty in Call dest). L2 (实验). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (实验性 — 注释 1 行 + 验证 + 恢复)
+- 对齐: Stage 18.404 Phase 2 L3 step 1 完成; §20.6 实验方法论
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §20.6: 实验性探索方法论 — 注释 1 行 → 测试 → 判断
+- 引用 §1.6 终极检验: Phase 2 L3 step 1 是否减少 step 2 的失败数
+
+裁剪点:
+- L2 实验 — 注释 1 行 + 验证 + 恢复; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: 验证 Phase 2 L3 step 1 (expected_ty in Call dest) 是否让 Phase 3.5 step 2 冗余
+- WHY: Phase 2 L3 step 1 让 Call dest 有 expected_ty → 可能减少 step 2 依赖
+- HOW: 禁用 step 2 → 跑全测试套件
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures (恢复后)
+
+Work Log:
+- 实验: 禁用 Phase 3.5 step 2 + Phase 2 L3 step 1 → 5 失败 (same as before)
+  - stage18_288_neg_shl_on_str: `s << 2` where s is from field access (not Call)
+  - stage18_288_neg_shl_on_unit: same pattern
+  - stage18_332_sret_invalid_field_access: `x.nonexistent_field` where x is from Call
+    but field access creates NEW local with Infer field_ty (not from expected_ty)
+  - stage18_334_text_ir_byval_sret_combined: field access in struct literal
+  - stage18_334_text_ir_deterministic: field access in struct literal construction
+- 根因分析:
+  * Phase 2 L3 step 1 只帮助 Call dest — 让 `let x = make_big()` 的 x 有 expected_ty
+  * 但 5 failures 都是 field access paths — `b.a`, `x.nonexistent_field`, struct literal fields
+  * field access 创建 NEW local with Infer field_ty (resolve_field_type returns None)
+  * expected_ty 不传播到 Field arm (Stage 18.396 添加了 fallback 但 callers 传 None)
+  * 完整修复: Phase 2 L3 step 2 — 在 Field arm 用 expected_ty (需要 threading)
+- 恢复 step 2 + 添加 Stage 18.405 注释 (详细根因分析)
+- §5.2 收敛: Phase 3.5 step 2 confirmed required 7th consecutive time
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Stage Summary:
+- Phase 2 L3 step 1 (expected_ty in Call dest) — 不影响 step 2 (5 failures same)
+- §5.2: 7th consecutive → true limit (field access paths need Phase 2 L3 step 2)
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §20.6: 实验性探索方法论
+  * §1.6: 深挖 — Call dest 不够, field access 也需要
+  * §5.2: 7 consecutive → true limit
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: thread expected_ty 到 Field arm (需要 caller 传 expected_ty)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.406
+Agent: Super Z (main) — PM-A
+Task: Stage 18.406 — §5.2 final convergence: 7 consecutive confirmations. v0.4 stable. Final package. L1 (收敛+打包). v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (§5.2 最终收敛 + 打包 — 无代码变更)
+- 对齐: §5.2 连续 7 轮 → 远超阈值; §14.5 PASSED (Stage 18.400); Phase 2 L3 step 1 done (Stage 18.404); step 2 experiment done (Stage 18.405)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §5.2: 连续 7 轮确认 Phase 3.5 step 2 仍必需 → 远超 "连续 2 轮" 阈值 → 最终收敛
+- 引用 §1.0 原則 13: 架构限制记录与升级 — Phase 3.5 step 2 是 field access dest_local.ty dependency
+- 引用 §1.6 终极检验: v0.4 所有成果都是根因修复
+
+裁剪点:
+- L1 — 无代码变更; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: §5.2 最终收敛 + 最终打包
+- WHY: v0.5+ Phase 2 L3 探索完成 (step 1 + step 2 experiment), true limit 确认
+- HOW: §5.2 收敛评估 + §19 打包
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- §5.2 最终收敛:
+  - Phase 3.5 step 2 confirmed required 7 consecutive times (18.389→18.392→18.396→18.398→18.399→18.402→18.405)
+  - Root cause (Stage 18.402): field access dest_local.ty is Infer at lower time
+  - Phase 2 L3 step 1 (Stage 18.404): expected_ty in Call dest — helps Call dest, not field access
+  - Phase 2 L3 step 2 experiment (Stage 18.405): 5 failures same — field access paths
+  - Full fix: Phase 2 L3 step 2 — thread expected_ty to Field arm (callers must pass expected_ty)
+- §14.5 D1-D8: ALL PASSED (Stage 18.400)
+- §1.6 终极检验: All removals are root-cause fixes ✅
+- v0.5+ Phase 1+3+2 L3 完整成果:
+  | Phase | Stages | Phases Removed | Writeback |
+  |-------|--------|----------------|-----------|
+  | Phase 1 | 18.379-18.381 | Phase 0 + Phase 3.7 | 10→8 |
+  | Phase 3 | 18.382-18.388 | Phase 3.5 step 1 | 8→7 |
+  | Phase 2 L3 | 18.404-18.405 | (step 1 done, step 2 required — §5.2 true limit) | 7 |
+  | Total | 18.379-18.406 | 3 phases removed | 10→7 |
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- §5.2 final convergence complete ✅ — Phase 3.5 step 2 true limit confirmed (7 consecutive)
+- v0.4 release-ready final state:
+  * Version: v0.510.0 (Stage 18.405)
+  * Tests: 4409 (682 lib + 3727 integration)
+  * Code quality: fmt clean, 0 clippy warnings
+  * LLVM: 22.1.8 (llvm-sys 221)
+  * Writeback phases: 10 → 7
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Architecture health: 8.4/10
+  * v0.5+ Phase 1+3 complete (3 phases removed via root-cause fixes)
+  * Phase 2 L3 step 1 done (expected_ty in Call dest)
+  * Phase 3.5 step 2 required (§5.2 true limit — field access dest_local.ty dependency)
+  * Next: Phase 2 L3 step 2 (thread expected_ty to Field arm — L3, ~51 callsites)
+
+下一步:
+- v0.5+ Phase 2 L3 step 2: thread expected_ty to Field arm (callers must pass expected_ty)
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
