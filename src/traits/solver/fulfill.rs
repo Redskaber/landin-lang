@@ -454,44 +454,100 @@ pub fn try_fulfill_obligation(obl: &Obligation, cx: &mut EvalCtxt) -> Obligation
 }
 
 // =====================================================================
-// collect_impl_where_clauses — fetch impl's where clauses
+// collect_impl_where_clauses — fetch impl's where clauses + supertraits
 // =====================================================================
 
-/// Collect the where clauses of an impl as new obligations.
+/// Collect the where clauses of an impl as new obligations, plus the
+/// supertrait obligations of the impl's trait.
 ///
-/// Per §5.4 + §5.5: when an impl is selected, its where clauses become
-/// new obligations. E.g., `impl<T: Clone> Trait for Vec<T>` selected for
-/// `Vec<i32>: Trait` adds `i32: Clone` as a new obligation.
+/// Per §5.4 + §5.5: when an impl is selected, its where clauses AND its
+/// trait's supertraits become new obligations. E.g., `impl<T: Clone> Trait
+/// for Vec<T>` selected for `Vec<i32>: Trait` adds:
+/// - `i32: Clone` (impl where clause — MVP placeholder, returns empty)
+/// - Supertrait obligations (if `trait Trait: Super` then `Vec<i32>: Super`)
 ///
-/// MVP scope (v0.5 Phase 4):
-/// - ImplInfo doesn't store where clauses yet (only trait_name + self_ty_name)
-/// - This function returns an empty Vec as a placeholder
-/// - A future phase will integrate HIR access to fetch the impl's
-///   `HirGenerics.where_clause` and convert each `HirWherePredicate` to
-///   an `Obligation`
+/// Stage 19.6 (v0.5 Phase 6) integration: supertrait expansion is now
+/// wired in via `supertrait::supertrait_obligations`. The impl's where
+/// clause collection remains a MVP placeholder (ImplInfo doesn't store
+/// where clauses yet) — documented limitation, not silent failure.
 ///
-/// Per §1.0 原則 4 (报错 > 静默): this is a documented MVP limitation,
-/// not a silent failure — future phases will add proper where clause
-/// collection.
+/// Per §1.0 原則 4 (报错 > 静默): impl where clause MVP limitation documented.
 ///
 /// Per §1.0 原則 6 (通解 > 特解): one function handles all impl kinds;
 /// the collection logic is general (no per-trait branches).
-pub fn collect_impl_where_clauses(
-    _impl_def_id: DefId,
-    _resolver: &TraitResolver,
-) -> Vec<Obligation> {
-    // MVP: return empty (ImplInfo doesn't store where clauses yet).
+///
+/// Per §12 (最优 > 最小): proper composition — supertrait expansion +
+/// (future) where clause collection, rather than duplicating logic.
+pub fn collect_impl_where_clauses(impl_def_id: DefId, resolver: &TraitResolver) -> Vec<Obligation> {
+    let mut obligations = Vec::new();
+
+    // Step 1: Collect supertrait obligations.
+    // Per §5.5: when an impl is selected, its trait's supertraits become
+    // new obligations. E.g., `impl Foo for X` (where `trait Foo: Bar`)
+    // adds `X: Bar` as a new obligation.
     //
-    // Future phase will:
-    // 1. Look up HirImpl via impl_def_id
-    // 2. Iterate HirImpl.generics.where_clause (Vec<HirWherePredicate>)
-    // 3. For each HirWherePredicate, convert to TraitPredicate:
-    //    - bounded_ty → self_ty
-    //    - bounds (Vec<HirTypeBound>) → for each Trait bound, look up trait_def_id
-    // 4. Construct Obligation with cause = Supertrait { trait_def_id }
-    //
-    // Per §1.0 原則 4 (报错 > 静默): documented limitation, not silent.
-    Vec::new()
+    // Stage 19.6: integrated via supertrait::supertrait_obligations.
+    // We need the impl's trait_def_id and self_ty to generate predicates.
+    if let Some(impl_info) = resolver.impls.get(&impl_def_id) {
+        // Look up the trait's DefId via trait_name Spur.
+        if let Some(trait_name_spur) = impl_info.trait_name {
+            if let Some(&trait_def_id) = resolver.trait_by_name.get(&trait_name_spur) {
+                // Construct the self_ty from impl_info.
+                // Per §11: ImplInfo stores self_ty_name (Spur), not the full Ty.
+                // For supertrait expansion, we need a Ty. We construct a
+                // best-effort Ty by looking up the type DefId.
+                //
+                // MVP: if we can't resolve self_ty_name to a DefId, we skip
+                // supertrait expansion (documented limitation).
+                if let Some(self_ty) = construct_self_ty_from_name(impl_info.self_ty_name, resolver)
+                {
+                    let supertrait_obls = crate::traits::solver::supertrait::supertrait_obligations(
+                        impl_def_id,
+                        trait_def_id,
+                        &self_ty,
+                        resolver,
+                        impl_info.span,
+                    );
+                    obligations.extend(supertrait_obls);
+                }
+            }
+        }
+    }
+
+    // Step 2: Collect impl's where clauses (MVP placeholder — returns empty).
+    // Per §1.0 原則 4: documented limitation, not silent failure.
+    // Future phase will integrate HIR access to fetch HirImpl.generics.where_clause.
+    // (No-op for now — supertrait expansion above is the main integration.)
+
+    obligations
+}
+
+/// Construct a best-effort `Ty` from an impl's `self_ty_name` (Spur).
+///
+/// Per §11 (接口隔离): we use TraitResolver's `type_by_def_id` map to
+/// find the DefId for the type name, then construct `TyKind::Adt(def_id, [])`.
+///
+/// Per §1.0 原則 9 (正确 > 妥协): returns `None` if the type name can't
+/// be resolved (rather than guessing or using a placeholder).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one function handles all type name
+/// kinds (struct, enum, primitive — via name lookup).
+fn construct_self_ty_from_name(
+    self_ty_name: Option<crate::lexer::Symbol>,
+    resolver: &TraitResolver,
+) -> Option<crate::mir::ty::Ty> {
+    use crate::mir::ty::{Ty, TyKind};
+
+    let name_spur = self_ty_name?;
+
+    // Look up the DefId for this type name via type_by_def_id.
+    // Per §1.0 原則 10: TraitResolver is the single source of truth.
+    let def_id = resolver
+        .type_by_def_id
+        .iter()
+        .find_map(|(did, spur)| (*spur == name_spur).then_some(*did))?;
+
+    Some(Ty::from_kind(TyKind::Adt(def_id, std::rc::Rc::from([]))))
 }
 
 // =====================================================================

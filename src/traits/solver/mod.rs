@@ -773,6 +773,8 @@ pub mod select;
 pub mod fulfill;
 // Stage 19.5 (v0.5 Phase 5): Supertrait expansion + error reporting.
 pub mod supertrait;
+// Stage 19.6 (v0.5 Phase 6): End-to-end integration tests.
+pub mod integration_tests;
 
 // =====================================================================
 // Tests

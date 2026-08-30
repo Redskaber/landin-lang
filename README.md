@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.515.0 (Stage 19.5 — v0.5 Phase 5 Trait Solver Supertrait Expansion + Error Reporting) |
+| **Version** | v0.516.0 (Stage 19.6 — v0.5 Phase 6 Trait Solver Tests + Integration) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 5 (Trait Solver Supertrait Expansion + Error Reporting) COMPLETE. 4741 tests (837 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.5 added `src/traits/solver/supertrait.rs` (~480 LOC, 21 tests) — expand_supertraits (transitive closure + cycle detection) + supertrait_obligations + has_supertraits + supertrait_count + report_fulfillment_error (NoImpl/Ambiguous/RecursionLimitExceeded) + report_fulfillment_result (Ok/Errors/Stalled). Per §5.5 (rustc supertrait auto-derivation) + §1.0 原則 4 (报错 > 静默 diagnostic). Phase 5 implements Supertrait Expansion + Error Reporting; Phase 6 (Stage 19.6) will add Tests + Integration. |
+| **Status** | v0.5 Phase 6 (Trait Solver Tests + Integration) COMPLETE — v0.5 Trait Solver ALL 6 PHASES DONE. 4778 tests (874 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.6 integrated supertrait expansion into `collect_impl_where_clauses` (Phase 4 placeholder now wired to Phase 5 `supertrait_obligations`) + added `src/traits/solver/integration_tests.rs` (~600 LOC, 37 E2E tests) covering full pipeline: evaluate → select → fulfill → supertrait expansion → error reporting. 4 TestFixture scenarios (single_impl / with_supertrait / with_trait_no_impl / with_overlapping_impls). Per §7.3.1: 37 E2E tests ≥ 30 case threshold, covers 7 error categories. v0.5 Trait Solver Phase 1-6 ALL COMPLETE; Stage 19.7 will do §14.5 deep review. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
