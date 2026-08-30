@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-30 (last updated Stage 18.435 — §20 iterative audit: full convergence, 10 rounds complete)
+> **Date**: 2026-08-30 (last updated Stage 18.500 — v0.4 FINAL deep review §14.5 D1-D8 + §14.6 cross-stage validation + §14.8 design writeback complete)
 > **Version**: v0.510.0
-> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial + §20 iterative audit (10 rounds: 8 fixes + 2 audit-only, FULL CONVERGENCE). Writeback phases 10→7. §20 audit chain: Stage 18.412 (Shl/Shr) → 18.416 (BitAnd/BitOr/BitXor) → 18.420 (field access) → 18.422 (&str indexing) → 18.425 (Index typeck+assignment) → 18.426 (Cast) → 18.428 (Deref) → 18.432 (non-exhaustive match, unblocked). Rounds 18.430+18.435 audit-only (Method/Borrow/let/match + Return/assignment/arg count — ALL CLEAN). All L2-fixable soundness bugs resolved. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4586 tests (682 lib + 3904 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: v0.4 FINAL — APPROVED for stage transition to v0.5. §20 iterative audit 14 rounds complete (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2). Writeback phases 10→7. §20 audit chain: Stage 18.412 (Shl/Shr) → 18.416 (BitAnd/BitOr/BitXor) → 18.420 (field access) → 18.422 (&str indexing) → 18.425 (Index typeck+assignment) → 18.426 (Cast) → 18.428 (Deref) → 18.432 (non-exhaustive match, unblocked) → 18.445/18.446 (literal range). Rounds 18.430/18.435/18.447/18.448-18.450 audit-only (Method/Borrow/let/match + Return/assignment/arg count + Unary/struct-literal + Visibility + Loop-control-flow — ALL CLEAN). Phase 5 (mir_type_to_emit_type → Result): Step 1+2+4 complete (Stage 18.438-18.444), Step 3+5 architecturally concluded. All L2-fixable soundness bugs resolved. **ALL P0/P1/P2 TDs RESOLVED.** 23 remaining TDs ALL BLOCKED or v0.5+/v0.6+ architectural — NONE upgraded per §6.2 升级判据. 4586 tests (682 lib + 3904 integration), 0 failures, 2 ignored (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. Architecture health: 8.5/10. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -407,3 +407,66 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | TD-TY-INFER-SPAN | §1.0 原則 4 (报错 > 静默) + §2 原则 3 (显式 > 隐式) | 3 production `fresh_infer_ty(Span::DUMMY)` calls producing InferTy with meaningless span | ✅ Resolved Stage 18.374 — full codebase audit following §20 from Stage 18.373. All 3 `fresh_infer_ty(Span::DUMMY)` converted to `fresh_infer_ty(real_span)` with comments explaining the design. Files touched (2): `src/mir/lower/body_lower.rs` (2 — `param.span` for self_param fallback + non-self param fallback), `src/mir/lower/expr_variants.rs` (1 — `expr.span` for closure call dest_ty). Per §1.0 原則 4 (报错 > 静默): typeck errors on InferTy should carry source location, not Span::DUMMY. Per §2 原则 3 (显式 > 隐式): real span (param.span / expr.span) is already in scope, should be used. Per §20 (iterative audit): same class as TD-UNWRAP-GUARDED-EXPECT (Stage 18.372) + TD-UNREACHABLE-INVARIANT (Stage 18.373) — all are "silent context loss" patterns where diagnostic info is dropped. Note: 11 other `Ty::new(TyKind::Error, Span::DUMMY)` calls were audited but NOT changed — they are "error already reported" placeholders (cx.type_errors.push with expr.span precedes them), so Span::DUMMY in the placeholder Ty doesn't affect user-facing diagnostics (param_check pass uses stmt.span/term.span, not Ty.span). Documented as design pattern, not TD. |
 | TD-AS-CAST-TRUNCATION | §1.0 原則 1 (内存安全决不能妥协) + §2 原则 3 (显式 > 隐式) + §2 原则 4 (报错 > 静默) | 8 production `*n as u32` calls where n is u128/i128 (ConstVal), silently truncating to u32 (DefId) | ✅ Resolved Stage 18.375 — full codebase audit following §20 from Stage 18.374. All 8 `*n as u32` converted to `u32::try_from(*n).expect("FnDef ConstVal must fit u32")` with comments explaining the invariant. Files touched (4): `src/codegen/operand.rs` (1 — FnDef constant emission), `src/codegen/terminator.rs` (4 — Call func resolution: 2 in dyn_trait path + 2 in direct Call path), `src/codegen/function.rs` (2 — Call destination type resolution), `src/mir/lower/writeback.rs` (1 — compute_call_dest_ty). Per §1.0 原則 1 (内存安全决不能妥协): silent truncation could mask corrupted ConstVal (e.g., from future unsafe transmute) and produce wrong DefId → wrong function called → memory unsafety. Per §2 原则 3 (显式 > 隐式): expect documents the FnDef invariant. Per §2 原则 4 (报错 > 静默): panic is better than silent wrong result. Per §20 (iterative audit): same class as Stage 18.372/18.373/18.374 — all are "silent context loss" patterns. Note: 7 of 8 sites had no FnDef type guard (relied on the value being FnDef by Call-terminator invariant); the `u32::try_from(...).expect(...)` makes the invariant explicit. Root cause: ConstVal uses u128 to store all integer literals (rustc-style), but DefId is u32 — when ConstVal is used as FnDef reference, the value must fit u32. Long-term fix (v0.5+): introduce `ConstVal::FuncRef(DefId)` variant instead of reusing Uint/Int. |
 | TD-ALLOW-SUPPRESSION | §1.0 原則 3 (显式 > 隐式) + §1.0 原則 5 (去除兼容思维) + §1.0 原則 13 (架构限制记录与升级) | 26 production `#[allow(...)]` suppressions across codebase — mix of stale allows, BLOCKED infrastructure, and legitimate design choices | ✅ Resolved Stage 18.377 — full codebase audit. Removed 6 stale allows: (1) 5 `#[allow(unused_imports)]` in `src/driver/mod.rs` — all 7 imported symbols (BorrowError, HirCrate, HirItem, MirBody, TraitError, TypeError, TypeckResults) are actually used in CompileErrors struct; allows were historical (added when imports were unused). (2) 1 `#[allow(dead_code)]` in `src/typeck/unify.rs:41` — covered `int_to_uint` function which was truly unused (its inverse `uint_to_int` is used); deleted the dead function. Verified remaining 20 allows as legitimate: (a) `region_inference` mod `#[allow(dead_code)]` — REQUIRED, removing exposes 13 dead code warnings for SCC/universe/type-test infrastructure BLOCKED on TD-STUB-REGION-ERASED; (b) `ty_is_copy` `#[allow(deprecated)]` — test backward compat; (c) 4 `#[allow(clippy::too_many_arguments)]` — codegen context, v0.5+ Phase 1 CodegenCtxt struct; (d) 3 `#[allow(clippy::only_used_in_recursion)]` — forward-compat API consistency; (e) 2 `#[allow(clippy::collapsible_match)]` — style preference; (f) `TargetTriple::from_str` `#[allow(clippy::should_implement_trait)]` — should be `FromStr` impl, tracked as minor TD (v0.5+); (g) other singletons — all legitimate. Per §1.0 原則 5: remove stale allows. Per §1.0 原則 13: document BLOCKED infrastructure allows. Per §1.0 原則 9: don't delete infrastructure that will be needed for NLL. Per §20: same class as Stage 18.372-18.376 — silent context loss where allow hides real signal. |
+
+---
+
+## 5. v0.4 FINAL Stage Closure (Stage 18.500)
+
+> **Process**: §14.5 D1-D8 deep review + §14.6 cross-stage validation + §14.8 design writeback
+> **Date**: 2026-08-30
+> **Result**: ✅ APPROVED for stage transition to v0.5
+> **Report**: `docs/develop/v0/stage-18/stage-18.500-v0.4-final-deep-review.md`
+
+### 5.1 §6.2 升级判据审查 (P3 → P0/P1)
+
+For each remaining 🟡 TD, the §6.2 升级判据 was applied:
+- (a) Does v0.5 Trait Solver (P1) or CodegenError System (P1) depend on this TD's output?
+- (b) Would the simplified implementation produce wrong results for v0.5?
+
+| TD | (a) v0.5 P1 depends? | (b) Wrong results for v0.5? | Verdict |
+|----|----------------------|------------------------------|---------|
+| TD-TYPECK-LOCAL-DECL-ERROR-CHECK | No (prelude lazy mono is separate) | No (codegen param_check pass catches) | NOT UPGRADED — v0.5+ prelude refactor |
+| TD-STUB-PRELUDE-LOOP-BODY | No | No (early interception prevents `loop {}` execution) | NOT UPGRADED — v0.5+ fat pointer syntax |
+| TD-STUB-REGION-ERASED | No (v0.5 trait solver has no regions in bounds) | No (Erased = 'static is sound) | NOT UPGRADED — v0.6+ NLL |
+| TD-STUB-DROP-ELABORATION-NOOP | No | No (Box auto-drop works) | NOT UPGRADED — v0.6+ Drop trait |
+| TD-STUB-LIFETIME-ELISION-NOOP | No | No (all regions Erased) | NOT UPGRADED — v0.6+ lifetimes |
+| TD-STUB-PROJECTION-RESOLVER | No (v0.5 P1 trait solver doesn't need GATs) | No (Projection resolved for Stage 18.87 GATs Phase 3) | NOT UPGRADED — v0.5+ P2 GATs may extend |
+| TD-INTRINSIC-OVERUSE Phase 2-B/C | No | No (current intrinsics work correctly) | NOT UPGRADED — v0.5+ fat ptr + extern C in prelude |
+| TD-IGNORE-DISCIPLINE | No | No | NOT UPGRADED — v0.6+ test infra |
+| TD-NO-JUMP-THREADING | No | No (MIR opt is optimization, not correctness) | NOT UPGRADED — v0.5+ P3 MIR Opt will address |
+| TD-CONST-PROP-LOOPS | No | No (loop safety Stage 18.110 done) | NOT UPGRADED — v0.5+ P3 MIR Opt will address |
+| TD-LINUX-ONLY / TD-ABI-DIVERSITY | No | No (cross-compile is platform feature) | NOT UPGRADED — v0.6+ |
+| TD-NO-INCREMENTAL | No | No (full recompile is slow but correct) | NOT UPGRADED — v0.5+ P3 will address |
+| TD-RVALUE-NO-SPAN | No (BinaryOp2 panic already replaced with CodegenError Stage 18.151) | No (Span::DUMMY fallback works for error reporting) | NOT UPGRADED — v0.6+ Rvalue struct change |
+| TD-DEREF-NON-REF | No | No (Error type returned, typeck continues) | NOT UPGRADED — v0.6+ region tracking |
+| TD-LOCALID0-FALLBACK | No | No (conservative borrow regions are safe) | NOT UPGRADED — v0.6+ |
+| TD-SINGLE-FILE Phase 4 (manifest) | No (v0.5 P1 doesn't need manifest) | No (single-file works) | NOT UPGRADED — v0.5+ P3 Incremental may need |
+| TD-CODEGEN-NEGATIVE (23.3% ≈ 25%) | No | No (existing negative tests catch soundness) | NOT UPGRADED — accepted partial |
+
+**结论**: 0 升级 — 所有 23 项 remaining TDs 维持 v0.5+/v0.6+ 状态。v0.5 P1 (Trait Solver + CodegenError) 可在 v0.4 当前基线上安全启动。
+
+### 5.2 §14.5 D1-D8 Final Verification (Stage 18.500)
+
+| Dim | Check | Result |
+|-----|-------|--------|
+| D1 | fmt clean | ✅ PASS |
+| D2 | clippy 0 warnings | ✅ PASS |
+| D3 | build success | ✅ PASS |
+| D4 | lib tests 682/682 | ✅ PASS |
+| D5 | integration tests 3904/3904 (2 ignored) | ✅ PASS |
+| D6 | no P0/P1 remaining | ✅ PASS (all resolved) |
+| D7 | architecture health 8.5/10 | ✅ PASS |
+| D8 | §1.6 终极检验 (root-cause fixes) | ✅ PASS |
+
+### 5.3 v0.5 Stage Transition Readiness
+
+| v0.5 Task | Priority | Dependency Status |
+|-----------|----------|-------------------|
+| Trait Solver | P1 | ✅ READY (Stage 16.07-16.10 + Stage 18.284 dispatch infrastructure) |
+| CodegenError System | P1 | ✅ READY (Stage 18.151 CodegenResult + Stage 18.438 CodegenErrorKind::UnresolvedType) |
+| GATs | P2 | ✅ READY (Stage 16.67-16.69 + Stage 18.87 Phase 3) |
+| Trait Coherence | P2 | ✅ READY |
+| MIR Optimization Passes | P3 | ✅ READY (Stage 18.110 + Stage 18.286) |
+| Incremental Compilation | P3 | ⚠️ PARTIAL (needs TD-SINGLE-FILE Phase 4 first) |
+| Cross-compilation | P3 | ✅ READY (TargetTriple exists) |
+

@@ -3,13 +3,85 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.510.0 |
+| **Current version** | v0.510.0 (Stage 18.500 — v0.4 FINAL) |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3890 integration tests = 4572 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 682 lib tests + 3904 integration tests = 4586 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (7 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax → &str indexing → Index typeck+assignment → Cast validity → Deref validity)
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2) |
+| **Stage transition** | ✅ APPROVED for v0.5 — §14.5 D1-D8 ALL PASSED, §14.6 cross-stage validation COMPLETE, §14.8 B2 design writeback done |
+
+---
+
+## v0.510.0 — v0.4 FINAL (Stage 18.500) — §14.5 + §14.6 + §14.8 Final Review
+
+### Overview
+
+This is the **v0.4 FINAL** release, marked by the §14.5 D1-D8 deep review, §14.6 cross-stage validation, and §14.8 design writeback protocols. v0.4 is APPROVED for stage transition to v0.5.
+
+### §14.5 D1-D8 Final Verification
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` clean |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 682/682 passed |
+| D5 integration tests | ✅ PASS | 3904/3904 passed, 2 ignored |
+| D6 no P0/P1 remaining | ✅ PASS | All resolved (TD-ARRAY-INDEX-CODEGEN, TD-FAT-PTR-INDEX-PROJ, TD-STR-METHODS-RUNTIME, TD-UNWRAP-BORROWCK-REGION all ✅) |
+| D7 architecture health | ✅ PASS | 8.5/10 (177 files, 84,886 LOC, max 1814 LOC — 3 files slightly over 1500, documented v0.3 P3 candidates) |
+| D8 §1.6 终极检验 | ✅ PASS | All fixes are root-cause, not minimal patches |
+
+### §14.6 Cross-Stage Validation (4 项)
+
+1. **Pipeline test coverage audit**: ✅ All 9 pipeline stages have positive + negative + integration + E2E tests; all 7 §7.3.1 audit categories covered.
+2. **Architecture review**: ✅ All stages ✅ Excellent or ⚠️ Acceptable (3 LOC-threshold files documented for v0.3 P3).
+3. **Hidden problems assessment**: ✅ 16 hidden TDs reviewed; 4 with complexity growth ≥ 2× — all BLOCKED by v0.5+ architectural features (fat ptr syntax, prelude lazy mono, manifest). These become v0.5 priority items.
+4. **Refactoring optimality review**: ✅ All v0.4 refactors verified as optimal root-cause fixes (writeback 10→7, Phase 5 Step 1+2+4, §20 audit chain).
+
+### §14.8 B2 Design Writeback (Implementation > Design)
+
+The v0.4 implementation significantly exceeded the original `v0.4-roadmap.md` scope:
+
+- ABI compliance (sret/byval/variadic) — Stages 18.332-18.335
+- ZST handling (4 cases via `filter_void_fields`) — Stage 18.336
+- Recursive struct support (opaque pointer) — Stage 18.337
+- Generic struct field access (5-layer root-cause fix) — Stages 18.347-18.376
+- §20 iterative audit (14 rounds, 10 bugs fixed) — Stages 18.410-18.451
+- Phase 5 mir_type_to_emit_type → Result (Step 1+2+4 done) — Stages 18.438-18.444
+- Writeback phases 10 → 7 — Stages 18.353, 18.355, 18.410-18.413
+- Param check diagnostic pass — Stage 18.348
+
+### §6.2 升级判据审查 (P3 → P0/P1)
+
+All 23 remaining 🟡 TDs reviewed against criteria:
+- (a) Does v0.5 Trait Solver (P1) or CodegenError (P1) depend on this TD's output?
+- (b) Would the simplified implementation produce wrong results for v0.5?
+
+**Result: 0 升级**. All remaining TDs are either:
+- Architecturally separate (region inference, drop elaboration, lifetime elision)
+- v0.2+/v0.3+ features (cross-compile, incremental, jump threading)
+- BLOCKED by language features v0.5 itself must build (fat pointer syntax)
+
+### v0.5 Stage Transition Readiness
+
+| v0.5 Task | Priority | Status |
+|-----------|----------|--------|
+| Trait Solver | P1 | ✅ READY |
+| CodegenError Error System | P1 | ✅ READY |
+| GATs | P2 | ✅ READY |
+| Trait Coherence | P2 | ✅ READY |
+| MIR Optimization Passes | P3 | ✅ READY |
+| Incremental Compilation | P3 | ⚠️ PARTIAL (needs TD-SINGLE-FILE Phase 4) |
+| Cross-compilation | P3 | ✅ READY |
+
+### Final Package
+
+- File: `landin-stage0-v0.510.0-stage18.500-v0.4-final-r90.tar.gz`
+- Location: `/home/z/my-project/download/`
+- Content: Full Landin v0.4 source (excludes `target/`, `.git/`, `download/`)
+- Size: ~5.4 MB
 
 ---
 
