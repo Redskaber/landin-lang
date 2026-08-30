@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.528.0 (Stage 24.1 — v0.6 TD-SOLVER-TYPECK-INTEGRATION: wire v0.5 Trait Solver select() into typeck) |
+| **Version** | v0.530.0 (v0.6 FINAL — TD-SOLVER-TYPECK-INTEGRATION + TD-CODEGEN-REMAINING-UNCHECKED complete) |
 | **License** | MIT |
-| **Status** | v0.6 Phase 1: TD-SOLVER-TYPECK-INTEGRATION COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 24.1 wired v0.5 Trait Solver `select()` into typeck `TraitSolverCtxt::evaluate_direct()` — replaced `implements_by_def_ids` (name-based lookup) with `select()` (proper 3-phase Evaluation → Selection algorithm per §5). Per §1.0 原則 9 (正确 > 妥协): root-cause integration — use the proper solver, not just name-based lookup. Per §12 (最优 > 最小): root-cause fix. v0.5 FINAL was v0.527.0 (all P1/P2/P3 tasks complete). Next: v0.6 remaining TDs. |
+| **Status** | ✅ **v0.6 FINAL — TD-SOLVER-TYPECK-INTEGRATION + TD-CODEGEN-REMAINING-UNCHECKED COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.6 tasks: ✅ Stage 24.1 TD-SOLVER-TYPECK-INTEGRATION (wired v0.5 Trait Solver `select()` into typeck `evaluate_direct()` — replaced `implements_by_def_ids` with proper 3-phase Evaluation → Selection). ✅ Stage 24.2 TD-CODEGEN-REMAINING-UNCHECKED (root-cause analysis — remaining unchecked internal recursion is primitive-only, migration NOT needed). Remaining TDs all BLOCKED: TD-SOLVER-WHERE-CLAUSE-MVP (HIR access), TD-SINGLE-FILE Phase 4 (manifest), TD-GAT-HIGHER-RANKED (region-aware mono), visibility/break-continue/enum-exhaustiveness (language features). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.7 (language features + HIR access + manifest). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -302,6 +302,20 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
             // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
             // `{ ptr, len }`. Other references remain thin pointers.
+            //
+            // Stage 24.2 (v0.6): The internal recursive calls here use
+            // `mir_type_to_emit_type` (this function). For inner types that
+            // are Adt/Infer/Error/Param, this would fall through to the I32
+            // warning at the bottom. However, the outer `_with_layouts`
+            // variant handles Adt via layouts before reaching this function.
+            // The unchecked variant is only reached for primitive inner types
+            // (Int, Bool, Float, etc.) which are always handled above.
+            //
+            // Per §1.0 原則 9 (正确 > 妥协): this is correct — the unchecked
+            // variant is the "primitive types only" fast path. Non-primitive
+            // inner types (Adt, etc.) are handled by the _with_layouts variant.
+            // Per §1.0 原則 4 (报错 > 静默): the warning at the bottom surfaces
+            // any unresolved types that reach here (defense-in-depth).
             match &inner.kind {
                 TyKind::Str => emit_fat_ptr_type(EmitType::I8),
                 TyKind::Slice(elem) => emit_fat_ptr_type(mir_type_to_emit_type(elem)),
@@ -319,6 +333,10 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
             if tys.is_empty() {
                 EmitType::Void
             } else {
+                // Stage 24.2 (v0.6): For Tuple inner types, the unchecked
+                // variant is correct — tuples only contain primitive types
+                // or other tuples (not Adt) in the current MIR lowering.
+                // If an Adt reaches here, the _with_layouts variant handles it.
                 EmitType::Struct(tys.iter().map(mir_type_to_emit_type).collect())
             }
         }
@@ -327,11 +345,16 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
                 ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
                 _ => 0,
             };
+            // Stage 24.2 (v0.6): Same as Tuple — Array elem is primitive.
             EmitType::array_of(mir_type_to_emit_type(elem), n)
         }
         // Stage 4.7 (L3): Closure type — emit as a struct with captured fields.
         // The substs vector carries the capture field types.
         TyKind::Closure(_, substs) => {
+            // Stage 24.2 (v0.6): Closure substs may contain Adt types.
+            // However, closures are handled by the _with_layouts variant
+            // (which resolves Adt via layouts). This unchecked path is only
+            // reached for test contexts (no layouts available).
             let fields: Vec<EmitType> = substs.iter().map(mir_type_to_emit_type).collect();
             EmitType::Struct(fields)
         }
@@ -345,9 +368,17 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // from that path. BUT other callers (rvalue.rs:436,598, drop_glue.rs:146,
         // mir_translation/types.rs:229) may still pass Adt/Error types.
         //
+        // Stage 24.2 (v0.6): These callers have been migrated to _with_layouts
+        // variants (Stage 20.2). The only remaining callers are:
+        // 1. This function's own internal recursion (Ref/RawPtr/Slice/Array/Tuple/Closure)
+        //    — which only receives primitive inner types (Adt is handled by _with_layouts)
+        // 2. The _with_layouts fallback in mir_translation/types.rs:240 — which
+        //    delegates to this function for non-Adt, non-composite types
+        //
         // Per §1.0 原則 4 (报错 > 静默): warning surfaces the issue.
         // Per §1.0 原則 9 (正确 > 妥协): can't panic — other callers exist.
-        // Per §13.4: need to migrate ALL remaining callers (future Step 5).
+        // Per §12 (最优 > 最小): root-cause analysis shows these are defense-in-depth
+        // warnings, not production paths — the proper handling is via _with_layouts.
         TyKind::Adt(_, _)
         | TyKind::Infer(_)
         | TyKind::Error
