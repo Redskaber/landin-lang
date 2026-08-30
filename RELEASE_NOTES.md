@@ -3,105 +3,100 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.514.0 (Stage 19.4 — v0.5 Phase 4 Trait Solver Fulfillment) |
+| **Current version** | v0.515.0 (Stage 19.5 — v0.5 Phase 5 Trait Solver Supertrait Expansion + Error Reporting) |
 | **Date** | 2026-08-30 |
-| **Test count** | 816 lib tests + 3904 integration tests = 4720 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 837 lib tests + 3904 integration tests = 4741 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) + Phase 4 (Fulfillment) complete |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) + Phase 4 (Fulfillment) + Phase 5 (Supertrait Expansion + Error Reporting) complete |
 
 ---
 
-## v0.514.0 — v0.5 Phase 4: Trait Solver Fulfillment (Stage 19.4)
+## v0.515.0 — v0.5 Phase 5: Trait Solver Supertrait Expansion + Error Reporting (Stage 19.5)
 
 ### Overview
 
-Stage 19.4 implements v0.5 Trait Solver Phase 4 (Fulfillment + Where Clause Integration) — adds the fulfillment loop that recursively solves an obligation queue. Per `docs/lang-design/03-type-system.md` §5.4: maintain an obligation queue, pop obligations, select impls, add their where clauses as new obligations, repeat until queue empties or fails.
+Stage 19.5 implements v0.5 Trait Solver Phase 5 (Supertrait Expansion + Error Reporting) — adds supertrait auto-derivation (transitive closure with cycle detection) and high-quality diagnostic messages for fulfillment errors. Per `docs/lang-design/03-type-system.md` §5.5: when a trait T is selected for `Self: T`, Self must also implement all of T's supertraits.
 
-### New module: `src/traits/solver/fulfill.rs` (~640 LOC, 32 tests)
+### New module: `src/traits/solver/supertrait.rs` (~480 LOC, 21 tests)
 
 | Item | Purpose |
 |------|---------|
-| `FulfillmentResult` | Tri-state: Ok (resolved_count + selected_count) / Errors (errors list) / Stalled (pending list) |
-| `FulfillmentError` | 3 variants: NoImpl / Ambiguous { candidate_count } / RecursionLimitExceeded { depth } |
-| `ObligationResult` | Tri-state for single obligation: Resolved { impl_def_id, new_obligations } / Error / Deferred |
-| `FulfillmentCtxt<'a>` | Wraps EvalCtxt + max_depth (default 128 per §5.8) |
-| `DEFAULT_MAX_DEPTH = 128` | Per §5.8: same as rustc default recursion limit |
-| `fulfillment_loop(queue, cx, max_depth)` | Main loop: iterative (vs recursive to avoid stack overflow) + depth check + per-obligation try_fulfill |
-| `try_fulfill_obligation(obl, cx)` | Single obligation: ParamEnv short-circuit → select → Resolved/Deferred/Error |
-| `collect_impl_where_clauses(impl_def_id, resolver)` | MVP placeholder (returns empty — ImplInfo doesn't store where clauses yet; future phase will integrate HIR access) |
-| `fulfill_obligation(obl, cx, max_depth)` | Convenience entry: creates temp queue + pushes + runs loop |
-| `is_assumed(obl, param_env)` | Peek (without fulfilling) — check if predicate is in ParamEnv assumptions |
-| `describe_fulfillment_result(result)` | Human-readable diagnostic string |
+| `expand_supertraits(trait_def_id, self_ty, resolver)` | Collect all supertrait predicates (transitive closure with cycle detection via HashSet) |
+| `expand_supertraits_recursive(...)` | Internal helper with visited set for cycle detection |
+| `supertrait_obligations(impl_def_id, trait_def_id, self_ty, resolver, span)` | Generate new obligations for an impl's supertraits (with ObligationCause::Supertrait) |
+| `has_supertraits(trait_def_id, resolver)` | Peek: check if a trait has any supertraits |
+| `supertrait_count(trait_def_id, self_ty, resolver)` | Count supertraits (transitive) |
+| `report_fulfillment_error(error, obl, resolver)` | High-quality diagnostic for a single FulfillmentError (NoImpl/Ambiguous/RecursionLimitExceeded) |
+| `report_fulfillment_result(result, resolver)` | Multi-line summary for FulfillmentResult (Ok/Errors/Stalled) |
+| `trait_name_for_def_id(trait_def_id, resolver)` | Helper: DefId → trait name string for diagnostics |
+| `type_name_for_obligation(obl, resolver)` | Helper: TyKind → human-readable type name string |
 
-### Algorithm (per §5.4 + §5.5 + §5.8)
+### Algorithm (per §5.5 + §5.8)
 
 ```text
-fulfillment_loop(queue, cx, max_depth=128):
-    while obl = queue.pop_ready():
-        if depth >= max_depth: record RecursionLimitExceeded; continue
-        depth += 1
-        result = try_fulfill_obligation(obl, cx)
-        match result:
-            Resolved { impl_def_id, new_obligations }:
-                for new_obl in new_obligations: queue.push(new_obl)
-                resolved_count += 1
-                if impl_def_id != SENTINEL_ASSUMED: selected_count += 1
-            Error(err): errors.push((obl, err))
-            Deferred: queue.push(obl)  # back to pending
-    
-    if !errors.empty(): return Errors { errors, resolved_count, selected_count }
-    if queue.is_stalled(): return Stalled { pending, resolved_count, selected_count }
-    return Ok { resolved_count, selected_count }
+expand_supertraits(trait_def_id, self_ty, resolver):
+    result = []
+    visited = HashSet::new()
+    expand_supertraits_recursive(trait_def_id, self_ty, resolver, &mut result, &mut visited)
+    return result
 
-try_fulfill_obligation(obl, cx):
-    if cx.param_env.assumes(&obl.predicate):
-        return Resolved { impl_def_id: SENTINEL_ASSUMED, new_obligations: [] }  # short-circuit
-    selection = select(goal, cx)
-    match selection:
-        Ok { impl_def_id }:
-            new_obligations = collect_impl_where_clauses(impl_def_id, resolver)
-            return Resolved { impl_def_id, new_obligations }
-        Ambiguous { .. }: return Deferred
-        NoImpl: return Error(NoImpl)
+expand_supertraits_recursive(trait_def_id, self_ty, resolver, result, visited):
+    if not visited.insert(trait_def_id): return  # cycle detection
+    trait_name_spur = lookup(trait_def_id in trait_by_name)
+    if trait_name_spur is None: return  # trait not found
+    supertraits = resolver.trait_supertraits(trait_name_spur)
+    if supertraits is None: return  # no supertraits
+    for supertrait_spur in supertraits:
+        supertrait_def_id = trait_by_name[supertrait_spur]
+        result.push(TraitPredicate::simple(self_ty, supertrait_def_id))
+        expand_supertraits_recursive(supertrait_def_id, self_ty, resolver, result, visited)
+
+report_fulfillment_error(error, obl, resolver):
+    trait_name = trait_name_for_def_id(obl.predicate.trait_def_id, resolver)
+    type_name = type_name_for_obligation(obl, resolver)
+    match error:
+        NoImpl: "trait bound not satisfied: {type}: {trait} — no impl found"
+        Ambiguous { count }: "ambiguous: {type}: {trait} — {count} candidates (MVP forbids overlapping)"
+        RecursionLimitExceeded { depth }: "recursion limit ({depth}) — possible cyclic supertrait"
 ```
 
 ### Design principles followed
 
-- §1.0 原則 3 (显式 > 隐式): FulfillmentResult tri-state (Ok/Errors/Stalled); describe_fulfillment_result explicit diagnostics; is_assumed explicit peek
-- §1.0 原則 4 (报错 > 静默): All FulfillmentError variants explicit; collect_impl_where_clauses MVP limitation documented
-- §1.0 原則 6 (通解 > 特解): One fulfillment_loop handles all obligation kinds; one try_fulfill_obligation handles all selection results
-- §1.0 原則 9 (正确 > 妥协): ParamEnv.assumes short-circuit (don't re-prove assumed bounds); assumed not counted in selected_count (sentinel u32::MAX)
-- §1.0 原則 10 (唯一可信数据源): ObligationQueue is single source of truth for pending work; fulfiller never maintains parallel queue
-- §11 (接口隔离): fulfill.rs reads Phase 3 select + Phase 1 ObligationQueue + ParamEnv (data contract); doesn't cross-call typeck/codegen
-- §12 (最优 > 最小): fulfillment_loop iterative (vs recursive to avoid stack overflow); three-layer composition (fulfillment_loop + try_fulfill_obligation + collect_impl_where_clauses)
+- §1.0 原則 3 (显式 > 隐式): has_supertraits explicit peek; report_fulfillment_error explicit diagnostic strings
+- §1.0 原則 4 (报错 > 静默): All FulfillmentError variants produce non-empty diagnostics; cycle detection explicit (vs infinite loop)
+- §1.0 原則 6 (通解 > 特解): One expand_supertraits handles all trait kinds; one report_fulfillment_error handles all error variants
+- §1.0 原則 9 (正确 > 妥协): Cycle detection (don't infinite loop); trait not found returns empty (don't false succeed)
+- §1.0 原則 10 (唯一可信数据源): TraitResolver is single source of truth for trait metadata; supertrait expansion doesn't maintain parallel map
+- §11 (接口隔离): supertrait.rs reads TraitResolver + Phase 4 FulfillmentResult (data contract); doesn't cross-call typeck/codegen
+- §12 (最优 > 最小): Transitive closure (vs one-level expansion); multi-line report_fulfillment_result (vs single line)
 
-### MVP scope (Phase 4)
+### MVP scope (Phase 5)
 
 | Item | MVP | Future |
 |------|-----|--------|
-| Loop | iterative (vs recursive) | (no change) |
-| Where clause collection | empty (ImplInfo doesn't store where clauses yet) | Future: HIR access + HirWherePredicate → Obligation |
-| ParamEnv short-circuit | exact match via `assumes` | Phase 5: smart matching (T: Clone assumption satisfies T: Clone query) |
-| Recursion limit | 128 (per §5.8) | (no change) |
-| Stalled handling | return Stalled with pending list | Phase 5: better "type annotations needed" error |
-| Pending refresh | defer via ObligationQueue.push (re-evaluation) | Phase 5: integrate with typeck unify (when var binds, refresh) |
+| Supertrait expansion | transitive closure + cycle detection | (no change) |
+| Cycle detection | HashSet visited set | (no change — already handles cycles) |
+| Obligation generation | ObligationCause::Supertrait | (no change) |
+| Error reporting | report_fulfillment_error + report_fulfillment_result | Phase 6: integrate with typeck diagnostic renderer |
+| Trait name lookup | Spur debug representation (#ID) | Future: thread interner for proper name lookup |
+| Type name lookup | primitives + Adt (via type_by_def_id) | Future: full TyKind coverage |
 
 ### Test results
 
-- 816 lib tests (was 784, +32 new Phase 4 tests)
+- 837 lib tests (was 816, +21 new Phase 5 tests)
 - 3904 integration tests (unchanged)
-- 4720 total, 0 failures, 2 ignored
+- 4741 total, 0 failures, 2 ignored
 - fmt clean, 0 clippy warnings
 
 ### Next stage
 
-Stage 19.5 — Trait Solver Phase 5 (Supertrait Expansion + Error Reporting):
-- Implement `expand_supertraits(trait_def_id, resolver)` — auto-derive supertrait bounds
-- Implement `report_fulfillment_error(error, obl)` — high-quality diagnostic messages
-- Integrate supertrait obligations into fulfillment_loop (when trait T selected, add T's supertraits as new obligations)
-- L2 (50-500 LOC, single file `src/traits/solver/supertrait.rs`)
+Stage 19.6 — Trait Solver Phase 6 (Tests + Integration):
+- Integrate supertrait expansion into collect_impl_where_clauses (Phase 4 placeholder)
+- Integrate report_fulfillment_error into typeck diagnostic renderer
+- End-to-end tests: register trait + impl, verify select + fulfill + supertrait expansion works
+- L2-L3 (possibly 100-800 LOC, crossing fulfill.rs + supertrait.rs + integration tests)
 
 ---
 

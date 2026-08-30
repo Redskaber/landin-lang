@@ -771,6 +771,8 @@ pub mod eval;
 pub mod select;
 // Stage 19.4 (v0.5 Phase 4): Fulfillment phase — fulfillment_loop + where clause integration.
 pub mod fulfill;
+// Stage 19.5 (v0.5 Phase 5): Supertrait expansion + error reporting.
+pub mod supertrait;
 
 // =====================================================================
 // Tests

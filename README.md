@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.514.0 (Stage 19.4 — v0.5 Phase 4 Trait Solver Fulfillment) |
+| **Version** | v0.515.0 (Stage 19.5 — v0.5 Phase 5 Trait Solver Supertrait Expansion + Error Reporting) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 4 (Trait Solver Fulfillment) COMPLETE. 4720 tests (816 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.4 added `src/traits/solver/fulfill.rs` (~640 LOC, 32 tests) — fulfillment_loop + try_fulfill_obligation + collect_impl_where_clauses + FulfillmentCtxt + FulfillmentResult (Ok/Errors/Stalled) + FulfillmentError (NoImpl/Ambiguous/RecursionLimitExceeded) + ObligationResult (Resolved/Error/Deferred) + ParamEnv.assumes short-circuit + DEFAULT_MAX_DEPTH=128 (per §5.8) + fulfill_obligation + is_assumed + describe_fulfillment_result. Per `docs/lang-design/03-type-system.md` §5.4 (rustc 老 solver Fulfillment: obligation queue + recursion). Phase 4 implements Fulfillment; Phase 5 (Stage 19.5) will add supertrait expansion + error reporting. |
+| **Status** | v0.5 Phase 5 (Trait Solver Supertrait Expansion + Error Reporting) COMPLETE. 4741 tests (837 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.5 added `src/traits/solver/supertrait.rs` (~480 LOC, 21 tests) — expand_supertraits (transitive closure + cycle detection) + supertrait_obligations + has_supertraits + supertrait_count + report_fulfillment_error (NoImpl/Ambiguous/RecursionLimitExceeded) + report_fulfillment_result (Ok/Errors/Stalled). Per §5.5 (rustc supertrait auto-derivation) + §1.0 原則 4 (报错 > 静默 diagnostic). Phase 5 implements Supertrait Expansion + Error Reporting; Phase 6 (Stage 19.6) will add Tests + Integration. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -32777,3 +32777,71 @@ Stage Summary:
 - 输出: expand_supertraits + report_fulfillment_error + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
 - 验收: §3.2 全绿
 
+
+---
+Task ID: stage19.5
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 19.5 — v0.5 Trait Solver Phase 5 (Supertrait Expansion + Error Reporting). L2 (single new module + 1 wiring line). v0.515.0.
+
+3秒启动自检:
+- 定位: L2 (新增 src/traits/solver/supertrait.rs ~480 LOC; 修改 src/traits/solver/mod.rs 1 行添加 pub mod supertrait;)
+- 对齐: 已查 TraitInfo.supertraits 字段 (Stage 5.15 已存在) + TraitResolver.trait_supertraits API + Stage 19.4 FulfillmentResult (FulfillmentError enum) + Stage 19.1 ObligationCause::Supertrait variant
+- 阻断: Stage 19.4 全绿 (4720 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- expand_supertraits 实现 transitive closure (vs 一级 expansion)
+  - 引用 §5.5: rustc 的 supertrait expansion 是 transitive (trait A: B, trait B: C → A 的 supertraits 包括 C)
+  - 引用 §12 (最优 > 最小): transitive closure 是根因修复 (vs 一级 expansion 需要调用者手动递归)
+  - 替代: 一级 expansion + 调用者递归 — 但这会让 fulfillment_loop 复杂化
+  - 选择: expand_supertraits 内部递归 + cycle detection
+
+- 用 HashSet 做 cycle detection (vs depth counter)
+  - 引用 §5.8: rustc 用 depth limit 128 防 cycle — 但 depth limit 是 panic
+  - 引用 §1.0 原則 1 (内存安全决不能妥协): panic 在 trait resolution 中是 UB
+  - 替代 1: depth counter + 返回 Err — 但 cycle 不是错误, 是合法但应停止的状态
+  - 替代 2: HashSet visited — 优雅, 检测到 cycle 时停止 expansion
+  - 选择: HashSet visited (per §1.0 原則 9: 正确 > 妥协)
+
+- supertrait_obligations 接受 impl_def_id 但当前未用
+  - 引用 §13.4 J1 (architecture aligned): 未来 Phase 6 会集成 supertrait expansion 到 collect_impl_where_clauses
+  - impl_def_id 当前未用 — 但保留参数为未来集成
+  - 引用 §1.0 原則 3 (显式 > 隐式): 参数显式标记为 #[allow(unused_variables)] + 文档说明
+
+- report_fulfillment_error 接受 resolver 参数 (vs 不接受)
+  - 引用 §1.0 原則 3 (显式 > 隐式): 错误消息需要 trait name + type name context
+  - trait name lookup 需要 resolver.trait_by_name (DefId → Spur)
+  - 替代: 错误消息用 DefId (#7) — 但用户看不懂
+  - 选择: 接受 resolver, 生成人类可读诊断
+
+裁剪点 (跳流程安全理由):
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 Stage 19.7 (Trait Solver Phase 6 完成后) 一起做
+- 安全理由: Phase 5 只添加新模块, 不修改现有 codegen/typeck 路径, 无集成, 无回归风险
+
+5W2H:
+- WHAT: src/traits/solver/supertrait.rs 新模块 — expand_supertraits + expand_supertraits_recursive (cycle detection) + supertrait_obligations + has_supertraits + supertrait_count + report_fulfillment_error + report_fulfillment_result + trait_name_for_def_id helper + type_name_for_obligation helper + 21 unit tests
+- WHY: v0.5 P1 Trait Solver Phase 5 — supertrait auto-derivation + 高质量错误消息
+- WHO: PM-A + DEV-A + REV-A + QA-A — 单 agent 多角色
+- WHEN: Phase 4 完成后的下一个 MUV; Phase 6 (Tests + Integration) 将集成 supertrait 到 fulfillment_loop
+- WHERE: src/traits/solver/supertrait.rs + wiring via pub mod supertrait; in src/traits/solver/mod.rs
+- HOW: (1) 查 §5.5 supertrait auto-derivation 算法 (2) 设计 expand_supertraits transitive closure + cycle detection (3) report_fulfillment_error 三种错误变体 (4) report_fulfillment_result 三种结果变体 (5) trait_name + type_name 诊断 helpers (6) §3.2 全绿验收
+- HOW MUCH: 4741 tests (was 4720, +21 new Phase 5 tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 Phase 5 Trait Solver Supertrait Expansion + Error Reporting COMPLETE ✅
+- New module: src/traits/solver/supertrait.rs (~480 LOC, 21 tests)
+- 9 new items: expand_supertraits + expand_supertraits_recursive + supertrait_obligations + has_supertraits + supertrait_count + report_fulfillment_error + report_fulfillment_result + trait_name_for_def_id + type_name_for_obligation
+- §3.2 全绿: 4741 tests (837 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 3/4/6/9/10 + §11 + §12 全部遵循
+
+下一步 (Stage 19.6):
+- MUV: Trait Solver Phase 6 (Tests + Integration)
+- 集成 supertrait expansion 到 collect_impl_where_clauses (Phase 4 placeholder)
+- 集成 report_fulfillment_error 到 typeck diagnostic renderer
+- 端到端测试: 注册 trait + impl, 验证 select + fulfill + supertrait expansion 完整工作
+- L2-L3 (可能 100-800 LOC, 跨 fulfill.rs + supertrait.rs + 集成测试)
+- 输入: Phase 5 supertrait + Phase 4 fulfill + v0.4 typeck diagnostic
+- 输出: 集成 + ≥3 E2E 测试 (1:3+ pos:neg ratio)
+- 验收: §3.2 全绿
+
