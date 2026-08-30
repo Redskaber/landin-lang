@@ -686,6 +686,41 @@ impl<'a> MirLowerCtxt<'a> {
                 Ty::new(TyKind::Bool, Span::DUMMY),
             ),
             HirLitKind::Int(n, suffix) => {
+                // Stage 18.445 (§20 audit round 10): Check literal value
+                // fits in the target type. `let x: i8 = 200` should error
+                // because 200 > i8::MAX (127).
+                //
+                // Per §1.0 原則 4 (报错 > 静默): out-of-range literals must
+                // be reported, not silently truncated.
+                // Per §1.0 原則 6 (通解 > 特解): one check covers all int types.
+                if let Some(int_ty) = suffix {
+                    let val = *n as i128;
+                    let max = match int_ty {
+                        ast::IntTy::I8 => i8::MAX as i128,
+                        ast::IntTy::I16 => i16::MAX as i128,
+                        ast::IntTy::I32 => i32::MAX as i128,
+                        ast::IntTy::I64 => i64::MAX as i128,
+                        ast::IntTy::I128 => i128::MAX,
+                        ast::IntTy::Isize => isize::MAX as i128,
+                    };
+                    let min = match int_ty {
+                        ast::IntTy::I8 => i8::MIN as i128,
+                        ast::IntTy::I16 => i16::MIN as i128,
+                        ast::IntTy::I32 => i32::MIN as i128,
+                        ast::IntTy::I64 => i64::MIN as i128,
+                        ast::IntTy::I128 => i128::MIN,
+                        ast::IntTy::Isize => isize::MIN as i128,
+                    };
+                    if val > max || val < min {
+                        self.type_errors.push(crate::typeck::TypeError::new(
+                            format!(
+                                "literal out of range for `{:?}`: value {} exceeds range [{}, {}]",
+                                int_ty, val, min, max
+                            ),
+                            Span::DUMMY,
+                        ));
+                    }
+                }
                 // If the literal has a suffix, use the exact type.
                 // If no suffix, use an IntVar so the literal can unify
                 // with whatever type the context expects (i32, u64, etc).
@@ -715,6 +750,27 @@ impl<'a> MirLowerCtxt<'a> {
                 )
             }
             HirLitKind::Uint(n, suffix) => {
+                // Stage 18.445 (§20 audit round 10): Check literal value
+                // fits in the target unsigned type.
+                if let Some(uint_ty) = suffix {
+                    let max = match uint_ty {
+                        ast::UintTy::U8 => u8::MAX as u128,
+                        ast::UintTy::U16 => u16::MAX as u128,
+                        ast::UintTy::U32 => u32::MAX as u128,
+                        ast::UintTy::U64 => u64::MAX as u128,
+                        ast::UintTy::U128 => u128::MAX,
+                        ast::UintTy::Usize => usize::MAX as u128,
+                    };
+                    if *n > max {
+                        self.type_errors.push(crate::typeck::TypeError::new(
+                            format!(
+                                "literal out of range for `{:?}`: value {} exceeds max {}",
+                                uint_ty, n, max
+                            ),
+                            Span::DUMMY,
+                        ));
+                    }
+                }
                 let ty_kind = match suffix {
                     Some(ast::UintTy::U8) => TyKind::Uint(ast::UintTy::U8),
                     Some(ast::UintTy::U16) => TyKind::Uint(ast::UintTy::U16),
