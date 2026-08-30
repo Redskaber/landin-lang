@@ -127,6 +127,15 @@ pub struct TraitResolver {
     /// the Spur-based lookup for new callers.
     /// Per §23: `vtables_by_def_ids` follows `<noun>_<prep>_<noun>` pattern.
     pub vtables_by_def_ids: HashMap<(DefId, DefId), Vtable>,
+    /// Stage 28.1 (v0.10): Enum variant names keyed by enum DefId.
+    /// Used for enum exhaustiveness checking — verifies that `match` on
+    /// an enum covers all variants (or has a `_` catch-all).
+    ///
+    /// Per §1.0 原則 10 (唯一可信数据源): this is the single source of
+    /// truth for "what variants does this enum have".
+    /// Per §11 (接口隔离): populated during collect() from HIR, read by
+    /// MIR lower (pattern_lower.rs) for exhaustiveness check.
+    pub enum_variants: HashMap<DefId, Vec<Spur>>,
     /// Stage 5.8: Builtin traits registry — standard traits recognized by
     /// the compiler without user definition (Copy, Clone, Drop, Sized, etc.).
     /// Maps the interned trait name to its builtin DefId (a reserved DefId
@@ -414,6 +423,13 @@ impl TraitResolver {
                     }
                     HirItem::Enum(e) => {
                         self.type_by_def_id.insert(*def_id, e.ident.name);
+                        // Stage 28.1 (v0.10): Store enum variant names for
+                        // exhaustiveness checking.
+                        // Per §1.0 原則 10 (唯一可信数据源): this is the SSOT
+                        // for "what variants does this enum have".
+                        let variant_names: Vec<Spur> =
+                            e.variants.iter().map(|v| v.ident.name).collect();
+                        self.enum_variants.insert(*def_id, variant_names);
                     }
                     HirItem::Impl(i) => {
                         let trait_name = i

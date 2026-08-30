@@ -34029,3 +34029,58 @@ v0.9 FINAL STATE:
   2. TD-SINGLE-FILE Phase 4 — manifest integration
   3. TD-GAT-HIGHER-RANKED — region-aware monomorphization
 
+
+---
+Task ID: stage28.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 28.1 — v0.10 Enum exhaustiveness checking. L2-L3 (跨 traits/resolver.rs + mir/lower/pattern_lower.rs). v0.537.0.
+
+3秒启动自检:
+- 定位: L2-L3 (修改 src/traits/resolver.rs + src/mir/lower/pattern_lower.rs — ~80 LOC new)
+- 对齐: 已查 v0.9 FINAL (v0.536.0); TD-ENUM-EXHAUSTIVENESS ("match on enum without all variants + no `_` arm silently compiles"); existing HirEnum.variants (Vec<HirVariant>); existing lower_match has Bool/Int/Char exhaustiveness but defers for Adt/enum; TraitResolver.collect() iterates HirItem::Enum but doesn't store variants
+- 阻断: v0.9 FINAL 全绿 (4821 tests), 0 P0/P1
+
+决策点 (设计选择):
+- Added enum_variants map (DefId → Vec<Spur>) to TraitResolver
+  - 引用 §1.0 原則 10 (唯一可信数据源): SSOT for "what variants does this enum have"
+  - 引用 §11 (接口隔离): populated during collect() from HIR, read by MIR lower
+  - 引用 §1.0 原則 3 (显式 > 隐式): explicit storage, not lazy HIR lookup
+  - 替代: read HIR directly from pattern_lower — but violates §11 (MIR lower shouldn't access HIR)
+  - 选择: store in TraitResolver, read via cx.resolver
+
+- Enum exhaustiveness check in lower_match
+  - 引用 §1.0 原則 4 (报错 > 静默): non-exhaustive enum match now reported
+  - 引用 §1.0 原則 9 (正确 > 妥协): defer if can't determine enum type or variant list (avoids false positives)
+  - 引用 §1.0 原則 6 (通解 > 特解): one check for all enum kinds (Path, TupleStruct, Struct patterns)
+  - Logic: if scrutinee is Adt(enum), collect variant names from arms' patterns, check all enum_variants are covered
+  - 引用 §12 (最优 > 最小): root-cause fix at the lowering boundary
+
+- Used cx.resolver (existing field) instead of adding new trait_resolver field
+  - 引用 §13.4 J2 (单一职责): cx.resolver already exists for rich error messages
+  - 引用 §1.0 原則 6 (通解 > 特解): one resolver field, reused for multiple purposes
+
+裁剪点:
+- L2-L3 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — will be done at v0.10 FINAL
+- 安全理由: enum exhaustiveness check is additive (new field + new check), doesn't modify existing match lowering behavior
+
+5W2H:
+- WHAT: enum_variants map + populated during collect() + exhaustiveness check in lower_match
+- WHY: v0.10 TD-ENUM-EXHAUSTIVENESS — enforce match on enum covers all variants
+- WHO: PM-A + DEV-A + REV-A + QA-A
+- WHEN: v0.9 FINAL 完成后的第一个 v0.10 MUV
+- WHERE: src/traits/resolver.rs + src/mir/lower/pattern_lower.rs
+- HOW: (1) Add enum_variants field (2) Populate during collect() (3) Check in lower_match when scrutinee is enum Adt
+- HOW MUCH: 4821 tests (unchanged — behavior-preserving for existing tests, no non-exhaustive enum matches in tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.10 Phase 1: Enum exhaustiveness checking COMPLETE ✅
+- New: enum_variants map + exhaustiveness check in lower_match
+- §3.2 全绿: 4821 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- Addresses: TD-ENUM-EXHAUSTIVENESS
+
+下一步 (v0.10 remaining TDs):
+- TD-SINGLE-FILE Phase 4 — manifest integration
+- TD-GAT-HIGHER-RANKED — region-aware monomorphization
+

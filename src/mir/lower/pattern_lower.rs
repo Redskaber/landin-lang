@@ -14,6 +14,7 @@ use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
+use lasso::Spur;
 
 use super::lower_expr_to_operand;
 use super::pattern_bindings::{collect_pat_bindings_for_mir, lower_enum_variant_pattern_bindings};
@@ -83,9 +84,85 @@ pub(crate) fn lower_match(
                     span,
                 ));
             }
-            // Defer for all other types (Infer/Error/Param/Adt/enum/Str/
+            // Defer for all other types (Infer/Error/Param/Str/
             // Float/Array/Tuple/Closure/Ref/RawPtr/FnDef/FnPtr).
+            //
+            // Stage 28.1 (v0.10): Enum exhaustiveness check added below
+            // (after the non-enum exhaustiveness checks, before the
+            // enum match lowering). This is a separate check because
+            // enum match uses SwitchInt on the discriminant, and we
+            // need to verify all variant discriminant values are covered.
             _ => {}
+        }
+
+        // Stage 28.1 (v0.10): Enum exhaustiveness check.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): non-exhaustive enum match must
+        // be reported, not silently accepted.
+        // Per §1.0 原則 9 (正确 > 妥协): defer if we can't determine the
+        // enum type or variant list (avoids false positives).
+        // Per §1.0 原則 6 (通解 > 特解): one check for all enum kinds.
+        //
+        // We check if the scrutinee is an Adt that's an enum (via HIR
+        // owner lookup), then verify all variant names are covered by
+        // the match arms' patterns.
+        if let crate::mir::ty::TyKind::Adt(adt_def_id, _) = &scrut_ty.kind {
+            // Check if this Adt is an enum via HIR owner lookup.
+            let is_enum = cx
+                .hir
+                .and_then(|h| h.find_owner(*adt_def_id))
+                .is_some_and(|o| {
+                    matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+                });
+            if is_enum {
+                // Look up the enum's variant names from TraitResolver.
+                // Per §11 (接口隔离): read from TraitResolver (data contract).
+                if let Some(variant_names) =
+                    cx.resolver.and_then(|r| r.enum_variants.get(adt_def_id))
+                {
+                    // Collect the variant names matched by the arms.
+                    // Per §1.0 原則 6 (通解 > 特解): one loop collects all
+                    // variant patterns from all arms.
+                    let mut matched_variants: std::collections::HashSet<Spur> =
+                        std::collections::HashSet::new();
+                    for arm in arms {
+                        match &arm.pat.kind {
+                            // Path pattern: `Variant(...)` or `Variant`.
+                            HirPatKind::Path(path) => {
+                                if let Some(seg) = path.segments.last() {
+                                    matched_variants.insert(seg.ident.name);
+                                }
+                            }
+                            // Tuple struct pattern: `Variant(a, b)`.
+                            HirPatKind::TupleStruct(path, _) => {
+                                if let Some(seg) = path.segments.last() {
+                                    matched_variants.insert(seg.ident.name);
+                                }
+                            }
+                            // Struct pattern: `Variant { field: val }`.
+                            HirPatKind::Struct(path, _, _) => {
+                                if let Some(seg) = path.segments.last() {
+                                    matched_variants.insert(seg.ident.name);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // Check if all variant names are covered.
+                    for variant_name in variant_names {
+                        if !matched_variants.contains(variant_name) {
+                            cx.type_errors.push(crate::typeck::TypeError::new(
+                                format!(
+                                    "non-exhaustive patterns: missing variant `{:?}` (or catch-all `_` arm)",
+                                    variant_name
+                                ),
+                                span,
+                            ));
+                            break; // Report only the first missing variant.
+                        }
+                    }
+                }
+            }
         }
     }
 

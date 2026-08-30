@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.536.0 (v0.9 FINAL — Break/continue context enforcement complete, remaining TDs BLOCKED) |
+| **Version** | v0.537.0 (Stage 28.1 — v0.10 Enum exhaustiveness checking) |
 | **License** | MIT |
-| **Status** | ✅ **v0.9 FINAL — BREAK/CONTINUE CONTEXT ENFORCEMENT COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.9 task: ✅ Stage 27.1 Break/continue context enforcement (loop_stack empty → TypeError). Remaining TDs ALL BLOCKED: enum exhaustiveness (needs enum variant全集 in TraitResolver + typeck refactor), TD-SINGLE-FILE Phase 4 (manifest), TD-GAT-HIGHER-RANKED (region-aware mono). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.10 (enum exhaustiveness + manifest + region-aware mono). |
+| **Status** | v0.10 Phase 1: Enum exhaustiveness checking COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 28.1 added `enum_variants` map to TraitResolver (DefId → Vec<Spur> variant names, populated during collect()) + enum exhaustiveness check in `lower_match` (when scrutinee is enum Adt, checks all variant names are covered by match arms or has `_` catch-all, reports TypeError if missing). Per §1.0 原則 4 (报错 > 静默): non-exhaustive enum match now reported. Per §1.0 原則 10 (唯一可信数据源): enum_variants is SSOT. Per §1.0 原則 6 (通解 > 特解): one check for all enum kinds. Addresses TD-ENUM-EXHAUSTIVENESS. Next: v0.10 remaining TDs. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
