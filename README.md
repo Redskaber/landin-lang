@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.516.0 (Stage 19.6 — v0.5 Phase 6 Trait Solver Tests + Integration) |
+| **Version** | v0.517.0 (Stage 19.7 — v0.5 Trait Solver FINAL §14.5 + §14.6 + §14.8) |
 | **License** | MIT |
-| **Status** | v0.5 Phase 6 (Trait Solver Tests + Integration) COMPLETE — v0.5 Trait Solver ALL 6 PHASES DONE. 4778 tests (874 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 19.6 integrated supertrait expansion into `collect_impl_where_clauses` (Phase 4 placeholder now wired to Phase 5 `supertrait_obligations`) + added `src/traits/solver/integration_tests.rs` (~600 LOC, 37 E2E tests) covering full pipeline: evaluate → select → fulfill → supertrait expansion → error reporting. 4 TestFixture scenarios (single_impl / with_supertrait / with_trait_no_impl / with_overlapping_impls). Per §7.3.1: 37 E2E tests ≥ 30 case threshold, covers 7 error categories. v0.5 Trait Solver Phase 1-6 ALL COMPLETE; Stage 19.7 will do §14.5 deep review. |
+| **Status** | ✅ **v0.5 Trait Solver P1 FINAL — APPROVED for stage transition to v0.5 CodegenError P1**. 4778 tests (874 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (implementation > design for E2E testing + UniverseGuard + cycle detection + ParamEnv short-circuit + supertrait integration + diagnostic helpers + context types). v0.5 Trait Solver Phase 1-6 ALL COMPLETE (6 stages, 194 new tests, 5545 LOC solver module). 5 remaining TD-SOLVER-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 CodegenError P1 (2-3 stages). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

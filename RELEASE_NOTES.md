@@ -3,91 +3,84 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.516.0 (Stage 19.6 — v0.5 Phase 6 Trait Solver Tests + Integration) |
+| **Current version** | v0.517.0 (Stage 19.7 — v0.5 Trait Solver FINAL §14.5 + §14.6 + §14.8) |
 | **Date** | 2026-08-30 |
 | **Test count** | 874 lib tests + 3904 integration tests = 4778 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); Trait Solver Phase 1 (data structures) + Phase 2 (Evaluation) + Phase 3 (Selection) + Phase 4 (Fulfillment) + Phase 5 (Supertrait Expansion + Error Reporting) + Phase 6 (Tests + Integration) — ALL 6 PHASES COMPLETE |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed + 4 audit-only, FULL CONVERGENCE per §5.2); v0.5 Trait Solver Phase 1-6 ALL COMPLETE + §14.5 D1-D8 deep review PASSED |
 
 ---
 
-## v0.516.0 — v0.5 Phase 6: Trait Solver Tests + Integration (Stage 19.6) — ALL 6 PHASES COMPLETE
+## v0.517.0 — v0.5 Trait Solver FINAL (Stage 19.7) — §14.5 + §14.6 + §14.8 Final Review
 
 ### Overview
 
-Stage 19.6 completes v0.5 Trait Solver Phase 6 (Tests + Integration) — the final phase of the v0.5 Trait Solver. This stage integrates supertrait expansion (Phase 5) into `collect_impl_where_clauses` (Phase 4 placeholder), and adds 37 end-to-end (E2E) integration tests verifying the full pipeline: evaluate → select → fulfill → supertrait expansion → error reporting.
+This is the **v0.5 Trait Solver FINAL** release, marked by the §14.5 D1-D8 deep review, §14.6 cross-stage validation, and §14.8 design writeback protocols. v0.5 Trait Solver is APPROVED for stage transition to v0.5 CodegenError P1.
 
-**v0.5 Trait Solver ALL 6 PHASES COMPLETE:**
-- Phase 1 (Stage 19.1): Data structures (TraitPredicate, Goal, InferCtxt, ObligationQueue, etc.)
-- Phase 2 (Stage 19.2): Evaluation (evaluate_one, evaluate, eval_all_to_result)
-- Phase 3 (Stage 19.3): Selection (select, select_from_eval, bind_inference_vars)
-- Phase 4 (Stage 19.4): Fulfillment (fulfillment_loop, try_fulfill_obligation, collect_impl_where_clauses)
-- Phase 5 (Stage 19.5): Supertrait Expansion + Error Reporting (expand_supertraits, report_fulfillment_error)
-- Phase 6 (Stage 19.6): Tests + Integration (supertrait wired into collect_impl_where_clauses, 37 E2E tests)
+### §14.5 D1-D8 Final Verification
 
-### Modified: `src/traits/solver/fulfill.rs`
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` clean |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 874/874 passed |
+| D5 integration tests | ✅ PASS | 3904/3904 passed, 2 ignored |
+| D6 no P0/P1 remaining | ✅ PASS | All 6 Trait Solver phases resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 90,444 LOC, solver module 5545 LOC, max file 1814 LOC) |
+| D8 §1.6 终极检验 | ✅ PASS | All fixes are root-cause, not minimal patches |
 
-- `collect_impl_where_clauses(impl_def_id, resolver)` — **integrated supertrait expansion** (was MVP placeholder returning empty)
-  - Step 1: Look up ImplInfo → trait_name Spur → trait_def_id via `trait_by_name`
-  - Step 2: `construct_self_ty_from_name` (new helper) — resolve self_ty_name → Ty via `type_by_def_id`
-  - Step 3: Call `supertrait::supertrait_obligations` to generate obligations
-  - Step 4: Return obligations (impl where clauses remain MVP placeholder — future HIR integration)
-- `construct_self_ty_from_name(self_ty_name, resolver) -> Option<Ty>` — new helper
-  - Returns `None` if type name can't be resolved (per §1.0 原則 9: 正确 > 妥协)
+### §14.6 Cross-Stage Validation (4 项)
 
-### New: `src/traits/solver/integration_tests.rs` (~600 LOC, 37 E2E tests)
+1. **Pipeline test coverage audit**: ✅ 194 new Trait Solver tests covering all 6 phases; 37 E2E tests ≥ 30 case threshold; 7 §7.3.1 audit categories covered
+2. **Architecture review**: ✅ All 6 phases ✅ Excellent (3-phase rustc 老 solver design, UniverseGuard RAII, cycle detection, ParamEnv short-circuit)
+3. **Hidden problems assessment**: ✅ 5 TD-SOLVER-* TDs reviewed; 2 with complexity growth ≥ 2× (TD-SOLVER-WHERE-CLAUSE-MVP, TD-SOLVER-TYPECK-INTEGRATION) — both BLOCKED by v0.6+ architectural features
+4. **Refactoring optimality review**: ✅ All v0.5 Trait Solver refactors verified as optimal root-cause fixes
 
-#### TestFixture — 4 scenarios
+### §14.8 B2 Design Writeback (Implementation > Design)
 
-| Fixture | Scenario | Use |
-|---------|----------|-----|
-| `with_single_impl()` | 1 trait + 1 type + 1 impl (no supertrait) | Positive: select Ok + fulfill Ok + 0 supertrait obligations |
-| `with_supertrait()` | SubTrait (supertrait=SuperTrait) + 2 impls | Positive: supertrait expansion + fulfill resolves both (2 obligations) |
-| `with_trait_no_impl()` | 1 trait + 0 impl | Negative: NoImpl error |
-| `with_overlapping_impls()` | 1 trait + 2 impls (same type) | Negative: Ambiguous (MVP禁 overlapping) |
+The v0.5 Trait Solver implementation significantly exceeded the original v0.5-roadmap §3.1 scope:
 
-#### 37 E2E tests (by category)
+- E2E integration tests (37 tests, 4 TestFixture) — Stage 19.6
+- UniverseGuard RAII — Stage 19.2
+- Cycle detection (HashSet) for supertrait expansion — Stage 19.5
+- ParamEnv.assumes short-circuit — Stage 19.4
+- collect_impl_where_clauses supertrait integration — Stage 19.6
+- Diagnostic helpers (describe_selection, collect_*_candidates, report_fulfillment_*) — Stages 19.3 + 19.5
+- FulfillmentCtxt / SelectionCtxt / EvalCtxt context types — Stages 19.2-19.4
 
-| Category | Count | Coverage |
-|----------|-------|----------|
-| E2E Phase 2+3 (evaluate + select) | 5 | single_impl/no_impl/overlapping/describe_ok/describe_no_impl |
-| E2E Phase 4 (fulfillment_loop) | 6 | single_impl/no_impl/overlapping/empty/assumed/recursion_limit |
-| E2E Phase 5 (supertrait expansion) | 6 | no_supertraits/with_supertrait/has_false/has_true/count_zero/count_one |
-| E2E Phase 6 (collect_impl_where_clauses integration) | 4 | no_supertraits/with_supertrait/impl_not_found/fulfillment_with_supertrait_resolves_both |
-| E2E Phase 5 (error reporting) | 6 | no_impl/ambiguous/recursion_limit/result_ok/result_errors/result_stalled |
-| E2E try_fulfill_obligation | 5 | resolved/with_supertrait/no_impl_error/overlapping_deferred/assumed_short_circuits |
-| E2E universe preservation | 2 | after_fulfillment/after_supertrait_expansion |
-| E2E full pipeline stress | 3 | single_impl/supertrait/no_impl_error |
+### §6.2 升级判据审查 (P3 → P0/P1)
 
-### Design principles followed
+All 5 remaining 🟡 TD-SOLVER-* TDs reviewed against criteria:
+- (a) Does v0.5 CodegenError P1 depend on this TD's output? **NO** — CodegenError is codegen-internal
+- (b) Would the simplified implementation produce wrong results for v0.5 CodegenError? **NO** — Trait Solver is standalone
 
-- §1.0 原則 3 (显式 > 隐式): TestFixture 4 explicit scenarios; E2E tests verify each step explicitly
-- §1.0 原則 4 (报错 > 静默): NoImpl/Ambiguous/RecursionLimit errors explicitly tested; construct_self_ty_from_name returns None (doesn't guess)
-- §1.0 原則 6 (通解 > 特解): One collect_impl_where_clauses handles all impl kinds; one TestFixture framework covers all scenarios
-- §1.0 原則 9 (正确 > 妥协): Universe preservation verified (doesn't pollute InferCtxt); supertrait expansion integrated (not placeholder)
-- §1.0 原則 10 (唯一可信数据源): TraitResolver is single source of truth; TestFixture doesn't maintain parallel map
-- §11 (接口隔离): integration_tests.rs reads TraitResolver + Phase 1-5 data contracts; doesn't cross-call typeck/codegen
-- §12 (最优 > 最小): Supertrait integration is root-cause fix (vs keeping placeholder); 37 E2E tests cover full pipeline
-- §7.3.1: 37 E2E tests ≥ 30 case threshold, covers 7 error categories
-- §9.4.3: 1:1.6 pos:neg ratio (14 positive + 23 negative) — Phase 6 is integration testing, focuses on error paths
+**Result: 0 升级**. All 5 TD-SOLVER-* TDs are v0.6+ architectural — v0.5 CodegenError P1 can proceed safely.
 
-### Test results
+### v0.5 Trait Solver Statistics
 
-- 874 lib tests (was 837, +37 new Phase 6 E2E tests)
-- 3904 integration tests (unchanged)
-- 4778 total, 0 failures, 2 ignored
-- fmt clean, 0 clippy warnings
+- **Stages**: 7 (19.001 startup + 19.1-19.6 + 19.7 review)
+- **New tests**: 194 (42+30+30+32+21+37 + 2 integration)
+- **New LOC**: 5545 (solver module) + ~2000 (docs) = ~7500
+- **New files**: 6 solver modules + 7 stage docs = 13
+- **Design principles**: §1.0 原則 3/4/6/9/10 + §11 + §12 + §7.3.1 + §9.4.3 all followed
+
+### Final Package
+
+- File: `landin-stage0-v0.517.0-stage19.7-v0.5-trait-solver-final-r98.tar.gz`
+- Location: `/home/z/my-project/download/`
+- Content: Full Landin v0.5 Trait Solver source (excludes `target/`, `.git/`, `download/`)
+- Size: ~5.7 MB
 
 ### Next stage
 
-Stage 19.7 — v0.5 Trait Solver §14.5 Deep Review + Phase 6 Completion:
-- Execute §14.5 D1-D8 eight-dimension deep review (v0.5 Trait Solver stage end)
-- Execute §14.6 cross-stage validation (v0.5 Trait Solver → next v0.5 task)
-- Execute §14.8 design writeback (B1-B4 deviation classification)
-- §19 stage packaging v0.5 Trait Solver FINAL
-- L3 (cross multiple docs + packaging)
+v0.5 CodegenError Error System P1 (2-3 stages):
+- Finish Phase 5 Step 3+5 callsite migration
+- ~40 unwrap → `?` in `llvm/mod.rs`
+- CodegenError struct (vs current CodegenErrorKind enum)
+- Public API update (`codegen_crate` / `codegen_crate_to_module`)
 
 ---
 
