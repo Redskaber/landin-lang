@@ -7,12 +7,12 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.392) |
+| **Version** | v0.510.0 (Stage 18.394) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3: writeback 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed). Phase 3.5 step 2 required (typeck error reporting dependency — confirmed Stage 18.392 re-test). §14.5 D1-D8 deep review PASSED. Architecture health: 8.4/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3727 integration tests = 4409 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3: writeback 10→7 (Phase 0 + Phase 3.7 + Phase 3.5 step 1 removed). Phase 3.5 step 2 required (typeck error reporting dependency — §5.2 true limit). §14.5 D1-D8 deep review PASSED. Architecture health: 8.4/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
-| **Process doc** | `docs/stage-committee-process.md` v7.4 (11 design principles + 13 execution principles + Bug probability distribution reasoning) |
+| **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology) |
 
 ---
 

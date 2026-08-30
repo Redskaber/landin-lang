@@ -1,7 +1,7 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 7.4（Stage 18.368-18.369: 新增原则 10-11 + 每轮执行原则 11-13 + Bug 概率分布推理）
+> **Version**: 7.5（Stage 18.394: 新增 §20.6 实验性探索方法论 — v0.5+ Phase 1+3 经验总结）
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 任何 Agent 拿到本文档即可：**清晰**知道每个阶段/轮次/角色的输入输出与验收标准；**严格**知道哪些是硬性阻断、哪些可酌情；**高效**知道哪些可并行、哪些必须串行、何时可提前收敛；**可协调**知道跨 Agent 协作协议（Task ID / worklog / 升级路径）。
 
@@ -2654,6 +2654,7 @@ flowchart TD
 | **v7.1** | **Stage 18.276** | 移除冗余历史内容（§16.2+§16.3+§6.6.2）+ 修正 §5.3 验收命令 + 修正 §20 交叉引用（§17.6→§17.7）。 |
 | **v7.2** | **Stage 18.277** | §3.2 流程步骤与验收命令表对齐 + §1.2 路由表修正（§8.3→§19）+ §3.5 标记为规划中 + §13.4.2 mermaid 对齐。 |
 | **v7.3** | **Stage 18.278** | 合并 v1.0–v4.0 changelog 为 1 行（per §3.3 精要>冗长）。无操作规则变更。 |
+| **v7.5** | **Stage 18.394** | 新增 §20.6 实验性探索方法论 — v0.5+ Phase 1+3 (Stage 18.379-18.392) 经验总结。将"注释 1 行 → 测试 → 恢复/移除"实验方法论固化为可复用流程规则。包含 5 步方法论 + 4 条关键原则 + 完整实验记录表 (Stage 18.379-18.392)。 |
 | **v7.4** | **Stage 18.368-18.369** | 新增 §2.2 原则 10（唯一可信数据源）+ 原则 11（确定性边界）+ 执行要求。§2.1.1 新增每轮执行原则 11-13（确定性边界先行/临时桩识别与记录/架构限制记录与升级）。§20.1 新增 Bug 概率分布推理。整合用户 4 条开发准则为流程规则。 |
 
 
@@ -3093,8 +3094,46 @@ flowchart TD
 | §17.7 缺陷纳入 | 发现 bug → 纳入修复任务 | 任何流程中发现 |
 | §20 迭代审计 | 修复 bug → 审查同类路径 → 直到收敛 | 修复 bug 后 |
 
+### 20.6 实验性探索方法论 (v7.5 新增 — Stage 18.379-18.392 经验总结)
+
+> **目的**：将 v0.5+ Phase 1+3 的"注释 1 行 → 测试 → 恢复/移除"实验方法论固化为可复用流程规则。
+
+**适用场景**：当架构重构涉及移除某个 phase/workaround/pass 时，必须先验证移除是否安全。
+
+**方法论步骤**：
+
+1. **注释目标代码**（1 行或 1 个函数调用）
+2. **运行全测试套件**（`cargo test --release --features llvm-backend -- --test-threads=1`）
+3. **判断结果**：
+   - **0 失败** → 目标代码冗余 → 标记为 REMOVED → 更新文档
+   - **N 失败** → 目标代码仍必需 → 深挖根因（§1.6 终极检验）
+4. **如果深挖根因后找到修复** → 修复根因 → 重新步骤 1-3
+5. **如果连续 2 轮深挖后仍 NOT redundant** → §5.2 收敛 → 标记为 required → 记录根因 → 转向下一个 phase
+
+**关键原则**：
+- **§1.6 终极检验**：不接受"NOT redundant"的表面结论 — 必须深挖根因
+- **§1.0 原則 9 (正确 > 妥协)**：不强行移除仍必需的代码
+- **§1.0 原則 5 (去除兼容思维)**：如果 0 失败 → REMOVED（不是仅 disabled）
+- **§5.2 (提前收敛)**：连续 2 轮 NOT redundant → 真正极限
+
+**v0.5+ Phase 1+3 实验记录**（Stage 18.379-18.392）：
+
+| Stage | Target | Result | Action | Writeback Phases |
+|-------|--------|--------|--------|------------------|
+| 18.379 | Phase 3.7 | 4 failures | 深挖根因 | 10 |
+| 18.380 | Phase 3.7 (fix) | 0 failures | REMOVED | 10→9 |
+| 18.381 | Phase 0 | 0 failures | REMOVED | 9→8 |
+| 18.382 | Phase 3.5 step 1 | 2 failures | 深挖根因 | 8 |
+| 18.384-18.387 | codegen recursive resolve | 0 failures (improvement) | 保留改进 | 8 |
+| 18.388 | Phase 3.5 step 1 (fix) | 0 failures | REMOVED | 8→7 |
+| 18.389 | Phase 3.5 step 2 | 5 failures | 深挖根因 | 7 |
+| 18.390 | Phase 3.5 step 2 (re-test) | 5 failures | 深挖根因 | 7 |
+| 18.392 | Phase 3.5 step 2 (re-test) | 5 failures | §5.2 收敛 | 7 |
+
+**结论**：Phase 3.5 step 2 是 typeck 错误报告依赖 — 需要 Phase 2 (expected_ty propagation) 才能消除。
+
 ---
 
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v7.4 effective
-from Stage 18.278+.**
+process. All agents (main + subagents) must follow it. v7.5 effective
+from Stage 18.393+.**

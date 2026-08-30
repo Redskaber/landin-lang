@@ -29789,3 +29789,102 @@ Stage Summary:
 下一步:
 - v0.5+ Phase 2 (expected_ty propagation in MIR lower): 消除 Phase 3.5 step 2 的根因
 - 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7
+
+
+---
+Task ID: stage18.394
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 18.394 — stage-committee-process.md v7.5 升级: 新增 §20.6 实验性探索方法论. L2 (流程文档升级). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (流程文档升级 — 新增 §20.6 + changelog + 版本号)
+- 对齐: §3.3 (Spec 持续演进) — v0.5+ Phase 1+3 经验应纳入流程文档; §20 迭代审计
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §3.3 (Spec 持续演进): v0.5+ Phase 1+3 产生可复用经验 → 纳入 §20
+- 引用 §1.6 终极检验: 实验方法论是根因修复的方法论, 不是表面工程
+- 引用 §12 (最优 > 最小): 将经验固化为流程规则, 让未来 Agent 可复用
+
+裁剪点:
+- L2 文档升级 — 不改变代码; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: stage-committee-process.md v7.5 — 新增 §20.6 实验性探索方法论
+- WHY: v0.5+ Phase 1+3 (Stage 18.379-18.392) 产生可复用的"注释 1 行 → 测试 → 恢复/移除"方法论
+- HOW: 新增 §20.6 (5 步方法论 + 4 条原则 + 实验记录表) + changelog v7.5 + 版本号更新
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- stage-committee-process.md v7.5 升级:
+  - 版本号: v7.4 → v7.5
+  - 新增 §20.6 实验性探索方法论:
+    * 5 步方法论 (注释 → 测试 → 判断 → 修复/移除 → 收敛)
+    * 4 条关键原则 (§1.6, §1.0 原則 9, §1.0 原則 5, §5.2)
+    * v0.5+ Phase 1+3 实验记录表 (Stage 18.379-18.392 完整进展)
+    * 结论: Phase 3.5 step 2 是 typeck 错误报告依赖 — Phase 2 needed
+  - Changelog 新增 v7.5 条目
+  - Footer 更新: v7.4 → v7.5, Stage 18.278+ → Stage 18.393+
+- README.md: process doc 描述更新 v7.4 → v7.5
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- stage-committee-process.md v7.5 升级完成 ✅
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- 设计原则引用:
+  * §3.3 (Spec 持续演进): 经验纳入流程文档
+  * §1.6 终极检验: 实验方法论是根因修复的方法论
+  * §12 (最优 > 最小): 固化为流程规则让未来 Agent 可复用
+  * §20 (迭代审计): §20.6 是 §20 的扩展 — 实验性探索是迭代审计的一种形式
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
+- 当前 v0.4 已完全可交付: 4409 tests, 0 failures, fmt clean, 0 clippy warnings, LLVM 22.1.8, writeback phases 10→7, process doc v7.5
+
+
+---
+Task ID: stage18.395
+Agent: Super Z (main) — PM-A + REV-A
+Task: Stage 18.395 — README 版本号同步 (18.392→18.394) + 最终打包. L1 (文档同步). v0.510.0.
+
+3秒启动自检:
+- 定位: L1 (README 版本号同步 — 1 行变更)
+- 对齐: Stage 18.393-18.394 已交付但 README 版本号滞后 (仍显示 18.392)
+- 阻断: 4409 tests 全绿
+
+决策点:
+- 引用 §1.0 原則 3 (显式 > 隐式): 文档版本号必须与代码状态一致
+
+裁剪点:
+- L1 — 1 行变更; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: README 版本号 18.392 → 18.394 + status 更新
+- WHY: Stage 18.393-18.394 (tech-debt-register + process doc v7.5) 已交付但 README 未同步
+- HOW: 更新 Version 行 + Status 行
+- HOW MUCH: §3.2 全绿 — 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+
+Work Log:
+- README.md 版本号同步:
+  - Version: v0.510.0 (Stage 18.392) → v0.510.0 (Stage 18.394)
+  - Status: 新增 "§5.2 true limit" + process doc v7.5 (已在 Stage 18.394 更新)
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4409 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- README 版本号同步完成 ✅
+- §3.2 全绿: 4409 tests, 0 failures, fmt clean, 0 clippy warnings
+- v0.4 release-ready 最终状态:
+  * Version: v0.510.0 (Stage 18.394)
+  * Process doc: v7.5 (§20.6 experimental exploration methodology)
+  * Writeback phases: 10 → 7
+  * Architecture health: 8.4/10
+
+下一步:
+- v0.5+ Phase 2 (expected_ty propagation): 消除 Phase 3.5 step 2 的根因
+- 当前 v0.4 已完全可交付
