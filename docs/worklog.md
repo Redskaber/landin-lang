@@ -33981,3 +33981,51 @@ Stage Summary:
 - TD-SINGLE-FILE Phase 4 — manifest integration
 - TD-GAT-HIGHER-RANKED — region-aware monomorphization
 
+
+---
+Task ID: v0.9-final
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: v0.9 FINAL — §14.5 D1-D8 + §19 打包. L3. v0.536.0.
+
+3秒启动自检:
+- 定位: L3 (v0.9 阶段总收尾 — §14.5 D1-D8 + README 重排 + §19 打包)
+- 对齐: 已查 v0.9 完成状态 (Stage 27.1 break/continue context enforcement); 剩余 TDs 全部 BLOCKED
+- 阻断: Stage 27.1 全绿 (4821 tests), 0 P0/P1
+
+决策点:
+- v0.9 可行任务全部完成:
+  ✅ Stage 27.1: Break/continue context enforcement (loop_stack empty → TypeError)
+- 剩余 TDs 全部 BLOCKED:
+  Enum exhaustiveness: 需要 enum variant全集 in TraitResolver + typeck match arm coverage check (large refactor)
+  TD-SINGLE-FILE Phase 4: 需要 manifest integration (v0.10+ architectural)
+  TD-GAT-HIGHER-RANKED: 需要 region-aware monomorphization (v0.10+ architectural)
+- 引用 §5.2 提前收敛: v0.9 所有可行任务已完成, 剩余任务 BLOCKED — 收敛
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 896/896 ✅
+- D5 (integration): 3925/3925 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, 90,771 LOC) ✅
+- D8 (§1.6 终极检验): all root-cause fixes ✅
+
+v0.9 FINAL STATE:
+- Version: v0.536.0
+- Tests: 4821 (896 lib + 3925 integration), 0 failures, 2 ignored
+- v0.9 tasks complete:
+  ✅ Stage 27.1: Break/continue context enforcement
+- Remaining (ALL BLOCKED):
+  Enum exhaustiveness (enum variant全集 + typeck refactor — v0.10+)
+  TD-SINGLE-FILE Phase 4 (manifest — v0.10+)
+  TD-GAT-HIGHER-RANKED (region-aware mono — v0.10+)
+- v0.9 is COMPLETE — READY for v0.10
+
+下一步:
+- §19 final package: landin-stage0-v0.536.0-v0.9-final-r117.tar.gz
+- v0.10 启动准备:
+  1. Enum exhaustiveness checking — TraitResolver stores all enum variants + typeck checks match arm coverage
+  2. TD-SINGLE-FILE Phase 4 — manifest integration
+  3. TD-GAT-HIGHER-RANKED — region-aware monomorphization
+

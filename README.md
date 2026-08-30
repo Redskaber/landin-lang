@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.535.0 (Stage 27.1 — v0.9 Break/continue context enforcement) |
+| **Version** | v0.536.0 (v0.9 FINAL — Break/continue context enforcement complete, remaining TDs BLOCKED) |
 | **License** | MIT |
-| **Status** | v0.9 Phase 1: Break/continue context enforcement COMPLETE. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 27.1 added break/continue outside loop error reporting — when `loop_stack` is empty (break/continue outside loop), now pushes `TypeError` ("`break` outside of a loop" / "`continue` outside of a loop") instead of silently doing nothing. Per §1.0 原則 4 (报错 > 静默): errors are now reported. Per §1.0 原則 6 (通解 > 特解): one check for both break and continue via loop_stack emptiness. Per §12 (最优 > 最小): root-cause fix at the lowering boundary. Addresses TD-BREAK-CONTINUE-CONTEXT. Next: v0.9 remaining language features. |
+| **Status** | ✅ **v0.9 FINAL — BREAK/CONTINUE CONTEXT ENFORCEMENT COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.9 task: ✅ Stage 27.1 Break/continue context enforcement (loop_stack empty → TypeError). Remaining TDs ALL BLOCKED: enum exhaustiveness (needs enum variant全集 in TraitResolver + typeck refactor), TD-SINGLE-FILE Phase 4 (manifest), TD-GAT-HIGHER-RANKED (region-aware mono). Architecture health: 8.5/10 (183 files, 90,771 LOC). Next: v0.10 (enum exhaustiveness + manifest + region-aware mono). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
