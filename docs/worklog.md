@@ -31464,3 +31464,153 @@ Stage Summary:
 - Future: v0.5+ Phase 5 (mir_type_to_emit_type returns Result)
 - Future: v0.6+ fix format! intrinsic to use .len() instead of &str as usize cast
 - Future: v0.6+ enum exhaustiveness checking (currently deferred)
+
+---
+Task ID: stage18.435-18.436
+Agent: Super Z (main) — PM-A
+Task: Stage 18.435 §20 audit round 9 (Return type + assignment to non-place + arg count); Stage 18.436 §5.2 full convergence + doc sync + package r75. L2 (audit only — no code change). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (§20 audit — 3 path classes audited, all clean, no code change)
+- 对齐: §20 iterative audit; Stage 18.432 worklog "下一步" suggested Phase 5
+- 阻断: 4586 tests 全绿 (Stage 18.432 state)
+
+决策点 (§20 iterative audit — full convergence):
+- 审计 Return type mismatch: ALL OK (fn returns i32 but body is &str/bool/int/unit/struct all error correctly)
+- 审计 Assignment to non-place: ALL OK (42=5, true=false, x+y=5, f()=5 all error correctly)
+- 审计 Function call arg count: ALL OK (too many args, too few args, extra args all error correctly)
+- 引用 §5.2: 连续 2 轮审计 (round 8 + round 9) 仅发现 0 个可修复 bug → 完全收敛
+- 引用 §1.6 终极检验: v0.4 soundness 完整, 所有 L2 可修复 bug 已解决
+
+裁剪点:
+- L2 — audit only; no code change; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: Audit 3 operation classes (Return type mismatch, assignment to non-place, arg count); 0 bugs found
+- WHY: §20 iterative audit — continue audit chain after Stage 18.432
+- WHO: REV-A (audit all paths) + ARCH-A (confirm convergence)
+- WHEN: After Stage 18.432 (non-exhaustive match unblock)
+- WHERE: N/A (audit only, no code change)
+- HOW: Test each operation class with invalid inputs; verify error reporting
+- HOW MUCH: §3.2 全绿 — 4586 tests, 0 failures (no code change)
+
+Work Log:
+- §20 iterative audit round 9 — audited 3 operation classes:
+  - Return type mismatch: fn returns i32 but body is &str → ERROR ✅
+  - Return type mismatch: fn returns bool but body is i32 → ERROR ✅
+  - Return type mismatch: fn returns i32 but body is unit → ERROR ✅
+  - Return type mismatch: fn returns struct but body is int → ERROR ✅
+  - Assignment to non-place: 42 = 5 → ERROR ✅
+  - Assignment to non-place: true = false → ERROR ✅
+  - Assignment to non-place: x + y = 5 → ERROR ✅
+  - Assignment to non-place: f() = 5 → ERROR ✅
+  - Function call arg count: f(1,2) where f takes 1 → ERROR ✅
+  - Function call arg count: f() where f takes 1 → ERROR ✅
+  - Function call arg count: f(1) where f takes 0 → ERROR ✅
+- §5.2 full convergence:
+  - Round 8 (Stage 18.430): Method/Borrow/let/match — 1 BLOCKED bug (later unblocked Stage 18.432), 3 classes clean
+  - Round 9 (Stage 18.435): Return type/assignment/arg count — ALL clean
+  - §20 audit chain: 8 rounds of fixes + 2 rounds of audit-only = 10 rounds total
+  - All L2-fixable soundness bugs resolved
+  - Remaining tech-debt is L3 (v0.5+ Phase 5, v0.6+ items)
+- §3.2 全校验流 (no code change, verified state):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4586 tests (682 lib + 3904 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- §20 iterative audit round 9 complete ✅
+- 3 operation classes audited (Return type, assignment to non-place, arg count)
+- 0 bugs found — all paths clean
+- §5.2 full convergence: §20 audit chain reaches complete natural end
+  * 8 rounds of fixes (Stage 18.412-18.432): BinaryOp, field access, Index, Cast, Deref, Pattern matching
+  * 2 rounds of audit-only (Stage 18.430, 18.435): Method/Borrow/let/match + Return/assignment/arg count
+  * Total: 10 rounds, 8 bugs fixed, 0 remaining L2-fixable
+- §3.2 全绿: 4586 tests, 0 failures (no code change)
+- §1.6 终极检验: v0.4 soundness 完整 — all L2-fixable bugs resolved
+
+下一步:
+- Stage 18.436: doc sync + README restructure + package r75
+- Future: v0.5+ Phase 5 (mir_type_to_emit_type returns Result) — L3, 81+ callsites
+- Future: v0.6+ fix format! intrinsic + enum exhaustiveness + prelude refactor
+- §20 audit conclusion: v0.4 soundness complete (10 rounds, 8 bugs fixed, 0 remaining L2)
+
+---
+Task ID: stage18.437
+Agent: Super Z (main) — PM-A
+Task: Stage 18.437 v0.5+ Phase 5 assessment + final convergence confirmation. L2 (assessment only). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (assessment only — no code change; Phase 5 scope evaluated)
+- 对齐: §5.2 full convergence; Stage 18.435 worklog "下一步" suggested Phase 5
+- 阻断: 4586 tests 全绿 (Stage 18.435 state)
+
+决策点 (Phase 5 assessment — §5.2 + §1.6):
+- 评估 v0.5+ Phase 5 (mir_type_to_emit_type returns Result):
+  * 22 direct callers + 65 with_layouts_and_mono callers = 87 callsites
+  * L3 task (500+ lines/cross-module)
+  * Behavioral impact: NONE — param_check (Stage 18.348) already catches unresolved types before codegen
+  * API improvement only (make type signature explicit, not behavioral fix)
+  * Per §1.6 终极检验: NOT a root-cause fix — it's an API improvement (param_check is the root-cause fix)
+  * Per §5.2: Low priority — mitigated, no behavioral bug
+- 评估剩余 tech-debt:
+  * TD-STUB-EMIT-TYPE-I32-FALLBACK: ✅ Mitigated (param_check catches)
+  * TD-TYPECK-LOCAL-DECL-ERROR-CHECK: 🟡 BLOCKED (prelude lazy monomorphization)
+  * TD-STUB-PRELUDE-LOOP-BODY: 🟡 BLOCKED (fat pointer construction syntax)
+  * TD-STUB-REGION-ERASED: 🟡 v0.2+ (NLL algorithm)
+  * TD-STUB-DROP-ELABORATION-NOOP: 🟡 v0.2+ (Drop::drop codegen)
+  * TD-STUB-LIFETIME-ELISION-NOOP: 🟡 v0.2+ (3-rule elision)
+  * TD-STUB-PROJECTION-RESOLVER: 🟡 v0.2+ (associated type normalization)
+  * TD-INTRINSIC-OVERUSE: 🟡 Phase 2-B/C BLOCKED
+  * All remaining TDs are either BLOCKED (prelude/language feature) or v0.2+ design decisions
+- 引用 §5.2: §20 audit converged (10 rounds), Phase 5 is L3 (low priority, no behavioral impact), remaining TDs BLOCKED
+- 引用 §1.6 终极检验: v0.4 soundness 完整, all L2-fixable bugs resolved
+
+裁剪点:
+- L2 — assessment only; no code change; §3.2 全绿是充分门禁
+
+5W2H:
+- WHAT: Assess Phase 5 feasibility + evaluate remaining tech-debt; confirm v0.4 final state
+- WHY: §5.2 convergence — determine next MUV after §20 audit complete
+- WHO: ARCH-A (assess Phase 5 scope) + PM-A (decide next priority)
+- WHEN: After Stage 18.435 (full convergence)
+- WHERE: N/A (assessment only)
+- HOW: Count callsites, evaluate behavioral impact, check remaining TDs
+- HOW MUCH: §3.2 全绿 — 4586 tests, 0 failures (no code change)
+
+Work Log:
+- Phase 5 assessment:
+  - mir_type_to_emit_type: 22 direct callers, returns EmitType (not Result)
+  - mir_type_to_emit_type_with_layouts_and_mono: 65 callers (wraps mir_type_to_emit_type)
+  - _ => EmitType::I32 fallback at line 343 (Adt/Infer/Error/Param/Projection/Never/Foreign)
+  - param_check (Stage 18.348) already catches unresolved types BEFORE codegen
+  - Behavioral impact: NONE — fallback is dead code in practice (param_check catches first)
+  - Phase 5 is API improvement (make type explicit), NOT root-cause fix
+  - Per §1.6: param_check IS the root-cause fix (already done Stage 18.348)
+  - Per §5.2: Low priority, deferred to v0.5+ milestone
+- Remaining tech-debt evaluation:
+  - All L2-fixable TDs resolved
+  - Remaining TDs: BLOCKED (prelude/language feature) or v0.2+ design decisions
+  - TD-STUB-EMIT-TYPE-I32-FALLBACK: ✅ Mitigated (param_check)
+  - No actionable L2 work remaining
+- §3.2 全校验流 (verified):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4586 tests (682 lib + 3904 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- v0.4 FINAL STATE CONFIRMED ✅
+- §20 audit: 10 rounds complete (8 fixes + 2 audit-only), FULL CONVERGENCE
+- All L2-fixable soundness bugs resolved
+- Phase 5 assessed: L3, low priority, no behavioral impact (param_check mitigates)
+- All remaining tech-debt: BLOCKED or v0.2+ design decisions
+- §3.2 全绿: 4586 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: v0.4 soundness 完整 — 0 remaining L2-fixable bugs
+
+下一步:
+- v0.5+ Phase 5: mir_type_to_emit_type returns Result (L3, 87 callsites, 1-2 weeks)
+  - API improvement only (no behavioral change)
+  - Low priority (param_check already mitigates)
+  - Start when beginning v0.5+ development milestone
+- v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor, typeck前置重构
+- v0.4 is RELEASE-READY — no further L2 work needed

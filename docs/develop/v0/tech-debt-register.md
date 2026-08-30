@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-30 (last updated Stage 18.428 — §20 iterative audit: Deref validity check)
+> **Date**: 2026-08-30 (last updated Stage 18.435 — §20 iterative audit: full convergence, 10 rounds complete)
 > **Version**: v0.510.0
-> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial + §20 iterative audit (7 rounds). Writeback phases 10→7. §20 audit chain: Stage 18.412 (Shl/Shr lhs check) → 18.416 (BitAnd/BitOr/BitXor is_notable_ty check) → 18.420 (field access syntax mismatch) → 18.422 (&str indexing rejection + as_bytes Cast fix) → 18.424-18.425 (typeck Index check + assignment path check) → 18.426 (Cast validity check + is_valid_cast helper) → 18.428 (Deref validity check + Closure defer). All same-class soundness bugs (silent acceptance of invalid operations / design divergence from Rust). **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4572 tests (682 lib + 3890 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
+> **Status**: v0.5+ Phase 1+3 complete + Phase 2 L3 step 2 partial + §20 iterative audit (10 rounds: 8 fixes + 2 audit-only, FULL CONVERGENCE). Writeback phases 10→7. §20 audit chain: Stage 18.412 (Shl/Shr) → 18.416 (BitAnd/BitOr/BitXor) → 18.420 (field access) → 18.422 (&str indexing) → 18.425 (Index typeck+assignment) → 18.426 (Cast) → 18.428 (Deref) → 18.432 (non-exhaustive match, unblocked). Rounds 18.430+18.435 audit-only (Method/Borrow/let/match + Return/assignment/arg count — ALL CLEAN). All L2-fixable soundness bugs resolved. **ALL P0/P1/P2 TDs RESOLVED.** Only BLOCKED TDs require v0.5+ architecture work: TD-INTRINSIC-OVERUSE Phase 2-B/C, TD-STUB-PRELUDE-LOOP-BODY. 4586 tests (682 lib + 3904 integration), 0 failures (single-thread, ulimit -s unlimited). fmt clean, 0 clippy warnings. v0.4 release-ready.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 

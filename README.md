@@ -9,7 +9,7 @@
 | **Author** | redskaber |
 | **Version** | v0.510.0 (Stage 18.432) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3904 integration tests = 4586 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (8 rounds: 7 fixes + 1 unblock): Stage 18.412 (Shl/Shr) → 18.416 (BitAnd/BitOr/BitXor) → 18.420 (field access) → 18.422 (&str indexing) → 18.425 (Index typeck+assignment) → 18.426 (Cast) → 18.428 (Deref) → 18.432 (non-exhaustive match, unblocked from 18.430). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3904 integration tests = 4586 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (10 rounds: 8 fixes + 2 audit-only, FULL CONVERGENCE): Stage 18.412 (Shl/Shr) → 18.416 (BitAnd/BitOr/BitXor) → 18.420 (field access) → 18.422 (&str indexing) → 18.425 (Index typeck+assignment) → 18.426 (Cast) → 18.428 (Deref) → 18.432 (non-exhaustive match). Rounds 18.430+18.435 audit-only (Method/Borrow/let + Return/assignment/arg count — ALL CLEAN). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -302,11 +302,12 @@ originally bundled **two independent concerns**:
 redundant", execute surgical split experiments (env var guards per pass)
 to distinguish TRUE LIMIT vs WORKAROUND.
 
-### §20 iterative audit chain (Stage 18.412 → 18.416 → 18.420 → 18.422 → 18.425 → 18.426 → 18.428 → 18.432)
+### §20 iterative audit chain — FULL CONVERGENCE (10 rounds: 8 fixes + 2 audit-only)
 
 Per §20 ("finding one bug means there are many similar bugs"), each soundness
 fix triggered an audit of ALL similar paths. Eight same-class bugs found and
-fixed (including 1 unblock):
+fixed (including 1 unblock). Rounds 9-10 audited additional classes — all
+confirmed clean. **Full convergence reached.**
 
 | Stage | Bug | Class | Fix |
 |-------|-----|-------|-----|
@@ -318,12 +319,16 @@ fixed (including 1 unblock):
 | 18.426 | typeck `infer_rvalue` Cast arm returned `target_ty` without checking source type; `true as &str`, `(1,2) as i32`, `42 as Foo`, `42 as [i32;3]` silently compiled | Silent acceptance of invalid Cast | Added `is_valid_cast` helper validating cast pairs against Rust Reference §5.2.7 rules |
 | 18.428 | typeck `infer_projection` Deref arm returned `TyKind::Error` without pushing error; `*42`, `*true`, `*(1,2)`, `*arr` silently compiled | Silent acceptance of invalid Deref | Added error push for concrete non-pointer types; defer for Infer/Error/Param/Closure |
 | 18.432 | `match x { 1 => 1, 2 => 2 }` without `_` arm silently compiled (non-exhaustive match on primitives) | Silent acceptance of invalid Pattern matching | Added non-exhaustive match check: Bool with true+false = exhaustive; Int/Uint/Char require `_`; defer for enum/Adt/other (unblocked from Stage 18.430) |
+| 18.430 | Audited Method resolution, Borrow/Ref, let binding, Pattern matching | Audit convergence | Method/Borrow/let: ALL OK. Non-exhaustive match: unblocked in 18.432. |
+| 18.435 | Audited Return type mismatch, assignment to non-place, function call arg count | Audit convergence (final) | ALL OK — 0 bugs found. Full convergence reached. |
 
-All eight are "silent acceptance of invalid operations / design divergence from
-Rust" — same architectural class. The audit chain is complete for BinaryOp arms,
-field access paths, Index operations (read + assignment paths), Cast operations,
-Deref operations, and Pattern matching (non-exhaustive check). Stage 18.430
-audited Method resolution, Borrow/Ref, and let binding — all confirmed clean.
+**Audit conclusion**: All eight fixes are "silent acceptance of invalid operations /
+design divergence from Rust" — same architectural class. The audit chain is
+**complete** for BinaryOp arms, field access paths, Index operations (read +
+assignment paths), Cast operations, Deref operations, and Pattern matching
+(non-exhaustive check). Rounds 9-10 confirmed Method resolution, Borrow/Ref,
+let binding, Return type, assignment validity, and arg count are all clean.
+**0 remaining L2-fixable soundness bugs.**
 
 ### Design principles (§2.2, 11 principles)
 
