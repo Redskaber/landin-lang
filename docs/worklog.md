@@ -31937,3 +31937,73 @@ Stage Summary:
   * mir_translation/types.rs:229 — use with_layouts for fallback (already has layouts!)
 - Then retry Step 3 (panic) after ALL callers migrated
 - v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor
+
+---
+Task ID: stage18.444
+Agent: Super Z (main) — PM-A
+Task: Stage 18.444 Phase 5 Step 5 attempt + revert (infinite recursion on Infer/Error types). L2. v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (attempt migration + revert — root cause: infinite recursion)
+- 对齐: Phase 5 Step 4 complete (Stage 18.442); Step 5 attempts remaining callers
+- 阻断: 4586 tests 全绿 (Stage 18.443 state)
+
+决策点 (Phase 5 Step 5 — §5.2 + §1.0 原則 9):
+- 尝试: Migrate types.rs:229 `_ => mir_type_to_emit_type(ty)` to `_ => mir_type_to_emit_type_with_layouts(ty, layouts)`
+- 结果: Tests hang/infinite recursion!
+  * Root cause: `mir_type_to_emit_type_with_layouts` for Infer/Error/Param types hits the `_` arm again → calls itself → infinite recursion
+  * The `_` arm in `mir_type_to_emit_type_with_layouts` delegates to `mir_type_to_emit_type` for types it doesn't handle (Infer, Error, Param, etc.)
+  * Changing the delegation to `mir_type_to_emit_type_with_layouts` creates a cycle
+  * Per §1.0 原則 9 (正确 > 妥协): can't use with_layouts for non-Adt unresolved types
+- 选 A: Revert to original `_ => mir_type_to_emit_type(ty)` (unchecked variant with warning)
+- 引用 §5.2: Step 5 blocked by architecture — types.rs `_` arm must delegate to unchecked variant
+- 引用 §1.0 原則 9 (正确 > 妥协): with_layouts only handles Adt/Array/Tuple/Ref/etc., not Infer/Error/Param
+
+裁剪点:
+- L2 — attempt + revert; no behavioral change; §3.2 全绿
+
+Work Log:
+- Phase 5 Step 5 attempt:
+  - Changed `_ => mir_type_to_emit_type(ty)` to `_ => mir_type_to_emit_type_with_layouts(ty, layouts)` in types.rs:229
+  - This function already has `layouts` param — no signature change needed
+  - Build succeeded, but tests HUNG — infinite recursion!
+  - Root cause: `mir_type_to_emit_type_with_layouts` has its own `_` arm at types.rs:229 that delegates back to `mir_type_to_emit_type` for types it doesn't handle (Infer, Error, Param, Never, Foreign, etc.)
+  - Changing this delegation to call itself creates a cycle: with_layouts → with_layouts → ...
+  - Per §1.0 原則 9: with_layouts only handles Adt/Tuple/Array/Ref/RawPtr/Slice/Str/Closure/Int/Uint/Float/Bool/Char — NOT Infer/Error/Param/Projection/Never/Foreign
+  - These unresolved types must go through the unchecked variant (which has the warning fallback)
+  - Reverted to `_ => mir_type_to_emit_type(ty)` (original behavior)
+  - Restored `mir_type_to_emit_type` import (was removed as "unused")
+- Phase 5 architecture finding:
+  - The `_` arm in `mir_type_to_emit_type_with_layouts` is NOT a migration target — it's the correct delegation point for types that don't need layouts
+  - The unchecked `mir_type_to_emit_type` handles all remaining types (Infer/Error/Param/etc.) with the warning fallback
+  - This is the correct architecture: with_layouts delegates to unchecked for non-Adt types
+  - Step 5 is architecturally blocked: the `_` arm MUST call unchecked variant
+  - Phase 5 Step 3 (panic) requires ALL callers to not pass Infer/Error types — but with_layouts itself delegates to unchecked for these types
+  - Conclusion: panic in mir_type_to_emit_type is NOT achievable without removing the with_layouts→unchecked delegation (which is the correct architecture)
+- §3.2 全校验流 (after revert):
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --lib: 0 warnings
+  - cargo test --release --features llvm-backend --lib: 682 tests, 0 failures
+  - cargo test --release --features llvm-backend --test all_tests: 3904 tests, 0 failures, 2 ignored
+
+Stage Summary:
+- Phase 5 Step 5 BLOCKED by architecture ✅ (root cause: with_layouts delegates to unchecked for Infer/Error types)
+- types.rs:229 `_ => mir_type_to_emit_type(ty)` is the CORRECT delegation — not a migration target
+- Phase 5 Step 3 (panic) architecturally infeasible — with_layouts itself calls unchecked for unresolved types
+- Phase 5 status:
+  * Step 1 (18.438): COMPLETE — checked variant added
+  * Step 2 (18.440): COMPLETE — warning replaces silent fallback
+  * Step 3 (18.441/18.443): DEFERRED — panic breaks callers that pass Error types
+  * Step 4 (18.442): COMPLETE — function_sigs.rs migrated to layouts
+  * Step 5 (18.444): BLOCKED — with_layouts→unchecked delegation is correct architecture
+  * Phase 5 CONCLUSION: warning in unchecked variant is the correct final state
+    - checked variant (mir_type_to_emit_type_checked) available for future use
+    - param_check (Stage 18.348) catches unresolved types before codegen
+    - warning in fallback is defense-in-depth
+    - panic is architecturally infeasible (with_layouts delegates to unchecked)
+- §3.2 全绿: 4586 tests (682 lib + 3904 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+下一步:
+- Phase 5 COMPLETE: warning is the correct final state (panic infeasible)
+- v0.6+ items: enum exhaustiveness, format! intrinsic fix, prelude refactor
+- v0.4 is RELEASE-READY with Phase 5 Step 1+2+4 complete, Step 3+5 architecturally concluded

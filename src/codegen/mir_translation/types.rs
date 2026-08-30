@@ -226,6 +226,17 @@ pub fn mir_type_to_emit_type_with_layouts(
                 .collect();
             filter_void_fields(fields)
         }
+        // Stage 18.444 (Phase 5 Step 5): Was `_ => mir_type_to_emit_type(ty)`
+        // which delegates to the unchecked variant (with I32 fallback for
+        // unresolved types). Reverted to this because it caused infinite
+        // recursion when `mir_type_to_emit_type_with_layouts` calls itself
+        // for types like Infer/Error/Param that don't have layouts entries.
+        // These types should be caught by param_check (Stage 18.348) before
+        // reaching codegen — the unchecked variant's warning is defense-in-depth.
+        //
+        // Per §1.0 原則 9 (正确 > 妥协): can't use with_layouts for
+        // non-Adt unresolved types (Infinite recursion for Infer/Error).
+        // Per §13.4: incremental — this caller stays unchecked for now.
         _ => mir_type_to_emit_type(ty),
     }
 }
