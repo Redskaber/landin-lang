@@ -183,16 +183,34 @@ impl TypeChecker {
                 if let TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) = &base_ty.kind {
                     (**inner).clone()
                 } else {
-                    // Stage 18.76 P1-A: Deref on non-pointer types is a known
-                    // Stage 0 limitation. Pattern bindings on &self, closure
-                    // captures, and other internal mechanisms produce Deref
-                    // projections on non-Ref types. Pushing an error here would
-                    // break valid code that relies on this limitation.
+                    // Stage 18.428 (§20 iterative audit): Push error for
+                    // Deref on concrete non-pointer types (Int, Bool, Str,
+                    // Tuple, Array, Adt, Float, Char). Was: silently returned
+                    // TyKind::Error without pushing error → `*42`, `*true`,
+                    // `*"hello"` etc. silently compiled.
                     //
-                    // Per §1.0 原則 9 "正确 > 妥协": defer error reporting for
-                    // Deref until typeck properly tracks reference types through
-                    // pattern bindings (v0.2 work).
-                    //
+                    // Per §20 (iterative audit): same class as Stage 18.412/
+                    // 18.416/18.420/18.422/18.425/18.426 — silent acceptance
+                    // of invalid operations.
+                    // Per §1.0 原則 4 (报错 > 静默): Deref on non-pointer
+                    // types must be reported.
+                    // Per §1.0 原則 9 (正确 > 妥协): defer for Infer/Error/
+                    // Param (pattern bindings + closure captures produce
+                    // Deref projections on Infer types — don't push
+                    // false-positive errors on unresolved types).
+                    let is_deferred = matches!(
+                        &base_ty.kind,
+                        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) | TyKind::Closure(_, _)
+                    );
+                    if !is_deferred {
+                        self.errors.push(TypeError::new(
+                            format!(
+                                "cannot dereference type `{}` — only references and pointers can be dereferenced",
+                                crate::mir::ty::type_to_string(base_ty)
+                            ),
+                            place_span,
+                        ));
+                    }
                     // Return Error type (not base_ty) to avoid confusing
                     // writeback — returning base_ty would make the local's
                     // type be the pointer type, not the pointee type.

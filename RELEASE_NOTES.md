@@ -5,11 +5,11 @@
 | **Author** | redskaber |
 | **Current version** | v0.510.0 |
 | **Date** | 2026-08-30 |
-| **Test count** | 682 lib tests + 3871 integration tests = 4553 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 682 lib tests + 3890 integration tests = 4572 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (6 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax → &str indexing → Index typeck+assignment → Cast validity)
+| **Architecture** | Writeback phases 10 → 7; §20 iterative audit (7 rounds: Shl/Shr → BitAnd/BitOr/BitXor → field access syntax → &str indexing → Index typeck+assignment → Cast validity → Deref validity)
 
 ---
 

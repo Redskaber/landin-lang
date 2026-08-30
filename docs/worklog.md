@@ -31243,3 +31243,73 @@ Stage Summary:
 - Stage 18.427: doc sync + README restructure + package r70
 - Future: v0.6+ fix format! intrinsic to use .len() instead of &str as usize cast
 - Future: v0.5+ Phase 5 (mir_type_to_emit_type returns Result)
+
+---
+Task ID: stage18.428-18.429
+Agent: Super Z (main) — PM-A
+Task: Stage 18.428 §20 iterative audit Deref ops; Stage 18.429 tests + doc sync + package r71. L2 (typeck + tests). v0.510.0.
+
+3秒启动自检:
+- 定位: L2 (typeck infer_projection Deref arm + tests)
+- 对齐: §20 iterative audit; Stage 18.426 worklog "下一步" suggested audit Deref
+- 阻断: 4553 tests 全绿 (Stage 18.426 state)
+
+决策点 (§20 iterative audit):
+- 发现: typeck `infer_projection` for `ProjectionElem::Deref` returned `TyKind::Error` WITHOUT pushing error for non-pointer types. `*42`, `*true`, `*"hello"`, `*(1,2)`, `*arr` silently compiled.
+- 验证: All 5 confirmed — `*42` (int), `*true` (bool), `*(1,2)` (tuple), `*arr` (array) silently compiled; `*"hello"` (&str) also compiled (but &str→str deref is valid in Rust, just produces unsized place)
+- 选 A: Push error for Deref on concrete non-pointer types; defer for Infer/Error/Param/Closure (closure captures produce Deref on Closure types)
+- 引用 §20: "finding one bug means there are many similar bugs"
+- 引用 §1.0 原則 4 (报错 > 静默): invalid derefs must be rejected
+- 引用 §1.0 原則 9 (正确 > 妥协): defer for Closure (internal mechanism)
+- 引用 §1.6 终极检验: root-cause fix at typeck
+
+裁剪点:
+- L2 — typeck fix; §14.5 D1-D8 verification required (Stage 18.429)
+
+5W2H:
+- WHAT: Push error in typeck infer_projection Deref arm for concrete non-pointer types; defer for Infer/Error/Param/Closure; 19 new tests (5 pos + 14 neg)
+- WHY: §20 iterative audit — same class as Stage 18.412-18.426 (silent acceptance)
+- WHO: ARCH-A (design: defer Closure) + DEV-A (implement) + REV-A (audit closure path)
+- WHEN: After Stage 18.426 (Cast validity)
+- WHERE: src/typeck/infer.rs
+- HOW: Check base_ty kind — if Ref/RawPtr, return inner; if Infer/Error/Param/Closure, defer; else push error
+- HOW MUCH: §3.2 全绿 — 4572 tests (682 lib + 3890 integration), 0 failures, 2 ignored, fmt clean, 0 clippy warnings
+
+Work Log:
+- §20 iterative audit — audited Deref operations:
+  - infer_projection Deref arm: returned Error without pushing error (BUG confirmed)
+  - Confirmed: `*42`, `*true`, `*(1,2)`, `*arr` silently compiled
+- Stage 18.428 fix — typeck infer_projection Deref arm:
+  - For Ref/RawPtr: return inner type (unchanged)
+  - For Infer/Error/Param/Closure: defer (return Error, no error pushed) — pattern bindings + closure captures produce Deref on these types
+  - For all other concrete types (Int, Bool, Float, Char, Tuple, Array, Adt, Str): push "cannot dereference type `<type>` — only references and pointers can be dereferenced"
+- Closure compatibility:
+  - Closure captures produce Deref projections on `TyKind::Closure(DefId, substs)` types
+  - Added `TyKind::Closure(_, _)` to the defer list (Stage 18.428)
+  - Without this, 17 closure tests would fail (false-positive errors)
+  - Per §1.0 原則 9 (正确 > 妥协): defer for Closure (internal mechanism)
+- New test file: tests/v0/stage18/plan/stage18_428_deref_validity_tests.rs
+  - 5 positive tests (deref ref, mut ref, raw ptr, ref in expr, nested ref)
+  - 14 negative tests:
+    * Deref on primitive types (int, uint, bool, float, char): 5 cases
+    * Deref on aggregate types (tuple, array, struct, typed tuple): 4 cases
+    * Deref result to wrong type: 2 cases
+    * Deref in assignment path (LHS): 3 cases
+  - Ratio: 5:14 = 1:2.8 (close to 1:3 target)
+- §3.2 全校验流:
+  - cargo fmt --check: 0 lines diff (clean)
+  - cargo clippy --release --features llvm-backend --all-targets: 0 warnings
+  - cargo test --release --features llvm-backend -- --test-threads=1: 4572 tests (682 lib + 3890 integration), 0 failures, 2 ignored
+
+Stage Summary:
+- §20 iterative audit complete for Deref operations ✅
+- 4 confirmed bugs fixed (*42, *true, *(1,2), *arr)
+- Closure captures compatibility maintained (defer for Closure types)
+- 19 new tests added (5 pos + 14 neg, ratio 1:2.8)
+- §3.2 全绿: 4572 tests, 0 failures, fmt clean, 0 clippy warnings
+- §1.6 终极检验: root-cause fix (typeck Deref check + Closure defer), not minimal patch
+
+下一步:
+- Stage 18.429: doc sync + README restructure + package r71
+- Future: v0.5+ Phase 5 (mir_type_to_emit_type returns Result)
+- Future: §20 audit could continue to Method resolution or other classes

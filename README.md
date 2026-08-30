@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.510.0 (Stage 18.426) |
+| **Version** | v0.510.0 (Stage 18.428) |
 | **License** | MIT |
-| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3871 integration tests = 4553 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (6 rounds): Stage 18.412 (Shl/Shr lhs check) → 18.416 (BitAnd/BitOr/BitXor is_notable_ty check) → 18.420 (field access syntax mismatch) → 18.422 (&str indexing rejection + as_bytes Cast fix) → 18.424-18.425 (typeck Index check + assignment path check) → 18.426 (Cast validity check + is_valid_cast helper). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
+| **Status** | v0.4 stable — release-signed-off. 682 lib tests + 3890 integration tests = 4572 total, 0 failures (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. All P0/P1/P2 tech-debts resolved. v0.5+ Phase 1+3 complete (writeback 10→7). Phase 2 L3 step 2 partial: Pass 2 removed via typeck Shl/Shr lhs check. §20 iterative audit (7 rounds): Stage 18.412 (Shl/Shr lhs check) → 18.416 (BitAnd/BitOr/BitXor is_notable_ty check) → 18.420 (field access syntax mismatch) → 18.422 (&str indexing rejection + as_bytes Cast fix) → 18.424-18.425 (typeck Index check + assignment path check) → 18.426 (Cast validity check + is_valid_cast helper) → 18.428 (Deref validity check + Closure defer). §14.5 D1-D8 deep review PASSED. Architecture health: 8.5/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -181,8 +181,8 @@ resolved only at dereference sites via `detect_place_storage_type`.
 
 ### Test count
 - 682 unit tests (lib)
-- 3871 integration tests (`tests/all_tests.rs`)
-- **4553 total** (100% pass rate single-thread, 0 skipped, 2 ignored)
+- 3890 integration tests (`tests/all_tests.rs`)
+- **4572 total** (100% pass rate single-thread, 0 skipped, 2 ignored)
 
 ### Running tests
 ```bash
@@ -198,7 +198,7 @@ bash scripts/run_tests.sh
 |-----------|--------|---------|
 | D1 Architecture | ✅ | 177 files, 83K LOC, no circular deps |
 | D2 Tech Debt | ✅ | All P0/P1/P2 resolved. 10 stubs/limitations documented for v0.5+ |
-| D3 Test Coverage | ✅ | 4553 tests, 1:3+ pos:neg ratio |
+| D3 Test Coverage | ✅ | 4572 tests, 1:3+ pos:neg ratio |
 | D4 Next Stage Readiness | ✅ | v0.4 release-ready |
 | D5 Design Soundness | ✅ | sret+byval, ZST elision, recursive struct, TextEmitter IR validated, typeck lhs/rhs checks |
 | D6 Performance | ✅ | ~30s build, ~23s test single-thread |
@@ -302,10 +302,10 @@ originally bundled **two independent concerns**:
 redundant", execute surgical split experiments (env var guards per pass)
 to distinguish TRUE LIMIT vs WORKAROUND.
 
-### §20 iterative audit chain (Stage 18.412 → 18.416 → 18.420 → 18.422 → 18.425 → 18.426)
+### §20 iterative audit chain (Stage 18.412 → 18.416 → 18.420 → 18.422 → 18.425 → 18.426 → 18.428)
 
 Per §20 ("finding one bug means there are many similar bugs"), each soundness
-fix triggered an audit of ALL similar paths. Six same-class bugs found and
+fix triggered an audit of ALL similar paths. Seven same-class bugs found and
 fixed:
 
 | Stage | Bug | Class | Fix |
@@ -316,11 +316,12 @@ fixed:
 | 18.422 | `resolve_index_element_type` had `TyKind::Str => Some(u8)` arm; `s[0]` silently treated `&str` as `&[u8]` (design divergence from Rust) | Silent acceptance of invalid Index | Removed Str arm; `&str` indexing now errors; `emit_str_as_bytes` fixed to return `&[u8]`-typed dest via `Rvalue::Cast(Unsize, ...)` |
 | 18.425 | typeck `infer_projection` Index arm had `TyKind::Str => Some(u8)` (inconsistent with 18.422) AND `_ => None` for non-indexable types; `n[0]` on int + `s[0]=65` assignment silently accepted | Silent acceptance of invalid Index (typeck + assignment path) | Removed Str arm in typeck; added `_ =>` error arm; added `check_index_access_syntax` helper to `lower_expr_to_place` |
 | 18.426 | typeck `infer_rvalue` Cast arm returned `target_ty` without checking source type; `true as &str`, `(1,2) as i32`, `42 as Foo`, `42 as [i32;3]` silently compiled | Silent acceptance of invalid Cast | Added `is_valid_cast` helper validating cast pairs against Rust Reference §5.2.7 rules |
+| 18.428 | typeck `infer_projection` Deref arm returned `TyKind::Error` without pushing error; `*42`, `*true`, `*(1,2)`, `*arr` silently compiled | Silent acceptance of invalid Deref | Added error push for concrete non-pointer types; defer for Infer/Error/Param/Closure |
 
-All six are "silent acceptance of invalid operations / design divergence from
+All seven are "silent acceptance of invalid operations / design divergence from
 Rust" — same architectural class. The audit chain is complete for BinaryOp
-arms, field access paths, Index operations (read + assignment paths), and Cast
-operations.
+arms, field access paths, Index operations (read + assignment paths), Cast
+operations, and Deref operations.
 
 ### Design principles (§2.2, 11 principles)
 
@@ -380,6 +381,7 @@ Remaining items are v0.5+ architecture limitations (documented in
 | TD-STR-INDEX-SILENT-ACCEPT | `resolve_index_element_type` had `TyKind::Str => Some(u8)` arm; `s[0]` silently treated `&str` as `&[u8]` (design divergence from Rust) | ✅ Resolved (Stage 18.422) | §20 iterative audit — removed Str arm; `&str` indexing now reports error; `emit_str_as_bytes` intrinsic fixed to return `&[u8]`-typed dest via `Rvalue::Cast(Unsize, ...)` |
 | TD-INDEX-TYPECK-SILENT-ACCEPT | typeck `infer_projection` for `ProjectionElem::Index` had `TyKind::Str => Some(u8)` (inconsistent with Stage 18.422) AND `_ => None` for non-indexable types; `n[0]` on int silently compiled. Assignment path `s[0] = 65` also silently accepted | ✅ Resolved (Stage 18.425) | §20 iterative audit — removed Str arm in typeck; added `_ =>` error arm for non-indexable concrete types; added `check_index_access_syntax` helper to `lower_expr_to_place` (assignment path) |
 | TD-CAST-SILENT-ACCEPT | typeck `infer_rvalue` for `Rvalue::Cast` returned `target_ty` without checking source type; `true as &str`, `(1,2) as i32`, `42 as Foo`, `42 as [i32;3]` silently compiled | ✅ Resolved (Stage 18.426) | §20 iterative audit — added `is_valid_cast` helper validating cast pairs against Rust Reference §5.2.7 rules; rejects Str/Tuple/Adt/Array casts + Bool→Bool/Float/Char + Float→Bool/Char |
+| TD-DEREF-SILENT-ACCEPT | typeck `infer_projection` for `ProjectionElem::Deref` returned `TyKind::Error` without pushing error; `*42`, `*true`, `*(1,2)`, `*arr` silently compiled | ✅ Resolved (Stage 18.428) | §20 iterative audit — added error push for concrete non-pointer types (Int/Bool/Float/Char/Tuple/Array/Adt/Str); defer for Infer/Error/Param/Closure (closure captures produce Deref on Closure types) |
 
 ---
 
