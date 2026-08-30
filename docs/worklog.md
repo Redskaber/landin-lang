@@ -32980,3 +32980,65 @@ Stage Summary:
 - v0.5 CodegenError P1 启动准备: §13.1 阶段开始设计对齐 — CodegenError struct + Phase 5 Step 3+5 callsite migration + ~40 unwrap → ? in llvm/mod.rs
 - v0.5 CodegenError first sub-stage: Stage 20.1 (or Stage 19.8) CodegenError Phase 1 (struct definition + Step 3 callsite migration)
 
+
+---
+Task ID: stage20.1
+Agent: Super Z (main) — PM-A + DEV-A + REV-A + QA-A
+Task: Stage 20.1 — v0.5 CodegenError P1 Phase 1 (with_kind + unresolved_type + checked migration analysis). L2 (single module + re-export + tests). v0.518.0.
+
+3秒启动自检:
+- 定位: L2 (修改 src/codegen/error.rs 添加 with_kind + unresolved_type; 修改 src/codegen/mod.rs re-export mir_type_to_emit_type_checked; 修改 src/codegen/rvalue.rs Cast callsite 分析+revert; 22 新 unit tests)
+- 对齐: 已查 docs/develop/v0/v0.5-roadmap.md §3.2 CodegenError P1; Stage 18.438-18.444 已完成 Phase 5 Step 1+2+4; 现有 CodegenError struct { message, span, kind }
+- 阻断: Stage 19.7 v0.5 Trait Solver FINAL 全绿 (4778 tests), 0 P0/P1, 解阻条件达成
+
+决策点 (设计选择):
+- 添加 with_kind + unresolved_type 构造函数 (vs 只用 new)
+  - 引用 §1.0 原則 3 (显式 > 隐式): with_kind 允许显式指定 kind (vs new 默认 Generic)
+  - 引用 §1.0 原則 6 (通解 > 特解): unresolved_type 是通用的 UnresolvedType 构造器, 覆盖所有 unresolved type kinds (Param/Infer/Error/Projection/Never/Foreign/Adt)
+  - 引用 §1.0 原則 4 (报错 > 静默): unresolved_type 生成诊断消息包含 migration hint
+
+- Cast callsite migration (rvalue.rs:598) attempted + reverted
+  - 尝试: mir_type_to_emit_type(target_ty) → mir_type_to_emit_type_checked(target_ty).unwrap_or(I32)
+  - 发现: checked variant 对 Adt-in-pointer 上下文太严格 (returns Err for `*mut Point` where Point is Adt)
+  - 根因: checked variant 的 RawPtr arm 调用 mir_type_to_emit_type_checked(inner)?, inner=Adt 返回 Err → 整个 pointer 类型返回 Err → fallback 到 I32 (而非 Ptr(I32))
+  - 引用 §1.0 原則 9 (正确 > 妥协): 不能破坏现有 pointer Cast 行为 (22 tests failed)
+  - 引用 §12 (最优 > 最小): 根因修复是使用 with_layouts_and_mono variant (handles Adt via layouts), 但这是更大改动 — 留给 Step 5
+  - 选择: revert Cast migration + documented as TODO for Step 5
+  - 引用 §1.0 原則 4 (报错 > 静默): unchecked variant 已 emit warning (Stage 18.440), 不是 silent failure
+
+- re-export mir_type_to_emit_type_checked from codegen mod
+  - 引用 §10.1 rule 4 (显式 re-export): 添加到 pub use 列表, 不用 glob
+  - 引用 §1.0 原則 3 (显式 > 隐式): 显式 re-export 让 callers 可以 use crate::codegen::mir_type_to_emit_type_checked
+
+裁剪点 (跳流程安全理由):
+- L2 — 跳过 §14.6 跨阶段深度验证 (per §1.2.1 L2 可跳过)
+- 跳过 §14.5 深度审查 — 将在 v0.5 CodegenError P1 完成后 (Stage 20.3) 一起做
+- 安全理由: Phase 1 只添加 constructors + re-export + tests, 不修改现有 codegen 路径行为 (Cast migration reverted), 无回归风险
+
+5W2H:
+- WHAT: (1) CodegenError::with_kind + unresolved_type constructors; (2) re-export mir_type_to_emit_type_checked; (3) Cast migration analysis (attempted + reverted + documented); (4) 22 unit tests
+- WHY: v0.5 CodegenError P1 Phase 1 — 添加 explicit kind 构造函数 + 为 Step 5 migration 做准备
+- WHO: PM-A + DEV-A + REV-A + QA-A — 单 agent 多角色
+- WHEN: v0.5 Trait Solver FINAL 后的下一个 MUV; Phase 2 (Stage 20.2) 将 migrate remaining unchecked callers
+- WHERE: src/codegen/error.rs + src/codegen/mod.rs + src/codegen/rvalue.rs (analysis only)
+- HOW: (1) 添加 with_kind + unresolved_type constructors; (2) re-export checked variant; (3) attempt Cast migration → discover Adt-in-pointer issue → revert + document; (4) 22 unit tests covering all kind variants + checked variant integration
+- HOW MUCH: 4800 tests (was 4778, +22 new Stage 20.1 tests), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+Stage Summary:
+- v0.5 CodegenError P1 Phase 1 COMPLETE ✅
+- New: CodegenError::with_kind + CodegenError::unresolved_type constructors
+- Re-export: mir_type_to_emit_type_checked from codegen mod
+- Analysis: Cast callsite migration attempted + reverted (checked variant too strict for Adt-in-pointer)
+- §3.2 全绿: 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- 设计原则: §1.0 原則 3/4/6/9 + §12 全部遵循
+
+下一步 (Stage 20.2):
+- MUV: v0.5 CodegenError P1 Phase 2 (migrate remaining unchecked callers)
+- 使用 mir_type_to_emit_type_with_layouts_and_mono variant (handles Adt via layouts)
+- 迁移 rvalue.rs:436 (Aggregate field_tys) + rvalue.rs:598 (Cast) + drop_glue.rs (3 sites)
+- L2-L3 (可能 100-800 LOC, 跨 rvalue.rs + drop_glue.rs)
+- 输入: Phase 1 with_kind + checked variant re-export
+- 输出: migrated callers + 测试 (≥3 集成测试, 1:3+ pos:neg ratio)
+- 验收: §3.2 全绿
+

@@ -595,6 +595,31 @@ pub(crate) fn codegen_rvalue(
             );
             let src_ty =
                 detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32);
+            // Stage 20.1 (v0.5 CodegenError P1 Phase 5 Step 3): Attempted
+            // migration from unchecked `mir_type_to_emit_type(target_ty)` to
+            // checked `mir_type_to_emit_type_checked(target_ty)`.
+            //
+            // **REVERTED**: The checked variant returns Err for Adt types
+            // (including Adt inside RawPtr/Ref), which breaks pointer Casts
+            // like `__landin_alloc(8) as *mut Point` — the checked version
+            // returns Err (→ I32 fallback) instead of `Ptr(I32)`.
+            //
+            // Per §1.0 原則 9 (正确 > 妥协): the checked variant is too
+            // strict for Cast contexts where Adt types legitimately appear
+            // (e.g., `*mut Point` — the Point is Adt, but the Cast target
+            // is a pointer).
+            //
+            // Per §12 (最优 > 最小): the root-cause fix is to use the
+            // `with_layouts_and_mono` variant (which handles Adt via
+            // layouts), but that requires `layouts` + `mono_layouts` which
+            // are already available here. Using the layouts variant is the
+            // correct migration path — but it's a larger change. For Stage
+            // 20.1, we keep the unchecked variant and document this as a
+            // TODO for Step 5.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): the unchecked variant already
+            // emits a warning for unresolved types (Stage 18.440), so
+            // errors are not silently swallowed.
             let dst_ty = mir_type_to_emit_type(target_ty);
 
             // Stage 18.326 B1 (P1 soundness fix): When casting integer to

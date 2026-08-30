@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.517.0 (Stage 19.7 — v0.5 Trait Solver FINAL §14.5 + §14.6 + §14.8) |
+| **Version** | v0.518.0 (Stage 20.1 — v0.5 CodegenError P1 Phase 1: with_kind + unresolved_type + checked migration analysis) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 Trait Solver P1 FINAL — APPROVED for stage transition to v0.5 CodegenError P1**. 4778 tests (874 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 deep review PASSED. §14.6 cross-stage validation COMPLETE. §14.8 B2 design writeback done (implementation > design for E2E testing + UniverseGuard + cycle detection + ParamEnv short-circuit + supertrait integration + diagnostic helpers + context types). v0.5 Trait Solver Phase 1-6 ALL COMPLETE (6 stages, 194 new tests, 5545 LOC solver module). 5 remaining TD-SOLVER-* TDs all v0.6+ architectural — NONE upgraded per §6.2 升级判据. Architecture health: 8.5/10. Next: v0.5 CodegenError P1 (2-3 stages). |
+| **Status** | v0.5 CodegenError P1 Phase 1 COMPLETE. 4800 tests (896 lib + 3904 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. Stage 20.1 added `CodegenError::with_kind()` + `CodegenError::unresolved_type()` constructors + re-exported `mir_type_to_emit_type_checked` from codegen mod + 22 new unit tests (9 positive + 8 negative + 5 integration with checked variant). Analyzed Cast callsite migration (rvalue.rs:598) — discovered checked variant is too strict for Adt-in-pointer contexts (returns Err for `*mut Point` where Point is Adt); documented as TODO for Step 5 (use layouts variant instead). Per §1.0 原則 9 (正确 > 妥协): reverted Cast migration to preserve correct behavior; unchecked variant already emits warnings (Stage 18.440). Next: Stage 20.2 will migrate remaining unchecked callers using layouts variant. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

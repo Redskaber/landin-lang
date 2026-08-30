@@ -75,8 +75,9 @@ pub mod error;
 // Stage 18.88: Cross-compilation target triple support.
 pub mod target;
 pub use emitter::{
-    emit_fat_ptr_type, mir_type_to_emit_type, AggregateEmitter, ArithmeticEmitter, EmitType,
-    EmitValue, Emitter, FunctionEmitter, LocalStateEmitter, MemoryEmitter, ModuleEmitter,
+    emit_fat_ptr_type, mir_type_to_emit_type, mir_type_to_emit_type_checked, AggregateEmitter,
+    ArithmeticEmitter, EmitType, EmitValue, Emitter, FunctionEmitter, LocalStateEmitter,
+    MemoryEmitter, ModuleEmitter,
 };
 pub use error::{CodegenError, CodegenResult};
 pub use target::TargetTriple;
