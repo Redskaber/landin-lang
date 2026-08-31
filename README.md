@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~92K LOC across 187 files) and targets x86_64 + AArch64 Linux.
+> Rust (~92K LOC across 188 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.565.0 (v0.19 Stage 31.6c+31.6d — String::push_str migrated + Integer type boundary design — Architecture health 9.85/10) |
+| **Version** | v0.566.0 (v0.19 Stage 31.6e — `sizeof TYPE` language feature — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.19 Stage 31.6c+31.6d**. 5047 tests (898 lib + 4149 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.6c: Migrated `String::push_str` from MIR intrinsic to prelude impl with while-loop growth + `extern "C"` realloc/memcpy + pointer arithmetic. Fixed text emitter GEP index type (i32→i64). Stage 31.6d: Created `docs/lang-design/29-integer-type-boundaries.md` — comprehensive integer type responsibility boundary design (i8-i128/isize + u8-u128/usize) with Rust comparison + 5 new tech-debt items (TD-INT-SIGN-CONFUSION P1, TD-CONST-INT-UINT-U128 P2, TD-ISIZE-USIZE-HARDCODED P2, TD-DEFAULT-INT-I32 P3, TD-EMIT-I64-SAME-LLVM P3). Architecture health: 9.85/10 (stable). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6e — sizeof(T) language feature (unblocks Vec::push/get/Box::new). |
+| **Status** | ✅ **v0.19 Stage 31.6e — sizeof(T)**. 5063 tests (898 lib + 4165 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.6e: Implemented `sizeof TYPE` language feature — keyword + type argument → `usize` constant at MIR lower time. New `KwSizeof` keyword + `Expr::SizeOf` AST variant + `HirExprKind::SizeOf` HIR variant + parser + MIR lower (evaluates `compute_type_size`) + 8 match-exhaustive locations updated. 16 tests (4 positive + 12 negative, 1:3 ratio). Unblocks Vec::push/get/Box::new prelude impl migration. §18 audit: TD-INT-SIGN-CONFUSION downgraded P1→P3 (downstream correctly separates signed/unsigned). Architecture health: 9.85/10 (stable — additive feature). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6f — migrate `Vec::push` using `sizeof(T)` + extern C. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

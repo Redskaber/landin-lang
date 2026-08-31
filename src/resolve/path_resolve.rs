@@ -1201,6 +1201,8 @@ impl Resolver {
                 self.resolve_expr(ptr, interner);
                 self.resolve_expr(len, interner);
             }
+            // Stage 31.6e: SizeOf — no sub-expressions to resolve.
+            HirExprKind::SizeOf { .. } => {}
         }
     }
 

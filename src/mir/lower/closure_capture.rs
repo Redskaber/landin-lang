@@ -158,6 +158,8 @@ pub(crate) fn collect_captured_locals(
             collect_captured_locals(cx, ptr, param_hir_ids, captured, seen);
             collect_captured_locals(cx, len, param_hir_ids, captured, seen);
         }
+        // Stage 31.6e: SizeOf — no sub-expressions to collect.
+        HirExprKind::SizeOf { .. } => {}
     }
 }
 

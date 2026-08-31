@@ -70,6 +70,7 @@ pub enum TokenKind {
     KwReturn,
     KwSelf_,
     KwSelfType, // `Self`
+    KwSizeof,   // Stage 31.6e: `sizeof TYPE` — compile-time type size
     KwStatic,
     KwStruct,
     KwSuper,
@@ -213,6 +214,7 @@ impl TokenKind {
                 | TokenKind::KwReturn
                 | TokenKind::KwSelf_
                 | TokenKind::KwSelfType
+                | TokenKind::KwSizeof
                 | TokenKind::KwStatic
                 | TokenKind::KwStruct
                 | TokenKind::KwSuper
@@ -257,6 +259,7 @@ impl TokenKind {
             TokenKind::KwReturn => "return",
             TokenKind::KwSelf_ => "self",
             TokenKind::KwSelfType => "Self",
+            TokenKind::KwSizeof => "sizeof",
             TokenKind::KwStatic => "static",
             TokenKind::KwStruct => "struct",
             TokenKind::KwSuper => "super",
@@ -381,6 +384,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "return" => TokenKind::KwReturn,
         "self" => TokenKind::KwSelf_,
         "Self" => TokenKind::KwSelfType,
+        "sizeof" => TokenKind::KwSizeof,
         "static" => TokenKind::KwStatic,
         "struct" => TokenKind::KwStruct,
         "super" => TokenKind::KwSuper,

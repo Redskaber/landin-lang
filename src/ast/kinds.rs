@@ -651,6 +651,19 @@ pub enum Expr {
         len: Box<Expr>,
         span: Span,
     },
+    /// Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
+    ///
+    /// Returns the size of `TYPE` in bytes as a `usize` constant.
+    /// This is the language feature that unblocks Vec::push/get/Box::new
+    /// prelude impl migration (TD-INTRINSIC-OVERUSE Phase 2-B/C).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one sizeof for all types, not per-type intrinsics.
+    /// Per §1.0 原則 3 (显式 > 隐式): explicit type argument in source.
+    /// Per §12 (最优 > 最小): root-cause fix via language feature.
+    SizeOf {
+        ty: Ty,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

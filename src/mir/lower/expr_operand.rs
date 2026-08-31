@@ -1822,6 +1822,23 @@ pub(crate) fn lower_expr_to_operand(
             len,
         } => lower_fat_ptr_lit(cx, expr, target_ty, ptr, len),
 
+        // Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
+        // Evaluates to a usize constant at MIR lower time.
+        HirExprKind::SizeOf { ty } => {
+            let mir_ty = crate::mir::lower::ty_lower::lower_hir_ty_to_mir_ty_with_hir(ty, cx.hir);
+            let size =
+                crate::mir::lower::adt_layout::compute_type_size_with_fallback(&mir_ty, cx.hir, 8);
+            let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
+            cx.eval_rvalue_to_temp(
+                Rvalue::Use(Operand::Constant(crate::mir::ty::Const {
+                    ty: usize_ty.clone(),
+                    val: crate::mir::ty::ConstVal::Uint(size as u128),
+                })),
+                usize_ty,
+                expr.span,
+            )
+        }
+
         // MethodCall: `receiver.method(args)` → simplified to Call
         HirExprKind::MethodCall {
             receiver,

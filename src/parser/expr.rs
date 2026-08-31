@@ -365,6 +365,15 @@ impl<'a> Parser<'a> {
                     span,
                 }
             }
+            // Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
+            TokenKind::KwSizeof => {
+                self.bump(); // consume `sizeof`
+                let ty = self.parse_ty();
+                Expr::SizeOf {
+                    ty,
+                    span: self.current_span(),
+                }
+            }
             TokenKind::And => {
                 self.bump(); // consume `&`
                 let mutability = if *self.peek() == TokenKind::KwMut {
@@ -1239,6 +1248,8 @@ impl ExprSpan for Expr {
             Expr::Async { span, .. } => *span,
             // Stage 31.1 (v0.19): Fat pointer literal.
             Expr::FatPtrLit { span, .. } => *span,
+            // Stage 31.6e: sizeof expression.
+            Expr::SizeOf { span, .. } => *span,
         }
     }
 }

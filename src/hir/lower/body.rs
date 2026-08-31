@@ -84,6 +84,8 @@ fn expr_span(expr: &ast::Expr) -> Span {
         Async { span, .. } => *span,
         // Stage 31.1 (v0.19): Fat pointer literal.
         FatPtrLit { span, .. } => *span,
+        // Stage 31.6e: sizeof expression.
+        SizeOf { span, .. } => *span,
     }
 }
 
@@ -409,6 +411,11 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
                 ptr: Box::new(hir_ptr),
                 len: Box::new(hir_len),
             }
+        }
+        // Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
+        Expr::SizeOf { ty, .. } => {
+            let hir_ty = ty::lower_ty(cx, ty);
+            HirExprKind::SizeOf { ty: hir_ty }
         }
     };
     HirExpr { hir_id, kind, span }

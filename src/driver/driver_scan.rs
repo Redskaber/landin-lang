@@ -286,6 +286,8 @@ pub(super) fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut 
             scan_expr_for_unresolved(ptr, errors);
             scan_expr_for_unresolved(len, errors);
         }
+        // Stage 31.6e: SizeOf — no sub-expressions to scan.
+        HirExprKind::SizeOf { .. } => {}
     }
 }
 

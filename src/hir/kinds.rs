@@ -842,6 +842,12 @@ pub enum HirExprKind {
     Async {
         block: HirBlock,
     },
+    /// Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
+    /// See `Expr::SizeOf` for full design rationale.
+    SizeOf {
+        /// The type whose size to compute.
+        ty: HirTy,
+    },
     /// Stage 31.1 (v0.19): Fat pointer literal construction.
     ///
     /// `&str { ptr: expr, len: expr }` lowered from `Expr::FatPtrLit`.
@@ -1063,6 +1069,8 @@ pub fn hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str {
         HirExprKind::Async { .. } => "async block",
         // Stage 31.1 (v0.19): Fat pointer literal.
         HirExprKind::FatPtrLit { .. } => "fat pointer literal",
+        // Stage 31.6e: sizeof expression.
+        HirExprKind::SizeOf { .. } => "sizeof expression",
     }
 }
 

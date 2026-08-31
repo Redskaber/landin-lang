@@ -837,3 +837,7 @@ mod stage31_6b_from_str_prelude_impl_tests;
 // === Stage 31.6c (v0.19): String::push_str prelude impl migration ===
 #[path = "v0/stage31/plan/stage31_6c_push_str_prelude_impl_tests.rs"]
 mod stage31_6c_push_str_prelude_impl_tests;
+
+// === Stage 31.6e (v0.19): sizeof(T) language feature ===
+#[path = "v0/stage31/plan/stage31_6e_sizeof_tests.rs"]
+mod stage31_6e_sizeof_tests;

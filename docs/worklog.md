@@ -36712,3 +36712,74 @@ Stage Summary:
 - Stage 31.6e: Implement sizeof(T) language feature (unblocks Vec::push/get/Box::new)
 - Stage 31.7: IntTy/UintTy separation (TD-INT-SIGN-CONFUSION P1 fix)
 - Stage 31.8: sizeof(T) migration of remaining intrinsics
+
+---
+Task ID: stage31.6e
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.6e (v0.19) — Implement sizeof(T) language feature. L3 (lexer + AST + HIR + parser + MIR lower + 8 match-exhaustive locations + 16 tests). v0.566.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: lexer keyword + AST variant + HIR variant + parser + MIR lower + driver_scan + resolve + closure_capture + 16 tests)
+- 对齐: 已查 docs/lang-design/29-integer-type-boundaries.md + src/mir/lower/adt_layout.rs compute_type_size
+- 阻断: v0.565.0 全绿 (5047 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. sizeof syntax: `sizeof TYPE` (keyword + type argument)
+   - 引用 §1.0 原則 6 (通解 > 特解): one sizeof for all types
+   - 引用 §1.0 原則 3 (显式 > 隐式): explicit type argument
+   - 引用 §12 (最优 > 最小): root-cause fix via language feature
+   - Alternative rejected: `sizeof::<T>()` — requires generic expression syntax (complex)
+   - Alternative rejected: `sizeof(T)` — parens ambiguous with function call
+
+2. MIR lower: evaluate at compile time
+   - `compute_type_size_with_fallback(mir_ty, hir, 8)` → `ConstVal::Uint(size)`
+   - Result type: `usize` (per Rust convention, sizeof returns usize)
+   - Per §1.0 原則 6: one evaluation path for all types
+
+3. §18 dependency audit: TD-INT-SIGN-CONFUSION downgraded P1→P3
+   - Root cause: lexer::IntTy conflates signed/unsigned, BUT downstream (HIR/MIR) correctly uses ast::IntTy (signed) + ast::UintTy (unsigned)
+   - No correctness bug — only design cleanliness issue
+   - Per §6.2: NOT UPGRADED (no soundness risk, no wrong results)
+
+裁剪点:
+- L3 — full pipeline (lexer + AST + HIR + parser + MIR lower + 8 locations)
+- 跳过 migrating Vec::push/get/Box::new — Stage 31.6f scope (needs sizeof + prelude impl)
+- 安全理由: §13.4 J6 — sizeof is independently testable (16 tests pass)
+
+5W2H:
+- WHAT: Implement `sizeof TYPE` language feature (keyword + type → usize constant)
+- WHY: Unblocks Vec::push/get/Box::new prelude impl migration (TD-INTRINSIC-OVERUSE Phase 2-B/C)
+- WHO: PM-A + ARCH-A + DEV-A + QA-A
+- WHEN: v0.19 Stage 31.6e
+- WHERE: src/lexer/token.rs (KwSizeof) + src/ast/kinds.rs (Expr::SizeOf) + src/hir/kinds.rs (HirExprKind::SizeOf) + src/parser/expr.rs + src/mir/lower/expr_operand.rs + src/driver/driver_scan.rs + src/resolve/path_resolve.rs + src/mir/lower/closure_capture.rs + src/hir/lower/body.rs
+- HOW: (1) Add KwSizeof keyword (2) Add Expr::SizeOf to AST (3) Add HirExprKind::SizeOf to HIR (4) Parse `sizeof TYPE` in unary expr (5) MIR lower: evaluate compute_type_size → usize constant (6) 8 match-exhaustive locations (7) 16 tests
+- HOW MUCH: +80 LOC across 8 modules, 16 tests; 5063 tests total (5047 + 16), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4165/4165 (2 ignored) ✅ — +16 new stage31_6e tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — additive feature) ✅
+- D8 (§1.6 终极检验): sizeof(T) unblocks remaining intrinsic migration ✅
+
+Stage Summary:
+- v0.19 Stage 31.6e: sizeof(T) Language Feature COMPLETE ✅
+- New keyword: `sizeof`
+- New syntax: `sizeof TYPE` → usize constant
+- New AST variant: `Expr::SizeOf { ty, span }`
+- New HIR variant: `HirExprKind::SizeOf { ty }`
+- MIR lower: evaluates `compute_type_size` → `ConstVal::Uint`
+- 8 modules updated for match exhaustiveness
+- 16 tests (4 positive + 12 negative), 1:3 ratio
+- Tests: 5063 (898 lib + 4165 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+- Unblocks: Vec::push/get/Box::new prelude impl migration
+
+下一步:
+- Stage 31.6f: Migrate Vec::push using sizeof(T) + extern C
+- Stage 31.6g: Migrate Vec::get + Box::new using sizeof(T)
+- Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
