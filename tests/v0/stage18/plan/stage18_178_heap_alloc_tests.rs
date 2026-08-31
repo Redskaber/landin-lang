@@ -194,10 +194,15 @@ fn main() -> i32 {
 // NEGATIVE TESTS — verify misuse produces compile/runtime errors.
 // =========================================================================
 
-/// Negative 1: Calling `__landin_alloc` without an `extern` declaration must
-/// produce a compile error (undefined function).
+/// Negative 1: Calling `__landin_alloc` without an `extern` declaration.
 ///
-/// Per §2 原則 4 (报错>静默): unknown functions must not be silently accepted.
+/// Stage 31.6b (v0.19): `__landin_alloc` is now declared in the prelude,
+/// so user code can call it without a local `extern "C"` declaration.
+/// This test now verifies that the call compiles successfully (positive test).
+/// The original negative behavior (must declare before use) is no longer
+/// applicable — the prelude provides the declaration.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one prelude declaration, no per-call extern.
 #[test]
 fn stage18_178_undeclared_alloc_fails() {
     let code = r#"
@@ -207,9 +212,11 @@ fn main() -> i32 {
 }
 "#;
     let exit = compile_only(code);
-    assert_ne!(
+    // Stage 31.6b: __landin_alloc is now declared in the prelude,
+    // so this compiles successfully (exit 0).
+    assert_eq!(
         exit, 0,
-        "expected compile failure for undeclared __landin_alloc, got exit {}",
+        "expected compile success — __landin_alloc is declared in prelude (Stage 31.6b), got exit {}",
         exit
     );
 }

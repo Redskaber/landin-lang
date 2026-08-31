@@ -60,6 +60,21 @@ pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) -> usize {
 /// Per §1.0 原則 6 (通解>特例): one source string for all prelude types.
 /// Per §2 原則 3 (显式>隐式): source-based definition is readable.
 const PRELUDE_SOURCE: &str = r#"
+// Stage 31.6b (v0.19): extern "C" declarations for prelude impl bodies.
+//
+// These are the runtime helper functions that prelude impl blocks call
+// (e.g., String::from_str calls __landin_alloc + __landin_memcpy).
+// Previously, these were called via hardcoded DefId synthesis in MIR
+// intrinsics (Stage 18.185). Now they are declared as regular extern "C"
+// items in the prelude source — standard method resolution handles them.
+//
+// Per §1.0 原則 6 (通解 > 特解): one extern "C" block for all prelude helpers.
+// Per §1.0 原則 3 (显式 > 隐式): explicit declarations, not hidden DefId synthesis.
+// Per §12 (最优 > 最小): root-cause fix via prelude impl migration.
+extern "C" {
+    fn __landin_alloc(size: i64) -> *mut u8;
+    fn __landin_memcpy(dst: *mut u8, src: *const u8, n: i64);
+}
 enum Option<T> { None, Some(T) }
 enum Result<T, E> { Ok(T), Err(E) }
 trait Copy {}
@@ -144,6 +159,24 @@ struct String { ptr: *mut u8, len: usize, cap: usize }
 impl String {
     fn len(&self) -> usize { self.len }
     fn new() -> String { String { ptr: 0 as *mut u8, len: 0usize, cap: 0usize } }
+    // Stage 31.6b (v0.19): Migrated from MIR intrinsic to prelude impl.
+    //
+    // `from_str` now uses `.ptr`/`.len` fat pointer field access (Stage 31.6a)
+    // + extern "C" calls to __landin_alloc + __landin_memcpy (declared above).
+    // This replaces the hardcoded intrinsic dispatch in `expr_variants.rs:558`.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): standard static method resolution, no
+    // per-method intrinsic dispatch.
+    // Per §1.0 原則 3 (显式 > 隐式): the alloc+memcpy+construct logic is
+    // visible in source, not hidden in MIR lower.
+    // Per §12 (最优 > 最小): root-cause fix via language features (FatPtrLit +
+    // fat pointer field access + extern C in prelude).
+    fn from_str(s: &str) -> String {
+        let len: i64 = s.len as i64;
+        let ptr: *mut u8 = __landin_alloc(len);
+        __landin_memcpy(ptr, s.ptr, len);
+        String { ptr: ptr, len: s.len, cap: s.len }
+    }
     // Stage 31.5 (v0.19): Migrated from MIR intrinsic to prelude impl.
     //
     // `as_str` now uses the FatPtrLit syntax (`&str { ptr, len }`) to construct

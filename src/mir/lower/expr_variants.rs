@@ -555,9 +555,16 @@ pub(super) fn lower_call_expr(
         if path.segments.len() == 2 {
             let type_name = cx.interner.resolve(&path.segments[0].ident.name);
             let method_name = cx.interner.resolve(&path.segments[1].ident.name);
-            if type_name == "String" && method_name == "from_str" && args.len() == 1 {
-                return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
-            }
+            // Stage 31.6b (v0.19): String::from_str intrinsic REMOVED.
+            //
+            // `from_str` is now implemented in the prelude using `.ptr`/`.len`
+            // fat pointer field access + extern "C" calls to __landin_alloc +
+            // __landin_memcpy. Standard static method resolution handles it.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no
+            // per-method intrinsic dispatch.
+            // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
+            // Per §12 (最优 > 最小): root-cause fix via language features.
             // Stage 18.189 (TD-BOX-AUTO-DROP partial): Intercept Box::new(x).
             // Box::new(x) does:
             //   1. size = sizeof(T) (from x's type, hardcoded per type for MVP)

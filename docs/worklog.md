@@ -36499,3 +36499,76 @@ Stage Summary:
 - Stage 31.6b: Migrate String::from_str using `.ptr`/`.len` + extern C in prelude
 - Stage 31.6c: Migrate String::push_str + Vec::push + Vec::get
 - Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
+
+---
+Task ID: stage31.6b
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.6b (v0.19) — Migrate String::from_str from MIR intrinsic to prelude impl using .ptr/.len + extern C. L2 (prelude body + resolver fix + intrinsic removal + 16 tests). v0.564.0.
+
+3秒启动自检:
+- 定位: L2 (prelude extern C + from_str impl body + resolver duplicate fix + intrinsic removal + 16 tests)
+- 对齐: 已查 Stage 31.5 as_str migration + Stage 31.6a fat pointer field access + string_intrinsics.rs from_str
+- 阻断: v0.563.0 全绿 (5015 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. extern C in prelude: declared __landin_alloc + __landin_memcpy
+   - 引用 §1.0 原則 6 (通解 > 特解): one extern C block for all prelude helpers
+   - 引用 §1.0 原則 3 (显式 > 隐式): explicit declarations, not hidden DefId synthesis
+   - Changed: prelude now has `extern "C" { fn __landin_alloc(size: i64) -> *mut u8; ... }`
+
+2. Resolver duplicate extern fn fix: allow duplicate ExternFn declarations
+   - 引用 §12 (最优 > 最小): C standard allows multiple extern declarations
+   - Root cause: prelude declares __landin_alloc, user tests also declare it → duplicate error
+   - Fix: in module_build.rs, if kind == DefKind::ExternFn, skip duplicate error + continue
+   - Per §1.0 原則 6: one rule for all extern fns (C linkage semantics)
+
+3. Type alignment: use i64 for extern fn params (match C runtime + existing tests)
+   - prelude declares `__landin_alloc(size: i64)` (not usize)
+   - from_str impl uses `s.len as i64` for the cast
+   - Per §1.0 原則 9 (正确 > 妥协): i64 matches C runtime `long long`
+
+4. Test update: stage18_178_undeclared_alloc_fails now positive
+   - __landin_alloc is now in prelude → user code can call without declaration
+   - Updated test to expect exit 0 (success) instead of failure
+   - Per §1.0 原則 6 (通解 > 特解): one prelude declaration, no per-call extern
+
+裁剪点:
+- L2 — prelude extern C + from_str impl body + resolver fix + intrinsic removal + 16 tests
+- 跳过 migrating push_str/push/get/Box::new — Stage 31.6c scope
+- 安全理由: §13.4 J6 — Stage 31.6b is independently testable (16 tests pass)
+
+5W2H:
+- WHAT: Migrate String::from_str from MIR intrinsic to prelude impl
+- WHY: Second TD-INTRINSIC-OVERUSE Phase 2-B migration — demonstrate fat pointer field access + extern C
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.19 Stage 31.6b (after Stage 31.6a fat pointer field access)
+- WHERE: src/stdlib/prelude.rs (extern C + from_str impl) + src/resolve/module_build.rs (duplicate fix) + src/mir/lower/expr_variants.rs (intrinsic removal) + tests (update)
+- HOW: (1) Add extern C to prelude (2) Add from_str impl body (3) Fix resolver duplicate (4) Remove intrinsic (5) Update tests (6) 16 new tests
+- HOW MUCH: -180 LOC intrinsic, +15 LOC prelude, +10 LOC resolver fix; 5031 tests total (5015 + 16), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4133/4133 (2 ignored) ✅ — +16 new stage31_6b tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — migration, no regression) ✅
+- D8 (§1.6 终极检验): prelude impl replaces intrinsic — 通解 replaces 特解 ✅
+
+Stage Summary:
+- v0.19 Stage 31.6b: String::from_str Intrinsic → Prelude Impl Migration COMPLETE ✅
+- prelude extern C: __landin_alloc + __landin_memcpy declared
+- prelude from_str impl: `fn from_str(s: &str) -> String { let len = s.len as i64; ... }`
+- Resolver fix: allow duplicate ExternFn declarations (C linkage semantics)
+- Removed: from_str intrinsic dispatch from expr_variants.rs (lines 558-560)
+- Updated: stage18_178_undeclared_alloc_fails test (now positive — prelude provides declaration)
+- 16 tests (4 positive + 12 negative), 1:3 ratio
+- Tests: 5031 (898 lib + 4133 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+- TD-INTRINSIC-OVERUSE Phase 2-B: from_str migrated ✅ (second of 6 methods)
+
+下一步:
+- Stage 31.6c: Migrate String::push_str + Vec::push + Vec::get
+- Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist

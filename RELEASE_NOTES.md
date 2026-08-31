@@ -3,13 +3,123 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.563.0 (Stage 31.6a — Fat Pointer Field Access `.ptr` / `.len` on `&str` / `&[T]`) |
+| **Current version** | v0.564.0 (Stage 31.6b — String::from_str migrated from intrinsic to prelude impl via .ptr/.len + extern C) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4117 integration tests = 5015 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4133 integration tests = 5031 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.6a: fat pointer field access — complement to FatPtrLit, enables full fat pointer construction + destruction in source |
+| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.6b: second TD-INTRINSIC-OVERUSE Phase 2-B migration — from_str now uses prelude impl with extern C + fat pointer field access |
+
+---
+
+## v0.564.0 — Stage 31.6b — String::from_str Intrinsic → Prelude Impl Migration
+
+### Overview
+
+This release migrates `String::from_str` from a hardcoded MIR intrinsic dispatch
+to a real prelude `impl` body using `.ptr`/`.len` fat pointer field access
+(Stage 31.6a) + `extern "C"` calls to `__landin_alloc` + `__landin_memcpy`.
+This is the second TD-INTRINSIC-OVERUSE Phase 2-B migration.
+
+Per §1.0 原則 6 (通解 > 特解): standard static method resolution replaces
+per-method intrinsic dispatch.
+Per §1.0 原則 3 (显式 > 隐式): explicit extern C declarations + fat pointer
+field access in source.
+Per §12 (最优 > 最小): root-cause fix via language features.
+
+### What Changed
+
+#### Prelude extern "C" Block Added
+
+```landin
+extern "C" {
+    fn __landin_alloc(size: i64) -> *mut u8;
+    fn __landin_memcpy(dst: *mut u8, src: *const u8, n: i64);
+}
+```
+
+These declarations allow prelude impl bodies to call runtime helper functions
+directly, replacing the hardcoded DefId synthesis in MIR intrinsics.
+
+#### from_str Prelude Impl Body
+
+```landin
+impl String {
+    fn from_str(s: &str) -> String {
+        let len: i64 = s.len as i64;
+        let ptr: *mut u8 = __landin_alloc(len);
+        __landin_memcpy(ptr, s.ptr, len);
+        String { ptr: ptr, len: s.len, cap: s.len }
+    }
+}
+```
+
+Uses Stage 31.6a's `.ptr`/`.len` fat pointer field access to extract `s.ptr`
+and `s.len` from the `&str` parameter, then calls `__landin_alloc` +
+`__landin_memcpy` to allocate + copy, and constructs `String` via struct literal.
+
+#### Resolver Fix: Allow Duplicate Extern Fn Declarations
+
+In C, multiple declarations of the same extern function are legal (they're
+declarations, not definitions). The prelude declares `__landin_alloc`, and
+user code may also declare it — this is valid C linkage.
+
+Fixed `src/resolve/module_build.rs` to allow duplicate `DefKind::ExternFn`
+registrations (skip the duplicate error + continue).
+
+Per §1.0 原則 6 (通解 > 特解): one rule for all extern fns — allow duplicates
+(C linkage semantics).
+
+#### Intrinsic Dispatch Removed
+
+Removed the `String::from_str` intrinsic dispatch from
+`src/mir/lower/expr_variants.rs` (lines 558-560). Standard static method
+resolution handles `from_str` calls now.
+
+#### Test Update
+
+`stage18_178_undeclared_alloc_fails` updated: `__landin_alloc` is now declared
+in the prelude, so user code can call it without a local `extern "C"` declaration.
+The test now expects success (exit 0) instead of failure.
+
+### Tests (16 total, 1:3 pos:neg ratio)
+
+- **4 positive tests**: from_str compiles + runs via prelude impl
+- **12 negative tests** covering error categories:
+  - Typeck (10): wrong arg type, wrong arg count, wrong return type, undefined type, from_str on i32, bool arg, ptr arg
+  - Parse (1): malformed syntax
+  - Resolve (1): undefined type
+
+### Verification
+
+- §14.5 D1 (fmt): clean ✅
+- §14.5 D2 (clippy): 0 warnings ✅
+- §14.5 D3 (build): success ✅
+- §14.5 D4 (lib tests): 898/898 ✅
+- §14.5 D5 (integration tests): 4133/4133 (2 ignored) ✅ — +16 new stage31_6b tests
+- §14.5 D6 (no P0/P1): ALL resolved ✅
+- §14.5 D7 (architecture health): 9.85/10 (stable — migration, no regression) ✅
+- §14.5 D8 (§1.6 终极检验): prelude impl replaces intrinsic — 通解 replaces 特解 ✅
+
+### TD-INTRINSIC-OVERUSE Phase 2-B Progress
+
+| Method | Status | Migration |
+|--------|--------|-----------|
+| `String::as_str` | ✅ Migrated (Stage 31.5) | FatPtrLit |
+| `String::from_str` | ✅ Migrated (Stage 31.6b) | .ptr/.len + extern C |
+| `String::push_str` | 🟡 Pending (Stage 31.6c) | needs prelude impl |
+| `Vec::push` | 🟡 Pending (Stage 31.6c) | needs prelude impl |
+| `Vec::get` | 🟡 Pending (Stage 31.6c) | needs prelude impl |
+| `Box::new` | ❌ BLOCKED | needs sizeof(T) |
+| `format!` | ❌ BLOCKED | needs format args |
+
+### Next Stage
+
+Stage 31.6b migrates the second method (`from_str`). Stage 31.6c will migrate
+`String::push_str`, `Vec::push`, and `Vec::get` using the same pattern
+(.ptr/.len + extern C). Stage 31.7 will remove the remaining `method_name_str`
+checks and `KNOWN_INTRINSIC_METHODS` whitelist.
 
 ---
 

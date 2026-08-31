@@ -121,6 +121,22 @@ impl Resolver {
                     // Also update def_kinds to replace the builtin.
                     self.def_kinds.remove(&DefId(u32::MAX - 1));
                     self.def_kinds.insert(def_id, kind);
+                } else if kind == DefKind::ExternFn {
+                    // Stage 31.6b (v0.19): Allow duplicate extern "C" fn declarations.
+                    // In C, multiple declarations of the same extern function are
+                    // legal (they're declarations, not definitions). The prelude
+                    // declares __landin_alloc/__landin_memcpy, and user code may
+                    // also declare them — this is valid C linkage.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one rule for all extern fns —
+                    // allow duplicates (C linkage semantics).
+                    // Per §1.0 原則 3 (显式 > 隐式): the declaration is explicit
+                    // in both prelude and user code — no silent shadowing.
+                    // Per §12 (最优 > 最小): root-cause fix — allow duplicate
+                    // extern declarations per C standard.
+                    // Still record the DefKind so codegen can find it.
+                    self.def_kinds.insert(def_id, DefKind::ExternFn);
+                    continue;
                 } else {
                     let name_str = interner.resolve(&name).to_string();
                     // Stage 18.63: Use the existing definition's span as fallback

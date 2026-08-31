@@ -829,3 +829,7 @@ mod stage31_5_as_str_prelude_impl_tests;
 // === Stage 31.6a (v0.19): Fat pointer field access (.ptr / .len on &str) ===
 #[path = "v0/stage31/plan/stage31_6a_fat_ptr_field_access_tests.rs"]
 mod stage31_6a_fat_ptr_field_access_tests;
+
+// === Stage 31.6b (v0.19): String::from_str prelude impl migration ===
+#[path = "v0/stage31/plan/stage31_6b_from_str_prelude_impl_tests.rs"]
+mod stage31_6b_from_str_prelude_impl_tests;
