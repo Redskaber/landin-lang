@@ -663,11 +663,77 @@ pub(crate) fn lower_expr_to_operand(
             // The MIR lower creates a CHAIN Projection, not an intermediate local!
             // Let me check the MIR structure.
             let base_local = lower_expr_to_operand(cx, receiver, None);
+            // Stage 31.6a (v0.19): Fat pointer field access — `.ptr` and `.len`
+            // on `&str` / `&[T]` extract the fat pointer's data pointer and length.
+            //
+            // This is the complement to FatPtrLit (Stage 31.1): FatPtrLit CONSTRUCTS
+            // a fat pointer from ptr+len; `.ptr`/`.len` DESTRUCT a fat pointer into
+            // its components. Together they enable prelude impl migration for
+            // `String::from_str` / `String::push_str` (TD-INTRINSIC-OVERUSE Phase 2-B).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one field-access path for all fat pointer
+            // types, replaces per-method intrinsic dispatch.
+            // Per §1.0 原則 3 (显式 > 隐式): explicit `.ptr`/`.len` in source.
+            // Per §12 (最优 > 最小): root-cause fix via language feature.
+            let base_ty = cx.mir.local(base_local).ty.clone();
+            let field_name_str = cx.interner.try_resolve(&ident.name).unwrap_or("");
+            let is_fat_ptr_field = matches!(field_name_str, "ptr" | "len");
+            // Check if base_ty is a fat pointer: Ref(_, _, Str) or Ref(_, _, Slice(_)).
+            let is_fat_ptr_ty = match &base_ty.kind {
+                crate::mir::ty::TyKind::Ref(_, _, inner) => {
+                    matches!(
+                        &inner.kind,
+                        crate::mir::ty::TyKind::Str | crate::mir::ty::TyKind::Slice(_)
+                    )
+                }
+                _ => false,
+            };
+            if is_fat_ptr_field && is_fat_ptr_ty {
+                // Fat pointer {ptr, len} field access.
+                // Field 0 = data pointer, Field 1 = length.
+                let (field_id, field_ty) = if field_name_str == "ptr" {
+                    // Data pointer: *const u8 (for &str) or *const T (for &[T]).
+                    // Extract from the fat pointer's inner type.
+                    let inner_ty = match &base_ty.kind {
+                        crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),
+                        _ => unreachable!("is_fat_ptr_ty checked Ref"),
+                    };
+                    let elem_ty = match &inner_ty.kind {
+                        crate::mir::ty::TyKind::Str => {
+                            Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)
+                        }
+                        crate::mir::ty::TyKind::Slice(elem) => (**elem).clone(),
+                        _ => unreachable!("is_fat_ptr_ty checked Str/Slice"),
+                    };
+                    let ptr_ty = Ty::new(
+                        TyKind::RawPtr(crate::mir::ty::Mutability::Immutable, Box::new(elem_ty)),
+                        expr.span,
+                    );
+                    (FieldId(0), ptr_ty)
+                } else {
+                    // len: usize
+                    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
+                    (FieldId(1), usize_ty)
+                };
+                // Emit the field projection.
+                let field_local = cx.mir.new_local(field_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(field_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(base_local, receiver.span)),
+                            ProjectionElem::Field(field_id, field_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                return field_local;
+            }
             // Stage 18.304 (P3 fix): Check if receiver is a primitive type.
             // Per §2 原則 4 (报错>静默): field access on primitive types
             // (i32, bool, etc.) must report error, not silently return field 0.
             // Per §12 (最优>最小): root cause fix — check type before resolving field.
-            let base_ty = cx.mir.local(base_local).ty.clone();
             let inner_ty: Ty = match &base_ty.kind {
                 // Auto-deref Ref to check inner type.
                 crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),

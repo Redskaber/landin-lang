@@ -3,13 +3,100 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.562.0 (Stage 31.5 — String::as_str migrated from intrinsic to prelude impl via FatPtrLit) |
+| **Current version** | v0.563.0 (Stage 31.6a — Fat Pointer Field Access `.ptr` / `.len` on `&str` / `&[T]`) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4097 integration tests = 4995 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4117 integration tests = 5015 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.5: first TD-INTRINSIC-OVERUSE Phase 2-B migration — `String::as_str` now uses prelude impl with FatPtrLit instead of MIR intrinsic dispatch; Cast(Unsize) codegen fixed for same-layout Tuple→Ref; 20 tests (4 positive + 16 negative) |
+| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.6a: fat pointer field access — complement to FatPtrLit, enables full fat pointer construction + destruction in source |
+
+---
+
+## v0.563.0 — Stage 31.6a — Fat Pointer Field Access `.ptr` / `.len`
+
+### Overview
+
+This release implements **fat pointer field access** — the ability to extract
+`.ptr` (data pointer) and `.len` (length) from fat pointer types (`&str`,
+`&[T]`) in Landin source. This is the complement to Stage 31.1's FatPtrLit
+syntax (which CONSTRUCTS a fat pointer from ptr+len).
+
+Together, FatPtrLit (construct) + field access (destruct) enable full fat
+pointer manipulation in source code, unblocking the migration of
+`String::from_str` and `String::push_str` from MIR intrinsics to prelude
+`impl` blocks (TD-INTRINSIC-OVERUSE Phase 2-B).
+
+Per §1.0 原則 6 (通解 > 特解): one field-access path for all fat pointer types.
+Per §1.0 原則 3 (显式 > 隐式): explicit `.ptr`/`.len` in source.
+Per §12 (最优 > 最小): root-cause fix via language feature.
+
+### What Changed
+
+#### New Syntax: `.ptr` and `.len` on Fat Pointers
+
+```landin
+// Extract data pointer from &str
+fn get_ptr(s: &str) -> *const u8 { s.ptr }
+
+// Extract length from &str
+fn get_len(s: &str) -> usize { s.len }
+
+// Extract from &[T]
+fn slice_ptr(v: &[i32]) -> *const i32 { v.ptr }
+fn slice_len(v: &[i32]) -> usize { v.len }
+```
+
+#### Implementation
+
+In `src/mir/lower/expr_operand.rs`, the `HirExprKind::Field` arm now checks
+if the receiver type is a fat pointer (`Ref(_, _, Str)` or `Ref(_, _, Slice(_))`)
+and the field name is `ptr` or `len`. If so, it emits a `ProjectionElem::Field`
+with the correct field index (0 for ptr, 1 for len) and type (*const T for ptr,
+usize for len).
+
+This bypasses the primitive type check (which previously rejected `.ptr` on
+`&str` as "primitive types have no fields").
+
+### Tests (20 total, 1:4 pos:neg ratio)
+
+- **4 positive tests**: `.ptr`/`.len` on `&str` and `&[i32]` (via function parameter)
+- **16 negative tests** covering error categories:
+  - Typeck (11): wrong types, unknown fields, primitives, wrong mutability, wrong elem type
+  - Resolve (1): undefined variable
+  - Parse (1): no receiver
+
+### Verification
+
+- §14.5 D1 (fmt): clean ✅
+- §14.5 D2 (clippy): 0 warnings ✅
+- §14.5 D3 (build): success ✅
+- §14.5 D4 (lib tests): 898/898 ✅
+- §14.5 D5 (integration tests): 4117/4117 (2 ignored) ✅ — +20 new stage31_6a tests
+- §14.5 D6 (no P0/P1): ALL resolved ✅
+- §14.5 D7 (architecture health): 9.85/10 (stable — additive feature) ✅
+- §14.5 D8 (§1.6 终极检验): fat pointer field access + FatPtrLit = full construction + destruction ✅
+
+### Next Stage
+
+Stage 31.6a implements the language feature. Stage 31.6b will use it to
+migrate `String::from_str` from MIR intrinsic to prelude `impl`:
+
+```landin
+extern "C" { fn __landin_alloc(size: usize) -> *mut u8; }
+extern "C" { fn __landin_memcpy(dst: *mut u8, src: *const u8, n: usize); }
+
+impl String {
+    fn from_str(s: &str) -> String {
+        let ptr: *mut u8 = __landin_alloc(s.len);
+        __landin_memcpy(ptr, s.ptr, s.len);
+        String { ptr: ptr, len: s.len, cap: s.len }
+    }
+}
+```
+
+Per §1.0 原則 6 (通解 > 特解): each migration replaces a hardcoded check with
+standard method resolution.
 
 ---
 

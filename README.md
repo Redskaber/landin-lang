@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.562.0 (v0.19 Stage 31.5 — String::as_str migrated from intrinsic to prelude impl via FatPtrLit — Architecture health 9.85/10) |
+| **Version** | v0.563.0 (v0.19 Stage 31.6a — Fat Pointer Field Access `.ptr` / `.len` on `&str` / `&[T]` — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.19 Stage 31.5 — as_str Intrinsic → Prelude Impl**. 4995 tests (898 lib + 4097 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.5: Migrated `String::as_str` from MIR intrinsic dispatch (~100 LOC removed) to prelude impl using FatPtrLit syntax: `fn as_str(&self) -> &str { &str { ptr: self.ptr, len: self.len } }`. Fixed Cast(Unsize) codegen for same-layout Tuple→Ref (no-op, no bitcast). Fixed `str` type resolution in lower_fat_ptr_lit (hardcode TyKind::Str). 20 tests (4 positive + 16 negative, 1:4 ratio ≥ 1:3). First TD-INTRINSIC-OVERUSE Phase 2-B migration — demonstrates FatPtrLit enables prelude impl (通解 replaces 特解). Architecture health: 9.85/10 (stable — migration, no regression). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6 — migrate other intrinsics (from_str/push_str/push/get/Box::new/format!). |
+| **Status** | ✅ **v0.19 Stage 31.6a — Fat Pointer Field Access**. 5015 tests (898 lib + 4117 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.6a: Implemented `.ptr` and `.len` field access on fat pointer types (`&str`, `&[T]`) — the complement to Stage 31.1 FatPtrLit (construct). Together they enable full fat pointer construction + destruction in Landin source, unblocking `String::from_str`/`push_str` prelude impl migration. 20 tests (4 positive + 16 negative, 1:4 ratio). Architecture health: 9.85/10 (stable — additive feature). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6b — migrate `String::from_str` using `.ptr`/`.len` + extern C in prelude impl. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

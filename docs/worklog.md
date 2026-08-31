@@ -36430,3 +36430,72 @@ Stage Summary:
 下一步:
 - Stage 31.6: Migrate other intrinsics (from_str/push_str/push/get/Box::new/format!)
 - Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
+
+---
+Task ID: stage31.6a
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.6a (v0.19) — Fat Pointer Field Access Syntax (`.ptr` / `.len` on `&str` / `&[T]`). L2 (MIR lower change + 20 tests). v0.563.0.
+
+3秒启动自检:
+- 定位: L2 (MIR lower Field access + 20 tests)
+- 对齐: 已查 Stage 31.1 FatPtrLit (construct) + Stage 31.5 as_str migration + 06-mir.md §16.8.4
+- 阻断: v0.562.0 全绿 (4995 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. §18 dependency audit discovered NEW blocking dependency:
+   - 引用 §18 (直到审查不出问题为止): found that from_str/push_str migration needs fat pointer field access
+   - ARCH-A analysis: `String::from_str(s: &str)` needs to read `s.ptr` and `s.len` from `&str` parameter
+   - But `&str` is a fat pointer, not a struct — `.ptr`/`.len` field access was NOT supported
+   - The intrinsic extracts via MIR `ProjectionElem::Field(FieldId(0/1))` internally
+   - 引用 §12 (最优 > 最小): implement fat pointer field access language feature FIRST, then migrate
+
+2. Fat pointer field access design: `.ptr` and `.len` on `&str`/`&[T]`
+   - 引用 §1.0 原則 6 (通解 > 特解): one field-access path for all fat pointer types
+   - 引用 §1.0 原則 3 (显式 > 隐式): explicit `.ptr`/`.len` in source
+   - Implementation: in `lower_expr_to_operand` Field arm, check if receiver is Ref(Str/Slice) + field name is ptr/len
+   - If yes, emit `ProjectionElem::Field(FieldId(0/1))` with correct type (*const T or usize)
+   - Bypasses the primitive type check (which rejected `&str.ptr` as "primitive has no fields")
+
+3. Test strategy: 20 tests (4 positive + 16 negative, 1:4 ratio)
+   - Per §9.4.3: exceeds 1:3 target
+   - Positive: `.ptr`/`.len` on `&str` + `.ptr`/`.len` on `&[i32]` (via fn param)
+   - Negative: wrong types, unknown fields, primitive types, no receiver, etc.
+
+裁剪点:
+- L2 — fat pointer field access implementation + 20 tests
+- 跳过 migrating from_str/push_str — Stage 31.6b scope (needs extern C in prelude impl body)
+- 安全理由: §13.4 J6 — Stage 31.6a is independently testable (20 tests pass)
+
+5W2H:
+- WHAT: Implement `.ptr` and `.len` field access on fat pointer types (`&str`, `&[T]`)
+- WHY: Unblocks String::from_str/push_str prelude impl migration (needs to read fat pointer fields)
+- WHO: PM-A + ARCH-A + DEV-A + QA-A
+- WHEN: v0.19 Stage 31.6a (after Stage 31.5 as_str migration)
+- WHERE: src/mir/lower/expr_operand.rs (Field arm, before primitive check)
+- HOW: Check if receiver type is Ref(Str/Slice) + field name is ptr/len → emit Field projection
+- HOW MUCH: +60 LOC MIR lower, 20 tests; 5015 tests total (4995 + 20), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4117/4117 (2 ignored) ✅ — +20 new stage31_6a tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — additive feature) ✅
+- D8 (§1.6 终极检验): fat pointer field access is the complement to FatPtrLit — together they enable full fat pointer construction + destruction in source ✅
+
+Stage Summary:
+- v0.19 Stage 31.6a: Fat Pointer Field Access Syntax COMPLETE ✅
+- New language feature: `.ptr` and `.len` on `&str`/`&[T]` extract fat pointer components
+- Complement to Stage 31.1 FatPtrLit (construct) — now also destruct
+- 20 tests (4 positive + 16 negative), 1:4 ratio
+- Tests: 5015 (898 lib + 4117 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+- Unblocks: Stage 31.6b — String::from_str migration to prelude impl
+
+下一步:
+- Stage 31.6b: Migrate String::from_str using `.ptr`/`.len` + extern C in prelude
+- Stage 31.6c: Migrate String::push_str + Vec::push + Vec::get
+- Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
