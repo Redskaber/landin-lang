@@ -800,6 +800,10 @@ mod stage30_10_hrtb_solver_integration_tests;
 #[path = "v0/stage30/plan/stage30_12_typeck_impl_context_tests.rs"]
 mod stage30_12_typeck_impl_context_tests;
 
-// === Stage 30.13 (v0.15 TD-HRTB-FULL-ENFORCEMENT): HRTB partial enforcement ===
+// === Stage 30.13
 #[path = "v0/stage30/plan/stage30_13_hrtb_enforcement_tests.rs"]
 mod stage30_13_hrtb_enforcement_tests;
+
+// === Stage 30.14 (v0.16 TD-SELF-TYPE-RESOLUTION): Self::Item multi-segment path ===
+#[path = "v0/stage30/plan/stage30_14_self_type_resolution_tests.rs"]
+mod stage30_14_self_type_resolution_tests;

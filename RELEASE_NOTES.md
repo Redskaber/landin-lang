@@ -3,13 +3,62 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.553.0 (Stage 30.13 — v0.15 COMPLETE — TD-HRTB-FULL-ENFORCEMENT: HRTB partial enforcement) |
+| **Current version** | v0.554.0 (Stage 30.14 — v0.16 TD-SELF-TYPE-RESOLUTION: Self::Item multi-segment path resolution + Projection lowering) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4035 integration tests = 4933 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4041 integration tests = 4939 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.14 COMPLETE; v0.15 COMPLETE (Stage 30.12: assoc type bindings + pre-typeck projection + Stage 30.13: HRTB partial enforcement) |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.15 COMPLETE; v0.16 Stage 30.14: Self::Item multi-segment path resolution + Projection lowering |
+
+---
+
+## v0.554.0 — v0.16 Stage 30.14 — TD-SELF-TYPE-RESOLUTION: Self::Item Path Resolution
+
+### Overview
+
+This release addresses the **TD-SELF-TYPE-RESOLUTION** technical debt by implementing **Self::Item multi-segment path resolution** in the resolver and **Projection lowering** in ty_lower. Root-cause analysis revealed that `Self::Item` was silently lowered to `TyKind::Error` because:
+1. The resolver's multi-segment path handler didn't check for the `Self` keyword
+2. The ty_lower's `_ => TyKind::Error` arm caught `Res::SelfTy` for multi-segment paths
+
+Now, `Self::Item` resolves to `Res::SelfTy` in multi-segment paths and lowers to `TyKind::Projection(assoc_def_id, [])` (was `TyKind::Error`).
+
+### What Changed
+
+#### 1. Self Keyword Check in Multi-Segment Path Resolver
+
+Added `Self` keyword check in `resolve/path_resolve.rs` multi-segment path handler. When the first segment is `Self`, the path resolves to `Res::SelfTy(HirSelfKind::Impl)`.
+
+#### 2. Res::SelfTy Arm in ty_lower
+
+Added a new `Res::SelfTy(_)` arm in `mir/lower/ty_lower.rs` that:
+- For multi-segment paths (`Self::Item`), finds the associated type's DefId via `find_assoc_type_def_id`
+- Lowers to `TyKind::Projection(assoc_def_id, Vec::new().into())`
+- For single-segment `Self`, still returns `TyKind::Error` (no concrete type available)
+
+#### 3. find_assoc_type_def_id Helper
+
+New helper function in `ty_lower.rs` that searches HIR for an associated type by name, returning its DefId.
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release --tests` 0 warnings |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 4041/4041 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 92,492 LOC) |
+| D8 ultimate test | ✅ PASS | Honest reclassification per §12 |
+
+### Remaining Tech Debt (v0.16+ / v0.17+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-HRTB-PLACEHOLDER-CHECK | 🟡 P2, v0.16+ | HRTB partially enforced — need placeholder universes |
+| TD-SELF-TYPE-SUBSTS (NEW) | 🟡 P3, v0.17+ | Projection substs[0] is empty — fill with Self type from impl-block context |
 
 ---
 

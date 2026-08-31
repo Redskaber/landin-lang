@@ -35180,3 +35180,73 @@ Stage Summary:
 下一步 (v0.16):
 - TD-SELF-TYPE-RESOLUTION (P2) — deeper HIR self type resolution for full Self::Item
 - TD-HRTB-PLACEHOLDER-CHECK (NEW, P2) — wire Binder<T> + placeholder universes for full HRTB enforcement
+
+---
+Task ID: stage30.14
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.14 (v0.16) — TD-SELF-TYPE-RESOLUTION: Self::Item multi-segment path resolution + Projection lowering. L3. v0.554.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: resolve/path_resolve.rs + mir/lower/ty_lower.rs)
+- 对齐: 已查 v0.553.0 (Stage 30.13 complete); TD-SELF-TYPE-RESOLUTION — was classified as "Self::Item resolution may not fully work"
+- 阻断: Stage 30.13 全绿 (4933 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root-cause analysis: Self::Item was lowered to TyKind::Error
+   - 引用 §1.0 原則 4 (报错 > 静默): Self::Item silently became Error (not reported)
+   - Evidence: resolve/path_resolve.rs multi-segment handler didn't check for Self keyword
+   - ty_lower.rs `_ => TyKind::Error` caught Res::SelfTy for multi-segment paths
+   - 引用 §12 (最优 > 最小): root-cause fix is adding Self check in multi-segment handler + Res::SelfTy arm in ty_lower
+   - 替代: add full impl-block context to ty_lower — violates §11 (interface isolation)
+   - 选择: add Self check in resolver + lower Self::Item to Projection in ty_lower
+
+2. Implementation: 3 changes
+   - resolve/path_resolve.rs: Added Self keyword check in multi-segment path handler (line 785-792)
+   - mir/lower/ty_lower.rs: Added Res::SelfTy arm that lowers Self::Item to TyKind::Projection(assoc_def_id, [])
+   - Added find_assoc_type_def_id helper function (searches HIR for assoc type by name)
+   - 引用 §1.0 原則 6 (通解 > 特解): one mechanism for all Self::X paths
+   - 引用 §1.0 原則 3 (显式 > 隐式): Self::Item explicitly lowered to Projection
+
+3. Honest scope: substs are empty (no Self type)
+   - The Projection has empty substs (Vec::new().into()) instead of [Self_type]
+   - projection_resolver needs substs[0] to find the impl — but substs is empty, so it can't resolve
+   - Per §1.0 原則 9 (正确 > 妥协): honest — Self::Item now lowers to Projection (was Error), but full resolution requires impl-block context to fill substs[0] with Self type
+   - This is still a meaningful improvement: Self::Item no longer becomes Error (was a silent failure)
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 filling substs[0] with Self type — requires impl-block context awareness in ty_lower (architectural change)
+- 安全理由: additive change (new resolver check + new ty_lower arm + helper); existing tests all pass
+
+5W2H:
+- WHAT: TD-SELF-TYPE-RESOLUTION — Self::Item multi-segment path resolution + Projection lowering
+- WHY: Self::Item was silently lowered to TyKind::Error (was not reported); per §1.0 原則 4, should not silently fail
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.16 Stage 30.14 (after v0.15 complete)
+- WHERE: src/resolve/path_resolve.rs (Self check in multi-segment handler) + src/mir/lower/ty_lower.rs (Res::SelfTy arm + find_assoc_type_def_id helper) + tests/v0/stage30/plan/stage30_14_self_type_resolution_tests.rs (6 tests)
+- HOW: (1) Add Self check in multi-segment path resolver (2) Add Res::SelfTy arm in ty_lower that lowers to Projection (3) Add find_assoc_type_def_id helper (4) 6-test suite
+- HOW MUCH: 4939 tests (was 4933, +6 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4041/4041 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +80 from v0.553.0) ✅
+- D8 (§1.6 终极检验): honest reclassification per §12 ✅ — Self::Item now lowers to Projection (was Error), full substs resolution deferred
+
+Stage Summary:
+- v0.16 Stage 30.14: TD-SELF-TYPE-RESOLUTION PARTIAL COMPLETE ✅
+- Self::Item now resolves to Res::SelfTy in multi-segment paths (was Res::Err)
+- Self::Item now lowers to TyKind::Projection (was TyKind::Error)
+- Full substs[0] resolution (Self type in substs) deferred — requires impl-block context
+- 6-test suite: 4 positive + 2 regression
+- §3.2 全绿: 4939 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+
+下一步 (v0.16 remaining TDs):
+- TD-HRTB-PLACEHOLDER-CHECK (P2) — wire Binder<T> + placeholder universes for full HRTB enforcement
+- TD-SELF-TYPE-SUBSTS (NEW, P3, v0.17+) — fill substs[0] with Self type for full Projection resolution

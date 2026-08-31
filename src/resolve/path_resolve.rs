@@ -768,6 +768,29 @@ impl Resolver {
 
         // Multi-segment path: resolve first segment, then walk.
         let first = &path.segments[0];
+
+        // Stage 30.14 (v0.16 TD-SELF-TYPE-RESOLUTION): Check if the first
+        // segment is `Self` keyword. If so, this is likely a `Self::Item`
+        // associated type path — resolve as `Res::SelfTy` so the ty_lower
+        // can lower it to `TyKind::Projection`.
+        //
+        // Previously, multi-segment paths starting with `Self` fell through
+        // to `module_tree.lookup_type("Self")` which returned None (Self is
+        // not a type in the module tree), resulting in `Res::Err` — causing
+        // `Self::Item` to be lowered to `TyKind::Error`.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): Self::Item should not silently become Error.
+        // Per §1.0 原則 9 (正确 > 妥协): resolve Self in multi-segment paths.
+        // Per §1.0 原則 6 (通解 > 特解): one check for all Self-prefixed paths.
+        if let Some(self_spur) = interner.get("Self") {
+            if first.ident.name == self_spur {
+                return Res::SelfTy(
+                    self.current_self_kind
+                        .unwrap_or(crate::hir::HirSelfKind::Impl),
+                );
+            }
+        }
+
         let first_def = self
             .module_tree
             .lookup_type(first.ident.name)

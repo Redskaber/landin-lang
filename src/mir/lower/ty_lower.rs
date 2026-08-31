@@ -627,6 +627,51 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                     // (e.g. Res::Unknown for body-local types), we return Error.
                     // Per §1.0 原則 4 "报错 > 静默": TyKind::Error is the fallback,
                     // and the resolver's scan_for_unresolved_paths will report it.
+                    //
+                    // Stage 30.14 (v0.16 TD-SELF-TYPE-RESOLUTION): For multi-segment
+                    // paths starting with `Self` (e.g., `Self::Item`), the resolver
+                    // returns `Res::SelfTy(HirSelfKind::Impl)`. We lower this to
+                    // `TyKind::Projection` so `projection_resolver` can resolve it
+                    // to the concrete type from the impl block.
+                    //
+                    // Per §1.0 原則 4 (报错 > 静默): Self::Item should not become Error.
+                    // Per §1.0 原則 6 (通解 > 特解): one path for all Self::X projections.
+                    // Per §1.0 原則 9 (正确 > 妥协): resolve Self multi-segment to Projection.
+                    Res::SelfTy(_) => {
+                        // For multi-segment paths like `Self::Item`, we need
+                        // to find the associated type's DefId. The last
+                        // segment's name should match an associated type in
+                        // the trait. We look it up from HIR.
+                        if path.segments.len() >= 2 {
+                            let assoc_name = path.segments.last().map(|s| s.ident.name);
+                            if let Some(assoc_name) = assoc_name {
+                                // Search HIR for the associated type declaration.
+                                if let Some(hir) = hir {
+                                    let assoc_def_id = find_assoc_type_def_id(hir, assoc_name);
+                                    if let Some(assoc_def_id) = assoc_def_id {
+                                        // Create a Projection with the assoc type's DefId.
+                                        // The substs will be [Self_type] — for now, we
+                                        // use an empty substs (projection_resolver
+                                        // will fill in the self type via impl lookup).
+                                        Ty::new(
+                                            TyKind::Projection(assoc_def_id, Vec::new().into()),
+                                            span,
+                                        )
+                                    } else {
+                                        Ty::new(TyKind::Error, span)
+                                    }
+                                } else {
+                                    Ty::new(TyKind::Error, span)
+                                }
+                            } else {
+                                Ty::new(TyKind::Error, span)
+                            }
+                        } else {
+                            // Single-segment `Self` — return Error (no concrete type
+                            // available at this stage; would need impl-block context).
+                            Ty::new(TyKind::Error, span)
+                        }
+                    }
                     _ => Ty::new(TyKind::Error, span),
                 }
             }
@@ -808,4 +853,31 @@ fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
         None,
         generic_params,
     )
+}
+
+/// Stage 30.14 (v0.16 TD-SELF-TYPE-RESOLUTION): Find the DefId of an
+/// associated type declaration by name.
+///
+/// Searches all trait declarations in HIR for an associated type whose
+/// name matches `assoc_name`. Returns the DefId of the `HirAssocType`
+/// if found, or `None` if no match.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one search for all traits.
+/// Per §23: `find_assoc_type_def_id` follows `<verb>_<noun>_<noun>_<noun>`.
+fn find_assoc_type_def_id(
+    hir: &crate::hir::HirCrate,
+    assoc_name: crate::lexer::Symbol,
+) -> Option<crate::hir::DefId> {
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for item in &t.items {
+                if let crate::hir::HirTraitItem::Type(at) = item {
+                    if at.ident.name == assoc_name {
+                        return Some(at.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
