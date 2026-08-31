@@ -36850,3 +36850,63 @@ Stage Summary:
 下一步:
 - Stage 31.6g: Migrate Vec::push + Vec::get (needs sizeof + realloc for generic T)
 - Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
+
+---
+Task ID: stage31.6g
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.6g (v0.19) — Attempted Vec::push + Vec::get migration; BLOCKED on prelude monomorphization. L3 (attempted + reverted + documented). v0.567.0.
+
+3秒启动自检:
+- 定位: L3 (attempted cross-module migration: prelude + method_call_lower + vec_intrinsics)
+- 对齐: 已查 Stage 31.6e sizeof(T) + Stage 31.6f Box::new pattern + vec_intrinsics.rs
+- 阻断: v0.567.0 全绿 (5079 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Vec::push/get prelude impl design: sizeof(T) + realloc + pointer arithmetic + Deref store + bounds check panic
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic
+   - 引用 §12 (最优 > 最小): root-cause fix via language features
+   - Vec::push body: growth while loop + realloc + ptr_arith + deref_store
+   - Vec::get body: bounds check via __landin_panic_bounds_check + loop{} + ptr_arith + deref_load
+
+2. ARCH-A 一票否决权 exercised: Vec::push/get migration BLOCKED
+   - 引用 §1.6: 发现架构致命伤时立即否决
+   - Root cause: prelude `impl<T> Vec<T>` body is lowered with T = Param(0) BEFORE monomorphization
+   - Typeck errors: `self.cap * 2usize` fails because `self.cap` resolves to `()` (not `usize`)
+   - `self.ptr + self.len` fails because `self.ptr` resolves to `*mut Error` (not `*mut Param(0)`)
+   - Box::new works because all operations use T consistently (sizeof T → fallback 8, *mut T → Param, *typed = x → same Param)
+   - Vec::push/get FAILS because arithmetic operations (*, +) on self fields require concrete types, not Param
+   - This is the SAME issue as TD-TYPECK-LOCAL-DECL-ERROR-CHECK (prelude lazy monomorphization)
+
+3. §18 dependency audit: prelude monomorphization order is the TRUE blocker
+   - Per §6.2 升级判据: NOT UPGRADED (no wrong results — intrinsics work correctly)
+   - Per §1.0 原則 9 (正确 > 妥协): document the block, don't force the migration
+   - Per §12 (最优 > 最小): root-cause fix is monomorphization order change (v0.5+ architectural)
+
+裁剪点:
+- L3 — attempted migration + reverted + documented
+- 跳过 Vec::push/get migration — BLOCKED on prelude monomorphization (v0.5+ architectural change)
+- 安全理由: §6.2 — NOT UPGRADED (no soundness risk, no wrong results)
+
+5W2H:
+- WHAT: Attempted Vec::push + Vec::get migration from MIR intrinsic to prelude impl
+- WHY: Fifth + sixth TD-INTRINSIC-OVERUSE Phase 2-B migration
+- WHO: PM-A + ARCH-A (blocked by monomorphization architecture)
+- WHEN: v0.19 Stage 31.6g (after Stage 31.6f Box::new)
+- WHERE: src/stdlib/prelude.rs (Vec impl) + src/mir/lower/method_call_lower.rs (dispatch) + src/mir/lower/vec_intrinsics.rs (dead code)
+- HOW: (1) Add Vec::push/get impl body using sizeof + realloc + ptr_arith + deref + panic (2) Remove intrinsic dispatch (3) Build → FAIL → revert
+- HOW MUCH: 0 LOC net (reverted); 5079 tests (unchanged), 0 failures
+
+Stage Summary:
+- v0.19 Stage 31.6g: Vec::push/get Migration BLOCKED ✅ (documented)
+- Root cause: prelude `impl<T> Vec<T>` body lowered with T = Param(0) BEFORE monomorphization
+- Typeck errors: arithmetic on self fields requires concrete types, not Param
+- Box::new works (operations consistent with Param), Vec::push/get fails (arithmetic needs concrete)
+- Per §18: prelude monomorphization order is v0.5+ architectural change
+- Tests: 5079 (unchanged — reverted), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+
+下一步:
+- Stage 31.7: Remove KNOWN_INTRINSIC_METHODS whitelist (String methods migrated, Vec push/get stay intrinsic)
+- Stage 31.8: prelude monomorphization order fix (v0.5+ architectural — unblocks Vec::push/get)
+- format! migration: BLOCKED on format args language feature
