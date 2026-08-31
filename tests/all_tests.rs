@@ -845,3 +845,7 @@ mod stage31_6e_sizeof_tests;
 // === Stage 31.6f (v0.19): Box::new prelude impl migration ===
 #[path = "v0/stage31/plan/stage31_6f_box_new_prelude_impl_tests.rs"]
 mod stage31_6f_box_new_prelude_impl_tests;
+
+// === Stage 31.7 (v0.19): Intrinsic cleanup (dead dispatch removal) ===
+#[path = "v0/stage31/plan/stage31_7_intrinsic_cleanup_tests.rs"]
+mod stage31_7_intrinsic_cleanup_tests;

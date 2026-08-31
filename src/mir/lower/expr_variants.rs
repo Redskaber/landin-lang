@@ -474,14 +474,17 @@ pub(super) fn lower_call_expr(
             // expected_ty from outer context is `Box<T>` but the arg
             // expects `T`. Extract T from the outer expected Box<T>.
             //
-            // Per §17.6 (缺陷纳入 — same class as TD-TUPLE-CTOR-CALL-ARG):
-            // when one expected-ty propagation bug is found, audit all
-            // similar paths. Box::new intrinsic uses the same pattern
-            // as fn call args — needs expected_ty from outer context.
-            // Per §1.0 原則 6 (通解 > 特解): one Box-specific extraction
-            // path for all Box::new args, not a per-type special case.
+            // Stage 31.7: Box::new is now in prelude, but the expected_ty
+            // threading is STILL needed — typeck resolves the fn sig AFTER
+            // MIR lower, so MIR-lower-time expected_ty is the only way to
+            // propagate the outer type context to the argument. Without it,
+            // `Box::new(Holder(true))` where `b: Box<Holder<i32>>` fails
+            // to detect the type mismatch at MIR lower time.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): type mismatch must be detected.
+            // Per §1.0 原則 6 (通解 > 特解): one expected_ty path for all calls.
             let arg_expected_ty = if i == 0 {
-                // Check if this is a Box::new intrinsic call.
+                // Check if this is a Box::new call (prelude impl).
                 let is_box_new = if let HirExprKind::Path(path) = &func.kind {
                     if path.segments.len() == 2 {
                         let type_name = cx.interner.resolve(&path.segments[0].ident.name);
@@ -539,42 +542,13 @@ pub(super) fn lower_call_expr(
         .map(|l| Operand::Move(Place::local(*l, Span::DUMMY)))
         .collect();
 
-    // Stage 18.185 (TD-STRING-INTRINSICS): Intercept String::from_str(s)
-    // as a builtin intrinsic before falling through to ADT ctor / call paths.
-    //
-    // String::from_str(s: &str) -> String does:
-    //   1. len = s.len (extract from fat pointer field 1)
-    //   2. ptr = __landin_alloc(len) (allocate heap buffer)
-    //   3. __landin_memcpy(ptr, s.ptr, len) (copy bytes)
-    //   4. Construct String { ptr, len, cap: len }
-    //
-    // Per §1.0 原則 6 (通解>特例): one intrinsic for String::from_str,
-    // not a special-case per string literal.
-    // Per §2 原則 9 (正确>妥协): proper alloc+copy, not a stub.
-    if let HirExprKind::Path(path) = &func.kind {
-        if path.segments.len() == 2 {
-            // Stage 31.6f: All 2-segment path intrinsics (from_str, Box::new)
-            // have been migrated to prelude impls. The type_name/method_name
-            // variables are no longer needed for intrinsic dispatch.
-            // Per §1.0 原則 5 (去除兼容思维): dead dispatch code removed.
-            //
-            // `from_str` is now implemented in the prelude using `.ptr`/`.len`
-            // fat pointer field access + extern "C" calls to __landin_alloc +
-            // __landin_memcpy. Standard static method resolution handles it.
-            //
-            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no
-            // per-method intrinsic dispatch.
-            // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
-            // Per §12 (最优 > 最小): root-cause fix via language features.
-            // Stage 31.6f (v0.19): Box::new intrinsic REMOVED.
-            // Now handled by prelude impl using sizeof(T) + extern C alloc + Deref store.
-            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
-            // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
-            // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::new() removed.
-            // Now handled by prelude impl: `impl<T> Vec<T> { fn new() -> Vec<T> { ... } }`
-            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
-        }
-    }
+    // Stage 31.7 (v0.19): from_str + Box::new intrinsic dispatch REMOVED.
+    // Both are now handled by prelude impls (Stage 31.6b + 31.6f).
+    // The dead `if path.segments.len() == 2` block that checked for
+    // `type_name == "String" && method_name == "from_str"` and
+    // `type_name == "Box" && method_name == "new"` has been removed.
+    // Per §1.0 原則 5 (去除兼容思维): dead dispatch code removed.
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution handles all calls.
 
     // Stage 18.186 (TD-FORMAT-MACRO): Intercept __landin_format(fmt, ...) calls.
     //

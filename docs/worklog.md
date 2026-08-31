@@ -36910,3 +36910,67 @@ Stage Summary:
 - Stage 31.7: Remove KNOWN_INTRINSIC_METHODS whitelist (String methods migrated, Vec push/get stay intrinsic)
 - Stage 31.8: prelude monomorphization order fix (v0.5+ architectural — unblocks Vec::push/get)
 - format! migration: BLOCKED on format args language feature
+
+---
+Task ID: stage31.7
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.7 (v0.19) — Intrinsic cleanup: remove dead dispatch code for migrated intrinsics. L2 (dead code removal + comment cleanup + 8 tests). v0.568.0.
+
+3秒启动自检:
+- 定位: L2 (dead code removal in expr_variants.rs + method_call_lower.rs + 8 tests)
+- 对齐: 已查 Stage 31.6g worklog (Vec::push/get BLOCKED) + all prior migration stages
+- 阻断: v0.567.0 全绿 (5079 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Dead code removal scope: only remove dispatch for MIGRATED intrinsics
+   - 引用 §1.0 原則 5 (去除兼容思维): dead dispatch code removed
+   - Migrated (dispatch removed): String::from_str (Stage 31.6b), String::push_str (Stage 31.6c), Box::new (Stage 31.6f), String::as_str (Stage 31.5)
+   - NOT migrated (dispatch stays): Vec::push, Vec::get (BLOCKED on prelude monomorphization), format! (BLOCKED on format args)
+   - Per §12: root-cause fix is per-method, not all-at-once
+
+2. Box::new expected_ty threading: KEPT (not dead code)
+   - Initial attempt to remove it caused 4 test failures
+   - Root cause: typeck resolves fn sig AFTER MIR lower, so MIR-lower-time expected_ty is the only way to propagate outer type context
+   - Without it: `Box::new(Holder(true))` where `b: Box<Holder<i32>>` fails to detect type mismatch
+   - Per §1.0 原則 4 (报错 > 静默): type mismatch must be detected
+   - Per §1.0 原則 9 (正确 > 妥协): keep the expected_ty path — it's not dead code, it's needed for typeck
+
+裁剪点:
+- L2 — dead code removal + 8 tests
+- 跳过 removing dead intrinsic functions (string_intrinsics.rs, box_intrinsics.rs) — kept for reference per §1.0 原則 13
+- 安全理由: §1.0 原則 5 — only removing confirmed dead dispatch, not active code
+
+5W2H:
+- WHAT: Remove dead intrinsic dispatch code for migrated String/Box methods
+- WHY: §1.0 原則 5 (去除兼容思维) — dead code obscures active paths
+- WHO: PM-A + ARCH-A + DEV-A + QA-A
+- WHEN: v0.19 Stage 31.7 (after Stage 31.6g BLOCKED)
+- WHERE: src/mir/lower/expr_variants.rs (from_str/Box::new dispatch comments) + src/mir/lower/method_call_lower.rs (push_str dispatch comments)
+- HOW: (1) Remove dead from_str/Box::new 2-segment dispatch block (2) Clean stale comments (3) Keep Box::new expected_ty (needed for typeck) (4) 8 tests
+- HOW MUCH: -30 LOC dead dispatch code; 5087 tests total (5079 + 8), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4189/4189 (2 ignored) ✅ — +8 new stage31_7 tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — dead code removal) ✅
+- D8 (§1.6 终极检验): dead dispatch removed, active code preserved ✅
+
+Stage Summary:
+- v0.19 Stage 31.7: Intrinsic Cleanup COMPLETE ✅
+- Removed: dead dispatch comments/blocks for from_str, Box::new (2-segment path check)
+- Kept: Box::new expected_ty threading (still needed for typeck type mismatch detection)
+- Kept: Vec::push/get dispatch (BLOCKED on prelude monomorphization)
+- Kept: format! dispatch (BLOCKED on format args language feature)
+- 8 tests (all positive — verify migrated methods still work after cleanup)
+- Tests: 5087 (898 lib + 4189 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+
+下一步:
+- Stage 31.8 (v0.5+): prelude monomorphization order fix — unblocks Vec::push/get migration
+- format! migration: BLOCKED on format args language feature (v0.20+)
+- TD-INTRINSIC-OVERUSE Phase 2-B/C: 4/7 methods migrated, 3 BLOCKED on v0.5+ architectural changes

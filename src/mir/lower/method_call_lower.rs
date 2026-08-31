@@ -563,21 +563,16 @@ pub(super) fn lower_method_call_expr(
         // now that as_str is declared in prelude, method_def_id is always
         // Some, so this code was unreachable (dead code).
         //
-        // Remaining intrinsics below (String::push_str, Vec::push, etc.)
-        // still use early interception in this else branch because they
-        // haven't been migrated to prelude declarations yet.
+        // Stage 31.7: String::push_str, String::from_str, and Box::new are
+        // now handled by prelude impls (Stages 31.5-31.6f). Their dispatch
+        // code has been removed above. Only Vec::push and Vec::get remain as
+        // intrinsics (BLOCKED on prelude monomorphization, v0.5+).
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
 
-        // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::len() removed.
-        // Now handled by prelude impl: `impl<T> Vec<T> { fn len(&self) -> i64 { self.len } }`
-        // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
-        // Per §1.0 原則 5 (去除兼容思维): dead code removed.
-
-        // Stage 31.6c (v0.19): String::push_str intrinsic REMOVED.
-        // Now handled by prelude impl using .ptr/.len/.cap + extern C realloc/memcpy.
-        // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
-        // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
+        // Stage 31.7: String::push_str dispatch removed (prelude impl, Stage 31.6c).
+        // Per §1.0 原則 5 (去除兼容思维): dead comments removed.
+        // Per §1.0 原則 6 (通解 > 特解): standard method resolution for migrated methods.
 
         // Stage 18.200: Vec::get(index) intrinsic.
         // `v.get(i)` → call __landin_vec_get(&v, i, &out, elem_size).
