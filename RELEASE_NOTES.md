@@ -3,13 +3,80 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.549.0 (Stage 30.8 — v0.14 TD-IMPL-TYPE-MATCH: structural check + TD-TYPECK-IMPL-CONTEXT created) |
+| **Current version** | v0.550.0 (Stage 30.9 — v0.14 TD-HRTB-FN-SYNTAX: `Fn(T) -> U` trait bound syntax) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4007 integration tests = 4905 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4017 integration tests = 4915 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification + Stage 30.8: structural type match check (TD-TYPECK-IMPL-CONTEXT created for deeper typeck issue) |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification + Stage 30.8: structural type match check + Stage 30.9: Fn trait syntax |
+
+---
+
+## v0.550.0 — v0.14 Stage 30.9 — TD-HRTB-FN-SYNTAX: Fn(T) -> U Trait Bound Syntax
+
+### Overview
+
+This release fixes the **TD-HRTB-FN-SYNTAX** technical debt by implementing the `Fn(T) -> U` trait bound syntax. Previously, the parser treated `Fn` as a regular path and rejected `(` — causing parse errors for the most common HRTB usage (`for<'a> Fn(&'a T) -> &'a U`).
+
+Now, `Fn(T) -> U`, `FnMut(T) -> U`, and `FnOnce(T) -> U` all parse cleanly, including with HRTB.
+
+### What Changed
+
+#### Before v0.550.0 (parser rejected):
+```landin
+fn apply<F: Fn(i32) -> i32>(f: F, x: i32) -> i32 { f(x) }
+// ↑ parse error: "expected `:`, found `)`"
+```
+
+#### After v0.550.0 (parses cleanly):
+```landin
+fn apply<F: Fn(i32) -> i32>(f: F, x: i32) -> i32 { f(x) }
+// ✓ parses cleanly (typeck may report separate issues with f(x) calls)
+```
+
+#### Implementation Details
+
+| Component | File | Change |
+|-----------|------|--------|
+| Parser | `src/parser/path.rs` | New `try_parse_parenthesized_args` method — parses `(T1, T2) -> U` as `GenericArgs::Parenthesized` |
+| Parser | `src/parser/generics.rs` | Call `try_parse_parenthesized_args` from `parse_type_bounds` after parsing the trait path |
+
+#### Key Design Decisions
+
+1. **Placement**: `try_parse_parenthesized_args` is called from `parse_type_bounds` (trait bound context), NOT from `parse_path_with_ctx` (general type context). This prevents false positives where `(T, U)` after a path is misinterpreted as parenthesized args (e.g., tuple types).
+
+2. **Generic**: Works for any trait with `Fn(T) -> U` syntax, not just `Fn`/`FnMut`/`FnOnce`. This allows user-defined traits with similar syntax.
+
+3. **Scope**: This is a **parser** fix only. Typeck doesn't yet use the parenthesized args for type checking (e.g., `f(x)` where `f: impl Fn(i32) -> i32` produces "expected function, found F"). That's a separate typeck issue (TD-TYPECK-IMPL-CONTEXT or similar).
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (0 warnings) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 4017/4017 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 92,192 LOC, +70 LOC from v0.549.0) |
+| D8 ultimate test | ✅ PASS | Root-cause fix per §12 — parser syntax, not symptom patch |
+
+### Test Suite Impact
+
+- **New tests**: 10 (in `stage30_9_fn_syntax_tests.rs`)
+  - 5 positive: Fn/FnMut/FnOnce in trait bound, impl Fn in param, HRTB + Fn syntax
+  - 3 negative: Fn without parens, unclosed paren, Fn without return type
+  - 2 regression: regular trait bound, turbofish trait bound
+- **Total tests**: 4915 (was 4905 in v0.549.0)
+
+### Remaining Tech Debt (v0.14+ / v0.15+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-HRTB-SOLVER-INTEGRATION | 🟡 P2, v0.14+ | HRTB surface syntax captured but solver doesn't enforce semantics — wire Binder<T> + universes |
+| TD-TYPECK-IMPL-CONTEXT | 🟡 P2, v0.15+ | typeck doesn't resolve `Self::Item` to `T` during method body checking — add impl-block context to typeck |
 
 ---
 

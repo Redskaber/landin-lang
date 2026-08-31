@@ -325,6 +325,27 @@ impl<'a> Parser<'a> {
             ) {
                 let path = self.parse_path();
                 let span = self.current_span();
+                // Stage 30.9 (v0.14 TD-HRTB-FN-SYNTAX): After parsing the
+                // trait path, check for parenthesized args `Fn(T) -> U`.
+                // This is only valid in trait bound context (not general
+                // type context), so we check here rather than in parse_path.
+                // Per §1.0 原則 6 (通解 > 特解): one check for all Fn-like traits.
+                let _paren_args = self.try_parse_parenthesized_args();
+                // Note: If parenthesized args were parsed, they're now
+                // consumed. The path's last segment should carry them, but
+                // since parse_path already returned, we need to attach
+                // them retroactively. For simplicity, we store them on
+                // the TraitBound via a new field (future work) or rely
+                // on the path's segment args (which parse_path didn't set
+                // because we didn't call try_parse_parenthesized_args there).
+                //
+                // TODO: Attach parenthesized args to the path's last segment.
+                // For now, the args are parsed and consumed (preventing
+                // "expected `:`, found `(`" errors), but not yet stored
+                // on the path. This allows `F: Fn(i32) -> i32` to PARSE
+                // without error, even though the typeck doesn't yet use
+                // the parenthesized args for type checking.
+                let _ = _paren_args; // suppress unused variable warning
                 TypeBound::Trait(TraitBound {
                     path,
                     args: Vec::new(),

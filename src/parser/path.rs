@@ -304,6 +304,41 @@ impl<'a> Parser<'a> {
         Some(GenericArgs::AngleBracketed(args))
     }
 
+    /// Stage 30.9 (v0.14 TD-HRTB-FN-SYNTAX): Parse parenthesized generic args
+    /// `Fn(T1, T2) -> U` — the function-trait syntax.
+    ///
+    /// This is used by `Fn`, `FnMut`, `FnOnce` trait bounds:
+    /// `F: Fn(i32) -> i32` or `for<'a> Fn(&'a T) -> &'a U`.
+    ///
+    /// Returns `Some(GenericArgs::Parenthesized(inputs, output))` if the
+    /// next token is `(`, otherwise `None`.
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): the parenthesized form is explicit.
+    /// Per §1.0 原則 6 (通解 > 特解): one parser for all Fn/FnMut/FnOnce.
+    /// Per §23: function name follows `<verb>_<noun>_<noun>` pattern.
+    pub(super) fn try_parse_parenthesized_args(&mut self) -> Option<GenericArgs> {
+        if *self.peek() != TokenKind::LParen {
+            return None;
+        }
+        self.bump(); // (
+        let mut inputs = Vec::new();
+        while !matches!(self.peek(), TokenKind::RParen | TokenKind::Eof) {
+            inputs.push(self.parse_ty());
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(&TokenKind::RParen, "`)`");
+        let output = if *self.peek() == TokenKind::Arrow {
+            self.bump(); // ->
+            self.parse_ty()
+        } else {
+            // No return type → unit `()`
+            Ty::Tuple(Vec::new(), self.current_span())
+        };
+        Some(GenericArgs::Parenthesized(inputs, Box::new(output)))
+    }
+
     /// Stage 18.53 GATs Phase 2: Parse a qualified path `<T as Trait>::Name`.
     ///
     /// Returns `Some((QSelf, Path))` on success, where `QSelf.ty = Some(T)`

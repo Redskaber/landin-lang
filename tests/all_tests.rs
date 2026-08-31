@@ -787,3 +787,7 @@ mod stage30_7_impl_assoc_type_verification_tests;
 // === Stage 30.8 (v0.14 TD-IMPL-TYPE-MATCH): Structural type match check ===
 #[path = "v0/stage30/plan/stage30_8_impl_type_match_tests.rs"]
 mod stage30_8_impl_type_match_tests;
+
+// === Stage 30.9 (v0.14 TD-HRTB-FN-SYNTAX): Fn(T) -> U trait bound syntax ===
+#[path = "v0/stage30/plan/stage30_9_fn_syntax_tests.rs"]
+mod stage30_9_fn_syntax_tests;

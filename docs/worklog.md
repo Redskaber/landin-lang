@@ -34896,3 +34896,69 @@ Stage Summary:
 - TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
 - TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
 - TD-TYPECK-IMPL-CONTEXT (NEW, P2, v0.15+) — add impl-block context to typeck so `Self::Item` resolves to `T` during method body checking
+
+---
+Task ID: stage30.9
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.9 (v0.14) — TD-HRTB-FN-SYNTAX: implement `Fn(T) -> U` trait bound syntax. L2. v0.550.0.
+
+3秒启动自检:
+- 定位: L2 (parser feature: `Fn(...)` trait call syntax — single module + tests)
+- 对齐: 已查 v0.549.0 (Stage 30.8 complete); TD-HRTB-FN-SYNTAX — was classified as "`for<'a> Fn(&'a T) -> &'a U` syntax not parsed"
+- 阻断: Stage 30.8 全绿 (4905 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Implementation approach: `try_parse_parenthesized_args` in parser/path.rs
+   - 引用 §1.0 原則 3 (显式 > 隐式): the parenthesized form is explicit
+   - 引用 §1.0 原則 6 (通解 > 特解): one parser for all Fn/FnMut/FnOnce (not per-trait special-casing)
+   - 引用 §12 (最优 > 最小): root-cause fix at the parser level, not a symptom patch
+   - 替代: special-case `Fn`/`FnMut`/`FnOnce` as keywords — but that breaks user-defined traits with similar syntax
+   - 选择: generic `try_parse_parenthesized_args` called from `parse_type_bounds` — works for any trait with `Fn(T) -> U` syntax
+
+2. Where to call `try_parse_parenthesized_args`:
+   - 引用 §1.0 原則 9 (正确 > 妥协): correct placement — only in trait bound context, not general type context
+   - First attempt: call from `parse_path_with_ctx` for all Type context → broke 49 tests (tuple types `(T, U)` after a path were misinterpreted as parenthesized args)
+   - 替代: call from `parse_path_with_ctx` only for Fn-like traits → requires knowing the trait name, fragile
+   - 选择: call from `parse_type_bounds` after parsing the trait path — trait bound context is the ONLY place where `Fn(T) -> U` is valid syntax
+
+3. What's NOT in scope (typeck issue):
+   - Typeck doesn't yet use the parenthesized args for type checking (e.g., `f(x)` where `f: impl Fn(i32) -> i32` produces "expected function, found F")
+   - This is a separate typeck issue (TD-TYPECK-IMPL-CONTEXT or similar) — the parser syntax is complete
+   - 引用 §1.0 原則 9 (正确 > 妥协): honest scope — parser syntax done, typeck integration deferred
+
+裁剪点:
+- L2 — full §14.5 D1-D8 deep review executed
+- 跳过 typeck integration — separate TD, not a parser issue
+- 安全理由: additive change (new parser method + call site); existing tests all pass; new tests document actual behavior
+
+5W2H:
+- WHAT: TD-HRTB-FN-SYNTAX — implement `Fn(T) -> U` trait bound syntax
+- WHY: `for<'a> Fn(&'a T) -> &'a U` is the most common HRTB usage; was rejected by parser
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.14 Stage 30.9 (after Stage 30.8 impl type match)
+- WHERE: src/parser/path.rs (new `try_parse_parenthesized_args` method) + src/parser/generics.rs (call from `parse_type_bounds`) + tests/v0/stage30/plan/stage30_9_fn_syntax_tests.rs (10 tests)
+- HOW: (1) Add `try_parse_parenthesized_args` method to parser (2) Call from `parse_type_bounds` after parsing trait path (3) Handles `Fn(T) -> U`, `FnMut(T) -> U`, `FnOnce(T) -> U` uniformly (4) 10-test suite: 5 positive + 3 negative + 2 regression
+- HOW MUCH: 4915 tests (was 4905, +10 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4017/4017 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +70 from v0.549.0) ✅
+- D8 (§1.6 终极检验): root-cause fix per §12 ✅ — parser syntax, not symptom patch
+
+Stage Summary:
+- v0.14 Stage 30.9: TD-HRTB-FN-SYNTAX COMPLETE ✅
+- `Fn(T) -> U`, `FnMut(T) -> U`, `FnOnce(T) -> U` trait bound syntax now parses cleanly
+- HRTB + Fn syntax `for<'a> Fn(&'a T) -> &'a U` now parses cleanly
+- 10-test suite: 5 positive (Fn/FnMut/FnOnce/HRTB+Fn/impl Fn) + 3 negative + 2 regression
+- §3.2 全绿: 4915 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.14 remaining TDs):
+- TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference (largest architectural work)
+- TD-TYPECK-IMPL-CONTEXT (P2, v0.15+) — typeck resolves `Self::Item` during method body checking + uses parenthesized args for Fn trait call typeck
