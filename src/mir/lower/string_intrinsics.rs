@@ -222,6 +222,12 @@ pub(super) fn lower_string_from_str_intrinsic(
 /// - **PHI avoidance**: Reload `str.ptr` in copy_bb via `Projection(recv, Field(0))`.
 /// - **memcpy via C helper**: `__landin_memcpy` is a primitive C helper (per §16.5).
 /// - **Growth while loop**: Expressed via MIR back-edge (first MIR loop in an intrinsic).
+///
+/// Stage 31.6c (v0.19): This function is now DEAD CODE — `push_str` has been
+/// migrated to prelude impl using `.ptr`/`.len`/`.cap` + extern C. Kept for
+/// reference per §1.0 原則 13 (architecture limit recording). Will be removed
+/// in Stage 31.7 (whitelist cleanup).
+#[allow(dead_code)]
 pub(super) fn lower_string_push_str_intrinsic(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,

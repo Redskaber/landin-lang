@@ -22,7 +22,7 @@ use super::method_resolution::{
 use super::MirLowerCtxt;
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
-use super::string_intrinsics::lower_string_push_str_intrinsic;
+// Stage 31.6c: lower_string_push_str_intrinsic import removed — push_str now in prelude.
 use super::vec_intrinsics::{lower_vec_get_intrinsic, lower_vec_push_intrinsic};
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
 // (post-resolution). Per §13.4 J2 (单一职责).
@@ -574,26 +574,10 @@ pub(super) fn lower_method_call_expr(
         // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
         // Per §1.0 原則 5 (去除兼容思维): dead code removed.
 
-        // Stage 18.198 (TD-STRING-INTRINSICS): String::push_str(s) intrinsic.
-        // `s.push_str(src)` → call __landin_string_push_str(&s, src.ptr, src.len).
-        // Per §1.0 原則 6 (通解>特例): one intrinsic for all String::push_str calls.
-        if method_name_str == "push_str" && args.len() == 1 {
-            let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
-                && cx.hir.is_some_and(|hir| {
-                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.find_owner(*did)
-                        {
-                            let name = cx.interner.resolve(&s.ident.name);
-                            return name == "String";
-                        }
-                    }
-                    false
-                });
-            if is_string {
-                return lower_string_push_str_intrinsic(cx, expr, recv_local, arg_locals[0]);
-            }
-        }
+        // Stage 31.6c (v0.19): String::push_str intrinsic REMOVED.
+        // Now handled by prelude impl using .ptr/.len/.cap + extern C realloc/memcpy.
+        // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+        // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
 
         // Stage 18.200: Vec::get(index) intrinsic.
         // `v.get(i)` → call __landin_vec_get(&v, i, &out, elem_size).

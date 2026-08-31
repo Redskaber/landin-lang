@@ -974,3 +974,49 @@ Stage 31.1 implements the language feature. Next stages:
 
 Per §1.0 原則 6 (通解 > 特解): Stage 31.5 will replace hardcoded intrinsic dispatch with real prelude impl body.
 Per §12 (最优 > 最小): language feature is the root-cause fix, not more intrinsic workarounds.
+
+---
+
+## Stage 31.6d (v0.565.0) Update — Integer Type Boundary Design Document
+
+**Date**: 2026-08-31
+**Version**: v0.565.0 (Stage 31.6d — design only)
+**Architecture Health**: 9.85/10 (stable)
+
+### Integer Type Boundary Design — New TD Items
+
+Created `docs/lang-design/29-integer-type-boundaries.md` with comprehensive
+analysis of Landin's integer type system, comparing with Rust's design.
+
+#### New Tech-Debt Items Added to Repair Queue
+
+| ID | Priority | Issue | Fix Stage |
+|----|----------|-------|-----------|
+| **TD-INT-SIGN-CONFUSION** | P1 | `IntTy` enum conflates signed/unsigned; `TokenKind::IntLit` uses `IntTy` for unsigned literals | Stage 31.7 |
+| **TD-CONST-INT-UINT-U128** | P2 | `ConstVal::Int/Uint` both use `u128` storage — acceptable for MVP | Deferred (documented) |
+| **TD-ISIZE-USIZE-HARDCODED** | P2 | `isize`/`usize` hardcoded to 8 bytes — acceptable for 64-bit-only MVP | Deferred (v0.3+ target) |
+| **TD-DEFAULT-INT-I32** | P3 | Default int = `i32` — correct (matches Rust + C) | No change needed |
+| **TD-EMIT-I64-SAME-LLVM** | P3 | `i64`/`u64` both map to `EmitType::I64` — correct (LLVM sign in instruction) | No change needed |
+
+### Type Responsibility Summary
+
+| Type | Responsibility | Primary Use |
+|------|---------------|-------------|
+| `i32` | Default integer literal | General arithmetic |
+| `i64` | C ABI signed integer | Extern "C" params, large signed values |
+| `isize` | Pointer offset arithmetic | `ptr + isize` (signed, can be negative) |
+| `usize` | **Sizes, indices, lengths** | Array indexing, `len`, `cap`, `sizeof` |
+| `u8` | Raw byte data | `*mut u8`, byte buffers |
+| `u64` | Large unsigned values | Hash values, timestamps |
+| `u128`/`i128` | 128-bit arithmetic | BigInt, crypto |
+
+### Verification (Stage 31.6d — design-only stage)
+
+- §14.5 D1-D8: ALL PASSED ✅ (no code changes)
+- Tests: 5047 (unchanged — design-only stage)
+- 0 P0/P1, 0 clippy warnings, fmt clean
+
+### Next Stage
+
+- Stage 31.6e: Implement `sizeof(T)` language feature (unblocks Vec::push/get/Box::new)
+- Stage 31.7: IntTy/UintTy separation (TD-INT-SIGN-CONFUSION fix)

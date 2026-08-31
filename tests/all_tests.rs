@@ -833,3 +833,7 @@ mod stage31_6a_fat_ptr_field_access_tests;
 // === Stage 31.6b (v0.19): String::from_str prelude impl migration ===
 #[path = "v0/stage31/plan/stage31_6b_from_str_prelude_impl_tests.rs"]
 mod stage31_6b_from_str_prelude_impl_tests;
+
+// === Stage 31.6c (v0.19): String::push_str prelude impl migration ===
+#[path = "v0/stage31/plan/stage31_6c_push_str_prelude_impl_tests.rs"]
+mod stage31_6c_push_str_prelude_impl_tests;

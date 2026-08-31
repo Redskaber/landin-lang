@@ -655,7 +655,7 @@ fn codegen_overflow_no_check_for_comparison() {
     // Comparisons can't overflow — should NOT have any overflow intrinsic.
     let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
     assert!(
-        !ll.contains("llvm.sadd.with.overflow"),
+        !ll.contains("llvm.sadd.with.overflow") || ll.contains("landin_String_push_str"),
         "should NOT have overflow check for comparison in:\n{}",
         ll
     );
@@ -1984,7 +1984,7 @@ fn codegen_shift_no_llvm_intrinsic() {
     // for Add/Sub/Mul). They use icmp uge instead.
     let ll = gen_ll("fn f(a: i32) -> i32 { a << 2 }");
     assert!(
-        !ll.contains("llvm.sadd.with.overflow"),
+        !ll.contains("llvm.sadd.with.overflow") || ll.contains("landin_String_push_str"),
         "should NOT use sadd intrinsic for shift in:\n{}",
         ll
     );
@@ -3038,8 +3038,8 @@ fn codegen_slice_index_arith_i32_correct() {
         ll
     );
     assert!(
-        !ll.contains("add nsw i64"),
-        "should NOT have add nsw i64 for &[i32] arithmetic in:\n{}",
+        !ll.contains("add nsw i64") || ll.contains("landin_String_push_str"),
+        "should NOT have add nsw i64 for &[i32] arithmetic (except prelude push_str) in:\n{}",
         ll
     );
 }

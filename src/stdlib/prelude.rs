@@ -74,6 +74,7 @@ const PRELUDE_SOURCE: &str = r#"
 extern "C" {
     fn __landin_alloc(size: i64) -> *mut u8;
     fn __landin_memcpy(dst: *mut u8, src: *const u8, n: i64);
+    fn __landin_realloc(ptr: *mut u8, old_size: i64, new_size: i64) -> *mut u8;
 }
 enum Option<T> { None, Some(T) }
 enum Result<T, E> { Ok(T), Err(E) }
@@ -176,6 +177,29 @@ impl String {
         let ptr: *mut u8 = __landin_alloc(len);
         __landin_memcpy(ptr, s.ptr, len);
         String { ptr: ptr, len: s.len, cap: s.len }
+    }
+    // Stage 31.6c (v0.19): Migrated from MIR intrinsic to prelude impl.
+    //
+    // `push_str` now uses `.ptr`/`.len`/`.cap` field access + `extern "C"` calls
+    // to `__landin_realloc` + `__landin_memcpy`. The growth while loop is
+    // expressed directly in Landin source (while + if + field mutation).
+    // This replaces the 10-basic-block MIR intrinsic in string_intrinsics.rs.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+    // Per §1.0 原則 3 (显式 > 隐式): growth logic visible in source.
+    // Per §12 (最优 > 最小): root-cause fix via language features.
+    fn push_str(&mut self, src: &str) {
+        let new_len: usize = self.len + src.len;
+        if new_len > self.cap {
+            let mut new_cap: usize = self.cap;
+            if new_cap == 0usize { new_cap = 4usize; }
+            while new_cap < new_len { new_cap = new_cap + new_cap; }
+            self.ptr = __landin_realloc(self.ptr, self.cap as i64, new_cap as i64);
+            self.cap = new_cap;
+        }
+        let dest: *mut u8 = self.ptr + self.len;
+        __landin_memcpy(dest, src.ptr, src.len as i64);
+        self.len = new_len;
     }
     // Stage 31.5 (v0.19): Migrated from MIR intrinsic to prelude impl.
     //

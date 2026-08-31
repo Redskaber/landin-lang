@@ -90,8 +90,12 @@ impl MemoryEmitter for TextEmitter {
         let elem_str = emit_type_to_llvm_str(elem_ty);
         // Stage 14.59: LLVM 19 opaque pointers — use "ptr" instead of "elem*"
         let ptr_str = "ptr".to_string();
+        // Stage 31.6c: Use i64 for GEP index (handles usize/i64 indices from
+        // pointer arithmetic `ptr + len` where len is usize = i64 on 64-bit).
+        // LLVM accepts i64 for GEP indices on 64-bit targets.
+        // Per §1.0 原則 6 (通解 > 特解): one index type for all GEP indices.
         self.line(&format!(
-            "  %v{} = getelementptr inbounds {}, {} {}, i32 {}",
+            "  %v{} = getelementptr inbounds {}, {} {}, i64 {}",
             r, elem_str, ptr_str, base_ptr, index
         ));
         format!("%v{}", r)
