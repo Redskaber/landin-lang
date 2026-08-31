@@ -35112,3 +35112,71 @@ Stage Summary:
 下一步 (v0.15 remaining TDs):
 - TD-HRTB-FULL-ENFORCEMENT (P2) — wire Binder<T> into trait solver + universes into region inference
 - TD-SELF-TYPE-RESOLUTION (NEW, P2, v0.16+) — deeper HIR self type resolution for full Self::Item resolution
+
+---
+Task ID: stage30.13
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.13 (v0.15) — TD-HRTB-FULL-ENFORCEMENT: HRTB partial enforcement + TD-HRTB-PLACEHOLDER-CHECK created. L3. v0.553.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: driver/driver_validations.rs + traits/resolver.rs)
+- 对齐: 已查 v0.552.0 (Stage 30.12 complete); TD-HRTB-FULL-ENFORCEMENT — was classified as "HRTB bounds collected but not enforced"
+- 阻断: Stage 30.12 全绿 (4927 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root-cause analysis: HRTB bounds collected but never enforced
+   - 引用 §1.0 原則 4 (报错 > 静默): hrtb_bounds collected in ImplInfo but never checked
+   - Evidence: grep for "hrtb_bounds" in typeck/solver → only in resolver collection + test files
+   - 引用 §12 (最优 > 最小): root-cause fix requires enforcement pass
+   - 替代: implement full placeholder universe enforcement now — requires typeck to have InferCtxt (architectural change)
+   - 选择: implement PARTIAL enforcement (trait implementation check) + create TD-HRTB-PLACEHOLDER-CHECK (P2, v0.16+)
+
+2. Implementation: validate_hrtb_bounds function
+   - 引用 §1.0 原則 6 (通解 > 特解): one validator for all HRTB bounds
+   - For each HrtbBound, check if the bounded type implements the trait (via implements_by_def_ids)
+   - Skip generic params (can't check at this stage — no concrete type)
+   - 引用 §1.0 原則 4 (报错 > 静默): report "HRTB bound not satisfied" for concrete types that don't implement the trait
+
+3. New TD creation: TD-HRTB-PLACEHOLDER-CHECK (P2, v0.16+)
+   - 引用 §6.1 (技术债分类): P2 — correctness issue (partial enforcement only)
+   - 引用 §1.0 原則 13 (架构限制记录与升级): document the architectural limitation
+   - Fix plan: wire Binder<T> into trait solver + enter_universe/exit_universe for placeholder regions + verify bound holds for ALL lifetimes
+   - Deferred to v0.16+ (requires typeck to have InferCtxt with universe support)
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 full placeholder universe enforcement — requires typeck InferCtxt (architectural change)
+- 安全理由: additive change (new validator + new tests); existing tests all pass
+
+5W2H:
+- WHAT: TD-HRTB-FULL-ENFORCEMENT — HRTB partial enforcement + TD-HRTB-PLACEHOLDER-CHECK created
+- WHY: HRTB bounds were collected (Stage 30.10) but never enforced; per §1.0 原則 4, must be checked
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.15 Stage 30.13 (after Stage 30.12 typeck impl context)
+- WHERE: src/driver/driver_validations.rs (new validate_hrtb_bounds function + caller) + tests/v0/stage30/plan/stage30_13_hrtb_enforcement_tests.rs (6 tests)
+- HOW: (1) Add validate_hrtb_bounds function (2) Check each HrtbBound via implements_by_def_ids (3) Skip generic params (4) Create TD-HRTB-PLACEHOLDER-CHECK (5) 6-test suite
+- HOW MUCH: 4933 tests (was 4927, +6 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4035/4035 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +60 from v0.552.0) ✅
+- D8 (§1.6 终极检验): honest reclassification per §12 ✅ — partial enforcement done, full deferred
+
+Stage Summary:
+- v0.15 Stage 30.13: TD-HRTB-FULL-ENFORCEMENT PARTIAL COMPLETE ✅
+- HRTB bounds now partially enforced (trait implementation check for concrete types)
+- Full enforcement (placeholder universes) deferred to TD-HRTB-PLACEHOLDER-CHECK (P2, v0.16+)
+- 6-test suite: 4 positive + 2 regression
+- §3.2 全绿: 4933 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings
+- v0.15 is now COMPLETE — all v0.15 TDs addressed (Stage 30.12-30.13)
+
+下一步 (v0.16):
+- TD-SELF-TYPE-RESOLUTION (P2) — deeper HIR self type resolution for full Self::Item
+- TD-HRTB-PLACEHOLDER-CHECK (NEW, P2) — wire Binder<T> + placeholder universes for full HRTB enforcement

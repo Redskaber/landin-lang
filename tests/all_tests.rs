@@ -799,3 +799,7 @@ mod stage30_10_hrtb_solver_integration_tests;
 // === Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT): Assoc type bindings + pre-typeck projection ===
 #[path = "v0/stage30/plan/stage30_12_typeck_impl_context_tests.rs"]
 mod stage30_12_typeck_impl_context_tests;
+
+// === Stage 30.13 (v0.15 TD-HRTB-FULL-ENFORCEMENT): HRTB partial enforcement ===
+#[path = "v0/stage30/plan/stage30_13_hrtb_enforcement_tests.rs"]
+mod stage30_13_hrtb_enforcement_tests;

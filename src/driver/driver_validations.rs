@@ -407,6 +407,92 @@ pub(super) fn validate_impl_assoc_types(
     }
 }
 
+/// Stage 30.13 (v0.15 TD-HRTB-FULL-ENFORCEMENT): Validate HRTB bounds
+/// collected in `ImplInfo.hrtb_bounds`.
+///
+/// For each HRTB bound (`T: for<'a> Trait`), this validator performs a
+/// **partial enforcement**: it checks that the bounded type implements
+/// the trait (via `implements_by_def_ids`). Full enforcement (verifying
+/// the bound holds for ALL lifetimes via placeholder universes) is
+/// deferred to TD-HRTB-PLACEHOLDER-CHECK (P2, v0.16+).
+///
+/// Per §1.0 原則 4 (报错 > 静默): HRTB bounds are now partially enforced —
+/// at least the trait implementation is verified.
+/// Per §1.0 原則 9 (正确 > 妥协): honest scope — implementation check done,
+/// universal quantification deferred.
+/// Per §1.0 原則 6 (通解 > 特解): one validator for all HRTB bounds.
+/// Per §10 naming: `validate_hrtb_bounds` follows `validate_<noun>_<noun>`.
+pub(super) fn validate_hrtb_bounds(
+    hir: &HirCrate,
+    resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    errors: &mut Vec<TypeError>,
+) {
+    // Walk every impl block that has HRTB bounds.
+    for (_, owner) in &hir.owners {
+        let impl_block = match owner {
+            crate::hir::OwnerNode::Item(HirItem::Impl(impl_block)) => impl_block,
+            _ => continue,
+        };
+        // Get the impl's DefId.
+        let impl_def_id = impl_block.hir_id.owner;
+
+        // Look up the ImplInfo for this impl block.
+        let impl_info = match resolver.impls.get(&impl_def_id) {
+            Some(info) => info,
+            None => continue,
+        };
+
+        // For each HRTB bound, verify the trait implementation exists.
+        for hrtb in &impl_info.hrtb_bounds {
+            // Get the bounded type's DefId.
+            // The bounded_type_name is a Spur (type name). We need to find
+            // the type's DefId. For generic params (T), this is tricky —
+            // the type is a Param, not a concrete Adt. Skip for now —
+            // we only check concrete types.
+            let bounded_type_name = hrtb.bounded_type_name;
+            let trait_def_id = hrtb.trait_def_id;
+
+            // Try to find the type's DefId from the resolver's type_by_def_id.
+            // This is a best-effort check — for generic params, we skip.
+            let type_def_id = resolver.type_by_def_id.iter().find_map(|(def_id, &name)| {
+                if name == bounded_type_name {
+                    Some(*def_id)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(type_def_id) = type_def_id {
+                // Check if the type implements the trait.
+                if !resolver.implements_by_def_ids(trait_def_id, type_def_id) {
+                    let trait_name_str = interner
+                        .try_resolve(
+                            &resolver
+                                .type_by_def_id
+                                .get(&trait_def_id)
+                                .copied()
+                                .unwrap_or_default(),
+                        )
+                        .unwrap_or("?");
+                    let type_name_str = interner.try_resolve(&bounded_type_name).unwrap_or("?");
+                    errors.push(TypeError::new(
+                        format!(
+                            "HRTB bound not satisfied: type `{}` does not implement trait `{}` \
+                             (required by `for<...> {}` bound)",
+                            type_name_str, trait_name_str, trait_name_str
+                        ),
+                        hrtb.span,
+                    ));
+                }
+            }
+            // If type_def_id is None (generic param), skip — can't check
+            // at this stage. Full enforcement requires placeholder universes
+            // (TD-HRTB-PLACEHOLDER-CHECK).
+        }
+    }
+}
+
 /// Stage 18.71: Compatibility check for two MIR types (used by
 /// `validate_impl_method_signatures`).
 ///
@@ -1240,6 +1326,16 @@ pub(super) fn run_post_typeck_validations(
     // Per §10 naming: `validate_impl_assoc_types` follows
     //   `validate_<noun>_<noun>` pattern.
     validate_impl_assoc_types(hir, interner, &mut errors.typeck);
+
+    // Stage 30.13 (v0.15 TD-HRTB-FULL-ENFORCEMENT): Validate HRTB bounds.
+    // Partial enforcement — checks trait implementation exists.
+    // Full enforcement (placeholder universes) deferred to
+    // TD-HRTB-PLACEHOLDER-CHECK (P2, v0.16+).
+    //
+    // Per §1.0 原則 4 (报错 > 静默): HRTB bounds are now partially enforced.
+    // Per §1.0 原則 9 (正确 > 妥协): honest scope — implementation check done.
+    // Per §10 naming: `validate_hrtb_bounds` follows `validate_<noun>_<noun>`.
+    validate_hrtb_bounds(hir, trait_resolver, interner, &mut errors.typeck);
 
     // Stage 18.72 P1-A: Validate struct literal field counts.
     // Catches:

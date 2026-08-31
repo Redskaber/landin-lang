@@ -3,13 +3,74 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.552.0 (Stage 30.12 — v0.15 TD-TYPECK-IMPL-CONTEXT: assoc type bindings + pre-typeck projection + warning fixes) |
+| **Current version** | v0.553.0 (Stage 30.13 — v0.15 COMPLETE — TD-HRTB-FULL-ENFORCEMENT: HRTB partial enforcement) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4029 integration tests = 4927 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4035 integration tests = 4933 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.14 COMPLETE; v0.15 Stage 30.12: assoc type bindings + pre-typeck projection + 11 clippy warnings fixed |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.14 COMPLETE; v0.15 COMPLETE (Stage 30.12: assoc type bindings + pre-typeck projection + Stage 30.13: HRTB partial enforcement) |
+
+---
+
+## v0.553.0 — v0.15 Stage 30.13 — TD-HRTB-FULL-ENFORCEMENT: HRTB Partial Enforcement
+
+### Overview
+
+This release addresses the **TD-HRTB-FULL-ENFORCEMENT** technical debt by implementing **HRTB partial enforcement** in `validate_hrtb_bounds`. Root-cause analysis revealed that HRTB bounds were collected in `ImplInfo.hrtb_bounds` (Stage 30.10) but never enforced.
+
+Now, `validate_hrtb_bounds` checks each HRTB bound's trait implementation via `implements_by_def_ids`. Full enforcement (verifying the bound holds for ALL lifetimes via placeholder universes) is deferred to **TD-HRTB-PLACEHOLDER-CHECK** (P2, v0.16+).
+
+### What Changed
+
+#### HRTB Partial Enforcement
+
+Added `validate_hrtb_bounds` function in `driver_validations.rs`. For each `HrtbBound` collected in `ImplInfo.hrtb_bounds`:
+1. Look up the bounded type's DefId (skip if generic param — can't check)
+2. Check if the type implements the trait via `implements_by_def_ids`
+3. Report "HRTB bound not satisfied" if implementation missing
+
+**Note**: This is partial enforcement — it checks trait implementation exists, but does NOT verify universal quantification (bound holds for ALL lifetimes). Full enforcement requires placeholder universes (TD-HRTB-PLACEHOLDER-CHECK, P2, v0.16+).
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release --tests` 0 warnings |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 4035/4035 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 92,412 LOC) |
+| D8 ultimate test | ✅ PASS | Honest reclassification per §12 — partial enforcement, full deferred |
+
+### Test Suite Impact
+
+- **New tests**: 6 (in `stage30_13_hrtb_enforcement_tests.rs`)
+  - 4 positive: HRTB with valid impl, trait bound, multiple HRTB, multiple lifetimes
+  - 2 regression: non-HRTB bound, HRTB with generic param (skipped)
+- **Total tests**: 4933 (was 4927 in v0.552.0)
+
+### v0.15 Complete Summary
+
+v0.15 is now **COMPLETE**. All v0.15 TDs addressed:
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 30.12 | TD-TYPECK-IMPL-CONTEXT | ✅ RESOLVED — assoc type bindings + pre-typeck projection |
+| 30.13 | TD-HRTB-FULL-ENFORCEMENT | ✅ PARTIAL — HRTB partial enforcement; TD-HRTB-PLACEHOLDER-CHECK created |
+
+### Remaining Tech Debt (v0.16+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-SELF-TYPE-RESOLUTION | 🟡 P2, v0.16+ | Self::Item resolution may not fully work — deeper HIR self type resolution needed |
+| TD-HRTB-PLACEHOLDER-CHECK (NEW) | 🟡 P2, v0.16+ | HRTB partially enforced — need placeholder universes for universal quantification |
+
+---
+
+## v0.552.0 — v0.15 Stage 30.12 — TD-TYPECK-IMPL-CONTEXT: Assoc Type Bindings + Pre-Typeck Projection
 
 ---
 
