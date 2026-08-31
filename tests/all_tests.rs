@@ -763,3 +763,7 @@ mod stage21_01_gats_e2e_tests;
 // === Stage 30.2 (v0.13 TD-STUB-LIFETIME-ELISION-NOOP): Rule 4 enforcement ===
 #[path = "v0/stage30/plan/stage30_2_lifetime_elision_rule4_tests.rs"]
 mod stage30_2_lifetime_elision_rule4_tests;
+
+// === Stage 30.3 (v0.13 TD-STUB-DROP-ELABORATION-NOOP): Reclassification ===
+#[path = "v0/stage30/plan/stage30_3_drop_elaboration_reclassification_tests.rs"]
+mod stage30_3_drop_elaboration_reclassification_tests;

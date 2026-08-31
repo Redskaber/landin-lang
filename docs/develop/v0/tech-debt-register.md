@@ -530,3 +530,51 @@ For each remaining 🟡 TD-SOLVER-*:
 - **New files**: 6 solver modules + 7 stage docs = 13
 - **Design principles**: §1.0 原則 3/4/6/9/10 + §11 + §12 + §7.3.1 + §9.4.3 all followed
 
+
+---
+
+## Stage 30.3 (v0.544.0) Update — TD-STUB-DROP-ELABORATION-NOOP Reclassification
+
+**Date**: 2026-08-31
+**Version**: v0.544.0 (Stage 30.3)
+
+### Reclassification
+
+| TD | Old Status | New Status | Rationale |
+|----|-----------|-----------|-----------|
+| TD-STUB-DROP-ELABORATION-NOOP | 🟡 v0.2+ (no-op) | ✅ RESOLVED (Stage 30.3) | Root-cause analysis via runtime tests shows drop elaboration IS implemented (Stage 15.43-15.46), drop glue IS emitted (Stage 15.57), Drop IS called at function end. The "no-op" classification was inaccurate. |
+| **TD-DROP-SCOPE-TIMING** (NEW) | N/A | 🟡 P2, v0.14+ | StorageDead emitted at function end, not scope end. Block-scoped locals drop too late. Fix requires scope tracking in MirLowerCtxt. |
+
+### Evidence (Runtime Tests)
+
+- ✅ Drop fires for fn params at function end (`stage30_3_positive_drop_fires_for_param`)
+- ✅ Drop fires for top-level locals at function end (`stage30_3_positive_drop_fires_at_fn_end`)
+- ✅ Drop fires for moved values at destination's scope end (`stage30_3_positive_drop_on_moved_value`)
+- ✅ Drop glue emitted (compile-time check: `stage30_3_positive_drop_glue_emitted`)
+- ❌ Drop does NOT fire at block scope end (`stage30_3_negative_drop_does_not_fire_at_block_scope_end` — KNOWN LIMITATION)
+- ❌ Drop does NOT fire at if-block scope end (`stage30_3_negative_drop_does_not_fire_at_if_block_end` — KNOWN LIMITATION)
+- ❌ Drop does NOT fire at loop iteration end (`stage30_3_negative_drop_does_not_fire_at_loop_iteration_end` — KNOWN LIMITATION)
+
+### Root Cause
+
+`StorageDead` is emitted at function end (`src/mir/lower/body_lower.rs` line 567-594), not at scope end. The comment explicitly states this is a conservative approximation:
+
+```rust
+// Emit StorageDead for all locals (except the return local) before
+// the function returns. This is a conservative approximation —
+// ideally we'd emit StorageDead at each local's scope end, but that
+// requires scope tracking (Stage 3). For now, all locals die at
+// function return.
+```
+
+### Fix Plan (TD-DROP-SCOPE-TIMING, v0.14+)
+
+1. Add scope stack to `MirLowerCtxt` — `Vec<(BasicBlockId, usize)>` tracking (block_id, local_count_at_scope_start)
+2. In `lower_block`, push (current_block, mir.local_decls.len()) at start
+3. At end of `lower_block`, emit StorageDead for [scope_start..scope_end) in reverse order
+4. Handle early exit paths (return/break/continue) — need to emit StorageDead for all enclosing scopes
+5. Remove the function-end sweep in body_lower.rs (now redundant)
+6. Update elaborate_drops to handle the new per-block StorageDead placement
+
+**Estimated effort**: 2-3 days (scope tracking + early exit paths + test updates)
+**Risk**: May break existing tests that assume function-end StorageDead timing. Audit all 40+ drop conformance tests.

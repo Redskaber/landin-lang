@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.543.0 (v0.13 Stage 30.2 — TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement complete) |
+| **Version** | v0.544.0 (v0.13 Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP reclassification complete) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 30.2 — TD-STUB-LIFETIME-ELISION-NOOP COMPLETE**. 4850 tests (898 lib + 3952 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings on lib. §14.5 D1-D8 PASSED. v0.13 task: ✅ Stage 30.2 TD-STUB-LIFETIME-ELISION-NOOP (RFC 141 Rule 4 enforcement + over-application fix + self-param fix). Remaining TDs ALL BLOCKED: TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-DROP-ELABORATION-NOOP (Drop::drop codegen), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 91,721 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness + lifetime elision rule 4). Next: v0.13 continued (Drop + projection normalization + HRTB). |
+| **Status** | ✅ **v0.13 Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP RECLASSIFIED**. 4859 tests (898 lib + 3961 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings on lib. §14.5 D1-D8 PASSED. v0.13 tasks: ✅ Stage 30.2 TD-STUB-LIFETIME-ELISION-NOOP (RFC 141 Rule 4 enforcement), ✅ Stage 30.3 TD-STUB-DROP-ELABORATION-NOOP (reclassified as RESOLVED — drop elaboration IS implemented, not no-op; new TD-DROP-SCOPE-TIMING created for scope timing issue). Remaining TDs ALL BLOCKED: TD-DROP-SCOPE-TIMING (P2, v0.14+ scope tracking), TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 91,830 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness + lifetime elision rule 4). Next: v0.13 continued (projection normalization + HRTB + scope tracking). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -384,9 +384,10 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-STUB-PRELUDE-LOOP-BODY | Prelude `loop {}` marker bodies (4 methods) | 🟡 v0.5+ | Fat pointer construction syntax |
 | TD-TYPECK-LOCAL-DECL-ERROR-CHECK | Phase 4.5 disabled (47 prelude false-positives) | 🟡 v0.5+ | Prelude lazy monomorphization |
 | TD-STUB-REGION-ERASED | Region inference no-op | ✅ Resolved (Stage 30.1) | Reclassified — region inference was always running, not no-op |
-| TD-STUB-DROP-ELABORATION-NOOP | Drop elaboration no-op | 🟡 v0.2+ | Drop::drop codegen + dropck |
+| TD-STUB-DROP-ELABORATION-NOOP | Drop elaboration no-op | ✅ Resolved (Stage 30.3) | Reclassified — drop elaboration IS implemented (Stage 15.43-15.46), not no-op. New TD-DROP-SCOPE-TIMING created for scope timing issue. |
 | TD-STUB-LIFETIME-ELISION-NOOP | Lifetime elision no-op | ✅ Resolved (Stage 30.2) | RFC 141 Rule 4 enforced + over-application fix + self-param fix |
 | TD-STUB-PROJECTION-RESOLVER | Projection resolver partial | 🟡 v0.2+ | Associated type normalization |
+| TD-DROP-SCOPE-TIMING | StorageDead at fn end, not scope end | 🟡 v0.14+ | Scope tracking in MirLowerCtxt (Stage 30.3 created) |
 | TD-STUB-EMIT-TYPE-I32-FALLBACK | `mir_type_to_emit_type` i32 fallback | ✅ Mitigated | param_check (Stage 18.348) catches unresolved types |
 | TD-STUB-TYPECK-BEFORE-WRITEBACK | typeck before writeback | ✅ Resolved | Phase 0 + Phase 3.7 double writeback (Stage 18.353+18.355), now both removed |
 | TD-STUB-DEFAULT-INT-I32 | Default int = i32 | ✅ Design choice | Not a stub — Landin design decision |

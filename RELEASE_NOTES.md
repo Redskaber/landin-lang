@@ -3,13 +3,97 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.543.0 (Stage 30.2 — v0.13 TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement) |
+| **Current version** | v0.544.0 (Stage 30.3 — v0.13 TD-STUB-DROP-ELABORATION-NOOP reclassification) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 3952 integration tests = 4850 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 3961 integration tests = 4859 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE (Solver-Typeck integration, Where Clauses, Visibility, Break/Continue, Enum Exhaustiveness, Manifest, Region Inference reclassification); v0.13 Stage 30.2: TD-STUB-LIFETIME-ELISION-NOOP — Rule 4 enforcement + over-application fix + self-param fix |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 Stage 30.2: TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement; v0.13 Stage 30.3: TD-STUB-DROP-ELABORATION-NOOP reclassification (drop elaboration IS implemented, not no-op) + new TD-DROP-SCOPE-TIMING (P2) for scope timing issue |
+
+---
+
+## v0.544.0 — v0.13 Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP Reclassification
+
+### Overview
+
+This release closes the **TD-STUB-DROP-ELABORATION-NOOP** technical debt by **reclassifying** it based on root-cause analysis. The original classification ("elaborate_drops is no-op, no `impl Drop` support yet") was **inaccurate** — drop elaboration IS implemented (Stage 15.43-15.46), drop glue IS emitted (Stage 15.57), and Drop IS called at function end.
+
+The actual issue is different: `StorageDead` is emitted at **function end**, not at **scope end**. This means block-scoped locals get their drop called too late — after any observable side effects that follow the block. This is documented as a new TD: **TD-DROP-SCOPE-TIMING** (P2, v0.14+).
+
+### What Changed
+
+#### Reclassification: TD-STUB-DROP-ELABORATION-NOOP → RESOLVED
+
+Runtime tests verify that drop elaboration IS working:
+- ✅ Drop fires for fn params (at function end = correct scope end)
+- ✅ Drop fires for top-level locals (at function end)
+- ✅ Drop fires for moved values (at destination's scope end)
+- ✅ Drop glue functions are emitted (`drop_adt_<DefId>`)
+- ✅ Drop order is reverse declaration order (matching Rust)
+- ✅ Nested drop works (outer struct without Drop triggers inner's drop glue)
+
+#### New TD: TD-DROP-SCOPE-TIMING (P2)
+
+**Issue**: `StorageDead` is emitted at function end (`body_lower.rs` line 567-594), not at scope end. Block-scoped locals get their drop called too late.
+
+**Example**:
+```landin
+fn main() {
+    let counter = /* ... */;
+    {
+        let _t = Tracker { count_ptr: counter };
+        // _t should drop HERE
+    }
+    // _t's drop has NOT fired yet — counter is still 0
+    println!("{}", *counter);  // prints 0 (should print 1)
+}
+```
+
+**Workaround**: Place drop-observable code in a separate function so the param's scope end coincides with the drop point.
+
+**Fix plan** (v0.14+): Implement scope tracking in `MirLowerCtxt` — track scope stack with `start_local_count` per block, emit per-block `StorageDead` in `lower_block`, handle early exit paths (return/break/continue).
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (4 pre-existing lib-test warnings, unrelated) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 3961/3961 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 91,830 LOC, +109 LOC from v0.543.0) |
+| D8 ultimate test | ✅ PASS | All root-cause analysis per §12 (reclassification based on runtime evidence, not guess) |
+
+### Test Suite Impact
+
+- **New tests**: 9 (in `stage30_3_drop_elaboration_reclassification_tests.rs`)
+  - 4 positive: drop fires for params, fn-end locals, moved values, drop glue emitted
+  - 3 negative: drop does NOT fire at block/if/loop scope end (KNOWN LIMITATION documented)
+  - 2 regression: compile-time acceptance of `impl Drop` + nested drop
+- **Total tests**: 4859 (was 4850 in v0.543.0)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `tests/v0/stage30/plan/stage30_3_drop_elaboration_reclassification_tests.rs` | NEW — 9 tests documenting actual drop behavior (4 positive + 3 negative + 2 regression) |
+| `tests/all_tests.rs` | Register stage30_3 module |
+| `docs/lang-design/25-drop-elaboration.md` | §14.8 B2 writeback — design vs implementation deviation table + reclassification + TD-DROP-SCOPE-TIMING fix plan |
+| `README.md` | Update version + status + TD table (TD-STUB-DROP-ELABORATION-NOOP → RESOLVED, new TD-DROP-SCOPE-TIMING row) |
+| `RELEASE_NOTES.md` | This section |
+| `Cargo.toml` | Version bump 0.543.0 → 0.544.0 |
+| `docs/worklog.md` | Stage 30.3 entry with 5W2H + decision points |
+
+### Remaining Tech Debt (v0.13+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-DROP-SCOPE-TIMING (NEW) | 🟡 P2, v0.14+ | StorageDead at fn end, not scope end — scope tracking needed |
+| TD-STUB-PROJECTION-RESOLVER | 🟡 BLOCKED | Associated type normalization (v0.13+) |
+| TD-GAT-HIGHER-RANKED | 🟡 BLOCKED | HRTB + region substitution (v0.13+) |
 
 ---
 

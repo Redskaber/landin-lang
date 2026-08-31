@@ -275,3 +275,74 @@ These will be resolved in the implementation stages (15.43-15.46).
 - 3-5 days (per v0.2-preparation.md)
 - Stages 15.42 (design) + 15.43-15.46 (implementation) + 15.47 (review)
 - Each stage independently testable.
+
+---
+
+## 9. §14.8 B2 Writeback — Stage 30.3 (v0.13) Reclassification
+
+> **Date**: 2026-08-31
+> **Version**: v0.544.0 (Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP reclassification)
+> **Process**: stage-committee-process.md §14.8 B2 (design > implementation → writeback)
+
+### 9.1 Original Design vs Actual Implementation
+
+| Aspect | Design (§2) | Actual (v0.544.0) | Deviation |
+|--------|-------------|-------------------|-----------|
+| `ty_needs_drop` analysis | ✅ Designed | ✅ Implemented (Stage 15.43) | None |
+| `elaborate_drops` pass | ✅ Designed | ✅ Implemented (Stage 15.44) | None |
+| Drop glue codegen | ✅ Designed | ✅ Implemented (Stage 15.57) | None |
+| `TerminatorKind::Drop` codegen | ✅ Designed | ✅ Implemented (Stage 15.45) | None |
+| **Drop at scope end** | ✅ Designed (§2.1: "inserts Drop terminators at points where a local goes out of scope") | ❌ StorageDead emitted at FUNCTION END, not scope end | **B2 deviation** |
+| Drop order (fields in declaration order) | ✅ Designed | ✅ Implemented (Stage 15.57) | None |
+| Drop order (locals in reverse declaration order) | ✅ Designed | ✅ Implemented (Stage 15.62) | None |
+| `move` interaction (skip Drop for moved locals) | ✅ Designed (§7.4) | ✅ Implemented (Stage 15.62 flow-insensitive, Stage 18.282 flow-sensitive) | None |
+
+### 9.2 B2 Deviation: Drop at Scope End
+
+**Design intent** (§2.1): "Drop elaboration is the pass that inserts `Drop` terminators into the MIR at points where a local goes out of scope."
+
+**Actual implementation** (v0.544.0): `StorageDead` is emitted at **function end** (body_lower.rs line 567-594), not at scope end. The comment in body_lower.rs explicitly states:
+
+```rust
+// Emit StorageDead for all locals (except the return local) before
+// the function returns. This is a conservative approximation —
+// ideally we'd emit StorageDead at each local's scope end, but that
+// requires scope tracking (Stage 3). For now, all locals die at
+// function return.
+```
+
+**Observable impact**: Block-scoped locals get their drop called too late — after any observable side effects that follow the block. For example:
+
+```landin
+fn main() {
+    let counter = /* ... */;
+    {
+        let _t = Tracker { count_ptr: counter };
+        // _t should drop HERE
+    }
+    // _t's drop has NOT fired yet — counter is still 0
+    println!("{}", *counter);  // prints 0 (should print 1)
+}
+```
+
+**Workaround**: Place drop-observable code in a separate function so the param's scope end (= function end) coincides with the drop point.
+
+### 9.3 Reclassification
+
+| TD | Original Classification | New Classification | Rationale |
+|----|-------------------------|-------------------|-----------|
+| TD-STUB-DROP-ELABORATION-NOOP | "elaborate_drops is no-op (no impl Drop support yet)" — 🟡 v0.2+ | ✅ **RESOLVED** (Stage 30.3) | Root-cause analysis shows elaborate_drops IS implemented (Stage 15.43-15.46), drop glue IS emitted (Stage 15.57), Drop IS called at function end. The "no-op" classification was inaccurate. |
+| **TD-DROP-SCOPE-TIMING** (NEW) | N/A | 🟡 P2, v0.14+ | StorageDead emitted at function end, not scope end. Block-scoped locals drop too late. Fix requires scope tracking in MirLowerCtxt. |
+
+### 9.4 Fix Plan for TD-DROP-SCOPE-TIMING (v0.14+)
+
+1. Add scope stack to `MirLowerCtxt` — `Vec<(BasicBlockId, usize)>` tracking (block_id, local_count_at_scope_start)
+2. In `lower_block`, push (current_block, mir.local_decls.len()) at start
+3. At end of `lower_block`, emit StorageDead for [scope_start..scope_end) in reverse order
+4. Handle early exit paths (return/break/continue) — need to emit StorageDead for all enclosing scopes on those paths
+5. Remove the function-end sweep in body_lower.rs (now redundant)
+6. Update elaborate_drops to handle the new per-block StorageDead placement (should work as-is, since it scans for StorageDead regardless of location)
+
+**Estimated effort**: 2-3 days (scope tracking + early exit paths + test updates)
+
+**Risk**: May break existing tests that assume function-end StorageDead timing. Need to audit all drop conformance tests (40+ in `tests/conformance/03-codegen/03-drop-glue/`).

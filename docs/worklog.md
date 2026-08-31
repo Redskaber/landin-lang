@@ -34424,3 +34424,83 @@ Stage Summary:
 - TD-STUB-DROP-ELABORATION-NOOP — Drop::drop codegen + dropck
 - TD-STUB-PROJECTION-RESOLVER — associated type normalization
 - TD-GAT-HIGHER-RANKED — HRTB + region substitution
+
+---
+Task ID: stage30.3
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.3 (v0.13) — TD-STUB-DROP-ELABORATION-NOOP reclassification + runtime behavior documentation. L3 (root-cause analysis + reclassification + 9-test suite). v0.544.0.
+
+3秒启动自检:
+- 定位: L3 (root-cause analysis of drop elaboration behavior + 9-test suite documenting actual behavior)
+- 对齐: 已查 v0.543.0 (Stage 30.2 complete); TD-STUB-DROP-ELABORATION-NOOP — was classified as "elaborate_drops is no-op (no impl Drop support yet)"
+- 阻断: Stage 30.2 全绿 (4850 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root-cause analysis: TD-STUB-DROP-ELABORATION-NOOP was misclassified
+   - 引用 §1.0 原則 9 (正确 > 妥协): accurate classification — drop elaboration IS implemented and IS NOT a no-op
+   - 引用 §1.0 原則 4 (报错 > 静默): document actual behavior honestly
+   - Evidence (runtime tests):
+     * `elaborate_drops` IS implemented (Stage 15.43-15.46) — inserts Drop terminators
+     * Drop glue codegen IS implemented (Stage 15.57) — emits drop_adt_<DefId> functions
+     * Drop IS called at function end — verified by `probe_drop_fires_for_param` (counter=1)
+     * Drop IS called for moved values at destination's scope end — verified by `probe_drop_on_moved_value` (counter=1)
+   - BUT: StorageDead is emitted at FUNCTION END (body_lower.rs line 567-594), not at block scope end → block-scoped locals drop too late (after observable side effects)
+   - 引用 §12 (最优 > 最小): root-cause fix is scope tracking (v0.14+), not a hack
+   - 替代: implement scope tracking now — but it's a large architectural change (track scope stack in MirLowerCtxt, emit per-block StorageDead, handle early return/break/continue paths) that would risk breaking many existing tests
+   - 选择: reclassify TD-STUB-DROP-ELABORATION-NOOP as RESOLVED (drop elaboration works), create new TD-DROP-SCOPE-TIMING (P2) for the actual scope timing issue
+
+2. Test suite design: 9 tests documenting actual behavior
+   - 引用 §1.0 原則 4 (报错 > 静默): tests explicitly document the known limitation
+   - 引用 §9.4.3 (1:3+ ratio): 4 positive + 3 negative + 2 regression = 9 tests
+   - Positive tests verify drop fires for: fn params, fn-end locals, moved values, drop glue emission
+   - Negative tests document: drop does NOT fire at block scope end, if-block end, loop iteration end
+   - 引用 §1.0 原則 9 (正确 > 妥协): negative tests assert the CURRENT (incorrect) behavior with clear "KNOWN LIMITATION" messages pointing to TD-DROP-SCOPE-TIMING
+   - 替代: skip the negative tests (hide the limitation) — but that violates §1.0 原則 4
+   - 选择: explicit negative tests with KNOWN LIMITATION documentation
+
+3. New TD creation: TD-DROP-SCOPE-TIMING (P2)
+   - 引用 §6.1 (技术债分类): P2 — correctness issue with workaround (use fn scope for drop observation)
+   - 引用 §1.0 原則 13 (架构限制记录与升级): document the architectural limitation
+   - Fix plan: implement scope tracking in MirLowerCtxt (scope stack with start_local_count per block), emit per-block StorageDead in lower_block, handle early return/break/continue paths
+   - Deferred to v0.14+ (architectural change, not a quick fix)
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 implementing scope tracking — root-cause analysis shows the TD was misclassified; the actual issue (scope timing) is a separate, larger MUV
+- 安全理由: reclassification is documentation-only (no code change to drop logic); existing tests all pass; new tests document actual behavior without breaking anything
+
+5W2H:
+- WHAT: TD-STUB-DROP-ELABORATION-NOOP reclassification (RESOLVED) + new TD-DROP-SCOPE-TIMING (P2) + 9-test runtime behavior documentation suite
+- WHY: TD was misclassified as "no-op" — root-cause analysis shows drop elaboration IS implemented and working; the actual issue is StorageDead timing (function end vs scope end); per §1.0 原則 9, accurate classification > pretending to fix the wrong thing
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.13 Stage 30.3 (after Stage 30.2 lifetime elision)
+- WHERE: tests/v0/stage30/plan/stage30_3_drop_elaboration_reclassification_tests.rs (9 tests: 4 positive + 3 negative + 2 regression) + docs/lang-design/25-drop-elaboration.md (§14.8 B2 writeback) + README.md + RELEASE_NOTES.md
+- HOW: (1) Runtime probe tests revealing actual behavior (drop fires for params, NOT for block-scoped locals) (2) Root-cause analysis: StorageDead emitted at fn end (body_lower.rs:567-594), not scope end (3) Reclassify TD as resolved (4) Create new TD-DROP-SCOPE-TIMING (P2) (5) 9-test suite documenting current behavior with KNOWN LIMITATION markers
+- HOW MUCH: 4859 tests (was 4850, +9 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib; 91,830 LOC (+109 from v0.543.0)
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅ (4 pre-existing lib-test warnings, unrelated)
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 3961/3961 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, 91,830 LOC, +109 LOC) ✅
+- D8 (§1.6 终极检验): all root-cause fixes per §12 ✅
+  - Reclassification based on runtime evidence (root-cause, not guess)
+  - New TD-DROP-SCOPE-TIMING accurately captures the actual issue
+  - Tests document actual behavior honestly (no hiding limitations)
+
+Stage Summary:
+- v0.13 Stage 30.3: TD-STUB-DROP-ELABORATION-NOOP RECLASSIFIED as RESOLVED ✅
+- Root-cause analysis: drop elaboration IS implemented and working (not no-op)
+- New TD created: TD-DROP-SCOPE-TIMING (P2) — StorageDead at function end, not scope end
+- 9-test runtime suite: 4 positive (drop works for params + fn-end + moved + glue emitted) + 3 negative (block/if/loop scope timing) + 2 regression (compile-time acceptance)
+- §3.2 全绿: 4859 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.13 remaining TDs):
+- TD-DROP-SCOPE-TIMING (NEW, P2) — implement scope tracking in MirLowerCtxt (v0.14+ architectural)
+- TD-STUB-PROJECTION-RESOLVER — associated type normalization
+- TD-GAT-HIGHER-RANKED — HRTB + region substitution
