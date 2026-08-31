@@ -821,3 +821,7 @@ mod stage30_17_hrtb_infractx_integration_tests;
 // === Stage 31.1 (v0.19 TD-INTRINSIC-OVERUSE Phase 2-B prerequisite): FatPtrLit AST ===
 #[path = "v0/stage31/plan/stage31_1_fat_ptr_lit_tests.rs"]
 mod stage31_1_fat_ptr_lit_tests;
+
+// === Stage 31.5 (v0.19): String::as_str prelude impl migration ===
+#[path = "v0/stage31/plan/stage31_5_as_str_prelude_impl_tests.rs"]
+mod stage31_5_as_str_prelude_impl_tests;

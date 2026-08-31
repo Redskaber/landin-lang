@@ -144,19 +144,21 @@ struct String { ptr: *mut u8, len: usize, cap: usize }
 impl String {
     fn len(&self) -> usize { self.len }
     fn new() -> String { String { ptr: 0 as *mut u8, len: 0usize, cap: 0usize } }
-    // Stage 18.342 (P2 soundness fix): Declare `as_str` in prelude so typeck
-    // can resolve it. The actual implementation is a MIR intrinsic in
-    // `method_call_lower.rs:425` (early-interception pattern). This declaration
-    // enables typeck to pass method resolution; the intrinsic intercepts before
-    // codegen and constructs the &str fat pointer from String's fields.
+    // Stage 31.5 (v0.19): Migrated from MIR intrinsic to prelude impl.
     //
-    // Per §1.0 原則 4 (报错 > 静默): declaring the method makes it visible to
-    // users (typeck reports "method not found" if undeclared).
-    // Per §1.0 原則 6 (通解 > 特解): one declaration path for all String methods.
-    // Per §18 (依赖审查): unblocks TD-INTRINSIC-OVERUSE Phase 2-B condition 2
-    // (fat pointer construction) — the intrinsic already handles the
-    // construction; only the declaration was missing.
-    fn as_str(&self) -> &str { loop {} }
+    // `as_str` now uses the FatPtrLit syntax (`&str { ptr, len }`) to construct
+    // the &str fat pointer from String's fields. This replaces the hardcoded
+    // intrinsic dispatch in `method_call_lower.rs` (Stage 18.189) — the same
+    // MIR pattern (Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)) is now
+    // triggered from Landin source rather than a method_name_str check.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one standard method resolution path for
+    // all String methods, no per-method intrinsic dispatch.
+    // Per §1.0 原則 3 (显式 > 隐式): the construction is visible in source,
+    // not hidden in MIR lower.
+    // Per §12 (最优 > 最小): root-cause fix via language feature (FatPtrLit),
+    // not more intrinsic workarounds.
+    fn as_str(&self) -> &str { &str { ptr: self.ptr, len: self.len } }
 }
 // Stage 18.195 (TD-VEC-MVP): Vec<T> — owned dynamic array.
 //

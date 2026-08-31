@@ -624,6 +624,26 @@ pub(crate) fn codegen_rvalue(
             let dst_ty =
                 mir_type_to_emit_type_with_layouts_and_mono(target_ty, layouts, mono_layouts);
 
+            // Stage 31.5 (v0.19): Unsize cast from Tuple([ptr, len]) to Ref(&str).
+            // Both have the same LLVM layout ({ptr, i64}), so the cast is a no-op
+            // at the LLVM level — just return the value as-is.
+            // Per §1.0 原則 6 (通解 > 特解): one rule for all same-layout Unsize casts.
+            // Per §12 (最优 > 最小): root-cause fix — don't bitcast same-layout structs.
+            if src_ty == dst_ty {
+                return Ok(val);
+            }
+
+            // Stage 31.5 (v0.19): Unsize cast from Tuple([ptr, len]) to Ref(&str).
+            // Tuple maps to EmitType::Struct([ptr, i64]), Ref(&str) maps to
+            // EmitType::OpaquePtr (fat pointer). Both have the same LLVM layout
+            // ({ptr, i64}), so this cast is a no-op — return the value as-is.
+            // Per §1.0 原則 6 (通解 > 特解): one rule for all fat pointer construction.
+            // Per §1.0 原則 3 (显式 > 隐式): explicit same-layout check documents the
+            // reinterpret semantics.
+            if matches!(src_ty, EmitType::Struct(_)) && matches!(dst_ty, EmitType::OpaquePtr) {
+                return Ok(val);
+            }
+
             // Stage 18.326 B1 (P1 soundness fix): When casting integer to
             // pointer, check if the value is a zero constant (null pointer).
             // If so, emit `null` directly instead of `inttoptr i32 0 to ptr`

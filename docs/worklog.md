@@ -36362,3 +36362,71 @@ Stage Summary:
 - Stage 31.5: Migrate String::as_str intrinsic → prelude impl (uses new FatPtrLit syntax)
 - Stage 31.6: Migrate other intrinsics (from_str/push_str/push/get/Box::new/format!)
 - Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist
+
+---
+Task ID: stage31.5
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.5 (v0.19) — Migrate String::as_str from MIR intrinsic to prelude impl using FatPtrLit syntax. L2 (prelude body change + intrinsic removal + codegen fix + 20 tests). v0.562.0.
+
+3秒启动自检:
+- 定位: L2 (prelude body + method_call_lower removal + codegen Cast fix + 20 tests)
+- 对齐: 已查 src/stdlib/prelude.rs (as_str declaration) + src/mir/lower/method_call_lower.rs (intrinsic 506-604) + src/mir/lower/expr_operand.rs (lower_fat_ptr_lit)
+- 阻断: v0.561.0 全绿 (4975 tests), 0 P0/P1, architecture health 9.85/10
+
+决策点 (设计选择):
+
+1. Migration approach: prelude impl body using FatPtrLit
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution replaces intrinsic dispatch
+   - 引用 §1.0 原則 5 (去除兼容思维): dead intrinsic code removed (~100 LOC)
+   - 引用 §12 (最优 > 最小): root-cause fix via language feature (FatPtrLit)
+   - Changed: `fn as_str(&self) -> &str { loop {} }` → `fn as_str(&self) -> &str { &str { ptr: self.ptr, len: self.len } }`
+
+2. Codegen Cast(Unsize) fix: same-layout no-op
+   - 引用 §1.0 原則 6 (通解 > 特解): one rule for all same-layout Unsize casts
+   - Root cause: Cast(Unsize, Tuple→Ref) codegen did `bitcast {ptr,i64} to ptr` (lost len field)
+   - Fix: if src_ty == dst_ty, return value as-is (no bitcast needed)
+   - Also added Struct→OpaquePtr fallback (defensive)
+
+3. Type resolution fix: `str` → TyKind::Str
+   - Root cause: `lower_hir_ty_to_mir_ty` without HIR context returns Error for `str` path
+   - Fix: hardcode `str` → TyKind::Str in lower_fat_ptr_lit (common case)
+   - Fallback: full HIR lowering for other types (slices, dyn Trait future)
+
+裁剪点:
+- L2 — prelude body + intrinsic removal + codegen fix + 20 tests
+- 跳过 migrating other intrinsics (from_str/push_str/push/get/Box::new/format!) — Stage 31.6 scope
+- 安全理由: §13.4 J6 — Stage 31.5 is independently testable (20 tests pass)
+
+5W2H:
+- WHAT: Migrate String::as_str from MIR intrinsic to prelude impl using FatPtrLit
+- WHY: First TD-INTRINSIC-OVERUSE Phase 2-B migration — demonstrate FatPtrLit enables prelude impl
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.19 Stage 31.5 (after Stage 31.1 FatPtrLit syntax)
+- WHERE: src/stdlib/prelude.rs (impl body) + src/mir/lower/method_call_lower.rs (intrinsic removed) + src/codegen/rvalue.rs (Cast fix) + src/mir/lower/expr_operand.rs (str resolution)
+- HOW: (1) Change prelude body (2) Remove intrinsic dispatch (3) Fix Cast codegen (4) Fix str type resolution (5) 20 tests
+- HOW MUCH: -100 LOC intrinsic, +15 LOC prelude body, +10 LOC codegen fix, +20 tests; 4995 tests total (4975 + 20), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4097/4097 (2 ignored) ✅ — +20 new stage31_5 tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — migration, no regression) ✅
+- D8 (§1.6 终极检验): prelude impl replaces intrinsic — 通解 replaces 特解 ✅
+
+Stage Summary:
+- v0.19 Stage 31.5: String::as_str Intrinsic → Prelude Impl Migration COMPLETE ✅
+- prelude as_str body: `loop {}` marker → `&str { ptr: self.ptr, len: self.len }` (FatPtrLit)
+- Removed: ~100 LOC intrinsic dispatch from method_call_lower.rs (lines 506-604)
+- Fixed: Cast(Unsize) codegen for same-layout Tuple→Ref (no-op, no bitcast)
+- Fixed: `str` type resolution in lower_fat_ptr_lit (hardcode TyKind::Str)
+- 20 tests (4 positive + 16 negative), 1:4 ratio (exceeds 1:3 target per §9.4.3)
+- Tests: 4995 (898 lib + 4097 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+- TD-INTRINSIC-OVERUSE Phase 2-B: as_str migrated ✅ (first of 6 methods)
+
+下一步:
+- Stage 31.6: Migrate other intrinsics (from_str/push_str/push/get/Box::new/format!)
+- Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist

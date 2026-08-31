@@ -500,108 +500,18 @@ pub(super) fn lower_method_call_expr(
     // Per §1.0 原則 4 (报错 > 静默): the prelude declaration makes the method
     // visible; the intrinsic provides the real implementation.
     // Per §18 (依赖审查): unblocks TD-INTRINSIC-OVERUSE Phase 2-B condition 2.
-    let method_name_str = cx.interner.resolve(&method.name);
-    let recv_ty = cx.mir.local(recv_local).ty.clone();
-
-    // Stage 18.189 (TD-STRING-INTRINSICS): String::as_str() intrinsic.
-    // `s.as_str()` → construct &str fat pointer { ptr, len } from String fields.
-    if method_name_str == "as_str" && args.is_empty() {
-        let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
-            && cx.hir.is_some_and(|hir| {
-                if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                    if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                        hir.find_owner(*did)
-                    {
-                        let name = cx.interner.resolve(&s.ident.name);
-                        return name == "String";
-                    }
-                }
-                false
-            });
-        if is_string {
-            use crate::mir::place::AggregateKind;
-            let u8_ptr_ty = Ty::new(
-                TyKind::RawPtr(
-                    crate::mir::ty::Mutability::Mutable,
-                    Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
-                ),
-                expr.span,
-            );
-            let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
-            let str_ty = Ty::new(
-                TyKind::Ref(
-                    crate::mir::ty::Region::Erased,
-                    crate::mir::ty::Mutability::Immutable,
-                    Box::new(Ty::new(TyKind::Str, expr.span)),
-                ),
-                expr.span,
-            );
-
-            // Extract ptr (field 0) and len (field 1) from String.
-            let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-            cx.push_assign(
-                Place::local(ptr_local, expr.span),
-                Rvalue::Use(Operand::Copy(Place {
-                    kind: PlaceKind::Projection(
-                        Box::new(Place::local(recv_local, receiver.span)),
-                        ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
-                    ),
-                    span: expr.span,
-                })),
-                expr.span,
-            );
-            let len_local = cx.mir.new_local(usize_ty.clone(), None, expr.span);
-            cx.push_assign(
-                Place::local(len_local, expr.span),
-                Rvalue::Use(Operand::Copy(Place {
-                    kind: PlaceKind::Projection(
-                        Box::new(Place::local(recv_local, receiver.span)),
-                        ProjectionElem::Field(FieldId(1), usize_ty.clone()),
-                    ),
-                    span: expr.span,
-                })),
-                expr.span,
-            );
-
-            // Construct &str fat pointer { ptr, len } via Aggregate.
-            // Stage 18.342: Use the &str Ref type (not Tuple) for the local,
-            // so the MIR type matches what typeck expects.
-            let str_local = cx.mir.new_local(str_ty.clone(), None, expr.span);
-
-            // Build the fat pointer as a Tuple first (same LLVM layout as &str),
-            // then assign to the &str-typed local. The codegen handles both
-            // types identically (both are {ptr, len}).
-            let tuple_ty = Ty::new(
-                TyKind::Tuple(vec![u8_ptr_ty.clone(), usize_ty.clone()]),
-                expr.span,
-            );
-            let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
-            cx.push_assign(
-                Place::local(tuple_local, expr.span),
-                Rvalue::Aggregate(
-                    AggregateKind::Tuple,
-                    vec![
-                        Operand::Copy(Place::local(ptr_local, expr.span)),
-                        Operand::Copy(Place::local(len_local, expr.span)),
-                    ],
-                ),
-                expr.span,
-            );
-            // Cast the Tuple to &str (same layout, different MIR type).
-            cx.push_assign(
-                Place::local(str_local, expr.span),
-                Rvalue::Cast(
-                    crate::mir::place::CastKind::Unsize,
-                    Operand::Copy(Place::local(tuple_local, expr.span)),
-                    str_ty.clone(),
-                ),
-                expr.span,
-            );
-
-            // Return the &str local.
-            return str_local;
-        }
-    }
+    // Stage 31.5 (v0.19): String::as_str() intrinsic REMOVED.
+    //
+    // The as_str method is now implemented in the prelude using the FatPtrLit
+    // syntax: `&str { ptr: self.ptr, len: self.len }`. This replaces the
+    // hardcoded intrinsic dispatch (Stage 18.189) — the same MIR pattern
+    // (Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)) is now triggered
+    // from Landin source via `lower_fat_ptr_lit` in expr_operand.rs.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution handles as_str,
+    // no per-method intrinsic dispatch.
+    // Per §1.0 原則 5 (去除兼容思维): dead intrinsic code removed.
+    // Per §12 (最优 > 最小): root-cause fix via language feature (FatPtrLit).
 
     // Stage 14.29: Resolve the method's return type from HIR so that
     // chained method calls can resolve methods on the result type.

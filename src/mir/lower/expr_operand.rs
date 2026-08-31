@@ -1870,7 +1870,7 @@ fn lower_fat_ptr_lit(
     ptr_expr: &crate::hir::HirExpr,
     len_expr: &crate::hir::HirExpr,
 ) -> LocalId {
-    use crate::mir::place::{AggregateKind, CastKind, Operand, Place, Rvalue};
+    use crate::mir::place::{AggregateKind, Operand, Place, Rvalue};
 
     // Lower ptr + len sub-expressions.
     let ptr_local = lower_expr_to_operand(cx, ptr_expr, None);
@@ -1882,7 +1882,26 @@ fn lower_fat_ptr_lit(
 
     // Construct the target fat pointer type: Ref(Erased, Immutable, target_ty).
     // target_ty is the HIR type (e.g., `str`); convert to MIR Ty.
-    let mir_target_ty = crate::mir::lower::ty_lower::lower_hir_ty_to_mir_ty(target_ty);
+    // Stage 31.5: Resolve `str` directly to TyKind::Str (the common FatPtrLit
+    // case). For other target types (slices, dyn Trait), use the full HIR
+    // lowering path.
+    // Per §1.0 原則 6 (通解 > 特解): one path for all fat pointer types, but
+    // `str` is the only one currently supported (slices/dyn Trait are future).
+    // Per §1.0 原則 3 (显式 > 隐式): explicit str resolution avoids Error fallback.
+    let mir_target_ty = match &target_ty.kind {
+        crate::hir::HirTyKind::Path(_, path)
+            if path
+                .segments
+                .last()
+                .is_some_and(|s| cx.interner.resolve(&s.ident.name) == "str") =>
+        {
+            Ty::new(TyKind::Str, expr.span)
+        }
+        _ => {
+            // Fallback: use full HIR lowering (may return Error for unresolved types).
+            crate::mir::lower::ty_lower::lower_hir_ty_to_mir_ty_with_hir(target_ty, cx.hir)
+        }
+    };
     let fat_ptr_ty = Ty::new(
         TyKind::Ref(
             crate::mir::ty::Region::Erased,
@@ -1893,8 +1912,13 @@ fn lower_fat_ptr_lit(
     );
 
     // Build the fat pointer as a Tuple first (same LLVM layout as &str),
-    // then cast to the &str type. The codegen handles both types identically
-    // (both are {ptr, len}).
+    // then cast to the &str type via Cast(Unsize).
+    // Per §1.0 原則 6 (通解 > 特解): one lowering path for all fat pointer construction.
+    // Per §1.0 原則 3 (显式 > 隐式): explicit Cast(Unsize) documents the type conversion.
+    //
+    // Stage 31.5: The Cast(Unsize) is required for typeck (Tuple → Ref is a
+    // valid Unsize conversion). The codegen for Unsize Tuple→Ref must recognize
+    // the same-layout reinterpret and return the value as-is (no bitcast).
     let tuple_ty = Ty::new(
         TyKind::Tuple(vec![ptr_ty.clone(), len_ty.clone()]),
         expr.span,
@@ -1912,12 +1936,12 @@ fn lower_fat_ptr_lit(
         expr.span,
     );
 
-    // Cast Tuple → &str (same layout, different MIR type).
+    // Cast Tuple → &str (Unsize: same layout, different MIR type).
     let fat_ptr_local = cx.mir.new_local(fat_ptr_ty.clone(), None, expr.span);
     cx.push_assign(
         Place::local(fat_ptr_local, expr.span),
         Rvalue::Cast(
-            CastKind::Unsize,
+            crate::mir::place::CastKind::Unsize,
             Operand::Copy(Place::local(tuple_local, expr.span)),
             fat_ptr_ty.clone(),
         ),
@@ -1925,8 +1949,7 @@ fn lower_fat_ptr_lit(
     );
 
     // Stage 31.1: typeck validates ptr is RawPtr and len is usize.
-    // The loose type check here is defensive — typeck is the authoritative layer.
-    let _ = (len_ty, usize_ty);
+    let _ = (len_ty, usize_ty, ptr_ty);
 
     fat_ptr_local
 }
