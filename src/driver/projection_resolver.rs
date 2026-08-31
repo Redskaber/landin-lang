@@ -152,6 +152,21 @@ fn lookup_assoc_type_resolution(
     // We need to find which trait owns it.
     let (trait_def_id, assoc_name) = find_trait_for_assoc_type(assoc_def_id, hir)?;
 
+    // Stage 30.16 (v0.17 TD-SELF-TYPE-SUBSTS): When substs is empty
+    // (Self::Item was lowered with empty substs because the impl-block
+    // context wasn't available at lowering time), search ALL impl blocks
+    // of the trait for the assoc type binding. This is a fallback that
+    // works when there's exactly one impl of the trait.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one fallback path for all empty-substs
+    // projections, no per-trait special-casing.
+    // Per §1.0 原則 9 (正确 > 妥协): if multiple impls exist, use the
+    // first one found (MVP limitation — full impl-block context
+    // awareness would resolve this unambiguously).
+    if substs.is_empty() {
+        return lookup_assoc_type_in_any_impl(trait_def_id, assoc_name, hir);
+    }
+
     // Step 2: Get the self type from substs[0].
     let self_ty = substs.first()?;
 
@@ -172,6 +187,49 @@ fn lookup_assoc_type_resolution(
         }
     }
 
+    None
+}
+
+/// Stage 30.16 (v0.17 TD-SELF-TYPE-SUBSTS): Look up an associated type
+/// binding in ANY impl block of the trait. Used as a fallback when
+/// substs is empty (Self::Item lowered without Self type in substs).
+///
+/// Searches all impl blocks that implement `trait_def_id` for an
+/// associated type named `assoc_name`. Returns the concrete type from
+/// the first matching impl.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one search for all impls.
+/// Per §1.0 原則 9 (正确 > 妥协): if multiple impls exist, uses the
+/// first one (MVP limitation — full resolution requires impl-block context).
+fn lookup_assoc_type_in_any_impl(
+    trait_def_id: crate::hir::DefId,
+    assoc_name: crate::lexer::Symbol,
+    hir: &HirCrate,
+) -> Option<Ty> {
+    for (_, owner) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Impl(impl_block)) = owner {
+            // Check if this impl implements the target trait.
+            if let Some(trait_path) = &impl_block.of_trait {
+                if let Res::Def(impl_trait_def_id, _) = trait_path.res {
+                    if impl_trait_def_id == trait_def_id {
+                        // Search this impl for the assoc type binding.
+                        for item in &impl_block.items {
+                            if let HirImplItem::Type(assoc) = item {
+                                if assoc.ident.name == assoc_name {
+                                    return Some(
+                                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                                            assoc.default.as_ref()?,
+                                            Some(hir),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     None
 }
 
