@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~92K LOC across 186 files) and targets x86_64 + AArch64 Linux.
+> Rust (~92K LOC across 187 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.560.0 (v0.19 Stage 31.0 — §18 Dependency Re-audit + §14.8 Design Writeback COMPLETE — Architecture health 9.85/10) |
+| **Version** | v0.561.0 (v0.19 Stage 31.1 — Fat Pointer Literal Syntax `&str { ptr: expr, len: expr }` — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.19 Stage 31.0 START**. 4943 tests (898 lib + 4045 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 30.24: §18 re-audit of TD-INTRINSIC-OVERUSE Phase 2-B/C blockers found 4/5 prerequisites already satisfied (pointer arithmetic was stale "❌ Missing", actually implemented Stage 18.236). TRUE blocker identified: **fat pointer construction syntax** — a new language feature needed to express `&str { ptr, len }` in Landin source. §14.8 design writeback updated `docs/lang-design/06-mir.md §16.8.4` with corrected status + v0.19 Stage 31.x roadmap (7 stages: AST → Parser → MIR → Typeck → Codegen → Intrinsic Migration → Whitelist Removal). Architecture health: 9.85/10 (stable — design-only stage). All P0/P1 soundness bugs resolved since v0.4. Next: v0.19 Stage 31.1 — AST fat pointer literal syntax (`&str { ptr: expr, len: expr }`). |
+| **Status** | ✅ **v0.19 Stage 31.1 — Fat Pointer Literal Syntax**. 4975 tests (898 lib + 4077 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.1: Implemented `&str { ptr: expr, len: expr }` fat pointer literal construction — the language feature that unblocks TD-INTRINSIC-OVERUSE Phase 2-B/C. Cross-module: AST `Expr::FatPtrLit` + HIR `HirExprKind::FatPtrLit` + Parser (lookahead disambiguation `&ident {`) + MIR lower (`lower_fat_ptr_lit` → Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)) + driver_scan + resolve + closure_capture. 32 tests (4 positive + 28 negative, 1:7 ratio ≥ 1:3 per §9.4.3). Negative audit: 28 cases covering 7 error categories (lex/parse/typeck/borrowck/resolve/trait/codegen). Architecture health: 9.85/10 (stable — additive feature, no regression). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.5 — migrate `String::as_str` intrinsic → prelude impl using new FatPtrLit syntax. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

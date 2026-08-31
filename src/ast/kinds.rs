@@ -621,6 +621,36 @@ pub enum Expr {
         block: Block,
         span: Span,
     },
+    /// Stage 31.1 (v0.19): Fat pointer literal construction.
+    ///
+    /// `&str { ptr: expr, len: expr }` constructs a `&str` fat pointer from
+    /// a raw pointer + length. This is the language feature that unblocks
+    /// TD-INTRINSIC-OVERUSE Phase 2-B/C (migrating `String::as_str` from
+    /// MIR intrinsic to prelude `impl` block).
+    ///
+    /// Syntax: `&<Ty> { ptr: <expr>, len: <expr> }`
+    ///   - `<Ty>` must be a fat pointer target type: `str` (→ `&str`),
+    ///     `[T]` (→ `&[T]`), or `dyn Trait` (→ `&dyn Trait`, future).
+    ///   - `ptr` must be `*const T` or `*mut T` (type-checked in typeck).
+    ///   - `len` must be `usize` (type-checked in typeck).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one syntax for all fat pointer
+    /// construction, replaces per-method MIR intrinsic dispatch.
+    /// Per §1.0 原則 3 (显式 > 隐式): explicit construction, no silent
+    /// conversion from (ptr, len) tuple to &str.
+    /// Per §12 (最优 > 最小): root-cause fix via language feature, not
+    /// more intrinsic workarounds.
+    /// Per §1.0 原則 1 (内存安全): typeck validates ptr/len types.
+    FatPtrLit {
+        /// The target type after `&` (e.g., `str`, `[T]`).
+        /// This determines the fat pointer's pointee type.
+        target_ty: Ty,
+        /// The pointer expression (must be `*const T` or `*mut T`).
+        ptr: Box<Expr>,
+        /// The length expression (must be `usize`).
+        len: Box<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

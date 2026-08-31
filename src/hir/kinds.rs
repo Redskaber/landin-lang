@@ -842,6 +842,22 @@ pub enum HirExprKind {
     Async {
         block: HirBlock,
     },
+    /// Stage 31.1 (v0.19): Fat pointer literal construction.
+    ///
+    /// `&str { ptr: expr, len: expr }` lowered from `Expr::FatPtrLit`.
+    /// See `Expr::FatPtrLit` for full design rationale.
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): HIR preserves the explicit ptr+len
+    /// structure — no silent conversion to a tuple.
+    FatPtrLit {
+        /// The target pointee type (e.g., `str`, `[T]`).
+        /// The fat pointer type is `Ref(Region::Erased, Immutable, target_ty)`.
+        target_ty: HirTy,
+        /// The pointer expression (must lower to `*const T` or `*mut T`).
+        ptr: Box<HirExpr>,
+        /// The length expression (must lower to `usize`).
+        len: Box<HirExpr>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1045,6 +1061,8 @@ pub fn hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str {
         HirExprKind::Unit => "unit",
         HirExprKind::Await { .. } => "await expression",
         HirExprKind::Async { .. } => "async block",
+        // Stage 31.1 (v0.19): Fat pointer literal.
+        HirExprKind::FatPtrLit { .. } => "fat pointer literal",
     }
 }
 

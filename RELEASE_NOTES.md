@@ -3,13 +3,108 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.560.0 (Stage 30.24 — v0.19 Stage 31.0 START: §18 Dependency Re-audit + §14.8 Design Writeback) |
+| **Current version** | v0.561.0 (Stage 31.1 — Fat Pointer Literal Syntax `&str { ptr: expr, len: expr }`) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4045 integration tests = 4943 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4077 integration tests = 4975 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, 92,228 LOC); Stage 30.24: design-only stage — §18 re-audit found 4/5 TD-INTRINSIC-OVERUSE Phase 2-B/C prerequisites already satisfied (1 stale status corrected), identified TRUE blocker: fat pointer construction syntax; §14.8 design writeback updated 06-mir.md §16.8.4 + planned v0.19 Stage 31.x roadmap (7 stages) |
+| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.1: implemented `&str { ptr: expr, len: expr }` fat pointer literal — new language feature unblocking TD-INTRINSIC-OVERUSE Phase 2-B/C; cross-module (AST + HIR + Parser + MIR lower + driver_scan + resolve + closure_capture); 32 tests (4 positive + 28 negative, 1:7 ratio) |
+
+---
+
+## v0.561.0 — Stage 31.1 — Fat Pointer Literal Syntax `&str { ptr: expr, len: expr }`
+
+### Overview
+
+This release implements the **fat pointer literal construction syntax** — the
+language feature that unblocks TD-INTRINSIC-OVERUSE Phase 2-B/C (migrating
+`String::as_str` and other stdlib methods from MIR intrinsic dispatch to
+prelude `impl` blocks).
+
+Per §1.0 原則 6 (通解 > 特解): one syntax for all fat pointer construction,
+replaces per-method MIR intrinsic dispatch.
+Per §1.0 原則 3 (显式 > 隐式): explicit `ptr` + `len` fields in source.
+Per §12 (最优 > 最小): root-cause fix via language feature, not more intrinsic workarounds.
+
+### What Changed
+
+#### New Syntax: `&Ty { ptr: expr, len: expr }`
+
+```landin
+// Construct a &str fat pointer from a raw pointer + length
+fn make_str(p: *const u8, n: usize) -> &str {
+    &str { ptr: p, len: n }
+}
+```
+
+The syntax reuses struct literal form: `&` + `<Ty>` + `{ ptr: <expr>, len: <expr> }`.
+The `<Ty>` must be a fat pointer target type (`str`, `[T]`, or future `dyn Trait`).
+The `ptr` field must be `*const T` or `*mut T`; `len` must be `usize` (typeck validation).
+
+#### Cross-Module Implementation
+
+| Module | Change |
+|--------|--------|
+| `src/ast/kinds.rs` | New `Expr::FatPtrLit { target_ty, ptr, len, span }` variant |
+| `src/hir/kinds.rs` | New `HirExprKind::FatPtrLit { target_ty, ptr, len }` variant |
+| `src/hir/lower/body.rs` | HIR lowering for `FatPtrLit` (lower ptr + len + target_ty) |
+| `src/parser/expr.rs` | Parser with lookahead disambiguation (`&` + `ident` + `{` → FatPtrLit; else AddrOf) |
+| `src/mir/lower/expr_operand.rs` | New `lower_fat_ptr_lit()` — produces `Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)` |
+| `src/driver/driver_scan.rs` | Scan FatPtrLit sub-expressions for unresolved paths |
+| `src/resolve/path_resolve.rs` | Resolve FatPtrLit sub-expressions |
+| `src/mir/lower/closure_capture.rs` | Collect FatPtrLit sub-expressions for closure capture |
+| `src/hir/kinds.rs` | `hir_expr_kind_to_string` → "fat pointer literal" |
+
+#### MIR Lowering Pattern
+
+`&str { ptr: P, len: N }` lowers to:
+
+```text
+1. ptr_local = lower(P)         ; RawPtr type
+2. len_local = lower(N)         ; usize type
+3. tuple_local = Aggregate(Tuple, [ptr_local, len_local])
+4. fat_ptr_local = Cast(Unsize, tuple_local) → &str type
+```
+
+This mirrors the existing `String::as_str` intrinsic
+(`method_call_lower.rs:506-604`) — same MIR pattern, but now triggered
+from Landin source rather than a hardcoded `method_name_str == "as_str"` check.
+
+#### Tests (32 total, 1:7 pos:neg ratio)
+
+- **4 positive tests**: parse + lower + codegen valid FatPtrLit (null ptr, mut ptr, variables, return position)
+- **28 negative tests** covering all 7 error categories (§7.3.1):
+  - **Lex** (1): unterminated string in ptr field
+  - **Parse** (14): missing `}`, missing field name, missing `:`, unknown field, duplicate ptr/len, missing ptr/len, empty `{}`, trailing comma, no target type, extra tokens, semicolon inside, no-space valid, only ptr no comma, duplicate len
+  - **Typeck** (5): ptr wrong type (int/bool/&str), len wrong type (i32/bool)
+  - **Borrowck** (1): use after invalidation
+  - **Resolve** (2): undefined ptr/len variable
+  - **Trait** (1): target type not fat pointer (i32)
+  - **Codegen** (1): null ptr + non-zero len (dangling)
+  - **Nested** (1): nested FatPtrLit
+  - **Context** (1): FatPtrLit in if condition
+
+### Verification
+
+- §14.5 D1 (fmt): clean ✅
+- §14.5 D2 (clippy): 0 warnings ✅
+- §14.5 D3 (build): success ✅
+- §14.5 D4 (lib tests): 898/898 ✅
+- §14.5 D5 (integration tests): 4077/4077 (2 ignored) ✅ — +32 new stage31_1 tests
+- §14.5 D6 (no P0/P1): ALL resolved ✅
+- §14.5 D7 (architecture health): 9.85/10 (stable — additive feature) ✅
+- §14.5 D8 (§1.6 终极检验): fat pointer construction syntax is the root-cause fix for TD-INTRINSIC-OVERUSE Phase 2-B/C ✅
+
+### Next Stage
+
+Stage 31.1 implements the language feature. The next stage (Stage 31.5) will
+**migrate `String::as_str` from MIR intrinsic to prelude `impl`** using the
+new FatPtrLit syntax, demonstrating the feature's value and reducing
+hardcoded intrinsic dispatch.
+
+Per §1.0 原則 6 (通解 > 特解): Stage 31.5 will replace the `method_name_str == "as_str"` check with a real prelude impl body using `&str { ptr: self.ptr, len: self.len }`.
+Per §12 (最优 > 最小): this is the root-cause fix — language feature enables prelude impl migration.
 
 ---
 

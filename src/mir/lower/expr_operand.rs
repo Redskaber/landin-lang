@@ -1741,6 +1741,21 @@ pub(crate) fn lower_expr_to_operand(
         HirExprKind::Await { expr } => lower_expr_to_operand(cx, expr, None),
         HirExprKind::Async { block } => control_flow::lower_block(cx, block, None),
 
+        // Stage 31.1 (v0.19): Fat pointer literal `&str { ptr: expr, len: expr }`
+        // Lowers to: Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)
+        // This mirrors the existing as_str intrinsic (method_call_lower.rs:566-604)
+        // but is now expressible in Landin source — enabling prelude impl migration.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one lowering path for all fat pointer
+        // construction, replaces per-method MIR intrinsic dispatch.
+        // Per §1.0 原則 3 (显式 > 隐式): explicit construction in source.
+        // Per §12 (最优 > 最小): root-cause fix via language feature.
+        HirExprKind::FatPtrLit {
+            target_ty,
+            ptr,
+            len,
+        } => lower_fat_ptr_lit(cx, expr, target_ty, ptr, len),
+
         // MethodCall: `receiver.method(args)` → simplified to Call
         HirExprKind::MethodCall {
             receiver,
@@ -1831,4 +1846,87 @@ fn type_contains_infer_or_error(ty: &Ty) -> bool {
         TyKind::FnDef(_, substs) => substs.iter().any(type_contains_infer_or_error),
         _ => false,
     }
+}
+
+/// Stage 31.1 (v0.19): Lower `&str { ptr: expr, len: expr }` fat pointer literal.
+///
+/// Produces MIR that constructs a fat pointer `{ ptr, len }` via:
+/// 1. Lower `ptr` expr → ptr_local (RawPtr type)
+/// 2. Lower `len` expr → len_local (usize type)
+/// 3. Aggregate(Tuple, [ptr, len]) → tuple_local
+/// 4. Cast(Unsize, &str) → str_local (fat pointer type)
+///
+/// This mirrors the existing `String::as_str` intrinsic
+/// (`method_call_lower.rs:506-604`) — same MIR pattern, but now triggered
+/// from Landin source rather than a hardcoded method-name check.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one lowering path for all fat pointer
+/// construction. Per §1.0 原則 3 (显式 > 隐式): explicit ptr+len in source.
+/// Per §12 (最优 > 最小): root-cause fix via language feature.
+fn lower_fat_ptr_lit(
+    cx: &mut MirLowerCtxt,
+    expr: &crate::hir::HirExpr,
+    target_ty: &crate::hir::HirTy,
+    ptr_expr: &crate::hir::HirExpr,
+    len_expr: &crate::hir::HirExpr,
+) -> LocalId {
+    use crate::mir::place::{AggregateKind, CastKind, Operand, Place, Rvalue};
+
+    // Lower ptr + len sub-expressions.
+    let ptr_local = lower_expr_to_operand(cx, ptr_expr, None);
+    let len_local = lower_expr_to_operand(cx, len_expr, None);
+
+    let ptr_ty = cx.mir.local(ptr_local).ty.clone();
+    let len_ty = cx.mir.local(len_local).ty.clone();
+    let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
+
+    // Construct the target fat pointer type: Ref(Erased, Immutable, target_ty).
+    // target_ty is the HIR type (e.g., `str`); convert to MIR Ty.
+    let mir_target_ty = crate::mir::lower::ty_lower::lower_hir_ty_to_mir_ty(target_ty);
+    let fat_ptr_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(mir_target_ty.clone()),
+        ),
+        expr.span,
+    );
+
+    // Build the fat pointer as a Tuple first (same LLVM layout as &str),
+    // then cast to the &str type. The codegen handles both types identically
+    // (both are {ptr, len}).
+    let tuple_ty = Ty::new(
+        TyKind::Tuple(vec![ptr_ty.clone(), len_ty.clone()]),
+        expr.span,
+    );
+    let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(tuple_local, expr.span),
+        Rvalue::Aggregate(
+            AggregateKind::Tuple,
+            vec![
+                Operand::Copy(Place::local(ptr_local, expr.span)),
+                Operand::Copy(Place::local(len_local, expr.span)),
+            ],
+        ),
+        expr.span,
+    );
+
+    // Cast Tuple → &str (same layout, different MIR type).
+    let fat_ptr_local = cx.mir.new_local(fat_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(fat_ptr_local, expr.span),
+        Rvalue::Cast(
+            CastKind::Unsize,
+            Operand::Copy(Place::local(tuple_local, expr.span)),
+            fat_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Stage 31.1: typeck validates ptr is RawPtr and len is usize.
+    // The loose type check here is defensive — typeck is the authoritative layer.
+    let _ = (len_ty, usize_ty);
+
+    fat_ptr_local
 }

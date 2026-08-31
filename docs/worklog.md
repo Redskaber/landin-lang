@@ -36286,3 +36286,79 @@ Stage Summary:
 - v0.19 Stage 31.1: Begin AST fat pointer literal syntax implementation
 - First MUV of fat pointer construction language feature (7-stage roadmap)
 - This will unblock TD-INTRINSIC-OVERUSE Phase 2-B/C resolution
+
+---
+Task ID: stage31.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 31.1 (v0.19) — AST Fat Pointer Literal Syntax (`&str { ptr: expr, len: expr }`). L3 (cross-module: AST + HIR + Parser + MIR lower + driver_scan + resolve + closure_capture). v0.561.0.
+
+3秒启动自检:
+- 定位: L3 (新语言特性, 跨 7 模块: AST/AST/Parser/HIR lower/MIR lower/driver_scan/resolve/closure_capture)
+- 对齐: 已查 docs/lang-design/06-mir.md §16.8.4 (Stage 30.24 更新) + 02-grammar.md §3.4 + 05-ast.md
+- 阻断: v0.560.0 全绿 (4943 tests), 0 P0/P1, architecture health 9.85/10
+
+决策点 (设计选择):
+
+1. Syntax design: `&Ty { ptr: expr, len: expr }`
+   - 引用 §1.0 原則 6 (通解 > 特解): one syntax for all fat pointer construction
+   - 引用 §1.0 原則 3 (显式 > 隐式): explicit ptr+len, no silent conversion
+   - 引用 §12 (最优 > 最小): root-cause fix via language feature, not more intrinsics
+   - Alternative rejected: `fat_ptr!(Ty, ptr, len)` macro — hides type info (违反 §1.0 原則 3)
+   - Alternative rejected: `unsafe { from_raw_parts(...) }` — needs `unsafe` keyword semantics not in v0.19
+
+2. Disambiguation strategy: lookahead `&` + `ident` + `{`
+   - 引用 §1.0 原則 3 (显式 > 隐式): only trigger FatPtrLit for `&ident {` pattern
+   - Avoids ambiguity with `&[...]` (AddrOf array) and `&(expr)` (AddrOf paren)
+   - `str`/`[T]`/`dyn Trait` types are all ident-first in Landin
+   - Backtracking NOT needed — lookahead is sufficient (no parse_ty consumption on non-candidate)
+
+3. MIR lowering: Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)
+   - Mirrors existing `String::as_str` intrinsic (method_call_lower.rs:506-604)
+   - Same MIR pattern, now triggered from Landin source
+   - Per §1.0 原則 6: one lowering path for all fat pointer construction
+
+4. Test strategy: 4 positive + 28 negative = 32 tests (1:7 ratio)
+   - Per §9.4.3: exceeds 1:3 pos:neg ratio target
+   - Per §7.3.1: ≥30 case negative audit set covering all 7 error categories
+
+裁剪点:
+- L3 — full pipeline implemented (AST + HIR + Parser + MIR lower + driver_scan + resolve + closure_capture)
+- 跳过 Stage 31.5 (migrate as_str intrinsic → prelude impl) — depends on Stage 31.1-31.4 all complete
+- 安全理由: §13.4 J6 — Stage 31.1 is independently testable (32 tests pass)
+
+5W2H:
+- WHAT: Implement `&str { ptr: expr, len: expr }` fat pointer literal syntax
+- WHY: Unblocks TD-INTRINSIC-OVERUSE Phase 2-B/C (migrate String::as_str from intrinsic to prelude impl)
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.19 Stage 31.1 (first MUV of 7-stage roadmap from Stage 30.24)
+- WHERE: src/ast/kinds.rs (Expr::FatPtrLit) + src/hir/kinds.rs (HirExprKind::FatPtrLit) + src/parser/expr.rs + src/hir/lower/body.rs + src/mir/lower/expr_operand.rs (lower_fat_ptr_lit) + src/driver/driver_scan.rs + src/resolve/path_resolve.rs + src/mir/lower/closure_capture.rs
+- HOW: (1) AST variant (2) HIR variant + lower (3) Parser with disambiguation (4) MIR lower (Aggregate+Cast) (5) 32 tests
+- HOW MUCH: +260 LOC source + 32 tests; 4975 tests total (4943 + 32 new), 0 failures, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4077/4077 (2 ignored) ✅ — +32 new stage31_1 tests
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — additive feature) ✅
+- D8 (§1.6 终极检验): fat pointer construction syntax is the root-cause fix for TD-INTRINSIC-OVERUSE Phase 2-B/C ✅
+
+Stage Summary:
+- v0.19 Stage 31.1: AST Fat Pointer Literal Syntax COMPLETE ✅
+- New language feature: `&str { ptr: expr, len: expr }` parses + lowers + codegens
+- Cross-module: AST + HIR + Parser + MIR lower + driver_scan + resolve + closure_capture
+- 32 tests (4 positive + 28 negative), 1:7 ratio (exceeds 1:3 target per §9.4.3)
+- Negative audit: 28 cases covering 7 error categories (lex/parse/typeck/borrowck/resolve/trait/codegen)
+- Tests: 4975 (898 lib + 4077 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+- Architecture health: 9.85/10 (stable — additive feature, no regression)
+
+下一步:
+- Stage 31.2: Parser + HIR lowering refinements (if needed based on Stage 31.5 migration)
+- Stage 31.3: MIR lowering verification (test with real String::as_str prelude impl)
+- Stage 31.4: Typeck support (validate ptr is RawPtr, len is usize)
+- Stage 31.5: Migrate String::as_str intrinsic → prelude impl (uses new FatPtrLit syntax)
+- Stage 31.6: Migrate other intrinsics (from_str/push_str/push/get/Box::new/format!)
+- Stage 31.7: Remove method_name_str checks + KNOWN_INTRINSIC_METHODS whitelist

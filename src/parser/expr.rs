@@ -366,18 +366,110 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::And => {
-                self.bump();
+                self.bump(); // consume `&`
                 let mutability = if *self.peek() == TokenKind::KwMut {
                     self.bump();
                     Mutability::Mutable
                 } else {
                     Mutability::Immutable
                 };
-                let expr = self.parse_unary_expr();
-                Expr::AddrOf {
-                    mutability,
-                    expr: Box::new(expr),
-                    span,
+
+                // Stage 31.1 (v0.19): Fat pointer literal `&Ty { ptr: expr, len: expr }`
+                // Disambiguation: `&` + `mut`? + `Ty` + `{` → FatPtrLit
+                //                 `&` + `mut`? + `expr` → AddrOf
+                // `Ty` is parsed via parse_ty; if next token after Ty is `{`, it's FatPtrLit.
+                // Per §1.0 原則 3 (显式 > 隐式): explicit `&Ty { ... }` syntax.
+                // Per §1.0 原則 6 (通解 > 特解): one syntax for all fat pointer construction.
+                if mutability == Mutability::Immutable {
+                    // Stage 31.1: FatPtrLit only triggers when `&` is followed by
+                    // `ident {` — this avoids ambiguity with `&[...]` (AddrOf array)
+                    // and `&(expr)` (AddrOf paren). `str`/`[T]`/`dyn Trait` types
+                    // are all ident-first in Landin.
+                    let is_fat_ptr_candidate =
+                        matches!(self.peek(), TokenKind::Ident(_) | TokenKind::RawIdent(_))
+                            && matches!(self.peek_at(1), TokenKind::LBrace);
+                    if is_fat_ptr_candidate && !self.no_struct_literal {
+                        // FatPtrLit: `&Ty { ptr: expr, len: expr }`
+                        let target_ty = self.parse_ty();
+                        self.bump(); // consume `{`
+                        let mut ptr_expr = None;
+                        let mut len_expr = None;
+                        while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+                            let field_ident = self.expect_ident("field name (`ptr` or `len`)");
+                            self.expect(&TokenKind::Colon, "`:`");
+                            let field_val = self.parse_expr();
+                            let field_name = self.interner.resolve(&field_ident.name).to_string();
+                            match field_name.as_str() {
+                                "ptr" => {
+                                    if ptr_expr.is_some() {
+                                        self.errors.push(crate::parser::ParseError::new(
+                                            "duplicate field `ptr`".to_string(),
+                                            self.current_span(),
+                                        ));
+                                    }
+                                    ptr_expr = Some(field_val);
+                                }
+                                "len" => {
+                                    if len_expr.is_some() {
+                                        self.errors.push(crate::parser::ParseError::new(
+                                            "duplicate field `len`".to_string(),
+                                            self.current_span(),
+                                        ));
+                                    }
+                                    len_expr = Some(field_val);
+                                }
+                                _ => {
+                                    self.errors.push(crate::parser::ParseError::new(
+                                        format!(
+                                            "unknown field `{}` (expected `ptr` or `len`)",
+                                            field_name
+                                        ),
+                                        self.current_span(),
+                                    ));
+                                }
+                            }
+                            if !self.eat(&TokenKind::Comma) {
+                                break;
+                            }
+                        }
+                        self.expect(&TokenKind::RBrace, "`}`");
+                        let ptr = ptr_expr.unwrap_or_else(|| {
+                            self.errors.push(crate::parser::ParseError::new(
+                                "missing field `ptr`".to_string(),
+                                self.current_span(),
+                            ));
+                            Expr::Unit(self.current_span())
+                        });
+                        let len = len_expr.unwrap_or_else(|| {
+                            self.errors.push(crate::parser::ParseError::new(
+                                "missing field `len`".to_string(),
+                                self.current_span(),
+                            ));
+                            Expr::Unit(self.current_span())
+                        });
+                        Expr::FatPtrLit {
+                            target_ty,
+                            ptr: Box::new(ptr),
+                            len: Box::new(len),
+                            span,
+                        }
+                    } else {
+                        // Not a FatPtrLit candidate — parse as AddrOf.
+                        let expr = self.parse_unary_expr();
+                        Expr::AddrOf {
+                            mutability,
+                            expr: Box::new(expr),
+                            span,
+                        }
+                    }
+                } else {
+                    // `&mut` — always AddrOf (no FatPtrLit for mutable refs yet)
+                    let expr = self.parse_unary_expr();
+                    Expr::AddrOf {
+                        mutability,
+                        expr: Box::new(expr),
+                        span,
+                    }
                 }
             }
             _ => self.parse_postfix_expr(),
@@ -1145,6 +1237,8 @@ impl ExprSpan for Expr {
             Expr::Unit(s) => *s,
             Expr::Await { span, .. } => *span,
             Expr::Async { span, .. } => *span,
+            // Stage 31.1 (v0.19): Fat pointer literal.
+            Expr::FatPtrLit { span, .. } => *span,
         }
     }
 }

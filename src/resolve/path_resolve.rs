@@ -1196,6 +1196,11 @@ impl Resolver {
             // Stage 8.5: async/await — resolve inner expressions
             HirExprKind::Await { expr } => self.resolve_expr(expr, interner),
             HirExprKind::Async { block } => self.resolve_block(block, interner),
+            // Stage 31.1 (v0.19): Fat pointer literal — resolve ptr + len sub-exprs.
+            HirExprKind::FatPtrLit { ptr, len, .. } => {
+                self.resolve_expr(ptr, interner);
+                self.resolve_expr(len, interner);
+            }
         }
     }
 

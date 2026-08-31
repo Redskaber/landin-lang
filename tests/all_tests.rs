@@ -817,3 +817,7 @@ mod stage30_16_self_type_substs_tests;
 // === Stage 30.17
 #[path = "v0/stage30/plan/stage30_17_hrtb_infractx_integration_tests.rs"]
 mod stage30_17_hrtb_infractx_integration_tests;
+
+// === Stage 31.1 (v0.19 TD-INTRINSIC-OVERUSE Phase 2-B prerequisite): FatPtrLit AST ===
+#[path = "v0/stage31/plan/stage31_1_fat_ptr_lit_tests.rs"]
+mod stage31_1_fat_ptr_lit_tests;

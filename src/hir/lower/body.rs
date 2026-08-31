@@ -82,6 +82,8 @@ fn expr_span(expr: &ast::Expr) -> Span {
         Unit(s) => *s,
         Await { span, .. } => *span,
         Async { span, .. } => *span,
+        // Stage 31.1 (v0.19): Fat pointer literal.
+        FatPtrLit { span, .. } => *span,
     }
 }
 
@@ -391,6 +393,22 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             // MVP: `async { block }` → evaluate block synchronously
             let hir_block = lower_block(cx, block);
             HirExprKind::Async { block: hir_block }
+        }
+        // Stage 31.1 (v0.19): Fat pointer literal `&str { ptr: expr, len: expr }`
+        Expr::FatPtrLit {
+            target_ty,
+            ptr,
+            len,
+            ..
+        } => {
+            let hir_target_ty = ty::lower_ty(cx, target_ty);
+            let hir_ptr = lower_expr(cx, ptr);
+            let hir_len = lower_expr(cx, len);
+            HirExprKind::FatPtrLit {
+                target_ty: hir_target_ty,
+                ptr: Box::new(hir_ptr),
+                len: Box::new(hir_len),
+            }
         }
     };
     HirExpr { hir_id, kind, span }

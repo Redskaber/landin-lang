@@ -281,6 +281,11 @@ pub(super) fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut 
         }
         // Lit, Unit, Continue — genuinely no sub-expressions
         HirExprKind::Lit(_) | HirExprKind::Unit | HirExprKind::Continue => {}
+        // Stage 31.1 (v0.19): FatPtrLit — scan ptr + len sub-expressions.
+        HirExprKind::FatPtrLit { ptr, len, .. } => {
+            scan_expr_for_unresolved(ptr, errors);
+            scan_expr_for_unresolved(len, errors);
+        }
     }
 }
 

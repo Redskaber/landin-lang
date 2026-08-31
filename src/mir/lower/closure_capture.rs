@@ -153,6 +153,11 @@ pub(crate) fn collect_captured_locals(
         HirExprKind::Async { block } => {
             collect_block_captured(cx, block, param_hir_ids, captured, seen);
         }
+        // Stage 31.1 (v0.19): FatPtrLit — collect from ptr + len sub-expressions.
+        HirExprKind::FatPtrLit { ptr, len, .. } => {
+            collect_captured_locals(cx, ptr, param_hir_ids, captured, seen);
+            collect_captured_locals(cx, len, param_hir_ids, captured, seen);
+        }
     }
 }
 

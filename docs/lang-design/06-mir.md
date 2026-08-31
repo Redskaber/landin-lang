@@ -1437,7 +1437,7 @@ impl String {
 | While 循环 in Landin source | ✅ Exists | ✅ Exists | `src/parser/expr.rs:665` `KwWhile`. |
 | `&mut self` in prelude methods | ✅ Exists | ✅ Exists | `src/ast/kinds.rs:165` `SelfKind::ByRef`. |
 | 字段赋值 (`self.ptr = ...`) | ✅ Exists | ✅ Exists | `src/ast/kinds.rs:460` `Assign`. |
-| **Fat pointer construction syntax** | (隐含, 未明确) | ❌ **Missing — TRUE BLOCKER** | 需要新语言特性: `&str { ptr: expr, len: expr }` 或 `(*const u8, usize) as &str` 等. 当前 `&str` 只能从 string literal 或 `&expr` (AddrOf) 构造, 不能从独立 ptr+len 字段构造. |
+| **Fat pointer construction syntax** | (隐含, 未明确) | ✅ **Implemented Stage 31.1** | `&str { ptr: expr, len: expr }` syntax. AST `Expr::FatPtrLit` + HIR `HirExprKind::FatPtrLit` + Parser lookahead `&ident {` + MIR lower `Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)`. 32 tests (4 positive + 28 negative). |
 
 **真正的阻塞依赖**: Fat pointer construction syntax. 当前 `String::as_str` 的 intrinsic 实现 (`src/mir/lower/method_call_lower.rs:506-604`) 通过 `Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)` 构造 fat pointer — 这是正确的 MIR 模式, 但 Landin source 层面无法表达.
 
