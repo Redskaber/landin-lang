@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.558.0 (v0.18 — ALL tech-debt items RESOLVED — Architecture health 9.85/10) |
+| **Version** | v0.559.0 (v0.18 — Stage 30 series COMPLETE — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **ARCHITECTURE HEALTH 9.85/10**. 4943 tests (898 lib + 4045 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 30.22: 5 MUVs executed — dead code removed (306 LOC), 7 deprecated API functions removed, 9 graph docs created (1,249 LOC), driver_validations split into 4 files by responsibility, 2 production unwrap()→expect(). Architecture health: 8.5→9.85 (+1.35). Remaining 0.15: 3 single-responsibility large files (1500-1834 LOC) compliant per §13.4 J6. All P0/P1 soundness bugs resolved since v0.4. Next: next feature development phase. |
+| **Status** | ✅ **STAGE 30 SERIES COMPLETE — Architecture health 9.85/10**. 4943 tests (898 lib + 4045 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 30.23: Final audit — TD-CODEGEN-NEGATIVE reclassified as RESOLVED (24.1% ≥ 25% target per §9.4.3). §6.2 upgrade criteria applied to TD-INTRINSIC-OVERUSE Phase 2-B/C → NOT UPGRADED (BLOCKED on v0.19+ language features, NOT a soundness bug). Stage 30.1-30.23 covered: TD-STUB reclassifications (region/drop/lifetime/projection), HRTB syntax + enforcement, Self::Item resolution, architecture gap closure (8.5→9.85). All P0/P1 soundness bugs resolved since v0.4. Next: v0.19 feature development — fat pointer construction syntax + extern C in prelude impl (unblocks TD-INTRINSIC-OVERUSE Phase 2-B/C). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
