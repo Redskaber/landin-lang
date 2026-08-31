@@ -37,15 +37,9 @@ mod predicates;
 pub mod solver;
 mod tables;
 // Stage 16.73: Where clause checking.
-pub mod where_clause;
-// Stage 14.105 (dead code cleanup): `lifetime_elision` module removed.
-// It was `#[allow(dead_code)]` since Stage 8.1 and never called.
-// Lifetime elision will be re-implemented in v0.2 when real lifetimes are added.
 pub mod unify;
+pub mod where_clause;
 
-// Stage 18.60: Removed deprecated `check_crate` and `check_mir_body_with_hir`
-// dead code. The driver now uses `TypeChecker::check_mir_body_with_tables`
-// directly (§16-compliant). `check_mir_body` is kept as a convenience wrapper.
 pub use checker::{check_mir_body, TypeChecker};
 // Stage 6.15: re-export data tables from `tables` sub-module for backward compat.
 pub use error::{TypeError, TypeErrorKind};

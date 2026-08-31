@@ -912,19 +912,6 @@ impl TraitResolver {
             .and_then(|id| self.traits.get(id))
     }
 
-    /// Look up an impl block by (trait_name, self_ty_name).
-    ///
-    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `find_impl_by_def_ids`
-    /// instead — it's type-safe and doesn't require an interner.
-    #[deprecated(
-        note = "Use find_impl_by_def_ids (DefId-keyed, type-safe, no interner needed) instead. (Stage 16.11)"
-    )]
-    pub fn find_impl(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&ImplInfo> {
-        self.impl_by_trait_and_type
-            .get(&(trait_name, self_ty_name))
-            .and_then(|id| self.impls.get(id))
-    }
-
     /// Stage 16.07 (Task 3 step 1): Look up an impl block by DefIds.
     ///
     /// This is the **preferred lookup method** for new code — it uses
@@ -982,26 +969,6 @@ impl TraitResolver {
     /// pattern for query methods returning collections.
     pub fn trait_methods(&self, trait_name: Spur) -> Option<&Vec<Spur>> {
         self.find_trait(trait_name).map(|t| &t.methods)
-    }
-
-    /// Stage 5.14: Get the method names implemented in an impl block
-    /// (by trait_name + self_ty_name). Returns `None` if no impl found.
-    ///
-    /// Per API-naming-standard §3: `impl_methods` follows `<noun>_<noun>`
-    /// pattern; parallels `trait_methods`.
-    ///
-    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `impl_methods_by_def_ids`
-    /// instead — it's type-safe and doesn't require an interner.
-    #[deprecated(
-        note = "Use impl_methods_by_def_ids (DefId-keyed, type-safe) instead. (Stage 16.11)"
-    )]
-    pub fn impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vec<Spur>> {
-        // Stage 18.63: Inline deprecated find_impl to remove #[allow(deprecated)].
-        let impl_info = self
-            .impl_by_trait_and_type
-            .get(&(trait_name, self_ty_name))
-            .and_then(|id| self.impls.get(id));
-        impl_info.map(|i| &i.methods)
     }
 
     /// Stage 16.11 (Task 3 Step 4): Get the method names implemented in an
@@ -1193,39 +1160,8 @@ impl TraitResolver {
             .is_some()
     }
 
-    /// Check if a type implements a trait (by name).
-    ///
-    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `implements_by_def_ids`
-    /// instead — it's type-safe and doesn't require an interner.
-    #[deprecated(
-        note = "Use implements_by_def_ids (DefId-keyed, type-safe, no interner needed) instead. (Stage 16.11)"
-    )]
-    pub fn implements(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
-        // Stage 18.63: Inline deprecated find_impl.
-        self.impl_by_trait_and_type
-            .contains_key(&(trait_name, self_ty_name))
-    }
-
-    /// Stage 5.4: Check if a type (by DefId) implements a trait (by name).
-    ///
-    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `implements_by_def_ids`
-    /// instead — it takes both DefIds and is fully type-safe.
-    #[deprecated(
-        note = "Use implements_by_def_ids (both args are DefIds, type-safe) instead. (Stage 16.11)"
-    )]
-    pub fn implements_by_def_id(&self, trait_name: Spur, def_id: DefId) -> bool {
-        if let Some(type_name) = self.type_by_def_id.get(&def_id) {
-            // Stage 18.63: Inline deprecated implements.
-            self.impl_by_trait_and_type
-                .contains_key(&(trait_name, *type_name))
-        } else {
-            false
-        }
-    }
-
     /// Stage 5.4: Check if a type (by DefId) implements Copy.
     pub fn is_copy(&self, def_id: DefId, copy_name: Spur) -> bool {
-        // Stage 18.63: Inline deprecated implements_by_def_id.
         if let Some(type_name) = self.type_by_def_id.get(&def_id) {
             self.impl_by_trait_and_type
                 .contains_key(&(copy_name, *type_name))
@@ -1349,13 +1285,6 @@ impl TraitResolver {
         } else {
             false
         }
-    }
-
-    /// Stage 18.62: Deprecated. Inline the vtable lookup at call sites.
-    /// Kept as thin wrapper for test backward compat.
-    #[deprecated(note = "Use vtables.get() directly or find_vtable_by_def_ids")]
-    pub fn find_vtable(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vtable> {
-        self.vtables.get(&(trait_name, self_ty_name))
     }
 
     /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).

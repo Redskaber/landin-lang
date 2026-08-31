@@ -39,8 +39,6 @@
 //! Per §13.4 (设计对齐): design before implementation — this tool
 //! informs the design decision.
 
-#![allow(deprecated)] // We intentionally call both paths for comparison.
-
 use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 use std::fs;

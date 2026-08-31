@@ -9,9 +9,12 @@
 //! > Require ≥30 integration tests on real source
 //! > Require fibonacci + struct borrows + closures + loops to type-check
 //! > and borrow-check with zero errors
+//!
+//! Stage 30.22: migrated from deprecated `format_for_user` to
+//! `format_via_diagnostics` (rustc-style diagnostic output).
 
-#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::driver::{compile, compile_expect_errors, compile_expect_ok};
+use landin_compiler::session::SourceMap;
 
 // =====================================================================
 // fibonacci — recursive + iterative
@@ -901,9 +904,11 @@ fn integration_error_display_parse_error() {
 fn integration_error_display_no_errors() {
     let src = "fn f() {}";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let source_map = SourceMap::new(src);
+    let formatted =
+        result
+            .errors
+            .format_via_diagnostics(src, "test", &source_map, Some(&result.interner));
     assert!(
         formatted.is_empty(),
         "expected empty formatted output for clean compile, got: {}",
@@ -922,19 +927,22 @@ fn integration_error_display_no_src() {
 fn integration_error_display_includes_total_count() {
     let src = "fn f() { let x = 42;";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let source_map = SourceMap::new(src);
+    let formatted =
+        result
+            .errors
+            .format_via_diagnostics(src, "test", &source_map, Some(&result.interner));
     assert!(
-        formatted.contains("error:"),
-        "expected 'error:' header in formatted output, got: {}",
+        formatted.contains("error["),
+        "expected 'error[' header in formatted output, got: {}",
         formatted
     );
-    // Stage 15.12: format changed from "error(s)" to "errors found" /
-    // "error found" (friendlier display).
+    // Stage 30.22: format changed from `format_for_user` summary
+    // ("error: N errors found") to `format_via_diagnostics` rustc-style
+    // detailed output ("error[Code]: msg\n  --> src:line:col\n...").
     assert!(
-        formatted.contains("error found") || formatted.contains("errors found"),
-        "expected 'error(s) found' count in formatted output, got: {}",
+        formatted.contains("-->"),
+        "expected source location marker '-->' in formatted output, got: {}",
         formatted
     );
 }

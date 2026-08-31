@@ -25,7 +25,6 @@
 //! the `<verb>_<noun>` / `<verb>_<noun>_<noun>` conventions.
 // Stage 15.37: Allow deprecated — the parity tests below intentionally
 // call the legacy `check_mir_body` to compare against the dataflow path.
-#![allow(deprecated)]
 #![cfg(test)]
 
 use landin_compiler::borrowck::{

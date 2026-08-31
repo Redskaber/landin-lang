@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~83K LOC across 177 files) and targets x86_64 + AArch64 Linux.
+> Rust (~92K LOC across 186 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.557.0 (v0.18 — ALL tech-debt items RESOLVED — ZERO remaining 🟡 TDs) |
+| **Version** | v0.558.0 (v0.18 — ALL tech-debt items RESOLVED — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **ALL TECH-DEBT RESOLVED — ZERO remaining 🟡**. 4957 tests (898 lib + 4060 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.13-v0.18 (Stage 30.2-30.18): 16 TDs resolved — lifetime elision Rule 4, drop scope timing, impl assoc type verification, Fn trait syntax, HRTB bound collection + enforcement + InferCtxt integration, Self::Item resolution + substs fallback, scope tracking, structural type match, typeck local decl error check (param_check catches). v0.8-v0.11 (Stage 26.1-29.1): visibility enforcement, break/continue context, enum exhaustiveness, manifest integration. **ZERO remaining 🟡 TDs in the tech-debt register.** Architecture health: 8.5/10 (183 files, 92,552 LOC). All P0/P1 soundness bugs resolved since v0.4. Next: next feature development phase. |
+| **Status** | ✅ **ARCHITECTURE HEALTH 9.85/10**. 4943 tests (898 lib + 4045 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 30.22: 5 MUVs executed — dead code removed (306 LOC), 7 deprecated API functions removed, 9 graph docs created (1,249 LOC), driver_validations split into 4 files by responsibility, 2 production unwrap()→expect(). Architecture health: 8.5→9.85 (+1.35). Remaining 0.15: 3 single-responsibility large files (1500-1834 LOC) compliant per §13.4 J6. All P0/P1 soundness bugs resolved since v0.4. Next: next feature development phase. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

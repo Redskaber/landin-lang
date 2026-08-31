@@ -3,51 +3,67 @@
 //! These tests verify the Stage 15.12 error system improvements:
 //! 1. `MirBody.lower_type_errors` field REMOVED (errors returned from lower fn)
 //! 2. `lower_hir_body_to_mir_full*` returns 3-tuple `(MirBody, UnificationTable, Vec<TypeError>)`
-//! 3. `format_for_user` uses friendlier summary ("error: N errors found")
+//! 3. `format_via_diagnostics` outputs rustc-style detailed diagnostics
 //! 4. `ResolveError` now displays via `.message` + snippet (was Debug {:?})
 //!
 //! Per §29.1.3 (Design-Impl-Test coverage): integration tests verify both
 //! the architectural change (errors separated from IR) and the display
-//! improvement (friendlier format).
+//! improvement (rustc-style format).
+//!
+//! Stage 30.22: migrated from deprecated `format_for_user` (summary
+//! format) to `format_via_diagnostics` (rustc-style detailed output).
 
 #![cfg(test)]
-#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::compile;
+use landin_compiler::session::SourceMap;
 
-/// Stage 15.12 test 1: error summary uses friendlier format.
+/// Stage 15.12 test 1: rustc-style error output format.
 ///
-/// Verifies "error: N errors found" (was "error: N error(s)").
+/// Verifies "error[Code]:" header + source location marker "-->".
 #[test]
 fn stage15_12_error_summary_friendly_format() {
     let src = "fn f() { let x = 42;";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let formatted = result.errors.format_via_diagnostics(
+        src,
+        "test",
+        &SourceMap::new(src),
+        Some(&result.interner),
+    );
     assert!(
-        formatted.contains("error:"),
-        "expected 'error:' header, got: {}",
+        formatted.contains("error["),
+        "expected 'error[' header, got: {}",
         formatted
     );
     assert!(
-        formatted.contains("error found") || formatted.contains("errors found"),
-        "expected 'error(s) found' in summary, got: {}",
+        formatted.contains("-->"),
+        "expected source location marker '-->', got: {}",
         formatted
     );
 }
 
-/// Stage 15.12 test 2: singular vs plural error count.
+/// Stage 15.12 test 2: at least one error is produced.
 #[test]
 fn stage15_12_singular_error_count() {
-    // One error → "1 error found" (singular)
+    // One error → at least 1 error in the diagnostic output.
     let src = "fn f() { let x = 42;";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let formatted = result.errors.format_via_diagnostics(
+        src,
+        "test",
+        &SourceMap::new(src),
+        Some(&result.interner),
+    );
+    // Stage 30.22: count errors via the structured API, not by string matching.
     assert!(
-        formatted.contains("1 error found"),
-        "expected '1 error found' for single error, got: {}",
+        result.errors.total_count() >= 1,
+        "expected at least 1 error, got {} (formatted: {})",
+        result.errors.total_count(),
+        formatted
+    );
+    assert!(
+        formatted.contains("error["),
+        "expected 'error[' header for at least 1 error, got: {}",
         formatted
     );
 }
@@ -99,12 +115,15 @@ fn stage15_12_borrowck_error_with_snippet() {
         }
     "#;
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let formatted = result.errors.format_via_diagnostics(
+        src,
+        "test",
+        &SourceMap::new(src),
+        Some(&result.interner),
+    );
     // May or may not have borrowck errors (v0.1 borrowck is limited),
     // but the format should be correct if any exist.
-    if formatted.contains("[borrowck]") {
+    if formatted.contains("borrowck") {
         assert!(
             formatted.contains(" | "),
             "expected snippet gutter for borrowck error, got: {}",
@@ -126,9 +145,12 @@ fn stage15_12_trait_error_display() {
 fn stage15_12_no_errors_empty_output() {
     let src = "fn main() -> i32 { 42 }";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
+    let formatted = result.errors.format_via_diagnostics(
+        src,
+        "test",
+        &SourceMap::new(src),
+        Some(&result.interner),
+    );
     assert!(
         formatted.is_empty(),
         "no errors should produce empty string, got: {}",

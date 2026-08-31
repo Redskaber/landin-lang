@@ -58,7 +58,11 @@ mod driver_scan;
 mod projection_resolver;
 // Stage 18.138 §13.4 J1-J6: extract codegen prep from mod.rs
 mod driver_codegen_prep;
+// Stage 30.22 §13.4 J2/J6: split driver_validations by responsibility.
 mod driver_validations;
+mod driver_validations_impl;
+mod driver_validations_struct;
+mod driver_validations_trait_object;
 // Stage 18.152 (TD-SINGLE-FILE Phase 1): multi-file module loader.
 // Per §11: driver-level concern (runs after parse, before HIR lower).
 pub mod module_loader;
@@ -142,20 +146,6 @@ impl CompileErrors {
 
     pub fn has_fatal(&self) -> bool {
         !self.lex.is_empty() || !self.parse.is_empty()
-    }
-
-    /// Stage 15.15: Deprecated. Use `format_via_diagnostics` instead.
-    /// Kept as thin wrapper for backward compat with existing test call sites.
-    #[deprecated(since = "0.327.0", note = "Use format_via_diagnostics instead")]
-    pub fn format_for_user(&self, _src: Option<&str>, _interner: Option<&Rodeo>) -> String {
-        let total = self.total_count();
-        if total == 0 {
-            String::new()
-        } else if total == 1 {
-            "error: 1 error found\n".to_string()
-        } else {
-            format!("error: {} errors found\n", total)
-        }
     }
 
     /// Stage 15.14: Convert all errors to `Diagnostic` values.

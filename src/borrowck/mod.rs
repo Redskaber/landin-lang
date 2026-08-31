@@ -29,9 +29,6 @@ pub mod move_tracker;
 
 // Stage 6.14 (TD-024) sub-modules.
 mod copy_semantics;
-// Stage 14.105 (dead code cleanup): `drop_elaboration` module removed.
-// It was `#[allow(dead_code)]` since Stage 8.4 and never called.
-// Drop elaboration will be re-implemented in v0.2 when user-defined Drop is added.
 mod liveness;
 mod place_path;
 // Stage 7.1 (TD-015 step 1): region inference data structures + constraint collection.
@@ -68,9 +65,6 @@ pub use move_tracker::MoveTracker;
 pub use crate::mir::place::BorrowKind;
 // Stage 6.14: re-export public symbols from sub-modules for backward compat.
 // Stage 18.64: ty_is_copy is deprecated but re-exported for test backward compat.
-// The #[allow(deprecated)] is necessary because test code imports it.
-#[allow(deprecated)]
-pub use copy_semantics::ty_is_copy;
 pub use copy_semantics::{ty_is_copy_unified, ty_is_copy_with_resolver};
 // Stage 15.35 (HP-10): re-export fixpoint liveness analysis API for v0.2 Phase 2.
 // The legacy `compute_last_use_map` is retained until Stage 15.37 migration.

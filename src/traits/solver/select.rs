@@ -87,7 +87,11 @@ pub fn select_from_eval(
     if ok_count == 1 {
         // Unique Ok candidate — select it.
         // Per §5.5: "bind" the inference variables from the impl substitution.
-        let (impl_def_id, one_result) = eval_result.unique_ok().unwrap();
+        // Per §1.0 原則 3 (显式 > 隐式): expect() documents the invariant
+        // that ok_count == 1 guarantees unique_ok() returns Some.
+        let (impl_def_id, one_result) = eval_result
+            .unique_ok()
+            .expect("ok_count == 1 guarantees unique Ok candidate exists");
         bind_inference_vars(impl_def_id, &one_result.substs, infer_ctxt);
         SelectionResult::Ok { impl_def_id }
     } else if ok_count > 1 {

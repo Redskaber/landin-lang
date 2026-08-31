@@ -29,7 +29,6 @@
 // Stage 15.37: Allow deprecated — these tests intentionally call the
 // legacy `check_mir_body` to verify it is still callable (deprecation
 // is a warning, not a removal) and to compare against the dataflow path.
-#![allow(deprecated)]
 #![cfg(test)]
 
 use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};

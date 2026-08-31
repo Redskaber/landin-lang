@@ -785,7 +785,6 @@ mod tests {
     use super::*;
     use crate::ast::IntTy;
     use crate::hir::DefId;
-    use crate::lexer::Symbol;
     use crate::mir::ty::{ParamTy, TyVid};
     use crate::session::Span;
     use lasso::Rodeo;
@@ -906,11 +905,6 @@ mod tests {
         assert_eq!(ObligationCause::LetBinding, ObligationCause::LetBinding);
         assert_ne!(ObligationCause::LetBinding, ObligationCause::WhereClause);
     }
-
-    // Suppress unused Symbol import warning (kept for the `name: &str -> Symbol`
-    // interner pattern documented above).
-    #[allow(dead_code)]
-    fn _suppress_symbol_warning(_sym: Symbol) {}
 
     // ----------- ObligationQueue tests -----------
 

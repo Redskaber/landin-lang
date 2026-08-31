@@ -1,11 +1,13 @@
 //! Stage 5.14: Trait method query API tests
-#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
-//! Tests `trait_methods()`, `impl_methods()`, `trait_has_method()`,
+//! Tests `trait_methods()`, `impl_methods_by_def_ids()`, `trait_has_method()`,
 //! `traits_with_method()`, and `method_count_for_trait()`.
 //!
 //! Per §16: tests use the `compile()` public API.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
+//!
+//! Stage 30.22: migrated from deprecated `impl_methods` (Spur-based) to
+//! `impl_methods_by_def_ids` (DefId-keyed, type-safe).
 
 use landin_compiler::compile;
 
@@ -39,18 +41,29 @@ fn test_trait_methods_unknown() {
     }
 }
 
-/// `impl_methods` should return methods implemented in an impl block.
+/// `impl_methods_by_def_ids` should return methods implemented in an impl block.
 #[test]
 fn test_impl_methods() {
     let result = compile(
         "trait Foo { fn bar(); fn baz(); } struct S; impl Foo for S { fn bar() {} fn baz() {} } fn main() {}",
     );
     let foo_spur = result.interner.get("Foo").expect("Foo interned");
+    let foo_def_id = result
+        .trait_resolver
+        .find_trait_def_id(foo_spur)
+        .expect("Foo trait DefId");
     let s_spur = result.interner.get("S").expect("S interned");
+    let s_def_id = result
+        .trait_resolver
+        .type_by_def_id
+        .iter()
+        .find(|(_, &n)| n == s_spur)
+        .map(|(&d, _)| d)
+        .expect("S type DefId");
 
     let methods = result
         .trait_resolver
-        .impl_methods(foo_spur, s_spur)
+        .impl_methods_by_def_ids(foo_def_id, s_def_id)
         .expect("impl Foo for S should have methods");
     assert_eq!(methods.len(), 2, "impl should have 2 methods");
 }

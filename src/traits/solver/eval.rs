@@ -422,29 +422,6 @@ pub fn eval_all_to_result(eval_result: &EvalAllResult) -> EvalResult {
 // Helpers — self type name extraction + substs inference
 // =====================================================================
 
-/// Extract a "name" from a Ty for the purpose of impl matching.
-///
-/// Per §1.0 原則 6 (通解 > 特解): one function handles all TyKind variants.
-///
-/// Returns `None` for anonymous types (Infer, Param, Error, Closure) —
-/// such obligations are deferred to Fulfillment pending queue.
-///
-/// MVP scope: for `Adt(def_id, _)`, we look up the type name via
-/// `trait_resolver.type_by_def_id`. For primitives (Int/Bool/etc.),
-/// we synthesize a name. For everything else, returns None.
-///
-/// **Deprecated**: replaced by `self_type_name_for_obligation` which takes
-/// the resolver explicitly. Kept here as a stub for documentation; actual
-/// lookup happens via `self_type_name_for_obligation`.
-#[allow(dead_code)]
-fn self_type_name_for_match(_ty: &Ty, _resolver: &TraitResolver) -> Option<Symbol> {
-    // Per §1.0 原則 4 (报错 > 静默): this stub returns None — actual
-    // logic lives in `self_type_name_for_obligation` below. This function
-    // is kept only as a placeholder for documentation; it should be
-    // removed in Phase 3 after all callers migrate.
-    None
-}
-
 // Thread-local interner for test/standalone use.
 //
 // Per §15.28 pattern (Ty interning): a thread-local Rodeo for Symbol dedup.

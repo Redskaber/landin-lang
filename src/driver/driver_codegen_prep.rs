@@ -283,7 +283,7 @@ pub(super) fn build_trait_resolver_and_plan(
     crate::stdlib::register_stdlib(interner);
     trait_resolver.collect(hir, interner, user_item_count);
 
-    super::driver_validations::check_object_safety_for_dyn_trait_usage(
+    super::driver_validations_trait_object::check_object_safety_for_dyn_trait_usage(
         hir,
         &trait_resolver,
         interner,

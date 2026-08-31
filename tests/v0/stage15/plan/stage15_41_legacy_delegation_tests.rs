@@ -14,8 +14,6 @@
 //! Per §29.1.3 (Design-Impl-Test coverage): the tests verify the delegation
 //! is correct and the dead code removal doesn't break anything.
 
-#![allow(deprecated)] // We intentionally call the legacy API to verify delegation.
-
 use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::compile;
 

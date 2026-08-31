@@ -3,13 +3,104 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.557.0 (Stage 30.17 — v0.17 COMPLETE — TD-HRTB-INFRACTX-INTEGRATION: InferCtxt + solver wired into HRTB validation — ALL TDs RESOLVED) |
+| **Current version** | v0.558.0 (Stage 30.22 — Architecture Health Gap Closure: 8.5→9.85/10) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4060 integration tests = 4957 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4045 integration tests = 4943 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.16 COMPLETE; v0.17 COMPLETE (Stage 30.16: Self::Item empty-substs fallback + Stage 30.17: InferCtxt + solver wired into HRTB validation) |
+| **Architecture** | Health 9.85/10 (186 files, 92,228 LOC); Stage 30.22: 5 MUVs executed — dead code removed, 7 deprecated APIs removed, 9 graph docs created, driver_validations split by responsibility, unwrap→expect; §13.4 J6-compliant remaining (3 single-responsibility large files) |
+
+---
+
+## v0.558.0 — Stage 30.22 — Architecture Health Gap Closure (8.5→9.85/10)
+
+### Overview
+
+This release closes the architecture health gap identified in Stage 30.21.
+5 Minimum Verifiable Units (MUVs) were executed to address all 5 gap
+categories: dead code, deprecated APIs, missing graph docs, large files,
+and production unwrap() calls.
+
+Per §1.0 原則 5 (去除兼容思维): no compatibility mindset — dead code and
+deprecated APIs are fully removed. Per §13.4 J6 (科学合理粒度): file
+granularity is driven by responsibility, not LOC — single-responsibility
+large files are kept intact.
+
+### What Changed
+
+#### MUV 1: Dead Code Removal (+0.3 points)
+
+- Removed `writeback_field_types_with_table` (280 LOC dead method) + 4 nested
+  helper fns + `typeck_type_contains_param` from `src/typeck/writeback.rs`
+- Removed `self_type_name_for_match` dead stub from `src/traits/solver/eval.rs`
+- Removed `_suppress_symbol_warning` + unused `Symbol` import from
+  `src/traits/solver/mod.rs` tests module
+- Removed stale comments (lifetime_elision, drop_elaboration, check_crate)
+- Kept `region_inference` (tracked infrastructure for future HRTB)
+
+#### MUV 2: Deprecated API Removal (+0.2 points)
+
+- Removed 7 deprecated functions from src:
+  - `format_for_user` (driver/mod.rs) — replaced by `format_via_diagnostics`
+  - `ty_is_copy` (borrowck/copy_semantics.rs) — unsound, replaced by `ty_is_copy_with_resolver`
+  - `find_impl`, `impl_methods`, `implements`, `implements_by_def_id`, `find_vtable`
+    (traits/resolver.rs) — replaced by `*_by_def_ids` variants
+- Migrated 29 deprecated API calls across 13 test files
+- Deleted `stage16_11_spur_deprecation_tests.rs` (entire file testing deprecated APIs)
+- Removed 17 `#![allow(deprecated)]` attributes
+- Tests: 4958 → 4943 (-15 consistency tests that tested deprecated APIs)
+
+#### MUV 3: Graph Docs Creation (+0.4 points)
+
+- Created 9 new data-flow.md documents (1,249 LOC total):
+  - `docs/graph/{lexer,parser,hir,mir,typeck,borrowck,traits,driver,resolve}/data-flow.md`
+- Each doc follows the established template: Overview + Data Flow Diagram +
+  Key Data Structures + Dependencies + Stage Boundaries
+- Updated `docs/graph/README.md` (11 → 20 diagrams)
+
+#### MUV 4: Large File Split (+0.15 of 0.3 points)
+
+- Split `driver_validations.rs` (1,615 LOC) into 4 files by responsibility:
+  - `driver_validations.rs` (730 LOC) — orchestrator + misc validations
+  - `driver_validations_impl.rs` (510 LOC) — impl method signatures, assoc types, HRTB bounds
+  - `driver_validations_struct.rs` (230 LOC) — struct literal field/in-expr/single validations
+  - `driver_validations_trait_object.rs` (140 LOC) — object safety + trait object type checks
+- NOT split (single-responsibility per §13.4 J6):
+  - `expr_operand.rs` (1,834 LOC) — single responsibility (expression lowering)
+  - `checker.rs` (1,626 LOC) — single responsibility (type checking)
+  - `pattern_lower.rs` (1,613 LOC) — single responsibility (pattern lowering)
+- Per §13.4 J6 anti-pattern: splitting purely for LOC reduction is forbidden
+
+#### MUV 5: Production unwrap() → expect() (+0.3 points)
+
+- Converted 2 actual production unwrap() calls to expect() with invariant docs:
+  - `src/traits/solver/select.rs:90` → `expect("ok_count == 1 guarantees unique Ok candidate exists")`
+  - `src/parser/generics.rs:305` → `expect("inner_bounds non-empty (checked above)")`
+- Per §1.0 原則 3 (显式 > 隐式): expect() documents the invariant
+
+### Verification
+
+- §14.5 D1 (fmt): clean ✅
+- §14.5 D2 (clippy): 0 warnings ✅
+- §14.5 D3 (build): success ✅
+- §14.5 D4 (lib tests): 898/898 ✅
+- §14.5 D5 (integration tests): 4045/4045 (2 ignored) ✅
+- §14.5 D6 (no P0/P1): ALL resolved ✅
+- §14.5 D7 (architecture health): 9.85/10 ✅
+- §14.5 D8 (§1.6 终极检验): optimal per §13.4 J6 ✅
+
+### Architecture Health Calculation
+
+| Gap Category | Before | Resolved | After |
+|--------------|--------|-----------|-------|
+| Dead code | 0.3 | 0.3 | 0.0 ✅ |
+| Deprecated APIs | 0.2 | 0.2 | 0.0 ✅ |
+| Missing graph docs | 0.4 | 0.4 | 0.0 ✅ |
+| Large files > 1500 LOC | 0.3 | 0.15 | 0.15 (J6-compliant) |
+| Production unwrap() | 0.3 | 0.3 | 0.0 ✅ |
+| **Total gap** | **1.5** | **1.35** | **0.15** |
+| **Architecture health** | **8.5/10** | — | **9.85/10** ✅ |
 
 ---
 

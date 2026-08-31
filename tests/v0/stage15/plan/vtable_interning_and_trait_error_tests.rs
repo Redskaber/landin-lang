@@ -17,8 +17,11 @@
 //! changes work correctly with real HIR produced by compile().
 
 #![cfg(test)]
-#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
+//!
+//! Stage 30.22: migrated from deprecated `find_vtable` (Spur-based) to
+//! `find_vtable_by_def_ids` (DefId-keyed, type-safe).
 use landin_compiler::compile;
+use landin_compiler::session::SourceMap;
 use landin_compiler::TraitError;
 
 /// Stage 15.9 test 1: VtableEntry.fn_name is interned as Spur.
@@ -38,9 +41,20 @@ fn stage15_9_vtable_fn_name_interned() {
 
     let foo_spur = result.interner.get("Foo").expect("Foo interned");
     let s_spur = result.interner.get("S").expect("S interned");
+    let foo_def_id = result
+        .trait_resolver
+        .find_trait_def_id(foo_spur)
+        .expect("Foo trait DefId");
+    let s_def_id = result
+        .trait_resolver
+        .type_by_def_id
+        .iter()
+        .find(|(_, &n)| n == s_spur)
+        .map(|(&d, _)| d)
+        .expect("S type DefId");
     let vtable = result
         .trait_resolver
-        .find_vtable(foo_spur, s_spur)
+        .find_vtable_by_def_ids(foo_def_id, s_def_id)
         .expect("vtable should exist");
 
     // Stage 15.9: fn_name is Spur, resolve via interner.
@@ -68,9 +82,20 @@ fn stage15_9_multiple_vtable_entries_interned() {
 
     let multi_spur = result.interner.get("Multi").expect("Multi interned");
     let t_spur = result.interner.get("T").expect("T interned");
+    let multi_def_id = result
+        .trait_resolver
+        .find_trait_def_id(multi_spur)
+        .expect("Multi trait DefId");
+    let t_def_id = result
+        .trait_resolver
+        .type_by_def_id
+        .iter()
+        .find(|(_, &n)| n == t_spur)
+        .map(|(&d, _)| d)
+        .expect("T type DefId");
     let vtable = result
         .trait_resolver
-        .find_vtable(multi_spur, t_spur)
+        .find_vtable_by_def_ids(multi_def_id, t_def_id)
         .expect("vtable should exist");
 
     assert_eq!(vtable.entries.len(), 3, "should have 3 entries");
@@ -224,10 +249,16 @@ fn stage15_9_trait_error_format_with_interner() {
     );
 }
 
-/// Stage 15.9 test 6: format_for_user with interner displays trait errors.
+/// Stage 15.9 test 6: format_via_diagnostics with interner displays trait errors.
 #[test]
-fn stage15_9_format_for_user_with_interner() {
+fn stage15_9_format_via_diagnostics_with_interner() {
     let src = "trait T { fn f(); } struct S; impl T for S {} fn main() { 0 }";
     let result = compile(src);
-    let _ = result;
+    // Stage 30.22: migrated from deprecated format_for_user to format_via_diagnostics.
+    let _ = result.errors.format_via_diagnostics(
+        src,
+        "test",
+        &SourceMap::new(src),
+        Some(&result.interner),
+    );
 }

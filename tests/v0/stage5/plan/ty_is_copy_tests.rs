@@ -8,12 +8,10 @@
 //! Stage 5.9 fixed this — Adt without `impl Copy` is now correctly NOT
 //! Copy. The test has been updated to reflect the sound behavior.
 //!
-//! Stage 16.06: `ty_is_copy` is deprecated (unsound). These tests use it
-//! only to verify the fallback path (test contexts without resolver).
+//! Stage 30.22: legacy `ty_is_copy` (unsound, treated all Adt as Copy)
+//! removed. Tests now exclusively use `ty_is_copy_with_resolver`.
 
-#![allow(deprecated)] // Stage 16.06: ty_is_copy is deprecated, tests verify fallback
-
-use landin_compiler::borrowck::{ty_is_copy, ty_is_copy_with_resolver};
+use landin_compiler::borrowck::ty_is_copy_with_resolver;
 use landin_compiler::mir::ty::{Ty, TyKind};
 use landin_compiler::session::Span;
 use landin_compiler::traits::TraitResolver;
@@ -24,7 +22,6 @@ fn test_primitives_always_copy() {
     let i32_ty = Ty::new(TyKind::Int(landin_compiler::ast::IntTy::I32), Span::DUMMY);
     let resolver = TraitResolver::new();
     let interner = Rodeo::new();
-    assert!(ty_is_copy(&i32_ty), "i32 should be Copy (fallback)");
     assert!(
         ty_is_copy_with_resolver(&i32_ty, &resolver, &interner),
         "i32 should be Copy (with resolver)"
@@ -46,10 +43,6 @@ fn test_adt_without_copy_impl_not_copy() {
     );
     let resolver = TraitResolver::new();
     let interner = Rodeo::new();
-    // ty_is_copy (legacy, no resolver) still returns true for Adt — it
-    // doesn't consult the resolver at all and treats all Adt as Copy.
-    // This is the legacy behavior kept for backward compat.
-    assert!(ty_is_copy(&adt_ty), "legacy ty_is_copy treats Adt as Copy");
     // ty_is_copy_with_resolver (Stage 5.9) correctly returns false —
     // no `impl Copy` exists for this DefId.
     assert!(
@@ -63,7 +56,6 @@ fn test_str_not_copy() {
     let str_ty = Ty::new(TyKind::Str, Span::DUMMY);
     let resolver = TraitResolver::new();
     let interner = Rodeo::new();
-    assert!(!ty_is_copy(&str_ty), "str should NOT be Copy");
     assert!(
         !ty_is_copy_with_resolver(&str_ty, &resolver, &interner),
         "str should NOT be Copy (with resolver)"

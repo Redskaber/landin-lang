@@ -5,55 +5,19 @@
 //! Extracted from `mod.rs` per `docs/stage-committee-process.md` v3.21
 //! §14.4 + §13.4.
 //!
-//! Owns 3 functions:
-//! - `ty_is_copy` (MVP Copy detection without TraitResolver)
+//! Owns 2 functions:
 //! - `ty_is_copy_with_resolver` (precise Copy detection via TraitResolver)
 //! - `ty_is_copy_unified` (unified entry point, delegates to _with_resolver)
-
-/// Determine whether a type implements `Copy`.
-///
-/// Per Landin semantics (mirroring Rust), the following types are Copy:
-/// - Primitives: bool, char, int, uint, float
-/// - References: `&T` (shared refs are always Copy; `&mut T` is not Copy
-///   but Move semantics are checked elsewhere)
-/// - Raw pointers: `*const T`, `*mut T`
-/// - Function definitions and function pointers
-/// - Tuples whose every element is Copy
-/// - Arrays of Copy types (size is part of the type)
-/// - Slices are NOT Copy (they're unsized)
-/// - The unit type `()` is Copy
-///
-/// ADTs (struct/enum) require an explicit `#[derive(Copy)]` annotation;
-/// for Stage 2.4c we conservatively treat all Adt types as non-Copy
-/// (the TraitResolver, which would consult the derive list, is Stage 3).
-/// This is the safe default — a false negative (saying "not Copy" when
-/// it actually is) just produces a spurious error; a false positive
-/// (saying "Copy" when it isn't) would be unsound.
-///
-/// `Infer` and `Error` are treated as Copy to avoid spurious errors
-/// during type inference (the type isn't known yet, so we give the
-/// benefit of the doubt).
-///
-/// Stage 16.06: DEPRECATED. This function is UNSOUND — it returns `true`
-/// for ALL Adt types, which is incorrect for types with `impl Drop` or
-/// non-Copy fields. The driver now uses `ty_is_copy_with_resolver` (via
-/// `BorrowChecker::with_resolver_and_sigs`) which is sound. This function
-/// remains only for test contexts that construct `BorrowChecker::new()`
-/// without a resolver. New code should use `ty_is_copy_with_resolver` or
-/// `ty_is_copy_unified`.
-///
-/// Per §23.6: deprecated with note pointing to the §16-compliant
-/// alternative.
-#[deprecated(
-    note = "Unsound: returns true for ALL Adt types. Use ty_is_copy_with_resolver (via BorrowChecker::with_resolver_and_sigs) or ty_is_copy_unified instead. (Stage 16.06)"
-)]
-pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
-    is_copy_recursive(ty)
-}
+//!
+//! Stage 30.22: removed deprecated `ty_is_copy` (unsound — returned true
+//! for ALL Adt types). Use `ty_is_copy_with_resolver` or `ty_is_copy_unified`.
 
 /// Stage 18.64: Internal recursive Copy check (extracted from ty_is_copy).
 /// This avoids self-deprecation by having the deprecated wrapper delegate
 /// to this non-deprecated inner function.
+///
+/// Stage 30.22: deprecated `ty_is_copy` removed; this is now the sole
+/// internal recursive helper (still used by `ty_is_copy_with_resolver`).
 pub(crate) fn is_copy_recursive(ty: &crate::mir::ty::Ty) -> bool {
     use crate::mir::ty::TyKind::*;
     match &ty.kind {

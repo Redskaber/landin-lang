@@ -1,5 +1,4 @@
 //! Stage 16.10 — Task 3 Step 3 continuation: DefId-keyed vtable lookup tests.
-#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
 //! These tests verify the Stage 16.10 additions to TraitResolver:
 //! 1. `vtables_by_def_ids: HashMap<(DefId, DefId), Vtable>` field.
@@ -93,45 +92,7 @@ fn stage16_10_vtables_by_def_ids_map_is_populated() {
 }
 
 /// Stage 16.10 test 4: DefId-keyed and Spur-based vtable lookups agree.
-///
-/// For all (trait, type) pairs, `find_vtable_by_def_ids` should give the
-/// same result as `find_vtable(trait_spur, type_spur)`.
-#[test]
-fn stage16_10_def_id_and_spur_vtable_lookups_agree() {
-    let result = compile(
-        "trait Foo { fn bar(&self); } trait Baz { fn qux(&self); } struct S; struct T; impl Foo for S { fn bar(&self) {} } impl Baz for T { fn qux(&self) {} } fn main() {}",
-    );
-    for trait_name in &["Foo", "Baz"] {
-        let trait_spur = result.interner.get(trait_name).expect("trait interned");
-        let trait_def_id = result
-            .trait_resolver
-            .find_trait_def_id(trait_spur)
-            .expect("trait DefId");
-        for type_name in &["S", "T"] {
-            let type_spur = result.interner.get(type_name).expect("type interned");
-            let type_def_id = result
-                .trait_resolver
-                .type_by_def_id
-                .iter()
-                .find(|(_, &n)| n == type_spur)
-                .map(|(&d, _)| d)
-                .expect("type DefId");
-            let spur_result = result.trait_resolver.find_vtable(trait_spur, type_spur);
-            let def_id_result = result
-                .trait_resolver
-                .find_vtable_by_def_ids(trait_def_id, type_def_id);
-            assert_eq!(
-                spur_result.is_some(),
-                def_id_result.is_some(),
-                "Spur-based and DefId-based vtable lookups should agree for {}::{}",
-                trait_name,
-                type_name
-            );
-        }
-    }
-}
-
-/// Stage 16.10 test 5: `find_vtable_by_def_ids` works with multiple methods.
+////// Stage 16.10 test 5: `find_vtable_by_def_ids` works with multiple methods.
 ///
 /// `trait Greet { fn hello(&self); fn bye(&self); } struct Person; impl Greet for Person`
 /// — the vtable should have 2 entries (hello + bye) in the correct order.

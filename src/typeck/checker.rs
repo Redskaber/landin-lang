@@ -193,8 +193,6 @@ impl TypeChecker {
         // Phase 3.5: Writeback field types using the pre-computed table.
         if let Some(table) = field_ty_table {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
-            // self.writeback_field_types_with_table(mir, table);
-
             // Stage 18.411 (v0.5+ Phase 2 L3 step 2 refactor): Split the
             // former `writeback_field_load_locals_with_table` (which bundled
             // Pass 1 = field-access writeback + Pass 2 = BinaryOp result

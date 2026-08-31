@@ -86,20 +86,7 @@ fn stage16_19_mirbody_def_id_field_exists() {
 }
 
 /// Stage 16.19 test 5: v0.3 design doc — Deprecated methods still work.
-///
-/// Verifies that deprecated Spur-based methods still function (backward
-/// compat), as documented in the design doc.
-#[test]
-#[allow(deprecated)]
-fn stage16_19_deprecated_methods_still_work() {
-    let result = compile("struct S; impl Copy for S {} fn main() {}");
-    let copy_spur = result.interner.get("Copy").expect("Copy interned");
-    let s_spur = result.interner.get("S").expect("S interned");
-    // Deprecated methods should still return correct results
-    assert!(result.trait_resolver.implements(copy_spur, s_spur));
-}
-
-/// Stage 16.19 test 6: v0.3 design doc — Complete pipeline stable.
+////// Stage 16.19 test 6: v0.3 design doc — Complete pipeline stable.
 ///
 /// Verifies that the complete compilation pipeline is stable with
 /// all v0.3 features active, as documented in the design doc.

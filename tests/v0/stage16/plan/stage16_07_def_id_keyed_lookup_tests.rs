@@ -1,5 +1,4 @@
 //! Stage 16.07 — Task 3 step 1: DefId-keyed trait impl lookup tests.
-#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
 //! These tests verify the Stage 16.07 additions to TraitResolver:
 //! 1. `impls_by_def_ids: HashMap<(DefId, DefId), DefId>` field.
@@ -107,41 +106,6 @@ fn stage16_07_implements_by_def_ids_returns_false_for_no_impl() {
             .implements_by_def_ids(drop_def_id, s_def_id),
         "implements_by_def_ids should return false for S without impl Drop"
     );
-}
-
-/// Stage 16.07 test 5: DefId-keyed and Spur-based lookups agree.
-///
-/// For all (trait, type) pairs, `implements_by_def_ids` should give the
-/// same result as `implements(trait_spur, type_spur)`.
-#[test]
-fn stage16_07_def_id_and_spur_lookups_agree() {
-    let result = compile(
-        "trait Drop { fn drop(&mut self); } struct A; struct B; impl Drop for A { fn drop(&mut self) {} } fn main() {}",
-    );
-    let drop_spur = result.interner.get("Drop").expect("Drop interned");
-    let drop_def_id = result
-        .trait_resolver
-        .find_trait_def_id(drop_spur)
-        .expect("Drop trait DefId");
-    for type_name in &["A", "B"] {
-        let type_spur = result.interner.get(type_name).expect("type interned");
-        let type_def_id = result
-            .trait_resolver
-            .type_by_def_id
-            .iter()
-            .find(|(_, &n)| n == type_spur)
-            .map(|(&d, _)| d)
-            .expect("type DefId");
-        let spur_result = result.trait_resolver.implements(drop_spur, type_spur);
-        let def_id_result = result
-            .trait_resolver
-            .implements_by_def_ids(drop_def_id, type_def_id);
-        assert_eq!(
-            spur_result, def_id_result,
-            "Spur-based and DefId-based lookups should agree for {}",
-            type_name
-        );
-    }
 }
 
 /// Stage 16.07 test 6: `find_impl_by_def_ids` returns the impl info.

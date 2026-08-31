@@ -30,8 +30,6 @@
 //!    patterns (Option B's `ever_read` check is still active).
 //! 4. **Parity on all patterns**: Both paths agree on all test cases.
 
-#![allow(deprecated)] // We call both paths for comparison.
-
 use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 

@@ -7,12 +7,15 @@
 //! MIR optimization (DCE + const_prop) would fold constants and remove
 //! dead code, changing the IR structure and breaking the assertions.
 //! Per §11 (interface isolation): tests verify codegen in isolation.
+//!
+//! Stage 30.22: migrated from deprecated `format_for_user` to
+//! `format_via_diagnostics` (rustc-style diagnostic output).
 
-#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::codegen::codegen_crate;
 // Stage 18.96: `compile_no_opt` for IR-structure tests (gen_ll helper);
 // `compile` for error-checking tests (opt doesn't affect error detection).
 use landin_compiler::driver::{compile, compile_no_opt};
+use landin_compiler::session::SourceMap;
 
 /// Stage 3.57: Generate LLVM IR from valid source, asserting no compile errors.
 /// Was: `gen_ll` silently swallowed compile errors — if upstream produced a
@@ -27,9 +30,12 @@ fn gen_ll(src: &str) -> String {
     assert!(
         !result.has_errors(),
         "unexpected compile errors:\n{}",
-        result
-            .errors
-            .format_for_user(Some(src), Some(&result.interner))
+        result.errors.format_via_diagnostics(
+            src,
+            "test",
+            &SourceMap::new(src),
+            Some(&result.interner)
+        )
     );
     codegen_crate(&result).expect("codegen should succeed for valid test input")
 }
@@ -3633,9 +3639,12 @@ fn codegen_error_free_for_complex_program() {
     assert!(
         !result.has_errors(),
         "complex valid program should have no errors:\n{}",
-        result
-            .errors
-            .format_for_user(Some(src), Some(&result.interner))
+        result.errors.format_via_diagnostics(
+            src,
+            "test",
+            &SourceMap::new(src),
+            Some(&result.interner)
+        )
     );
 }
 
@@ -3646,13 +3655,17 @@ fn codegen_error_free_for_complex_program() {
 #[test]
 fn codegen_coercion_f32_to_f64() {
     // Stage 3.59: f32 → f64 widening should be allowed (was missing).
-    let result = compile("fn f(x: f32) -> f64 { x }");
+    let src = "fn f(x: f32) -> f64 { x }";
+    let result = compile(src);
     assert!(
         !result.has_errors(),
         "f32 → f64 widening should not error:\n{}",
-        result
-            .errors
-            .format_for_user(Some("fn f(x: f32) -> f64 { x }"), Some(&result.interner))
+        result.errors.format_via_diagnostics(
+            src,
+            "test",
+            &SourceMap::new(src),
+            Some(&result.interner)
+        )
     );
 }
 

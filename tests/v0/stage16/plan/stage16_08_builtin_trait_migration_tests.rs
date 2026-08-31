@@ -1,5 +1,4 @@
 //! Stage 16.08 — Task 3 Step 3: Builtin trait check migration tests.
-#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
 //! These tests verify that the Stage 16.08 migration of
 //! `is_copy_builtin`, `is_clone_builtin`, `is_drop_builtin`, and
@@ -227,42 +226,4 @@ fn stage16_08_implements_builtin_trait_drop() {
         via_builtin, via_generic,
         "is_drop_builtin and implements_builtin_trait(\"Drop\") should agree"
     );
-}
-
-/// Stage 16.08 test 10: DefId-keyed and Spur-based lookups agree for explicit impls.
-///
-/// For types with EXPLICIT `impl Copy` or `impl Drop`, the DefId-keyed
-/// path (`is_copy_builtin`) and Spur-based path (`implements_by_def_id`)
-/// should agree. (Derived Copy from Stage 16.06 is a separate concern —
-/// `is_copy_builtin` returns true for derived-Copy types, while
-/// `implements_by_def_id` returns false since there's no explicit impl.)
-#[test]
-fn stage16_08_copy_def_id_and_spur_lookups_agree() {
-    let result = compile(
-        "struct A; struct B; impl Copy for A {} impl Drop for B { fn drop(&mut self) {} } fn main() {}",
-    );
-    let copy_spur = result.interner.get("Copy").expect("Copy interned");
-    for type_name in &["A", "B"] {
-        let type_spur = result.interner.get(type_name).expect("type interned");
-        let type_def_id = result
-            .trait_resolver
-            .type_by_def_id
-            .iter()
-            .find(|(_, &n)| n == type_spur)
-            .map(|(&d, _)| d)
-            .expect("type DefId");
-        // Old path: Spur-based implements_by_def_id
-        let spur_result = result
-            .trait_resolver
-            .implements_by_def_id(copy_spur, type_def_id);
-        // New path: is_copy_builtin (DefId-keyed, checks derived + explicit)
-        let def_id_result = result
-            .trait_resolver
-            .is_copy_builtin(type_def_id, &result.interner);
-        assert_eq!(
-            spur_result, def_id_result,
-            "Spur-based and DefId-based Copy lookups should agree for {} (explicit impl)",
-            type_name
-        );
-    }
 }

@@ -302,7 +302,12 @@ impl<'a> Parser<'a> {
                     // No inner bound — emit parse error.
                     break;
                 }
-                let inner = inner_bounds.into_iter().next().unwrap();
+                // Per §1.0 原則 3 (显式 > 隐式): expect() documents the
+                // invariant that inner_bounds is non-empty (checked above).
+                let inner = inner_bounds
+                    .into_iter()
+                    .next()
+                    .expect("inner_bounds non-empty (checked above)");
                 bounds.push(TypeBound::ForLifetimes {
                     lifetime_params,
                     bound: Box::new(inner),

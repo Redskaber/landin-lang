@@ -343,8 +343,6 @@ mod stage16_08_builtin_trait_migration_tests;
 mod stage16_09_deep_review_gap_closure_tests;
 #[path = "v0/stage16/plan/stage16_10_vtable_def_id_lookup_tests.rs"]
 mod stage16_10_vtable_def_id_lookup_tests;
-#[path = "v0/stage16/plan/stage16_11_spur_deprecation_tests.rs"]
-mod stage16_11_spur_deprecation_tests;
 #[path = "v0/stage16/plan/stage16_12_deep_review_round2_tests.rs"]
 mod stage16_12_deep_review_round2_tests;
 #[path = "v0/stage16/plan/stage16_13_synthesized_closure_infrastructure_tests.rs"]
@@ -815,7 +813,6 @@ mod stage30_15_hrtb_placeholder_check_tests;
 // === Stage 30.16 (v0.17 TD-SELF-TYPE-SUBSTS): Empty-substs fallback ===
 #[path = "v0/stage30/plan/stage30_16_self_type_substs_tests.rs"]
 mod stage30_16_self_type_substs_tests;
-
 
 // === Stage 30.17
 #[path = "v0/stage30/plan/stage30_17_hrtb_infractx_integration_tests.rs"]

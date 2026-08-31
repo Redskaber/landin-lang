@@ -1,4 +1,6 @@
-#![allow(deprecated)] // Stage 16.06: tests use deprecated ty_is_copy for fallback testing
+// Stage 30.22: migrated from deprecated `ty_is_copy` to internal `is_copy_recursive`.
+// Tests verify the same fallback behavior (Adt treated as Copy without resolver).
+use super::copy_semantics::is_copy_recursive;
 use super::*;
 use crate::ast;
 use crate::compile;
@@ -544,17 +546,17 @@ fn nll_borrow_still_alive_before_last_use() {
 fn ty_is_copy_primitives() {
     use crate::ast;
     use crate::mir::ty::TyKind;
-    assert!(ty_is_copy(&Ty::new(TyKind::Bool, Span::DUMMY)));
-    assert!(ty_is_copy(&Ty::new(TyKind::Char, Span::DUMMY)));
-    assert!(ty_is_copy(&Ty::new(
+    assert!(is_copy_recursive(&Ty::new(TyKind::Bool, Span::DUMMY)));
+    assert!(is_copy_recursive(&Ty::new(TyKind::Char, Span::DUMMY)));
+    assert!(is_copy_recursive(&Ty::new(
         TyKind::Int(ast::IntTy::I32),
         Span::DUMMY
     )));
-    assert!(ty_is_copy(&Ty::new(
+    assert!(is_copy_recursive(&Ty::new(
         TyKind::Uint(ast::UintTy::U64),
         Span::DUMMY
     )));
-    assert!(ty_is_copy(&Ty::new(
+    assert!(is_copy_recursive(&Ty::new(
         TyKind::Float(ast::FloatTy::F64),
         Span::DUMMY
     )));
@@ -575,12 +577,12 @@ fn ty_is_copy_refs_and_ptrs() {
         ),
         Span::DUMMY,
     );
-    assert!(ty_is_copy(&ref_ty));
+    assert!(is_copy_recursive(&ref_ty));
     let raw_ty = Ty::new(
         TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty)),
         Span::DUMMY,
     );
-    assert!(ty_is_copy(&raw_ty));
+    assert!(is_copy_recursive(&raw_ty));
 }
 
 #[test]
@@ -594,7 +596,7 @@ fn ty_is_copy_tuples_and_arrays() {
         ]),
         Span::DUMMY,
     );
-    assert!(ty_is_copy(&tuple_ty));
+    assert!(is_copy_recursive(&tuple_ty));
     let array_ty = Ty::new(
         TyKind::Array(
             Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
@@ -605,7 +607,7 @@ fn ty_is_copy_tuples_and_arrays() {
         ),
         Span::DUMMY,
     );
-    assert!(ty_is_copy(&array_ty));
+    assert!(is_copy_recursive(&array_ty));
 }
 
 #[test]
@@ -613,16 +615,16 @@ fn ty_is_not_copy_adt_str_slice() {
     use crate::hir::DefId;
     use crate::mir::ty::TyKind;
     // Str, Slice are not Copy.
-    assert!(!ty_is_copy(&Ty::new(TyKind::Str, Span::DUMMY)));
+    assert!(!is_copy_recursive(&Ty::new(TyKind::Str, Span::DUMMY)));
     let slice_ty = Ty::new(
         TyKind::Slice(Box::new(Ty::new(TyKind::Bool, Span::DUMMY))),
         Span::DUMMY,
     );
-    assert!(!ty_is_copy(&slice_ty));
+    assert!(!is_copy_recursive(&slice_ty));
     // Stage 3.40: Adt is now treated as Copy (pragmatic — allows
     // enum match and struct field access without spurious errors).
     let adt_ty = Ty::new(TyKind::Adt(DefId::new(0), vec![].into()), Span::DUMMY);
-    assert!(ty_is_copy(&adt_ty));
+    assert!(is_copy_recursive(&adt_ty));
 }
 
 #[test]
@@ -631,9 +633,9 @@ fn ty_is_copy_infer_and_error_assumed_copy() {
     // Infer and Error are treated as Copy (avoid spurious errors
     // during type inference).
     let infer_ty = Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(0))), Span::DUMMY);
-    assert!(ty_is_copy(&infer_ty));
+    assert!(is_copy_recursive(&infer_ty));
     let error_ty = Ty::new(TyKind::Error, Span::DUMMY);
-    assert!(ty_is_copy(&error_ty));
+    assert!(is_copy_recursive(&error_ty));
 }
 
 /// Stage 15.85: Verify `operand_span` extracts the Place span from

@@ -30,8 +30,6 @@
 //! GAP-1 preservation (the main goal of Option B) and the known
 //! limitation (the remaining false positive).
 
-#![allow(deprecated)] // We intentionally call both paths for comparison.
-
 use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 
