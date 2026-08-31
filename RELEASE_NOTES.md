@@ -3,13 +3,89 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.547.0 (Stage 30.6 — v0.14 TD-DROP-SCOPE-TIMING: scope tracking complete) |
+| **Current version** | v0.548.0 (Stage 30.7 — v0.14 TD-PROJECTION-IMPL-VERIFICATION: validate impl assoc types) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 3991 integration tests = 4889 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4001 integration tests = 4899 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: TD-DROP-SCOPE-TIMING — scope tracking in MirLowerCtxt (StorageDead at block scope end, not function end) |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification |
+
+---
+
+## v0.548.0 — v0.14 Stage 30.7 — TD-PROJECTION-IMPL-VERIFICATION: Impl Assoc Type Verification
+
+### Overview
+
+This release fixes the **TD-PROJECTION-IMPL-VERIFICATION** soundness gap by adding a new `validate_impl_assoc_types` function in `driver_validations.rs`. Previously, impl blocks that didn't provide all required associated types declared in the trait were **silently accepted** — a soundness gap discovered during Stage 30.4 (projection resolver reclassification).
+
+Now, missing associated types produce a clear `TypeError`: `"missing associated type 'Item' in implementation of trait 'Container'"`.
+
+### What Changed
+
+#### Before v0.548.0 (silently accepted):
+```landin
+trait Container { type Item; fn get(&self) -> Self::Item; }
+impl Container for Holder {
+    // Missing: type Item = i32;
+    fn get(&self) -> Self::Item { self.val }
+}
+// ↑ silently accepted — soundness gap
+```
+
+#### After v0.548.0 (rejected with clear error):
+```landin
+trait Container { type Item; fn get(&self) -> Self::Item; }
+impl Container for Holder {
+    // Missing: type Item = i32;
+    fn get(&self) -> Self::Item { self.val }
+}
+// ↑ error: "missing associated type `Item` in implementation of trait `Container`"
+```
+
+#### Implementation Details
+
+| Component | File | Change |
+|-----------|------|--------|
+| Validator | `src/driver/driver_validations.rs` | New `validate_impl_assoc_types` function — walks all impl blocks with `of_trait`, collects trait's required assoc types, collects impl's provided assoc types, reports missing ones (skips if trait has default) |
+| Caller | `src/driver/driver_validations.rs` | Added call to `validate_impl_assoc_types` in `validate_all` (after `validate_impl_method_signatures`) |
+
+#### Key Design Decisions
+
+1. **Default assoc types**: If the trait provides `type Item = Default;`, the impl can skip `type Item = ...;`. The validator checks `at.default.is_some()` before reporting missing.
+
+2. **Scope**: This validator only checks **presence** of assoc types (Check 1). The **type match** check (verifying `type Item = T` matches method returns `Self::Item`) is deferred to TD-IMPL-TYPE-MATCH (P3, v0.14+) — it requires unifying the assoc type with the method return type after substitution, which is more complex.
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (0 warnings) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 4001/4001 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 92,062 LOC, +110 LOC from v0.547.0) |
+| D8 ultimate test | ✅ PASS | Root-cause fix per §12 — impl block verification, not symptom patch |
+
+### Test Suite Impact
+
+- **New tests**: 10 (in `stage30_7_impl_assoc_type_verification_tests.rs`)
+  - 4 positive: impl provides single/multiple assoc types, default can be skipped, assoc type used in method
+  - 4 negative: missing single, missing one of multiple, missing all, missing with no method use
+  - 2 regression: trait with no assoc types, inherent impl (no trait)
+- **Updated tests**: 1 (in `stage30_4_projection_resolver_reclassification_tests.rs`)
+  - 1 negative test updated from "KNOWN LIMITATION (silently accepted)" to "FIXED (rejected with error)"
+- **Total tests**: 4899 (was 4889 in v0.547.0)
+
+### Remaining Tech Debt (v0.14+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-HRTB-SOLVER-INTEGRATION | 🟡 P2, v0.14+ | HRTB surface syntax captured but solver doesn't enforce semantics — wire Binder<T> + universes |
+| TD-HRTB-FN-SYNTAX | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax not parsed — Fn(...) call syntax needed |
+| TD-IMPL-TYPE-MATCH (NEW) | 🟡 P3, v0.14+ | `type Item = T` not verified against method returns `Self::Item` — deferred from Stage 30.7 |
 
 ---
 

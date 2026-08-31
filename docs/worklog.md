@@ -34755,3 +34755,72 @@ Stage Summary:
 - TD-PROJECTION-IMPL-VERIFICATION (P2) — verify impl block provides all required assoc types + type match
 - TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
 - TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
+
+---
+Task ID: stage30.7
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.7 (v0.14) — TD-PROJECTION-IMPL-VERIFICATION: validate impl blocks provide all required associated types. L2. v0.548.0.
+
+3秒启动自检:
+- 定位: L2 (single validator function + 10 tests — smaller scope than L3)
+- 对齐: 已查 v0.547.0 (Stage 30.6 complete); TD-PROJECTION-IMPL-VERIFICATION — was classified as "Missing/wrong assoc types in impl silently accepted"
+- 阻断: Stage 30.6 全绿 (4889 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Implementation approach: new `validate_impl_assoc_types` function
+   - 引用 §1.0 原則 4 (报错 > 静默): missing assoc types must be reported, not silently accepted
+   - 引用 §1.0 原則 6 (通解 > 特解): one validator walks all impl blocks (not per-trait special-casing)
+   - 引用 §12 (最优 > 最小): root-cause fix at the validation stage, not a symptom patch
+   - 替代: add check in projection_resolver — but that's the wrong stage (projection_resolver runs after typeck, too late for clean error reporting)
+   - 选择: add `validate_impl_assoc_types` in driver_validations.rs (same stage as `validate_impl_method_signatures`)
+
+2. Default assoc type handling: skip if trait provides default
+   - 引用 §1.0 原則 9 (正确 > 妥协): respect Rust semantics — `type Item = Default;` in trait makes it optional in impl
+   - Check `at.default.is_some()` before reporting missing
+   - 替代: always require impl to provide — but that breaks valid Rust code
+   - 选择: skip if trait has default
+
+3. Test suite design: 10 tests
+   - 引用 §9.4.3 (1:3+ ratio): 4 positive + 4 negative + 2 regression = 10 tests
+   - Positive: impl provides single assoc type, multiple assoc types, default can be skipped, assoc type used in method
+   - Negative: missing single, missing one of multiple, missing all, missing with no method use
+   - Regression: trait with no assoc types, inherent impl (no trait)
+   - 引用 §1.0 原則 4 (报错 > 静默): negative tests verify error message contains "missing associated type"
+
+裁剪点:
+- L2 — full §14.5 D1-D8 deep review executed
+- 跳过 type match verification (check that `type Item = T` matches method returns `Self::Item`) — separate, more complex check (requires unifying the assoc type with the method return type after substitution). Deferred to future TD.
+- 安全理由: additive change (new validator function + new tests); existing tests all pass; 1 Stage 30.4 negative test updated to expect fixed behavior
+
+5W2H:
+- WHAT: TD-PROJECTION-IMPL-VERIFICATION — validate impl blocks provide all required assoc types
+- WHY: missing assoc types were silently accepted (soundness gap discovered in Stage 30.4); per §1.0 原則 4, must be reported
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.14 Stage 30.7 (after Stage 30.6 scope tracking)
+- WHERE: src/driver/driver_validations.rs (new `validate_impl_assoc_types` function + caller) + tests/v0/stage30/plan/stage30_7_impl_assoc_type_verification_tests.rs (10 tests) + tests/v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs (1 negative test updated)
+- HOW: (1) Add `validate_impl_assoc_types` function (2) Walk all impl blocks with `of_trait` (3) For each, collect trait's required assoc types (4) Collect impl's provided assoc types (5) Report missing ones (skip if trait has default) (6) Wire into `validate_all` caller (7) 10-test suite
+- HOW MUCH: 4899 tests (was 4889, +10 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4001/4001 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +110 from v0.547.0) ✅
+- D8 (§1.6 终极检验): root-cause fix per §12 ✅ — impl block verification, not symptom patch
+
+Stage Summary:
+- v0.14 Stage 30.7: TD-PROJECTION-IMPL-VERIFICATION COMPLETE ✅
+- Missing assoc types in impl blocks now rejected with "missing associated type `X` in implementation of trait `Y`"
+- 10-test suite: 4 positive + 4 negative + 2 regression
+- 1 Stage 30.4 negative test updated from "KNOWN LIMITATION (silently accepted)" to "FIXED (rejected with error)"
+- §3.2 全绿: 4899 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.14 remaining TDs):
+- TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
+- TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
+- TD-IMPL-TYPE-MATCH (NEW, P3) — verify `type Item = T` matches method returns `Self::Item` (deferred from Stage 30.7)

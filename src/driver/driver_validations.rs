@@ -241,6 +241,114 @@ pub(super) fn validate_impl_method_signatures(
     }
 }
 
+/// Stage 30.7 (v0.14 TD-PROJECTION-IMPL-VERIFICATION): Validate that impl
+/// blocks provide all required associated types declared in the trait.
+///
+/// For each `impl Trait for Type { ... }` block, find the corresponding
+/// `trait Trait { type Item; ... }` declaration and verify that:
+///   1. Every `type Item;` in the trait has a matching `type Item = T;` in
+///      the impl block.
+///
+/// Missing associated types produce `TypeError` with the impl block's span.
+///
+/// Per §1.0 原则 4 (报错 > 静默): missing assoc types must be reported, not
+/// silently accepted (was a soundness gap discovered in Stage 30.4).
+/// Per §1.0 原则 6 (通解 > 特解): one validator walks all impl blocks.
+/// Per §10 naming: `validate_impl_assoc_types` follows
+///   `validate_<noun>_<noun>` pattern.
+pub(super) fn validate_impl_assoc_types(
+    hir: &HirCrate,
+    interner: &Rodeo,
+    errors: &mut Vec<TypeError>,
+) {
+    // Build a lookup table: trait_name (Spur) → &HirTrait.
+    // Per §1.0 原則 6: one lookup table for all traits, not per-impl scans.
+    let mut trait_by_name: std::collections::HashMap<lasso::Spur, &HirTrait> =
+        std::collections::HashMap::new();
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(HirItem::Trait(t)) = owner {
+            trait_by_name.insert(t.ident.name, t);
+        }
+    }
+
+    // Walk every impl block that has `of_trait`.
+    for (_, owner) in &hir.owners {
+        let impl_block = match owner {
+            crate::hir::OwnerNode::Item(HirItem::Impl(impl_block))
+                if impl_block.of_trait.is_some() =>
+            {
+                impl_block
+            }
+            _ => continue,
+        };
+        // Resolve the trait name from `of_trait` path's last segment.
+        let trait_name = match impl_block
+            .of_trait
+            .as_ref()
+            .and_then(|p| p.segments.last())
+            .map(|s| s.ident.name)
+        {
+            Some(name) => name,
+            None => continue,
+        };
+        let trait_decl = match trait_by_name.get(&trait_name) {
+            Some(t) => *t,
+            None => continue, // Unknown trait — let trait_resolver handle it.
+        };
+
+        // Collect all associated type names declared in the trait.
+        // Per §1.0 原則 6: one pass to collect, one pass to check.
+        let trait_assoc_type_names: Vec<lasso::Spur> = trait_decl
+            .items
+            .iter()
+            .filter_map(|ti| match ti {
+                HirTraitItem::Type(at) => Some(at.ident.name),
+                _ => None,
+            })
+            .collect();
+
+        // Collect all associated type names provided in the impl block.
+        let impl_assoc_type_names: std::collections::HashSet<lasso::Spur> = impl_block
+            .items
+            .iter()
+            .filter_map(|ii| match ii {
+                HirImplItem::Type(at) => Some(at.ident.name),
+                _ => None,
+            })
+            .collect();
+
+        // Check 1: Every trait assoc type must be provided in the impl.
+        // Per §1.0 原則 4 (报错 > 静默): report each missing assoc type.
+        for trait_assoc_name in &trait_assoc_type_names {
+            if !impl_assoc_type_names.contains(trait_assoc_name) {
+                // Check if the trait assoc type has a default — if so, it's
+                // optional in the impl (Rust allows skipping `type Item = T;`
+                // if the trait provides `type Item = Default;`).
+                let has_default = trait_decl.items.iter().any(|ti| {
+                    if let HirTraitItem::Type(at) = ti {
+                        at.ident.name == *trait_assoc_name && at.default.is_some()
+                    } else {
+                        false
+                    }
+                });
+                if has_default {
+                    // Has default — OK to skip in impl.
+                    continue;
+                }
+                let trait_name_str = interner.try_resolve(&trait_name).unwrap_or("?");
+                let assoc_name_str = interner.try_resolve(trait_assoc_name).unwrap_or("?");
+                errors.push(TypeError::new(
+                    format!(
+                        "missing associated type `{}` in implementation of trait `{}`",
+                        assoc_name_str, trait_name_str
+                    ),
+                    impl_block.span,
+                ));
+            }
+        }
+    }
+}
+
 /// Stage 18.71: Compatibility check for two MIR types (used by
 /// `validate_impl_method_signatures`).
 ///
@@ -1059,6 +1167,21 @@ pub(super) fn run_post_typeck_validations(
     // Per §10 naming: `validate_impl_method_signatures` follows
     //   `validate_<noun>_<noun>_<noun>` pattern.
     validate_impl_method_signatures(hir, interner, &mut errors.typeck);
+
+    // Stage 30.7 (v0.14 TD-PROJECTION-IMPL-VERIFICATION): Validate that
+    // impl blocks provide all required associated types declared in the
+    // trait.
+    //
+    // Catches:
+    //   - missing associated type (`trait T { type Item; }` with impl that
+    //     doesn't provide `type Item = ...;`)
+    //
+    // Per §1.0 原则 4 (报错 > 静默): missing assoc types must be reported
+    // (was a soundness gap discovered in Stage 30.4 — silently accepted).
+    // Per §1.0 原则 6 (通用 > 特例): one validator covers all impl blocks.
+    // Per §10 naming: `validate_impl_assoc_types` follows
+    //   `validate_<noun>_<noun>` pattern.
+    validate_impl_assoc_types(hir, interner, &mut errors.typeck);
 
     // Stage 18.72 P1-A: Validate struct literal field counts.
     // Catches:

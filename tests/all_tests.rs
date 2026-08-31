@@ -779,3 +779,7 @@ mod stage30_5_hrtb_parser_tests;
 // === Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Scope tracking ===
 #[path = "v0/stage30/plan/stage30_6_scope_tracking_tests.rs"]
 mod stage30_6_scope_tracking_tests;
+
+// === Stage 30.7 (v0.14 TD-PROJECTION-IMPL-VERIFICATION): Impl assoc type verification ===
+#[path = "v0/stage30/plan/stage30_7_impl_assoc_type_verification_tests.rs"]
+mod stage30_7_impl_assoc_type_verification_tests;

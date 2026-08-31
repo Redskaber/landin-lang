@@ -209,12 +209,17 @@ fn main() {
 // provides all required assoc types + verify type match between
 // `type Item = T` and methods returning `Self::Item`.
 
-/// Stage 30.4 negative 1: Missing associated type in impl — KNOWN LIMITATION.
+/// Stage 30.4 negative 1 → Stage 30.7 FIXED: Missing associated type in
+/// impl is now REJECTED.
 ///
-/// Currently silently accepted (soundness gap). The impl block declares
-/// `type Item;` in the trait but doesn't provide `type Item = ...;` in the
-/// impl. Per Rust semantics, this should be a "not all trait items
-/// provided" error.
+/// Stage 30.7 (v0.14 TD-PROJECTION-IMPL-VERIFICATION) FIX:
+/// The compiler now reports "missing associated type `Item` in
+/// implementation of trait `Container`" when an impl block doesn't
+/// provide a `type Item = ...;` declaration required by the trait.
+///
+/// This test was previously a KNOWN LIMITATION (Stage 30.4) that
+/// documented the old behavior (silently accepted). Now it verifies
+/// the fix works correctly.
 #[test]
 fn stage30_4_negative_missing_assoc_type_in_impl_silently_accepted() {
     let result = compile(
@@ -231,15 +236,31 @@ fn main() {
 }
 "#,
     );
-    // KNOWN LIMITATION: the compiler silently accepts this. When
-    // TD-PROJECTION-IMPL-VERIFICATION is fixed, this should produce errors.
+    // Stage 30.7 FIX: missing assoc type is now rejected
     let total_errors =
         result.errors.typeck.len() + result.errors.codegen.len() + result.errors.borrowck.len();
-    // Document current behavior: 0 errors (silently accepted)
-    assert_eq!(
-        total_errors, 0,
-        "KNOWN LIMITATION (TD-PROJECTION-IMPL-VERIFICATION): missing assoc type \
-         in impl is silently accepted. When TD is fixed, this should be >0 errors."
+    assert!(
+        total_errors > 0,
+        "Stage 30.7 FIX: missing assoc type in impl should be rejected (got {} errors). \
+         If this passes with 0 errors, TD-PROJECTION-IMPL-VERIFICATION regressed.",
+        total_errors
+    );
+    // Verify the error message mentions the missing assoc type
+    let has_missing_assoc_error = result
+        .errors
+        .typeck
+        .iter()
+        .any(|e| e.message.contains("missing associated type"));
+    assert!(
+        has_missing_assoc_error,
+        "Stage 30.7 FIX: error message should mention 'missing associated type'. \
+         Got: {:?}",
+        result
+            .errors
+            .typeck
+            .iter()
+            .map(|e| &e.message)
+            .collect::<Vec<_>>()
     );
 }
 
