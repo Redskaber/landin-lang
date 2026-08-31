@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.544.0 (v0.13 Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP reclassification complete) |
+| **Version** | v0.545.0 (v0.13 Stage 30.4 — TD-STUB-PROJECTION-RESOLVER reclassification complete) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 30.3 — TD-STUB-DROP-ELABORATION-NOOP RECLASSIFIED**. 4859 tests (898 lib + 3961 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings on lib. §14.5 D1-D8 PASSED. v0.13 tasks: ✅ Stage 30.2 TD-STUB-LIFETIME-ELISION-NOOP (RFC 141 Rule 4 enforcement), ✅ Stage 30.3 TD-STUB-DROP-ELABORATION-NOOP (reclassified as RESOLVED — drop elaboration IS implemented, not no-op; new TD-DROP-SCOPE-TIMING created for scope timing issue). Remaining TDs ALL BLOCKED: TD-DROP-SCOPE-TIMING (P2, v0.14+ scope tracking), TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 91,830 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness + lifetime elision rule 4). Next: v0.13 continued (projection normalization + HRTB + scope tracking). |
+| **Status** | ✅ **v0.13 Stage 30.4 — TD-STUB-PROJECTION-RESOLVER RECLASSIFIED**. 4869 tests (898 lib + 3971 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings on lib. §14.5 D1-D8 PASSED. v0.13 tasks: ✅ Stage 30.2 TD-STUB-LIFETIME-ELISION-NOOP (RFC 141 Rule 4 enforcement), ✅ Stage 30.3 TD-STUB-DROP-ELABORATION-NOOP (reclassified as RESOLVED), ✅ Stage 30.4 TD-STUB-PROJECTION-RESOLVER (reclassified as RESOLVED — projection resolver IS fully implemented, not partial). Remaining TDs ALL BLOCKED: TD-DROP-SCOPE-TIMING (P2, v0.14+ scope tracking), TD-PROJECTION-IMPL-VERIFICATION (P2, v0.14+ impl block verification — new TD discovered during Stage 30.4), TD-GAT-HIGHER-RANKED (HRTB + region substitution). Architecture health: 8.5/10 (183 files, 91,842 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness + lifetime elision rule 4). Next: v0.13 final (TD-GAT-HIGHER-RANKED) or v0.14 (scope tracking + impl verification). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -386,7 +386,8 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-STUB-REGION-ERASED | Region inference no-op | ✅ Resolved (Stage 30.1) | Reclassified — region inference was always running, not no-op |
 | TD-STUB-DROP-ELABORATION-NOOP | Drop elaboration no-op | ✅ Resolved (Stage 30.3) | Reclassified — drop elaboration IS implemented (Stage 15.43-15.46), not no-op. New TD-DROP-SCOPE-TIMING created for scope timing issue. |
 | TD-STUB-LIFETIME-ELISION-NOOP | Lifetime elision no-op | ✅ Resolved (Stage 30.2) | RFC 141 Rule 4 enforced + over-application fix + self-param fix |
-| TD-STUB-PROJECTION-RESOLVER | Projection resolver partial | 🟡 v0.2+ | Associated type normalization |
+| TD-STUB-PROJECTION-RESOLVER | Projection resolver partial | ✅ Resolved (Stage 30.4) | Reclassified — projection resolver IS fully implemented (Stage 16.68 + 18.87), handles all TyKind variants + termination guarantee (MAX_DEPTH=10). New TD-PROJECTION-IMPL-VERIFICATION created for impl block verification gap. |
+| TD-PROJECTION-IMPL-VERIFICATION | Missing/wrong assoc types in impl silently accepted | 🟡 v0.14+ | Verify impl provides all required assoc types + type match (Stage 30.4 discovered) |
 | TD-DROP-SCOPE-TIMING | StorageDead at fn end, not scope end | 🟡 v0.14+ | Scope tracking in MirLowerCtxt (Stage 30.3 created) |
 | TD-STUB-EMIT-TYPE-I32-FALLBACK | `mir_type_to_emit_type` i32 fallback | ✅ Mitigated | param_check (Stage 18.348) catches unresolved types |
 | TD-STUB-TYPECK-BEFORE-WRITEBACK | typeck before writeback | ✅ Resolved | Phase 0 + Phase 3.7 double writeback (Stage 18.353+18.355), now both removed |

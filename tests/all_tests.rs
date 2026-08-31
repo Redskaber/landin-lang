@@ -767,3 +767,7 @@ mod stage30_2_lifetime_elision_rule4_tests;
 // === Stage 30.3 (v0.13 TD-STUB-DROP-ELABORATION-NOOP): Reclassification ===
 #[path = "v0/stage30/plan/stage30_3_drop_elaboration_reclassification_tests.rs"]
 mod stage30_3_drop_elaboration_reclassification_tests;
+
+// === Stage 30.4 (v0.13 TD-STUB-PROJECTION-RESOLVER): Reclassification ===
+#[path = "v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs"]
+mod stage30_4_projection_resolver_reclassification_tests;

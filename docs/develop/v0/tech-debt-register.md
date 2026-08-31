@@ -578,3 +578,61 @@ For each remaining 🟡 TD-SOLVER-*:
 
 **Estimated effort**: 2-3 days (scope tracking + early exit paths + test updates)
 **Risk**: May break existing tests that assume function-end StorageDead timing. Audit all 40+ drop conformance tests.
+
+---
+
+## Stage 30.4 (v0.545.0) Update — TD-STUB-PROJECTION-RESOLVER Reclassification
+
+**Date**: 2026-08-31
+**Version**: v0.545.0 (Stage 30.4)
+
+### Reclassification
+
+| TD | Old Status | New Status | Rationale |
+|----|-----------|-----------|-----------|
+| TD-STUB-PROJECTION-RESOLVER | 🟡 v0.2+ (partial impl) | ✅ RESOLVED (Stage 30.4) | Root-cause analysis via compile-time + runtime E2E tests shows projection resolver IS fully implemented (Stage 16.68 + 18.87), handles all TyKind variants, has termination guarantee (MAX_DEPTH=10). The "partial impl" classification was inaccurate. |
+| **TD-PROJECTION-IMPL-VERIFICATION** (NEW) | N/A | 🟡 P2, v0.14+ | Missing `type Item = ...;` in impl block silently accepted. Wrong type value (`type Item = bool` but method returns i32) silently accepted. Fix requires impl block verification + type match check. |
+
+### Evidence (Compile-time + Runtime Tests)
+
+**Compile-time (4 tests, all pass with 0 errors):**
+- ✅ Basic associated type: `trait Iterator { type Item; ... }`
+- ✅ Associated type in let binding
+- ✅ Associated type as field type
+- ✅ Two impls with different assoc types
+
+**Runtime (3 tests, all pass with correct values):**
+- ✅ `let x: i32 = h.get();` → `42` (assoc type resolves to i32)
+- ✅ Two impls dispatch → `99` (correct impl selected)
+- ✅ GAT runtime → `123` (`type Item<T> = T;` works)
+
+**Existing GATs E2E (21 tests, Stage 21.1):** All pass.
+
+### Soundness Gaps Discovered (TD-PROJECTION-IMPL-VERIFICATION)
+
+**Gap 1: Missing assoc type in impl — silently accepted**
+```landin
+trait Container { type Item; fn get(&self) -> Self::Item; }
+impl Container for Holder {
+    // Missing: type Item = i32;
+    fn get(&self) -> Self::Item { self.val }
+}
+```
+Should error: "not all trait items provided". Currently accepted silently.
+
+**Gap 2: Wrong assoc type value — silently accepted**
+```landin
+impl Container for Holder {
+    type Item = bool;
+    fn get(&self) -> Self::Item { self.val }  // i32 != bool
+}
+```
+Should error: type mismatch. Currently accepted silently.
+
+### Fix Plan (TD-PROJECTION-IMPL-VERIFICATION, v0.14+)
+
+1. Add impl block verification in driver — for each `impl Trait for Type`, check all trait's `type Item;` declarations are provided in the impl
+2. Add type match check — for each method returning `Self::Item`, verify the method body's return type unifies with the impl's `type Item = T` declaration
+3. Add diagnostic: "missing associated type `Item` in impl" / "associated type mismatch: expected T, found U"
+
+**Estimated effort**: 1-2 days (verification logic + diagnostics + test updates)

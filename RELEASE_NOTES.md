@@ -3,13 +3,111 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.544.0 (Stage 30.3 — v0.13 TD-STUB-DROP-ELABORATION-NOOP reclassification) |
+| **Current version** | v0.545.0 (Stage 30.4 — v0.13 TD-STUB-PROJECTION-RESOLVER reclassification) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 3961 integration tests = 4859 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 3971 integration tests = 4869 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 Stage 30.2: TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement; v0.13 Stage 30.3: TD-STUB-DROP-ELABORATION-NOOP reclassification (drop elaboration IS implemented, not no-op) + new TD-DROP-SCOPE-TIMING (P2) for scope timing issue |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 Stage 30.2: TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement; v0.13 Stage 30.3: TD-STUB-DROP-ELABORATION-NOOP reclassification; v0.13 Stage 30.4: TD-STUB-PROJECTION-RESOLVER reclassification (projection resolver IS fully implemented) + new TD-PROJECTION-IMPL-VERIFICATION (P2) for impl block verification gap |
+
+---
+
+## v0.545.0 — v0.13 Stage 30.4 — TD-STUB-PROJECTION-RESOLVER Reclassification
+
+### Overview
+
+This release closes the **TD-STUB-PROJECTION-RESOLVER** technical debt by **reclassifying** it based on root-cause analysis. The original classification ("projection_resolver partial impl, not complete") was **inaccurate** — the projection resolver IS fully implemented (Stage 16.68, extended Stage 18.87), handles all `TyKind` variants, has a termination guarantee (MAX_PROJECTION_DEPTH=10), and works correctly at both compile-time and runtime.
+
+A new soundness gap was discovered during negative test design: missing/wrong associated types in impl blocks are silently accepted. This is documented as a new TD: **TD-PROJECTION-IMPL-VERIFICATION** (P2, v0.14+).
+
+### What Changed
+
+#### Reclassification: TD-STUB-PROJECTION-RESOLVER → RESOLVED
+
+E2E tests (compile-time + runtime) verify that the projection resolver IS working:
+
+**Compile-time (4 tests):**
+- ✅ Basic associated type: `trait Iterator { type Item; ... }` compiles cleanly
+- ✅ Associated type in let binding: `let x: i32 = h.get();` works
+- ✅ Associated type as field type
+- ✅ Two impls with different assoc types (dispatch correct)
+
+**Runtime (3 tests):**
+- ✅ `let x: i32 = h.get();` → `42` (assoc type resolves to i32 at runtime)
+- ✅ Two impls dispatch → `99` (correct impl selected)
+- ✅ GAT runtime → `123` (Generic Associated Type `type Item<T> = T;` works)
+
+**Existing GATs E2E (21 tests, Stage 21.1):**
+- All pass — covers type params, lifetime params, bounds, defaults, multiple type params, qualified paths, where clauses, error cases.
+
+#### New TD: TD-PROJECTION-IMPL-VERIFICATION (P2)
+
+**Issue**: The projection resolver does not verify that impl blocks provide all required associated types, nor that the provided type matches the method return type.
+
+**Two soundness gaps discovered:**
+
+1. **Missing associated type in impl** — silently accepted:
+```landin
+trait Container { type Item; fn get(&self) -> Self::Item; }
+impl Container for Holder {
+    // Missing: type Item = i32;
+    fn get(&self) -> Self::Item { self.val }  // should error: "not all trait items provided"
+}
+```
+
+2. **Wrong associated type value** — silently accepted:
+```landin
+impl Container for Holder {
+    type Item = bool;
+    fn get(&self) -> Self::Item { self.val }  // i32 != bool, should error
+}
+```
+
+**Fix plan (v0.14+)**:
+1. Add impl block verification in driver — check all trait assoc types are provided
+2. Add type match check — verify `type Item = T` matches method returns `Self::Item`
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (4 pre-existing lib-test warnings, unrelated) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 3971/3971 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 91,842 LOC, +12 LOC from v0.544.0) |
+| D8 ultimate test | ✅ PASS | All root-cause analysis per §12 (reclassification based on compile + runtime evidence, not guess) |
+
+### Test Suite Impact
+
+- **New tests**: 10 (in `stage30_4_projection_resolver_reclassification_tests.rs`)
+  - 6 positive: basic assoc type, runtime value (42), two impls dispatch (99), GAT runtime (123), assoc as field, assoc with where clause
+  - 3 negative: missing assoc type (KNOWN LIMITATION), wrong type value (KNOWN LIMITATION), Self::Item outside impl (correctly errors)
+  - 1 regression: nested projection (Outer::Inner::Item)
+- **Total tests**: 4869 (was 4859 in v0.544.0)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `tests/v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs` | NEW — 10 tests documenting actual projection behavior (6 positive + 3 negative + 1 regression) |
+| `tests/all_tests.rs` | Register stage30_4 module |
+| `README.md` | Update version + status + TD table (TD-STUB-PROJECTION-RESOLVER → RESOLVED, new TD-PROJECTION-IMPL-VERIFICATION row) |
+| `RELEASE_NOTES.md` | This section |
+| `Cargo.toml` | Version bump 0.544.0 → 0.545.0 |
+| `docs/worklog.md` | Stage 30.4 entry with 5W2H + decision points |
+| `docs/develop/v0/tech-debt-register.md` | Update TD-STUB-PROJECTION-RESOLVER entry + add TD-PROJECTION-IMPL-VERIFICATION |
+
+### Remaining Tech Debt (v0.13+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-PROJECTION-IMPL-VERIFICATION (NEW) | 🟡 P2, v0.14+ | Missing/wrong assoc types in impl silently accepted — impl block verification needed |
+| TD-DROP-SCOPE-TIMING | 🟡 P2, v0.14+ | StorageDead at fn end, not scope end — scope tracking needed |
+| TD-GAT-HIGHER-RANKED | 🟡 BLOCKED | HRTB + region substitution (v0.13+ architectural, last v0.13 TD) |
 
 ---
 

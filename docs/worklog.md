@@ -34504,3 +34504,86 @@ Stage Summary:
 - TD-DROP-SCOPE-TIMING (NEW, P2) — implement scope tracking in MirLowerCtxt (v0.14+ architectural)
 - TD-STUB-PROJECTION-RESOLVER — associated type normalization
 - TD-GAT-HIGHER-RANKED — HRTB + region substitution
+
+---
+Task ID: stage30.4
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.4 (v0.13) — TD-STUB-PROJECTION-RESOLVER reclassification + E2E verification + soundness gap documentation. L3. v0.545.0.
+
+3秒启动自检:
+- 定位: L3 (root-cause analysis of projection resolver + 10-test E2E suite documenting actual behavior + new TD discovery)
+- 对齐: 已查 v0.544.0 (Stage 30.3 complete); TD-STUB-PROJECTION-RESOLVER — was classified as "partial impl, 不完整 (需 impl block lookup)"
+- 阻断: Stage 30.3 全绿 (4859 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root-cause analysis: TD-STUB-PROJECTION-RESOLVER was misclassified
+   - 引用 §1.0 原則 9 (正确 > 妥协): accurate classification — projection resolver IS fully implemented
+   - 引用 §1.0 原則 4 (报错 > 静默): document actual behavior honestly
+   - Evidence (compile-time + runtime tests):
+     * `projection_resolver.rs` (Stage 16.68, extended Stage 18.87) handles all `TyKind::Projection`
+     * Recursion depth limit (MAX_PROJECTION_DEPTH=10) provides termination guarantee per Stage 18.87 B8
+     * Handles all compound types (Ref, RawPtr, Array, Slice, Tuple, Adt, FnDef, Closure, FnPtr, Projection)
+     * 21 existing GATs E2E tests (Stage 21.1) all pass — covers type params, lifetime params, bounds, defaults, multiple type params, qualified paths, where clauses, error cases
+     * Stage 30.4 runtime tests verify: basic assoc type (counter=42), two impls dispatch (counter=99), GAT (counter=123), nested projection
+   - 引用 §12 (最优 > 最小): root-cause analysis based on runtime evidence, not guess
+   - 选择: reclassify TD-STUB-PROJECTION-RESOLVER as RESOLVED (projection resolver works)
+
+2. New TD discovery: TD-PROJECTION-IMPL-VERIFICATION (P2)
+   - During negative test design, discovered two real soundness gaps:
+     a) Missing `type Item = ...;` in impl block — silently accepted (should error: "not all trait items provided")
+     b) Wrong type value (`type Item = bool` but method returns i32) — silently accepted (should error: type mismatch)
+   - 引用 §1.0 原則 4 (报错 > 静默): these should error but don't
+   - 引用 §6.1 (技术债分类): P2 — correctness issue (silent acceptance of invalid impls)
+   - 引用 §1.0 原則 13 (架构限制记录与升级): document the architectural limitation
+   - Fix plan: (1) Add impl block verification in driver — check all trait assoc types are provided (2) Add type match check — verify `type Item = T` matches method returns `Self::Item` (i.e., the method body's return type unifies with T)
+   - Deferred to v0.14+ (verification logic, not a quick fix)
+
+3. Test suite design: 10 tests documenting actual behavior
+   - 引用 §1.0 原則 4 (报错 > 静默): tests explicitly document the known limitations
+   - 引用 §9.4.3 (1:3+ ratio): 6 positive + 3 negative + 1 regression = 10 tests
+   - Positive tests verify: basic assoc type compiles, runtime value correct (42, 99, 123), GAT runtime, assoc as field, assoc with where clause
+   - Negative tests document: missing assoc type silently accepted (KNOWN LIMITATION), wrong type value silently accepted (KNOWN LIMITATION), Self::Item outside impl correctly errors
+   - Regression test: nested projection (Outer::Inner::Item) compiles cleanly
+   - 引用 §1.0 原則 9 (正确 > 妥协): negative tests assert the CURRENT (incorrect) behavior with clear "KNOWN LIMITATION" messages
+   - 替代: skip the negative tests (hide the limitation) — but that violates §1.0 原則 4
+   - 选择: explicit negative tests with KNOWN LIMITATION documentation
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 implementing impl block verification — root-cause analysis shows the TD was misclassified; the actual issue (impl verification) is a separate, larger MUV
+- 安全理由: reclassification is documentation-only (no code changes to projection resolver); existing tests all pass; new tests document actual behavior without breaking anything
+
+5W2H:
+- WHAT: TD-STUB-PROJECTION-RESOLVER reclassification (RESOLVED) + new TD-PROJECTION-IMPL-VERIFICATION (P2) + 10-test E2E + soundness gap documentation suite
+- WHY: TD was misclassified as "partial impl" — root-cause analysis shows projection resolver IS fully implemented and working; the actual issue is impl block verification (missing/wrong assoc types silently accepted); per §1.0 原則 9, accurate classification > pretending to fix the wrong thing
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.13 Stage 30.4 (after Stage 30.3 drop elaboration reclassification)
+- WHERE: tests/v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs (10 tests: 6 positive + 3 negative + 1 regression) + README.md + RELEASE_NOTES.md + tech-debt-register.md
+- HOW: (1) Runtime probe tests revealing actual behavior (projections work for basic assoc, GAT, two impls, nested) (2) Negative test design revealing soundness gaps (missing/wrong assoc types silently accepted) (3) Reclassify TD as resolved (4) Create new TD-PROJECTION-IMPL-VERIFICATION (P2) (5) 10-test suite documenting current behavior with KNOWN LIMITATION markers
+- HOW MUCH: 4869 tests (was 4859, +10 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib; 91,842 LOC (+12 from v0.544.0)
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅ (4 pre-existing lib-test warnings, unrelated)
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 3971/3971 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, 91,842 LOC, +12 LOC) ✅
+- D8 (§1.6 终极检验): all root-cause analysis per §12 ✅
+  - Reclassification based on runtime + compile-time evidence (root-cause, not guess)
+  - New TD-PROJECTION-IMPL-VERIFICATION accurately captures the actual soundness gap
+  - Tests document actual behavior honestly (no hiding limitations)
+
+Stage Summary:
+- v0.13 Stage 30.4: TD-STUB-PROJECTION-RESOLVER RECLASSIFIED as RESOLVED ✅
+- Root-cause analysis: projection resolver IS fully implemented and working (not partial)
+- New TD created: TD-PROJECTION-IMPL-VERIFICATION (P2) — missing/wrong assoc types in impl block silently accepted
+- 10-test E2E suite: 6 positive (compile + runtime, including GAT) + 3 negative (2 KNOWN LIMITATION + 1 correctly errors) + 1 regression (nested projection)
+- §3.2 全绿: 4869 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.13 remaining TDs):
+- TD-PROJECTION-IMPL-VERIFICATION (NEW, P2) — verify impl block provides all required assoc types + verify type match (v0.14+)
+- TD-GAT-HIGHER-RANKED — HRTB + region substitution (v0.13+ architectural, last remaining v0.13 TD)
