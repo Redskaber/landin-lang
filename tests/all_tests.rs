@@ -815,3 +815,7 @@ mod stage30_15_hrtb_placeholder_check_tests;
 // === Stage 30.16 (v0.17 TD-SELF-TYPE-SUBSTS): Empty-substs fallback ===
 #[path = "v0/stage30/plan/stage30_16_self_type_substs_tests.rs"]
 mod stage30_16_self_type_substs_tests;
+
+// === Stage 30.17 (v0.17 TD-HRTB-INFRACTX-INTEGRATION): InferCtxt + solver ===
+#[path = "v0/stage30/plan/stage30_17_hrtb_infractx_integration_tests.rs"]
+mod stage30_17_hrtb_infractx_integration_tests;

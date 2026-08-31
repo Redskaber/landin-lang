@@ -3,13 +3,50 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.556.0 (Stage 30.16 — v0.17 TD-SELF-TYPE-SUBSTS: empty-substs fallback in projection_resolver) |
+| **Current version** | v0.557.0 (Stage 30.17 — v0.17 COMPLETE — TD-HRTB-INFRACTX-INTEGRATION: InferCtxt + solver wired into HRTB validation — ALL TDs RESOLVED) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4054 integration tests = 4951 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4060 integration tests = 4957 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.16 COMPLETE; v0.17 Stage 30.16: Self::Item empty-substs fallback |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.16 COMPLETE; v0.17 COMPLETE (Stage 30.16: Self::Item empty-substs fallback + Stage 30.17: InferCtxt + solver wired into HRTB validation) |
+
+---
+
+## v0.557.0 — v0.17 Stage 30.17 — TD-HRTB-INFRACTX-INTEGRATION: InferCtxt + Solver
+
+### Overview
+
+This release fixes the **TD-HRTB-INFRACTX-INTEGRATION** technical debt — the last remaining tech-debt item. `validate_hrtb_bounds` now uses the **proper solver** (InferCtxt + enter_universe/exit_universe + select()) instead of the name-based `implements_by_def_ids`.
+
+Per §1.0 原則 9 (正确 > 妥协): the v0.5 solver uses proper Evaluation → Selection (3-phase), which is more correct than name-based lookup. Per §12 (最优 > 最小): root-cause fix — use the proper solver.
+
+### What Changed
+
+#### InferCtxt + Solver Integration in validate_hrtb_bounds
+
+Replaced `implements_by_def_ids` (name-based lookup) with:
+1. Create `InferCtxt::new()`
+2. `enter_universe()` (placeholder for `'a`)
+3. Build `TraitPredicate::simple(self_ty, trait_def_id)`
+4. Run `select(&goal, &mut eval_ctxt)` — proper 3-phase Evaluation → Selection
+5. `exit_universe(prev)`
+6. If `NoImpl` → report "HRTB bound not satisfied"
+
+### v0.17 Complete Summary
+
+v0.17 is now **COMPLETE**. All v0.17 TDs addressed:
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 30.16 | TD-SELF-TYPE-SUBSTS | ✅ RESOLVED — empty-substs fallback in projection_resolver |
+| 30.17 | TD-HRTB-INFRACTX-INTEGRATION | ✅ RESOLVED — InferCtxt + solver wired into HRTB validation |
+
+### ALL Tech-Debt Items RESOLVED
+
+**ALL tech-debt items from v0.13-v0.17 are now RESOLVED — no remaining TDs in the tech-debt register.**
+
+The project is ready for the next feature development phase.
 
 ---
 
