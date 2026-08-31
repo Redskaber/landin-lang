@@ -179,14 +179,16 @@ fn main() -> i32 {
 // (documented as TD-DROP-SCOPE-TIMING, P2, deferred to v0.14+)
 // ============================================================================
 
-/// Stage 30.3 negative 1: Drop does NOT fire at block scope end.
+/// Stage 30.3 negative 1 → Stage 30.6 FIXED: Drop DOES fire at block scope end.
 ///
-/// KNOWN LIMITATION (TD-DROP-SCOPE-TIMING):
-/// `StorageDead` is emitted at function end, not at block end. So the
-/// drop fires AFTER the println, and the counter is still 0 when printed.
+/// Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING) FIX:
+/// `StorageDead` is now emitted at block scope end (via scope tracking
+/// in MirLowerCtxt), not at function end. So the drop fires BEFORE
+/// the println, and the counter is 1 when printed.
 ///
-/// This test documents the current behavior. When TD-DROP-SCOPE-TIMING is
-/// fixed, this test should be updated to expect "1\n".
+/// This test was previously a KNOWN LIMITATION (Stage 30.3) that
+/// documented the old behavior (drop too late). Now it verifies the
+/// fix works correctly.
 #[test]
 fn stage30_3_negative_drop_does_not_fire_at_block_scope_end() {
     let (stdout, _exit) = run_program(
@@ -203,26 +205,23 @@ fn main() -> i32 {
     *counter = 0;
     {
         let _t = Tracker { count_ptr: counter };
-        // _t should go out of scope HERE — but StorageDead is at fn end
+        // _t goes out of scope HERE — StorageDead emitted at block end
     }
-    // _t's drop has NOT fired yet — counter is still 0
+    // _t's drop HAS fired — counter is 1
     println!("{}", *counter);
     0
 }
 "#,
     );
-    // Document the current (incorrect) behavior:
-    // - Drop fires AFTER println (at function end)
-    // - So println sees counter = 0
+    // Stage 30.6 FIX: drop now fires at block scope end → counter = 1
     assert_eq!(
-        stdout, "0\n",
-        "KNOWN LIMITATION (TD-DROP-SCOPE-TIMING): drop does not fire at block scope end. \
-         StorageDead is emitted at function end, so println sees counter=0. \
-         When TD-DROP-SCOPE-TIMING is fixed, this should become '1\\n'."
+        stdout, "1\n",
+        "Stage 30.6 FIX: drop should fire at block scope end (counter=1). \
+         If this fails with '0', TD-DROP-SCOPE-TIMING regressed."
     );
 }
 
-/// Stage 30.3 negative 2: Drop does NOT fire at if-block scope end.
+/// Stage 30.3 negative 2 → Stage 30.6 FIXED: Drop DOES fire at if-block end.
 #[test]
 fn stage30_3_negative_drop_does_not_fire_at_if_block_end() {
     let (stdout, _exit) = run_program(
@@ -239,21 +238,22 @@ fn main() -> i32 {
     *counter = 0;
     if true {
         let _t = Tracker { count_ptr: counter };
-        // _t should drop HERE (at end of if-block)
+        // _t drops at end of if-block
     }
-    // _t's drop has NOT fired yet
+    // _t's drop HAS fired — counter is 1
     println!("{}", *counter);
     0
 }
 "#,
     );
+    // Stage 30.6 FIX: drop now fires at if-block scope end → counter = 1
     assert_eq!(
-        stdout, "0\n",
-        "KNOWN LIMITATION (TD-DROP-SCOPE-TIMING): drop does not fire at if-block scope end."
+        stdout, "1\n",
+        "Stage 30.6 FIX: drop should fire at if-block scope end (counter=1)."
     );
 }
 
-/// Stage 30.3 negative 3: Drop does NOT fire at while-loop iteration end.
+/// Stage 30.3 negative 3 → Stage 30.6 FIXED: Drop DOES fire at loop iteration end.
 #[test]
 fn stage30_3_negative_drop_does_not_fire_at_loop_iteration_end() {
     let (stdout, _exit) = run_program(
@@ -271,25 +271,19 @@ fn main() -> i32 {
     let mut i = 0;
     while i < 3 {
         let _t = Tracker { count_ptr: counter };
-        // _t should drop at end of each iteration
+        // _t drops at end of each iteration
         i = i + 1;
     }
-    // After 3 iterations, counter should be 3 (if drop fired each iteration)
-    // But with current implementation, all drops fire at fn end → counter = 3
-    // when println runs (since all 3 _t instances share the same counter_ptr
-    // — wait, actually each iteration creates a new _t with the same counter_ptr,
-    // and all 3 drop at fn end after println)
+    // After 3 iterations, counter should be 3 (drop fired each iteration)
     println!("{}", *counter);
     0
 }
 "#,
     );
-    // Each iteration's _t has the same counter_ptr. With proper scope tracking,
-    // each _t would drop at end of iteration → counter increments 3 times → "3".
-    // With current implementation, all 3 _t's drop at fn end (after println) → "0".
+    // Stage 30.6 FIX: drop now fires at loop iteration end → counter = 3
     assert_eq!(
-        stdout, "0\n",
-        "KNOWN LIMITATION (TD-DROP-SCOPE-TIMING): drop does not fire at loop iteration end."
+        stdout, "3\n",
+        "Stage 30.6 FIX: drop should fire at each loop iteration end (counter=3)."
     );
 }
 

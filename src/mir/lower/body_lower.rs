@@ -481,7 +481,27 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     } else {
         Some(return_mir_ty.clone())
     };
+    // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Push a scope for the
+    // function body. If body.value is a Block (the common case),
+    // lower_block pushes its own scope inside — but body-level temps
+    // created outside lower_block (if body.value is not a Block) are
+    // tracked by THIS scope. At body exit, we pop and emit StorageDead.
+    cx.scope_stack.push(Vec::new());
     let value_local = lower_expr_to_operand(&mut cx, &body.value, return_ty_for_expected.as_ref());
+    // Stage 30.6: Pop the body scope and emit StorageDead for any locals
+    // created at body level (not inside a nested lower_block call).
+    // If body.value was a Block, lower_block already popped its scope,
+    // and this scope is either empty or contains only body-level temps.
+    let body_scope_locals = cx.scope_stack.pop().unwrap_or_default();
+    for local_id in body_scope_locals.iter().rev() {
+        cx.mir
+            .block_mut(cx.current_block)
+            .statements
+            .push(Statement {
+                kind: StatementKind::StorageDead(*local_id),
+                span: body.span,
+            });
+    }
 
     // Stage 14.23: If the current block is already terminated (e.g. by a
     // `return` statement inside the body), skip the assignment to the return
@@ -564,11 +584,20 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         );
     }
 
-    // Emit StorageDead for all locals (except the return local) before
-    // the function returns. This is a conservative approximation —
-    // ideally we'd emit StorageDead at each local's scope end, but that
-    // requires scope tracking (Stage 3). For now, all locals die at
-    // function return.
+    // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Emit StorageDead for
+    // FUNCTION PARAMETERS only (locals [1..=param_count]) before the
+    // function returns. Body-level locals + nested-block locals are
+    // handled by `lower_block`'s per-block StorageDead emission.
+    //
+    // Previously (Stage 15.62), this swept ALL locals [1..local_count)
+    // at function end — a conservative approximation that caused
+    // block-scoped locals with Drop to be dropped too late (after
+    // observable side effects that followed the block).
+    //
+    // Now, lower_block emits StorageDead at each block's scope end.
+    // This function-end sweep only handles parameters, which are not
+    // created inside any lower_block call (they're allocated directly
+    // in body_lower before the body is lowered).
     //
     // We skip LocalId(0) (the return local) because it's still alive
     // at the point of Return.
@@ -576,14 +605,14 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Stage 15.62: Emit StorageDead in REVERSE declaration order so that
     // `elaborate_drops` produces `Drop` terminators in reverse declaration
     // order — matching Rust's drop semantics (last-declared local is
-    // dropped first). Previously, forward emission produced forward drop
-    // order, which was incorrect.
+    // dropped first).
     //
-    // Per §1.0 原則 6 "通用 > 特例": one rule (reverse iteration) handles
-    // all drop-ordering cases — no special-casing per local type.
-    // Per §23: no API change (internal MIR lowering detail).
-    let local_count = cx.mir.local_decls.len();
-    for i in (1..local_count).rev() {
+    // Per §1.0 原則 9 (正确 > 妥协): root-cause fix — per-block scope
+    // tracking, not function-end approximation.
+    // Per §1.0 原則 6 (通解 > 特解): one mechanism (scope_stack) handles
+    // all block scopes; this sweep only handles params.
+    let param_count = body.params.len();
+    for i in (1..=param_count).rev() {
         cx.mir
             .block_mut(cx.current_block)
             .statements

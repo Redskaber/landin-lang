@@ -214,6 +214,23 @@ pub struct MirLowerCtxt<'a> {
     /// merged into the driver's CompileErrors after lowering completes.
     /// Used for "报错 > 静默" — emit errors instead of silent placeholders.
     pub type_errors: Vec<crate::typeck::TypeError>,
+    /// Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Scope stack for per-block
+    /// `StorageDead` emission. Each entry is a `Vec<LocalId>` of locals
+    /// created directly in that scope (via `new_local` /
+    /// `new_local_with_mut`). When `lower_block` exits, it pops the top
+    /// entry and emits `StorageDead` for each LocalId in reverse order.
+    ///
+    /// This replaces the old "all locals die at function return" sweep
+    /// in `body_lower.rs`, fixing the soundness gap where block-scoped
+    /// locals with `Drop` were dropped too late (after observable side
+    /// effects that followed the block).
+    ///
+    /// Per §1.0 原則 9 (正确 > 妥协): root-cause fix is scope tracking,
+    /// not a conservative approximation.
+    /// Per §1.0 原則 6 (通解 > 特解): one mechanism (scope_stack) handles
+    /// all block scopes — nested, if/else, loop bodies, etc.
+    /// Per §23: `scope_stack` follows `<noun>_<noun>` pattern.
+    pub scope_stack: Vec<Vec<crate::mir::place::LocalId>>,
     /// Stage 15.4 (perf): Lazy cache for `query_method_return_type`.
     /// Maps method DefId → return type. Populated on first lookup,
     /// reused for all subsequent lookups of the same method.
@@ -316,6 +333,8 @@ impl<'a> MirLowerCtxt<'a> {
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
+            // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): empty scope stack.
+            scope_stack: Vec::new(),
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter: 0,
@@ -405,6 +424,8 @@ impl<'a> MirLowerCtxt<'a> {
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
+            // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): empty scope stack.
+            scope_stack: Vec::new(),
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter,
@@ -477,6 +498,14 @@ impl<'a> MirLowerCtxt<'a> {
     ) -> LocalId {
         let local_id = self.mir.new_local(ty, name, Span::DUMMY);
         self.local_map.insert(hir_id, local_id);
+        // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Track this local in
+        // the current scope (if any) so `lower_block` can emit StorageDead
+        // at scope end. Locals created outside any scope (e.g., return
+        // local + params in body_lower) are not tracked — they're handled
+        // by the function-end sweep for parameters.
+        if let Some(scope) = self.scope_stack.last_mut() {
+            scope.push(local_id);
+        }
         local_id
     }
 
@@ -493,6 +522,10 @@ impl<'a> MirLowerCtxt<'a> {
             .mir
             .new_local_with_mut(ty, name, Span::DUMMY, mutability);
         self.local_map.insert(hir_id, local_id);
+        // Stage 30.6: Track this local in the current scope (if any).
+        if let Some(scope) = self.scope_stack.last_mut() {
+            scope.push(local_id);
+        }
         local_id
     }
 
@@ -668,7 +701,30 @@ impl<'a> MirLowerCtxt<'a> {
     pub fn eval_rvalue_to_temp(&mut self, rvalue: Rvalue, ty: Ty, span: Span) -> LocalId {
         let temp = self.mir.new_local(ty, None, span);
         self.push_assign(Place::local(temp, span), rvalue, span);
+        // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Track this temp in the
+        // current scope (if any) so it gets StorageDead'd at scope end.
+        if let Some(scope) = self.scope_stack.last_mut() {
+            scope.push(temp);
+        }
         temp
+    }
+
+    /// Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Allocate a temporary local
+    /// (no HirId) and track it in the current scope for per-block
+    /// `StorageDead` emission.
+    ///
+    /// Use this instead of `cx.mir.new_local(...)` for temps created during
+    /// expression lowering. This ensures the temp gets `StorageDead` at the
+    /// correct scope end (not function end).
+    ///
+    /// Per §23: `new_temp` follows `<adj>_<noun>` pattern (constructor).
+    /// Per §1.0 原則 6 (通解 > 特解): one helper for all temp allocations.
+    pub fn new_temp(&mut self, ty: Ty, span: Span) -> LocalId {
+        let local_id = self.mir.new_local(ty, None, span);
+        if let Some(scope) = self.scope_stack.last_mut() {
+            scope.push(local_id);
+        }
+        local_id
     }
 
     /// Convert a HIR LitKind to a MIR Const.

@@ -289,6 +289,18 @@ pub(crate) fn lower_block(
     block: &HirBlock,
     expected_ty: Option<&crate::mir::ty::Ty>,
 ) -> LocalId {
+    // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Push a new scope to track
+    // locals created in this block. At block exit, we emit StorageDead
+    // for these locals in reverse declaration order — matching Rust's
+    // drop semantics (last-declared local is dropped first).
+    //
+    // This replaces the old "all locals die at function return" sweep
+    // in body_lower.rs, fixing the soundness gap where block-scoped
+    // locals with Drop were dropped too late.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): root-cause fix is scope tracking.
+    // Per §1.0 原則 6 (通解 > 特解): one mechanism for all block scopes.
+    cx.scope_stack.push(Vec::new());
     for stmt in &block.stmts {
         match stmt {
             HirStmt::Local(local) => {
@@ -740,11 +752,21 @@ pub(crate) fn lower_block(
     // the Phase 2d fix in body_lower.rs threads expected_ty into
     // body.value, but body.value is a Block, and the Block arm in
     // lower_expr_to_operand calls lower_block WITHOUT passing
-    // expected_ty. This fix threads expected_ty through lower_block
-    // to the trailing expression.
-    // Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path
-    // for all block trailing expressions.
-    if let Some(expr) = &block.expr {
+    // Stage 30.6 (v0.14 TD-DROP-SCOPE-TIMING): Evaluate trailing
+    // expression (or unit), then emit StorageDead for all locals created
+    // in this scope (in reverse declaration order).
+    //
+    // The result temp (last local created) is included in the StorageDead
+    // sweep — this is safe because:
+    // - The caller always Moves the result temp (via Operand::Move).
+    // - elaborate_drops scans ALL blocks for moves, sees the Move (which
+    //   comes after the StorageDead in MIR order), and skips the Drop.
+    // - For Copy types, ty_needs_drop returns false, so no Drop is inserted.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): root-cause fix — emit StorageDead at
+    // scope end, not function end.
+    // Per §1.0 原則 6 (通解 > 特解): one sweep for all scope locals.
+    let result_local = if let Some(expr) = &block.expr {
         lower_expr_to_operand(cx, expr, expected_ty)
     } else {
         // Stage 14.22: Check if the last statement diverges (return with value,
@@ -767,7 +789,10 @@ pub(crate) fn lower_block(
             }
         });
         if last_diverges {
-            // Block diverges — return Never type (unifies with anything)
+            // Block diverges — return Never type (unifies with anything).
+            // Stage 30.6: Don't emit StorageDead here — the current block
+            // already has a terminator (set by the diverging statement),
+            // and any statements added would be unreachable.
             cx.mir
                 .new_local(Ty::new(TyKind::Never, block.span), None, block.span)
         } else {
@@ -778,7 +803,56 @@ pub(crate) fn lower_block(
                 block.span,
             )
         }
+    };
+
+    // Stage 30.6: Emit StorageDead for all locals in this scope, in reverse
+    // declaration order (matching Rust's drop order). Skip if the block
+    // diverged (current_block has a terminator from the diverging statement).
+    //
+    // We check for divergence by looking at whether the result is Never
+    // AND the last statement diverges. In that case, the block has already
+    // been terminated and we skip StorageDead.
+    let block_diverged = block.expr.is_none()
+        && block.stmts.iter().rev().any(|stmt| {
+            if let HirStmt::Expr(e, _) = stmt {
+                matches!(
+                    &e.kind,
+                    HirExprKind::Return { .. } | HirExprKind::Break { .. } | HirExprKind::Continue
+                )
+            } else {
+                false
+            }
+        });
+
+    if !block_diverged {
+        // Pop the scope and emit StorageDead for all locals in reverse order.
+        let scope_locals = cx.scope_stack.pop().unwrap_or_default();
+        for local_id in scope_locals.iter().rev() {
+            // Don't StorageDead the result local — the caller will Move it,
+            // and elaborate_drops handles the Move (skips Drop for moved).
+            // But we DO emit StorageDead for it, because:
+            // - elaborate_drops sees the Move (scans all blocks) and skips Drop.
+            // - For Copy types, ty_needs_drop is false, so no Drop is inserted.
+            // So emitting StorageDead for the result is safe.
+            //
+            // Exception: if result_local is the same as a scope local, we
+            // still emit StorageDead — the caller's Move comes after, and
+            // elaborate_drops handles it.
+            cx.mir
+                .block_mut(cx.current_block)
+                .statements
+                .push(Statement {
+                    kind: StatementKind::StorageDead(*local_id),
+                    span: block.span,
+                });
+        }
+    } else {
+        // Block diverged — pop the scope but don't emit StorageDead
+        // (the current block already has a terminator).
+        cx.scope_stack.pop();
     }
+
+    result_local
 }
 
 /// Lower an if expression.

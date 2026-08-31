@@ -346,3 +346,47 @@ fn main() {
 **Estimated effort**: 2-3 days (scope tracking + early exit paths + test updates)
 
 **Risk**: May break existing tests that assume function-end StorageDead timing. Need to audit all drop conformance tests (40+ in `tests/conformance/03-codegen/03-drop-glue/`).
+
+---
+
+## §14.8 B2 Writeback — Stage 30.6 (v0.14) Drop at Scope End FIXED
+
+> **Date**: 2026-08-31
+> **Version**: v0.547.0 (Stage 30.6 — TD-DROP-SCOPE-TIMING: scope tracking)
+> **Process**: stage-committee-process.md §14.8 B2 (design > implementation → writeback)
+
+### B2 Deviation RESOLVED
+
+**Design intent** (§2.1): "Drop elaboration is the pass that inserts `Drop` terminators into the MIR at points where a local goes out of scope."
+
+**Previous actual** (v0.544.0): `StorageDead` emitted at **function end** (body_lower.rs line 567-594) — conservative approximation.
+
+**Current actual** (v0.547.0): `StorageDead` emitted at **block scope end** via `scope_stack` in `MirLowerCtxt`. The deviation is **RESOLVED**.
+
+### Implementation
+
+| Component | File | Change |
+|-----------|------|--------|
+| `MirLowerCtxt` | `src/mir/lower/mod.rs` | Added `scope_stack: Vec<Vec<LocalId>>`; `new_local`/`new_local_with_mut`/`eval_rvalue_to_temp` push onto scope_stack; added `new_temp` helper |
+| `lower_block` | `src/mir/lower/control_flow.rs` | Push scope at entry; pop + emit `StorageDead` (reverse order) at exit; skip if block diverged |
+| `body_lower` | `src/mir/lower/body_lower.rs` | Push body scope; pop + emit `StorageDead`; function-end sweep changed to params-only `[1..=param_count]` |
+
+### Key Design Decisions
+
+1. **Result temp safety**: The block's result temp is included in the `StorageDead` sweep. This is safe because the caller always `Move`s the result, and `elaborate_drops` scans ALL blocks for moves (seeing the Move after the StorageDead in MIR order) and skips the Drop. For `Copy` types, `ty_needs_drop` returns false.
+
+2. **Diverging blocks**: If the block's last statement diverges (`return`/`break`/`continue`), the current block already has a terminator. `StorageDead` statements would be unreachable, so they're skipped via a `block_diverged` check.
+
+3. **Function-end sweep**: Changed from `[1..local_count)` (all locals) to `[1..=param_count]` (parameters only). Parameters are created before `lower_block` is called, so they're not tracked by `scope_stack`.
+
+### Reclassification
+
+| TD | Previous Classification | New Classification | Rationale |
+|----|-------------------------|-------------------|-----------|
+| TD-DROP-SCOPE-TIMING | 🟡 P2, v0.14+ — StorageDead at fn end, not scope end | ✅ **RESOLVED** (Stage 30.6) | Scope tracking implemented via `scope_stack` in `MirLowerCtxt`. `StorageDead` now emitted at block scope end. Runtime tests verify drop fires correctly for block/if/loop/nested/else scopes. |
+
+### Remaining Pre-existing Gap (not made worse)
+
+**Early return handling**: If a `return`/`break`/`continue` statement appears in the MIDDLE of a block, locals declared before the early exit but after the block's scope start are NOT `StorageDead`'d (the early exit's block has a terminator, and `StorageDead` is skipped for diverging blocks). This is a pre-existing soundness gap that is NOT made worse by this change — the old function-end sweep also didn't handle early returns correctly (the sweep was in `cx.current_block` at the end, which was unreachable for early returns).
+
+**Fix plan** (future, TD-EARLY-RETURN-DROPS): Implement a "drop tree" that emits `StorageDead` for all enclosing scopes on early exit paths. This is a larger architectural change (similar to rustc's unwind tables).

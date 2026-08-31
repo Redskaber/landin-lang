@@ -3,13 +3,97 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.546.0 (Stage 30.5 — v0.13 COMPLETE — TD-GAT-HIGHER-RANKED partial implementation) |
+| **Current version** | v0.547.0 (Stage 30.6 — v0.14 TD-DROP-SCOPE-TIMING: scope tracking complete) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 3983 integration tests = 4881 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 3991 integration tests = 4889 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 COMPLETE (Stage 30.2: lifetime elision Rule 4 + Stage 30.3: drop elaboration reclassification + Stage 30.4: projection resolver reclassification + Stage 30.5: HRTB `for<'a>` surface syntax layer) |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: TD-DROP-SCOPE-TIMING — scope tracking in MirLowerCtxt (StorageDead at block scope end, not function end) |
+
+---
+
+## v0.547.0 — v0.14 Stage 30.6 — TD-DROP-SCOPE-TIMING: Scope Tracking
+
+### Overview
+
+This release fixes the **TD-DROP-SCOPE-TIMING** soundness gap by implementing **scope tracking** in `MirLowerCtxt`. Previously, `StorageDead` was emitted at **function end** for all locals — a conservative approximation that caused block-scoped locals with `Drop` to be dropped too late (after observable side effects that followed the block).
+
+Now, `StorageDead` is emitted at **block scope end** via a `scope_stack` in `MirLowerCtxt`. This matches Rust's RAII semantics: locals are dropped when their enclosing block ends, not when the function returns.
+
+### What Changed
+
+#### Before v0.547.0 (drop too late):
+```landin
+fn main() {
+    let counter = 0;
+    {
+        let _t = Tracker { count_ptr: counter };
+        // _t should drop HERE
+    }
+    // _t's drop had NOT fired yet — counter was still 0
+    println!("{}", *counter);  // printed 0 (should print 1)
+}
+```
+
+#### After v0.547.0 (drop at scope end):
+```landin
+fn main() {
+    let counter = 0;
+    {
+        let _t = Tracker { count_ptr: counter };
+        // _t drops HERE (at block scope end)
+    }
+    // _t's drop HAS fired — counter is 1
+    println!("{}", *counter);  // prints 1 ✓
+}
+```
+
+#### Implementation Details
+
+| Component | File | Change |
+|-----------|------|--------|
+| `MirLowerCtxt` | `src/mir/lower/mod.rs` | Added `scope_stack: Vec<Vec<LocalId>>` field; `new_local`/`new_local_with_mut`/`eval_rvalue_to_temp` push onto scope_stack; added `new_temp` helper |
+| `lower_block` | `src/mir/lower/control_flow.rs` | Push scope at entry; pop + emit `StorageDead` (reverse order) at exit; skip if block diverged |
+| `body_lower` | `src/mir/lower/body_lower.rs` | Push body scope before lowering body value; pop + emit `StorageDead` after; change function-end sweep from `[1..local_count)` to `[1..=param_count]` (params only) |
+
+#### Key Design Decisions
+
+1. **Result temp safety**: The block's result temp is included in the `StorageDead` sweep — this is safe because the caller always `Move`s the result, and `elaborate_drops` scans ALL blocks for moves (seeing the Move after the StorageDead in MIR order) and skips the Drop. For `Copy` types, `ty_needs_drop` returns false, so no Drop is inserted.
+
+2. **Diverging blocks**: If the block's last statement diverges (`return`/`break`/`continue`), the current block already has a terminator. `StorageDead` statements would be unreachable, so they're skipped.
+
+3. **Function-end sweep**: Changed from `[1..local_count)` (all locals) to `[1..=param_count]` (parameters only). Parameters are created in `body_lower.rs` before `lower_block` is called, so they're not tracked by `scope_stack`.
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (0 warnings) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 3991/3991 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 91,952 LOC, +60 LOC from v0.546.0) |
+| D8 ultimate test | ✅ PASS | Root-cause fix per §12 — scope tracking, not function-end approximation |
+
+### Test Suite Impact
+
+- **New tests**: 8 (in `stage30_6_scope_tracking_tests.rs`)
+  - 6 positive: drop at block scope end, if-block end, loop iteration end, reverse order, nested blocks, else branch
+  - 2 regression: body-level local + parameter still drop at function end
+- **Updated tests**: 3 (in `stage30_3_drop_elaboration_reclassification_tests.rs`)
+  - 3 negative tests updated from "KNOWN LIMITATION (expects 0)" to "FIXED (expects 1/3)" — verifying the fix works
+- **Total tests**: 4889 (was 4881 in v0.546.0)
+
+### Remaining Tech Debt (v0.14+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-PROJECTION-IMPL-VERIFICATION | 🟡 P2, v0.14+ | Missing/wrong assoc types in impl silently accepted — impl block verification needed |
+| TD-HRTB-SOLVER-INTEGRATION | 🟡 P2, v0.14+ | HRTB surface syntax captured but solver doesn't enforce semantics — wire Binder<T> + universes |
+| TD-HRTB-FN-SYNTAX | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax not parsed — Fn(...) call syntax needed |
 
 ---
 

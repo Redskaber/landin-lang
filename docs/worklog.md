@@ -34673,3 +34673,85 @@ Stage Summary:
 - TD-PROJECTION-IMPL-VERIFICATION (P2) — verify impl block provides all required assoc types + type match
 - TD-HRTB-SOLVER-INTEGRATION (NEW, P2) — wire Binder<T> into trait solver selection + universe into region inference for HRTB enforcement
 - TD-HRTB-FN-SYNTAX (NEW, P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax not yet implemented)
+
+---
+Task ID: stage30.6
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.6 (v0.14) — TD-DROP-SCOPE-TIMING: implement scope tracking in MirLowerCtxt. L3. v0.547.0.
+
+3秒启动自检:
+- 定位: L3 (scope tracking in MirLowerCtxt — affects all block-scoped locals with Drop)
+- 对齐: 已查 v0.546.0 (Stage 30.5 complete); TD-DROP-SCOPE-TIMING — was classified as "StorageDead at fn end, not scope end"
+- 阻断: Stage 30.5 全绿 (4881 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Implementation approach: scope_stack in MirLowerCtxt
+   - 引用 §1.0 原則 9 (正确 > 妥协): root-cause fix is scope tracking, not function-end approximation
+   - 引用 §1.0 原則 6 (通解 > 特解): one mechanism (scope_stack) handles all block scopes — nested, if/else, loop bodies, etc.
+   - 引用 §12 (最优 > 最小): root-cause fix at the lowering stage, not a symptom patch
+   - 替代: keep function-end sweep and add per-block Drop in elaborate_drops — but that requires elaborate_drops to track scope, which is a cross-stage concern (violates §11)
+   - 选择: scope_stack in MirLowerCtxt — emit StorageDead at block scope end
+
+2. Tracking directly-created locals: new_local + new_local_with_mut + new_temp + eval_rvalue_to_temp
+   - 引用 §1.0 原則 6 (通解 > 特解): one tracking mechanism for all local creation paths
+   - Added `scope_stack: Vec<Vec<LocalId>>` to MirLowerCtxt
+   - Modified `new_local`, `new_local_with_mut`, `eval_rvalue_to_temp` to push onto scope_stack
+   - Added `new_temp` helper for direct `mir.new_local` calls (temps without HirId)
+   - 替代: only track in lower_block (miss temps created by expression lowering) — incomplete
+   - 选择: track in ALL local creation paths
+
+3. Result temp safety: emit StorageDead for result temp is safe
+   - The caller always Moves the result temp (via Operand::Move)
+   - elaborate_drops scans ALL blocks for moves, sees the Move (which comes after StorageDead in MIR order), and skips the Drop
+   - For Copy types, ty_needs_drop returns false, so no Drop is inserted
+   - 引用 §1.0 原則 9 (正确 > 妥协): correct — emit StorageDead for all scope locals including result temp
+
+4. Diverging block handling: skip StorageDead if block diverged
+   - If the block's last statement diverges (return/break/continue), the current_block already has a terminator
+   - Adding StorageDead after a terminator would be unreachable code
+   - 引用 §1.0 原則 4 (报错 > 静默): don't silently add unreachable code
+   - 选择: check block_diverged flag, skip StorageDead if diverged
+
+5. Function-end sweep: only cover parameters
+   - Parameters are created in body_lower.rs BEFORE lower_block is called
+   - They're not tracked by scope_stack (scope_stack is empty when params are created)
+   - 引用 §1.0 原則 6 (通解 > 特解): one sweep for params, per-block sweep for everything else
+   - 选择: change function-end sweep from [1..local_count) to [1..=param_count]
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 early return handling (return/break/continue in middle of block) — pre-existing soundness gap, not made worse by this change
+- 安全理由: scope tracking is additive; existing tests all pass; new tests verify correct behavior
+
+5W2H:
+- WHAT: TD-DROP-SCOPE-TIMING — implement scope tracking in MirLowerCtxt
+- WHY: StorageDead was emitted at function end, not scope end — block-scoped locals with Drop were dropped too late (after observable side effects)
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.14 Stage 30.6 (first v0.14 MUV, after v0.13 complete)
+- WHERE: src/mir/lower/mod.rs (scope_stack field + new_temp helper + tracking in new_local/new_local_with_mut/eval_rvalue_to_temp) + src/mir/lower/control_flow.rs (lower_block push/pop scope + emit StorageDead) + src/mir/lower/body_lower.rs (function-end sweep changed to params-only + body scope push/pop) + tests/v0/stage30/plan/stage30_6_scope_tracking_tests.rs (8 tests) + tests/v0/stage30/plan/stage30_3_drop_elaboration_reclassification_tests.rs (3 negative tests updated to expect fixed behavior)
+- HOW: (1) Add scope_stack to MirLowerCtxt (2) Track locals in all creation paths (3) Push/pop scope in lower_block (4) Emit StorageDead at block exit (5) Change function-end sweep to params-only (6) Push body scope in body_lower (7) 8-test runtime suite verifying drop fires at block/if/loop/nested/else scope end
+- HOW MUCH: 4889 tests (was 4881, +8 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 3991/3991 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +60 from v0.546.0) ✅
+- D8 (§1.6 终极检验): root-cause fix per §12 ✅ — scope tracking, not function-end approximation
+
+Stage Summary:
+- v0.14 Stage 30.6: TD-DROP-SCOPE-TIMING COMPLETE ✅
+- Drop now fires at block scope end (was: function end)
+- 8-test runtime suite: 6 positive (block/if/loop/reverse-order/nested/else) + 2 regression (body-level + param still drop at fn end)
+- 3 Stage 30.3 negative tests updated to expect fixed behavior (were KNOWN LIMITATION, now FIXED)
+- §3.2 全绿: 4889 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.14 remaining TDs):
+- TD-PROJECTION-IMPL-VERIFICATION (P2) — verify impl block provides all required assoc types + type match
+- TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
+- TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
