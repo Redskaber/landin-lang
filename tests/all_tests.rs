@@ -759,3 +759,7 @@ mod fuzz_harness;
 // === Stage 21.1: v0.5 GATs P2 Phase 1 — E2E tests ===
 #[path = "v0/stage21/plan/stage21_01_gats_e2e_tests.rs"]
 mod stage21_01_gats_e2e_tests;
+
+// === Stage 30.2 (v0.13 TD-STUB-LIFETIME-ELISION-NOOP): Rule 4 enforcement ===
+#[path = "v0/stage30/plan/stage30_2_lifetime_elision_rule4_tests.rs"]
+mod stage30_2_lifetime_elision_rule4_tests;

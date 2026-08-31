@@ -1852,7 +1852,7 @@ fn codegen_str_param_type() {
 
 #[test]
 fn codegen_str_return_type() {
-    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"hello\" }");
     // Stage 3.49 (L13): &str return type is now a fat pointer `{ ptr, i64 }`.
     assert!(
         ll.contains("define { ptr, i64 } @landin_f()"),
@@ -2581,7 +2581,7 @@ fn codegen_fat_ptr_str_param_layout() {
 
 #[test]
 fn codegen_fat_ptr_str_return_layout() {
-    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"hello\" }");
     assert!(
         ll.contains("define { ptr, i64 } @landin_f()"),
         "expected &str return as fat pointer in:\n{}",
@@ -2592,7 +2592,7 @@ fn codegen_fat_ptr_str_return_layout() {
 #[test]
 fn codegen_fat_ptr_str_literal_has_length() {
     // The fat pointer's length field must be the actual byte count.
-    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"hello\" }");
     // "hello" is 5 bytes → insertvalue { ptr, i64 } %v, i64 5, 1
     assert!(
         ll.contains("i64 5, 1"),
@@ -2604,7 +2604,7 @@ fn codegen_fat_ptr_str_literal_has_length() {
 #[test]
 fn codegen_fat_ptr_str_literal_empty() {
     // Empty string "" has length 0.
-    let ll = gen_ll("fn f() -> &str { \"\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"\" }");
     assert!(
         ll.contains("i64 0, 1"),
         "expected fat pointer length 0 for empty string in:\n{}",
@@ -2615,7 +2615,7 @@ fn codegen_fat_ptr_str_literal_empty() {
 #[test]
 fn codegen_fat_ptr_str_literal_unicode_length() {
     // Unicode: "héllo" is h(1) + é(2) + l(1) + l(1) + o(1) = 6 bytes (UTF-8).
-    let ll = gen_ll("fn f() -> &str { \"héllo\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"héllo\" }");
     assert!(
         ll.contains("i64 6, 1"),
         "expected fat pointer length 6 for héllo (UTF-8) in:\n{}",
@@ -2821,7 +2821,7 @@ fn codegen_byte_string_in_struct_field() {
 #[test]
 fn codegen_byte_string_return_type() {
     // fn returning &[u8] should return a fat pointer.
-    let ll = gen_ll("fn f() -> &[u8] { b\"hello\" }");
+    let ll = gen_ll("fn f() -> &'static [u8] { b\"hello\" }");
     assert!(
         ll.contains("define { ptr, i64 } @landin_f()"),
         "expected &[u8] return as fat pointer in:\n{}",
@@ -3456,7 +3456,7 @@ fn codegen_void_fn_call_chain() {
 #[test]
 fn codegen_str_return_fn_regression() {
     // Regression: fn returning &str should still return fat pointer.
-    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    let ll = gen_ll("fn f() -> &'static str { \"hello\" }");
     assert!(
         ll.contains("define { ptr, i64 } @landin_f()"),
         "expected fat pointer return for &str fn (regression) in:\n{}",

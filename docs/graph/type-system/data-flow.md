@@ -360,3 +360,80 @@ Generic struct field type (HIR)         Concrete field type (MIR)
                 │  _<prep>_<noun> pattern                     │
                 └────────────────────────────────────────────┘
 ```
+
+---
+
+## Lifetime Elision Data Flow (Stage 30.2, v0.13)
+
+> **Date**: 2026-08-31
+> **Version**: v0.543.0 (Stage 30.2 — TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement)
+
+```
+HIR Body (function with ref params + ref return)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  MIR Lowering — Elision Pass (mir/lower/body_lower.rs)        │
+│                                                               │
+│  for each param:                                              │
+│    if self_kind.is_some():                                    │
+│      resolve_self_param_type(...) → Region::Var(N)            │
+│        (Stage 30.2: was Region::Erased, made rule 3 no-op)   │
+│      collect self's vid → self_region_vid                     │
+│      push to param_region_vids_collected                       │
+│    elif param.ty.is_some():                                   │
+│      lower_hir_ty_to_mir_ty_with_lifetimes(ty)                 │
+│      collect_region_vids → param_region_vids_collected         │
+│                                                               │
+│  Then lower return type with lifetime_map:                    │
+│    lower_hir_ty_to_mir_ty_with_lifetimes(return_ty)           │
+│                                                               │
+│  Rule 4 Check (Stage 30.2 — NEW):                              │
+│    rule_applies = (n_inputs == 1)                             │
+│               OR (n_inputs > 1 AND self_vid.is_some())        │
+│    if !rule_applies:                                          │
+│      if find_elided_ref_span(return_ty).is_some():            │
+│        push TypeError("missing lifetime specifier")           │
+│                                                               │
+│  Apply Elision Rules 2/3 (with explicit_vids filter):          │
+│    explicit_vids = lifetime_map.values().collect()             │
+│    apply_elision_rules(return_ty, input_vids, self_vid,       │
+│                       explicit_vids)                          │
+│      → replaces only vids NOT in explicit_vids                │
+│        (Stage 30.2: was unconditional replace — silent       │
+│         over-application bug; now preserves explicit)        │
+│                                                               │
+│  Per §1.0 原則 4 (报错 > 静默): rule 4 enforced explicitly.  │
+│  Per §1.0 原則 9 (正确 > 妥协): preserve explicit lifetimes. │
+│  Per §12 (最优 > 最小): root-cause fix at lowering stage.    │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Region Inference (borrowck/region_inference.rs)              │
+│                                                               │
+│  infer_regions() — fixed-point iteration over MIR:            │
+│    'a: 'b constraints from function signature                 │
+│    lifetime relationships from borrows                        │
+│    universal region checks (for<'a> support)                  │
+│    type tests (region unification)                            │
+│                                                               │
+│  Now receives properly-elided regions (not Region::Erased     │
+│  for &self), so rule 3 actually fires and produces correct    │
+│  lifetime relationships.                                      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+                     Typeck Errors
+            (including "missing lifetime specifier"
+             for rule 4 violations)
+```
+
+### Key Functions
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `find_elided_ref_span` | `mir::lower::body_lower` | Walk HIR type, return span of first `Ref(None, ...)` |
+| `apply_elision_rules` | `mir::lower::body_lower` | Replace elided output refs with target_vid (preserving explicit) |
+| `collect_region_vids` | `mir::lower::body_lower` | Gather all `Region::Var(N)` from a MIR type |
+| `resolve_self_param_type` | `mir::lower::body_lower` | Build `&Self`/`&mut Self`/`Self` type for self param |

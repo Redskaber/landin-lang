@@ -138,6 +138,8 @@ fn first_word(s: &str) -> &str { ... }
 
 这三条规则覆盖了约 87% 的 Rust 函数签名（RFC #141 数据）。Landin 直接采用。
 
+> **Stage 30.2 (v0.13) 实现状态**: 规则 1/2/3/4 全部实现。Rule 4 在 `mir::lower::body_lower::find_elided_ref_span` 中通过 HIR 类型遍历检测被省略的引用，并在 `lower_hir_body_to_mir_full_with_dyn_trait_plan` 中显式触发 `missing lifetime specifier` TypeError。`apply_elision_rules` 接受 `explicit_vids: &HashSet<RegionVid>` 参数，仅替换省略的 vids，保留显式命名 lifetime（修复 over-application bug）。`resolve_self_param_type` 使用 `Region::Var`（不再是 `Region::Erased`），使规则 3 对 `&self` 方法实际生效。详见 `tests/v0/stage30/plan/stage30_2_lifetime_elision_rule4_tests.rs`（27 测试：8 正向 + 13 负向 + 2 回归 + 4 单元）。
+
 **v1.2 补全的边界 case**（R5 soundness 漏洞 #5）：
 
 1. **嵌套引用**：`fn f(x: &Box<&u8>) -> &u8` — elision 不应用，要求显式标注。原因：嵌套引用的 lifetime 关系不明确

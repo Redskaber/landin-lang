@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.542.0 (v0.12 FINAL — Region inference reclassification complete, remaining TDs BLOCKED) |
+| **Version** | v0.543.0 (v0.13 Stage 30.2 — TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement complete) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 FINAL — REGION INFERENCE RECLASSIFICATION COMPLETE**. 4821 tests (896 lib + 3925 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. v0.12 task: ✅ Stage 30.1 TD-STUB-REGION-ERASED (region inference was always running, not no-op). Remaining TDs ALL BLOCKED: TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-DROP-ELABORATION-NOOP (Drop::drop codegen), TD-STUB-LIFETIME-ELISION-NOOP (3-rule elision), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 90,771 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness). Next: v0.13 (HRTB + Drop + lifetime elision + projection normalization). |
+| **Status** | ✅ **v0.13 Stage 30.2 — TD-STUB-LIFETIME-ELISION-NOOP COMPLETE**. 4850 tests (898 lib + 3952 integration), 0 failures, 2 ignored (`ulimit -s unlimited`, single-thread). fmt clean, 0 clippy warnings on lib. §14.5 D1-D8 PASSED. v0.13 task: ✅ Stage 30.2 TD-STUB-LIFETIME-ELISION-NOOP (RFC 141 Rule 4 enforcement + over-application fix + self-param fix). Remaining TDs ALL BLOCKED: TD-GAT-HIGHER-RANKED (HRTB + region substitution), TD-STUB-DROP-ELABORATION-NOOP (Drop::drop codegen), TD-STUB-PROJECTION-RESOLVER (complete normalization). Architecture health: 8.5/10 (183 files, 91,721 LOC). All P0/P1 soundness bugs resolved since v0.4. All language feature enforcement complete (visibility + break/continue + enum exhaustiveness + lifetime elision rule 4). Next: v0.13 continued (Drop + projection normalization + HRTB). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -383,9 +383,9 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 |----|-------------|--------|----------|
 | TD-STUB-PRELUDE-LOOP-BODY | Prelude `loop {}` marker bodies (4 methods) | 🟡 v0.5+ | Fat pointer construction syntax |
 | TD-TYPECK-LOCAL-DECL-ERROR-CHECK | Phase 4.5 disabled (47 prelude false-positives) | 🟡 v0.5+ | Prelude lazy monomorphization |
-| TD-STUB-REGION-ERASED | Region inference no-op | 🟡 v0.2+ | SCC + type tests + universe |
+| TD-STUB-REGION-ERASED | Region inference no-op | ✅ Resolved (Stage 30.1) | Reclassified — region inference was always running, not no-op |
 | TD-STUB-DROP-ELABORATION-NOOP | Drop elaboration no-op | 🟡 v0.2+ | Drop::drop codegen + dropck |
-| TD-STUB-LIFETIME-ELISION-NOOP | Lifetime elision no-op | 🟡 v0.2+ | 3-rule elision per `03-type-system.md` §5 |
+| TD-STUB-LIFETIME-ELISION-NOOP | Lifetime elision no-op | ✅ Resolved (Stage 30.2) | RFC 141 Rule 4 enforced + over-application fix + self-param fix |
 | TD-STUB-PROJECTION-RESOLVER | Projection resolver partial | 🟡 v0.2+ | Associated type normalization |
 | TD-STUB-EMIT-TYPE-I32-FALLBACK | `mir_type_to_emit_type` i32 fallback | ✅ Mitigated | param_check (Stage 18.348) catches unresolved types |
 | TD-STUB-TYPECK-BEFORE-WRITEBACK | typeck before writeback | ✅ Resolved | Phase 0 + Phase 3.7 double writeback (Stage 18.353+18.355), now both removed |

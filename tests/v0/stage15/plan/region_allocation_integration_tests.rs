@@ -74,8 +74,12 @@ fn stage15_52_fn_with_ref_params_no_false_positives() {
 /// Stage 15.52 test 4: Function returning a reference compiles cleanly.
 #[test]
 fn stage15_52_fn_returning_ref_no_false_positives() {
+    // Stage 30.2: Updated signature to use explicit lifetime annotation
+    // per RFC 141 rule 4 — `fn max(a: &i32, b: &i32) -> &i32` (multiple
+    // inputs, no self, elided output) is now correctly rejected by the
+    // compiler. Use `fn max<'a>(a: &'a i32, b: &'a i32) -> &'a i32` instead.
     let src = r#"
-        fn max(a: &i32, b: &i32) -> &i32 {
+        fn max<'a>(a: &'a i32, b: &'a i32) -> &'a i32 {
             if *a > *b { a } else { b }
         }
         fn main() -> i32 {

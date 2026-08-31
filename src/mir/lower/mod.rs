@@ -120,9 +120,9 @@ pub(crate) use ty_lower::lower_hir_ty_to_mir_ty_with_lifetimes;
 // Per §10.1.4: explicit list, no glob.
 // Per §13.4.3 反模式 5: only re-export functions actually called externally.
 pub use body_lower::{
-    build_synthesized_closure_mir_body, lower_body, lower_body_full, lower_hir_body_to_mir,
-    lower_hir_body_to_mir_full, lower_hir_body_to_mir_full_with_dyn_trait_plan,
-    lower_hir_body_to_mir_with_return_ty,
+    build_synthesized_closure_mir_body, find_elided_ref_span, lower_body, lower_body_full,
+    lower_hir_body_to_mir, lower_hir_body_to_mir_full,
+    lower_hir_body_to_mir_full_with_dyn_trait_plan, lower_hir_body_to_mir_with_return_ty,
 };
 
 /// Lowering context for HIR→MIR conversion.
