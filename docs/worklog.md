@@ -34824,3 +34824,75 @@ Stage Summary:
 - TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
 - TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
 - TD-IMPL-TYPE-MATCH (NEW, P3) — verify `type Item = T` matches method returns `Self::Item` (deferred from Stage 30.7)
+
+---
+Task ID: stage30.8
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.8 (v0.14) — TD-IMPL-TYPE-MATCH: structural type match check + reclassify deeper typeck issue as TD-TYPECK-IMPL-CONTEXT. L2. v0.549.0.
+
+3秒启动自检:
+- 定位: L2 (extend validate_impl_assoc_types with Check 2 + 6 tests + reclassification)
+- 对齐: 已查 v0.548.0 (Stage 30.7 complete); TD-IMPL-TYPE-MATCH — was classified as "verify `type Item = T` matches method returns `Self::Item`"
+- 阻断: Stage 30.7 全绿 (4899 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root-cause analysis: structural check is a no-op; deeper issue is typeck
+   - 引用 §1.0 原則 9 (正确 > 妥协): honest analysis — the structural check (impl's `type Item = T` vs method's declared return type after substituting `Self::Item`) is a no-op because both are `T` by construction
+   - Evidence (probe tests):
+     * `type Item = bool; fn get(&self) -> Self::Item { self.val }` where val: i32 → 0 errors (silently accepted)
+     * Direct mismatch `fn get(&self) -> bool { self.val }` where val: i32 → 1 typeck error ("mismatched types: expected bool, found i32") ✓
+   - The real issue: typeck doesn't resolve `Self::Item` to `T` (from `type Item = T`) during method BODY checking
+   - 引用 §12 (最优 > 最小): root-cause fix requires adding impl-block context to typeck (deeper architectural change)
+   - 替代: implement full type substitution in validate_impl_assoc_types — but that's duplicating typeck work, fragile
+   - 选择: implement structural check (no-op for common case) + create TD-TYPECK-IMPL-CONTEXT for the deeper fix
+
+2. New TD creation: TD-TYPECK-IMPL-CONTEXT (P2, v0.15+)
+   - 引用 §6.1 (技术债分类): P2 — correctness issue with workaround (direct mismatches are caught; only `Self::Item` in method body is affected)
+   - 引用 §1.0 原則 13 (架构限制记录与升级): document the architectural limitation
+   - Fix plan: add impl-block context to typeck so `Self::Item` resolves to `T` during method body checking
+   - Deferred to v0.15+ (architectural change, not a quick fix)
+
+3. Test suite design: 6 tests documenting actual behavior
+   - 引用 §1.0 原則 4 (报错 > 静默): tests explicitly document the KNOWN LIMITATION
+   - 引用 §9.4.3 (1:3+ ratio): 4 positive + 0 negative + 2 regression = 6 tests
+   - Positive tests verify: matching assoc type, bool assoc type, multiple assoc types, method not using Self::Item
+   - Regression tests document: wrong assoc type value (KNOWN LIMITATION → TD-TYPECK-IMPL-CONTEXT), direct mismatch correctly caught by typeck
+   - 引用 §1.0 原則 9 (正确 > 妥协): honest about scope — structural check is no-op, deeper issue is typeck
+
+裁剪点:
+- L2 — full §14.5 D1-D8 deep review executed
+- 跳过 implementing full type substitution in validator — would duplicate typeck work, fragile
+- 安全理由: additive change (Check 2 is a no-op); existing tests all pass; new tests document actual behavior
+
+5W2H:
+- WHAT: TD-IMPL-TYPE-MATCH — structural type match check + reclassify deeper typeck issue as TD-TYPECK-IMPL-CONTEXT
+- WHY: root-cause analysis showed structural check is a no-op (both types are T by construction); deeper issue is typeck doesn't resolve `Self::Item` during method body checking; per §1.0 原則 9, honest reclassification > pretending to fix
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.14 Stage 30.8 (after Stage 30.7 impl assoc type verification)
+- WHERE: src/driver/driver_validations.rs (Check 2 in validate_impl_assoc_types) + tests/v0/stage30/plan/stage30_8_impl_type_match_tests.rs (6 tests) + tests/v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs (1 negative test updated with TD-TYPECK-IMPL-CONTEXT reference)
+- HOW: (1) Probe tests revealing structural check is no-op (2) Root-cause analysis: typeck doesn't resolve `Self::Item` (3) Add Check 2 (structural, no-op for common case) (4) Create TD-TYPECK-IMPL-CONTEXT (P2, v0.15+) (5) 6-test suite documenting actual behavior
+- HOW MUCH: 4905 tests (was 4899, +6 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings on lib
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4007/4007 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +60 from v0.548.0) ✅
+- D8 (§1.6 终极检验): honest reclassification per §12 ✅ — structural check is no-op, deeper issue tracked as TD-TYPECK-IMPL-CONTEXT
+
+Stage Summary:
+- v0.14 Stage 30.8: TD-IMPL-TYPE-MATCH PARTIAL IMPLEMENTATION ✅
+- Structural check (Check 2) implemented — no-op for common case (Self::Item resolves to T by construction)
+- Deeper typeck issue (doesn't resolve `Self::Item` during method body checking) tracked as TD-TYPECK-IMPL-CONTEXT (P2, v0.15+)
+- 6-test suite: 4 positive + 2 regression (1 KNOWN LIMITATION + 1 correctly caught)
+- §3.2 全绿: 4905 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings on lib
+
+下一步 (v0.14 remaining TDs):
+- TD-HRTB-SOLVER-INTEGRATION (P2) — wire Binder<T> into trait solver + universes into region inference
+- TD-HRTB-FN-SYNTAX (P3) — `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax)
+- TD-TYPECK-IMPL-CONTEXT (NEW, P2, v0.15+) — add impl-block context to typeck so `Self::Item` resolves to `T` during method body checking

@@ -3,13 +3,72 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.548.0 (Stage 30.7 — v0.14 TD-PROJECTION-IMPL-VERIFICATION: validate impl assoc types) |
+| **Current version** | v0.549.0 (Stage 30.8 — v0.14 TD-IMPL-TYPE-MATCH: structural check + TD-TYPECK-IMPL-CONTEXT created) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4001 integration tests = 4899 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4007 integration tests = 4905 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification + Stage 30.8: structural type match check (TD-TYPECK-IMPL-CONTEXT created for deeper typeck issue) |
+
+---
+
+## v0.549.0 — v0.14 Stage 30.8 — TD-IMPL-TYPE-MATCH: Structural Check + Reclassification
+
+### Overview
+
+This release addresses the **TD-IMPL-TYPE-MATCH** technical debt by implementing a **structural type match check** (Check 2) in `validate_impl_assoc_types`. Root-cause analysis revealed that the structural check is a **no-op** for the common case (`Self::Item` resolves to `T` by construction), and the deeper issue — typeck doesn't resolve `Self::Item` to `T` during method body checking — is a separate typeck architectural issue tracked as **TD-TYPECK-IMPL-CONTEXT** (P2, v0.15+).
+
+### What Changed
+
+#### Structural Check (Check 2) — Implemented
+
+Added Check 2 to `validate_impl_assoc_types`: for each impl method, if its declared return type contains `Self::Item`, verify structural compatibility with the impl's `type Item = T` declaration.
+
+**Note**: This check is a no-op for the common case because `Self::Item` resolves to `T` by construction. The real value would be for compound types containing `Self::Item` (e.g., `Option<Self::Item>`), which requires full type substitution — deferred to TD-TYPECK-IMPL-CONTEXT.
+
+#### Deeper Issue — Reclassified as TD-TYPECK-IMPL-CONTEXT
+
+Root-cause analysis showed:
+- `type Item = bool; fn get(&self) -> Self::Item { self.val }` where `val: i32` → 0 errors (silently accepted)
+- Direct mismatch `fn get(&self) -> bool { self.val }` where `val: i32` → 1 typeck error ✓
+
+The issue is typeck doesn't resolve `Self::Item` to `T` (from `type Item = T`) during method **body** checking. This is because:
+1. `Self::Item` is lowered to `TyKind::Projection` (unresolved)
+2. typeck marks `Projection` types as "unresolved" (checker.rs line 546: `TyKind::Projection(_, _) => true`)
+3. `projection_resolver` runs AFTER typeck (line 783 vs 633 in compile_inner.rs)
+
+The fix requires adding **impl-block context** to typeck so it can resolve `Self::Item` to `T` during method body checking. This is a deeper architectural change, tracked as **TD-TYPECK-IMPL-CONTEXT** (P2, v0.15+).
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (0 warnings) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 4007/4007 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 92,122 LOC, +60 LOC from v0.548.0) |
+| D8 ultimate test | ✅ PASS | Honest reclassification per §12 — structural check is no-op, deeper issue tracked as TD-TYPECK-IMPL-CONTEXT |
+
+### Test Suite Impact
+
+- **New tests**: 6 (in `stage30_8_impl_type_match_tests.rs`)
+  - 4 positive: matching assoc type, bool assoc type, multiple assoc types, method not using Self::Item
+  - 2 regression: wrong assoc type value (KNOWN LIMITATION → TD-TYPECK-IMPL-CONTEXT), direct mismatch correctly caught
+- **Updated tests**: 1 (in `stage30_4_projection_resolver_reclassification_tests.rs`)
+  - 1 negative test updated with TD-TYPECK-IMPL-CONTEXT reference (was TD-PROJECTION-IMPL-VERIFICATION)
+- **Total tests**: 4905 (was 4899 in v0.548.0)
+
+### Remaining Tech Debt (v0.14+ / v0.15+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-HRTB-SOLVER-INTEGRATION | 🟡 P2, v0.14+ | HRTB surface syntax captured but solver doesn't enforce semantics — wire Binder<T> + universes |
+| TD-HRTB-FN-SYNTAX | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax not parsed — Fn(...) call syntax needed |
+| TD-TYPECK-IMPL-CONTEXT (NEW) | 🟡 P2, v0.15+ | typeck doesn't resolve `Self::Item` to `T` during method body checking — add impl-block context to typeck |
 
 ---
 

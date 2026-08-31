@@ -264,11 +264,23 @@ fn main() {
     );
 }
 
-/// Stage 30.4 negative 2: Wrong associated type value — KNOWN LIMITATION.
+/// Stage 30.4 negative 2 → Stage 30.8 reclassified: Wrong associated type
+/// value — deeper typeck issue documented as TD-TYPECK-IMPL-CONTEXT.
 ///
-/// `type Item = bool` but method returns `i32`. Should be a type mismatch
-/// error. Currently silently accepted (the projection resolver doesn't
-/// verify type match between `type Item = T` and method returns).
+/// `type Item = bool` but method body returns `i32`. Should be a type
+/// mismatch error. The declared return type `Self::Item` resolves to
+/// `bool` (from `type Item = bool`), but the method body returns `i32`.
+///
+/// Stage 30.8 (v0.14 TD-IMPL-TYPE-MATCH) analysis:
+/// - The structural check (impl's `type Item = T` vs method's declared
+///   return type after substitution) is a no-op — both are `T` by
+///   construction.
+/// - The real issue is typeck doesn't resolve `Self::Item` to `T` during
+///   method BODY checking. This is a deeper typeck issue tracked as
+///   TD-TYPECK-IMPL-CONTEXT (P2, v0.15+).
+/// - Per §1.0 原則 9 (正确 > 妥协): honest reclassification — the
+///   structural check is implemented but doesn't catch this case; the
+///   body typeck issue is a separate TD.
 #[test]
 fn stage30_4_negative_wrong_assoc_type_value_silently_accepted() {
     let result = compile(
@@ -285,14 +297,21 @@ fn main() {
 }
 "#,
     );
-    // KNOWN LIMITATION: the compiler silently accepts this. When
-    // TD-PROJECTION-IMPL-VERIFICATION is fixed, this should produce errors.
+    // KNOWN LIMITATION (TD-TYPECK-IMPL-CONTEXT, P2, v0.15+):
+    // The compiler silently accepts this because typeck doesn't resolve
+    // `Self::Item` to `bool` during method body checking. The structural
+    // check (Check 2 in validate_impl_assoc_types) is a no-op because the
+    // declared return type `Self::Item` resolves to `bool` by construction.
+    //
+    // The fix requires adding impl-block context to typeck so it can
+    // resolve `Self::Item` to `T` (from `type Item = T`) during method
+    // body type checking.
     let total_errors = result.errors.typeck.len() + result.errors.codegen.len();
     assert_eq!(
         total_errors, 0,
-        "KNOWN LIMITATION (TD-PROJECTION-IMPL-VERIFICATION): wrong assoc type value \
-         (i32 returned where bool declared) is silently accepted. When TD is \
-         fixed, this should be >0 errors."
+        "KNOWN LIMITATION (TD-TYPECK-IMPL-CONTEXT, P2, v0.15+): wrong assoc type value \
+         (i32 returned where bool declared) is silently accepted. The structural check \
+         (Stage 30.8) is a no-op; the body typeck issue is deferred to v0.15+."
     );
 }
 
