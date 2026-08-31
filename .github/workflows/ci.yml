@@ -3,7 +3,9 @@
 # Runs on every push to main and every PR.
 # Jobs: fmt → clippy → test → conformance → build-release
 #
+# Stage 30.11: Updated to use LLVM 22 (llvm-sys 221) via scripts/setup-llvm-env.sh
 # Per §29.4 (Performance Testing Standard): performance job runs on release builds only.
+# Per §3.2: all jobs must pass for merge (硬性红线).
 
 name: CI
 
@@ -37,20 +39,13 @@ jobs:
   clippy:
     name: Clippy Lint
     runs-on: ubuntu-latest
-    env:
-      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Install LLVM 19
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Setup LLVM 22 + Rust environment
+        run: source scripts/env.sh
       - name: Run clippy
         run: cargo clippy --all-targets --features llvm-backend -- -D warnings
 
@@ -61,20 +56,15 @@ jobs:
     name: Rust Tests
     needs: [fmt, clippy]
     runs-on: ubuntu-latest
-    env:
-      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install LLVM 19
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Setup LLVM 22 + Rust environment
+        run: source scripts/env.sh
       - name: Run tests
-        run: cargo test --features llvm-backend
+        run: |
+          ulimit -s unlimited
+          cargo test --features llvm-backend
 
   # ──────────────────────────────────────────────────────
   # Job 4: Conformance tests (.lin test suite)
@@ -83,18 +73,11 @@ jobs:
     name: Conformance Tests
     needs: [fmt, clippy]
     runs-on: ubuntu-latest
-    env:
-      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install LLVM 19
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Setup LLVM 22 + Rust environment
+        run: source scripts/env.sh
       - name: Build release
         run: cargo build --release --features llvm-backend
       - name: Run conformance tests
@@ -107,23 +90,16 @@ jobs:
     name: Release Build
     needs: [test, conformance]
     runs-on: ubuntu-latest
-    env:
-      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install LLVM 19
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Setup LLVM 22 + Rust environment
+        run: source scripts/env.sh
       - name: Build release
         run: cargo build --release --features llvm-backend
       - name: Verify binary exists
         run: test -f target/release/landin-stage0
       - name: Smoke test — hello world
         run: |
-          echo 'fn main() { println!("hello world"); }' > /tmp/smoke.lin
+          echo 'fn main() { println!("hello world!"); }' > /tmp/smoke.lin
           ./target/release/landin-stage0 --run /tmp/smoke.lin
