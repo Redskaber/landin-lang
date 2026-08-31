@@ -702,3 +702,56 @@ Disjoint closure captures 与 borrow check 配合：
 | B3（NLL 简化 / maybe-init / drop 顺序 / 诊断） | v0.2+ | 部分改善 (8.4: drop 顺序实现) |
 
 **关键变化**: v0.2 路线图 5 项全部实现。Drop elaboration 基础设施完整建立。
+
+---
+
+## §14.8 B2 Writeback — Stage 30.5 (v0.13) HRTB Surface Syntax
+
+> **Date**: 2026-08-31
+> **Version**: v0.546.0 (Stage 30.5 — TD-GAT-HIGHER-RANKED partial implementation)
+> **Process**: stage-committee-process.md §14.8 B2 (design > implementation → writeback)
+
+### Design vs Actual Implementation
+
+| Aspect | Design (§7.3) | Actual (v0.546.0) | Deviation |
+|--------|-------------|-------------------|-----------|
+| HRTB `for<'a>` syntax | ✅ Designed (grammar §3.2) | ✅ Parser accepts (Stage 30.5) | None |
+| HRTB in trait bound | ✅ Designed | ✅ Parses + lowers + compiles | None |
+| HRTB in where clause | ✅ Designed | ✅ Parses + lowers + compiles | None |
+| HRTB in supertrait | ✅ Designed | ✅ Parses + lowers + compiles | None |
+| HRTB multiple lifetimes | ✅ Designed (`for<'a, 'b>`) | ✅ Parses + lowers + compiles | None |
+| HRTB solver enforcement | ✅ Designed (universe-based) | ❌ NOT enforced — bound treated as regular trait | **B2 deviation** |
+| HRTB `Fn(...)` syntax | ✅ Designed (`for<'a> Fn(&'a T)`) | ❌ NOT parsed (Fn call syntax separate) | **B2 deviation** |
+
+### B2 Deviation 1: HRTB Solver Enforcement
+
+**Design intent** (§7.3, §14-soundness): HRTB `for<'a>` creates a new **universe** with placeholder regions, and the trait solver must verify the bound holds for ALL choices of `'a` (not just one).
+
+**Actual implementation** (v0.546.0): The HRTB bound is captured in AST/HIR but the trait solver treats it as a regular trait bound during selection — it does not create universes or verify universal quantification.
+
+**Observable impact**: Code that should fail (e.g., `T: for<'a> Foo<'a>` where T only implements `Foo<'static>`) silently compiles. This is a soundness gap (false negative).
+
+**Fix plan** (v0.14+, TD-HRTB-SOLVER-INTEGRATION):
+1. Wire `Binder<T>` (already exists in `src/traits/solver/mod.rs:116`) into trait selection
+2. On HRTB bound, call `enter_universe` (already exists in region inference) to create placeholder regions
+3. Verify the bound holds with placeholders
+4. Call `restore_universe` after verification
+
+### B2 Deviation 2: HRTB `Fn(...)` Syntax
+
+**Design intent** (§7.3): `for<'a> Fn(&'a T) -> &'a U` is the most common HRTB usage (higher-ranked function types).
+
+**Actual implementation** (v0.546.0): The `Fn(...)` call-like syntax is NOT parsed — `Fn(&'a T)` is rejected because the parser doesn't support function-call syntax for trait bounds (it expects `Fn<T>` turbofish or `Fn` as a path).
+
+**Fix plan** (v0.14+, TD-HRTB-FN-SYNTAX):
+1. Add `Fn(...)` trait call syntax to parser (separate from turbofish)
+2. Lower to `FnPtr` type or `Fn` trait with associated types
+3. Wire into trait solver's `Fn`/`FnMut`/`FnOnce` handling
+
+### Reclassification
+
+| TD | Original Classification | New Classification | Rationale |
+|----|-------------------------|-------------------|-----------|
+| TD-GAT-HIGHER-RANKED | "region-aware monomorphization (needs HRTB + region substitution)" — 🟡 v0.13+ | ✅ PARTIAL (Stage 30.5) — surface syntax layer implemented; full solver integration deferred | Root-cause analysis confirmed HRTB syntax was not parsed. Surface syntax layer (parser + AST + HIR) is implemented. Solver integration + Fn syntax are new TDs for v0.14+. |
+| **TD-HRTB-SOLVER-INTEGRATION** (NEW) | N/A | 🟡 P2, v0.14+ | Wire Binder<T> into trait solver + universes into region inference |
+| **TD-HRTB-FN-SYNTAX** (NEW) | N/A | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax (Fn call syntax separate feature) |

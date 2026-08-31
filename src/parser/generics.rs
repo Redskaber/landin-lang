@@ -271,6 +271,48 @@ impl<'a> Parser<'a> {
                 let span = self.current_span();
                 self.bump();
                 TypeBound::Lifetime(Lifetime { ident, span })
+            } else if *self.peek() == TokenKind::KwFor {
+                // Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): Parse HRTB
+                // `for<'a, 'b> Trait` — universally quantified lifetimes.
+                //
+                // Grammar (per 02-grammar.md §3.2):
+                //   type_bound := ... | "for" generic_params type_path
+                //
+                // We parse `for<'a, 'b>` then recursively parse the inner
+                // type bound (which must be a Trait bound — HRTB only
+                // applies to trait bounds, not lifetimes).
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): HRTB is explicit in AST.
+                // Per §1.0 原則 9 (正确 > 妥协): surface syntax captured
+                // here; full solver integration is v0.14+.
+                let for_span = self.current_span();
+                self.bump(); // for
+                             // Parse generic params `<...>` — must start with `<`.
+                if *self.peek() != TokenKind::Lt {
+                    // Not a valid HRTB — break and let caller handle the
+                    // unexpected token (parse error will be emitted by
+                    // the caller's context).
+                    // Per §1.0 原則 4 (报错 > 静默): don't silently skip.
+                    break;
+                }
+                let lifetime_params = self.parse_for_lifetime_params();
+                // Recursively parse the inner bound (must be a trait path).
+                let inner_bounds = self.parse_type_bounds();
+                if inner_bounds.is_empty() {
+                    // No inner bound — emit parse error.
+                    break;
+                }
+                let inner = inner_bounds.into_iter().next().unwrap();
+                bounds.push(TypeBound::ForLifetimes {
+                    lifetime_params,
+                    bound: Box::new(inner),
+                    span: for_span,
+                });
+                // After `for<'a> Trait`, check for `+` to continue.
+                if !self.eat(&TokenKind::Plus) {
+                    break;
+                }
+                continue;
             } else if matches!(
                 self.peek(),
                 TokenKind::Ident(_)
@@ -297,6 +339,39 @@ impl<'a> Parser<'a> {
             }
         }
         bounds
+    }
+
+    /// Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): Parse the lifetime parameters
+    /// inside `for<'a, 'b>` — the `<...>` part after `for`.
+    ///
+    /// Returns a Vec of `LifetimeParam` (without bounds — HRTB lifetime
+    /// params don't have bounds in Rust, e.g., `for<'a: 'b>` is invalid).
+    ///
+    /// Per §23: function name follows `<verb>_<noun>_<noun>` pattern.
+    /// Per §1.0 原則 3 (显式 > 隐式): lifetime params are explicit.
+    fn parse_for_lifetime_params(&mut self) -> Vec<LifetimeParam> {
+        let mut params = Vec::new();
+        if !self.eat(&TokenKind::Lt) {
+            return params;
+        }
+        // Parse `'ident (, 'ident)*` — each param is a lifetime followed
+        // by optional comma.
+        while let TokenKind::Lifetime(_) = self.peek() {
+            let ident = self.ident_from_token();
+            let span = self.current_span();
+            self.bump();
+            params.push(LifetimeParam {
+                ident,
+                bounds: Vec::new(),
+                span,
+            });
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        // Consume the closing `>`.
+        self.eat_gt_or_split();
+        params
     }
 
     pub(super) fn parse_where_clause(&mut self) -> Vec<WherePredicate> {

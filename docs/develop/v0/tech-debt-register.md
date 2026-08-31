@@ -636,3 +636,61 @@ Should error: type mismatch. Currently accepted silently.
 3. Add diagnostic: "missing associated type `Item` in impl" / "associated type mismatch: expected T, found U"
 
 **Estimated effort**: 1-2 days (verification logic + diagnostics + test updates)
+
+---
+
+## Stage 30.5 (v0.546.0) Update — TD-GAT-HIGHER-RANKED Partial Implementation
+
+**Date**: 2026-08-31
+**Version**: v0.546.0 (Stage 30.5)
+
+### Reclassification
+
+| TD | Old Status | New Status | Rationale |
+|----|-----------|-----------|-----------|
+| TD-GAT-HIGHER-RANKED | 🟡 v0.13+ (region-aware mono) | ✅ PARTIAL (Stage 30.5) — surface syntax layer implemented | Root-cause analysis confirmed HRTB `for<'a>` syntax was NOT parsed. Surface syntax layer (parser + AST + HIR) now implemented — `for<'a> Trait` parses + lowers + compiles. Full solver integration deferred. |
+| **TD-HRTB-SOLVER-INTEGRATION** (NEW) | N/A | 🟡 P2, v0.14+ | HRTB bound captured but solver treats as regular trait — does NOT create universes or verify universal quantification. Wire Binder<T> into selection + universes into region inference. |
+| **TD-HRTB-FN-SYNTAX** (NEW) | N/A | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax not parsed — Fn(...) call syntax is a separate parser feature. |
+
+### Evidence (Probe Tests)
+
+**Before Stage 30.5** (parser rejected):
+- `for<'a> Fn(&'a T) -> &'a U` → parse error "expected `(`, found `for`"
+- `for<'a> Trait` in where clause → parse error "expected `{` or `;`, found `for`"
+- `for<'a> Trait` in trait bound → parse error
+
+**After Stage 30.5** (parses + lowers + compiles):
+- ✅ `T: for<'a> Foo<'a>` — compiles cleanly
+- ✅ `where T: for<'a> Foo<'a>` — compiles cleanly
+- ✅ `T: for<'a, 'b> Foo<'a, 'b>` — compiles cleanly
+- ✅ `T: for<'a> Foo<'a> + Bar` — compiles cleanly
+- ✅ `trait Bar: for<'a> Foo<'a>` — compiles cleanly
+
+### Implementation Details
+
+| Layer | File | Change |
+|-------|------|--------|
+| AST | `src/ast/kinds.rs` | Added `TypeBound::ForLifetimes { lifetime_params, bound, span }` |
+| HIR | `src/hir/kinds.rs` | Added `HirTypeBound::ForLifetimes { lifetime_params, bound, span }` |
+| Parser | `src/parser/generics.rs` | Updated `parse_type_bounds` to handle `for<'a, 'b> Trait`; added `parse_for_lifetime_params` helper |
+| HIR Lower | `src/hir/lower/generics.rs` | Updated `lower_type_bound` to lower AST → HIR |
+
+### Existing Infrastructure (not yet wired)
+
+- `Binder<T>` (src/traits/solver/mod.rs:116-150) — abstracts over bound variables, exists but not used for HRTB
+- `enter_universe`/`restore_universe` (region inference) — creates placeholder regions, exists but not called for HRTB
+
+### Fix Plan (v0.14+)
+
+**TD-HRTB-SOLVER-INTEGRATION**:
+1. Wire `Binder<T>` into trait selection — on HRTB bound, enter universe
+2. Verify bound holds with placeholder regions
+3. Restore universe after verification
+4. Add tests: `T: for<'a> Foo<'a>` where T only implements `Foo<'static>` → should error
+
+**TD-HRTB-FN-SYNTAX**:
+1. Add `Fn(...)` trait call syntax to parser
+2. Lower to `FnPtr` type or `Fn` trait with associated types
+3. Wire into trait solver's `Fn`/`FnMut`/`FnOnce` handling
+
+**Estimated effort**: 3-5 days (solver integration + Fn syntax + tests)

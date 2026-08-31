@@ -487,6 +487,18 @@ pub struct HirTypeParam {
 pub enum HirTypeBound {
     Trait(HirTraitBound),
     Lifetime(Lifetime),
+    /// Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): Higher-ranked trait bound
+    /// `for<'a> Trait` — universally quantified lifetimes wrapping an
+    /// inner bound.
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): HRTB is explicit in HIR.
+    /// Per §1.0 原則 9 (正确 > 妥协): surface syntax lowered to HIR;
+    /// full solver integration is v0.14+.
+    ForLifetimes {
+        lifetime_params: Vec<HirLifetimeParam>,
+        bound: Box<HirTypeBound>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]

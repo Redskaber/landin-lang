@@ -51,6 +51,36 @@ pub fn lower_type_bound(cx: &mut HirLowerCtxt, bound: &ast::TypeBound) -> HirTyp
             span: tb.span,
         }),
         ast::TypeBound::Lifetime(lt) => HirTypeBound::Lifetime(lt.clone()),
+        // Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): Lower HRTB
+        // `for<'a> Trait` to `HirTypeBound::ForLifetimes`. The lifetime
+        // params are passed through unchanged (they're just identifiers
+        // at this stage — full binder/universe handling is v0.14+).
+        //
+        // Per §1.0 原則 3 (显式 > 隐式): HRTB structure preserved in HIR.
+        // Per §1.0 原則 9 (正确 > 妥协): surface syntax lowered; solver
+        // integration deferred to v0.14+ (the bound is captured but not
+        // enforced — HRTB semantics will be wired in the trait solver).
+        ast::TypeBound::ForLifetimes {
+            lifetime_params,
+            bound: inner_bound,
+            span,
+        } => HirTypeBound::ForLifetimes {
+            // Stage 30.5: Convert AST LifetimeParam to HirLifetimeParam
+            // (allocating fresh HIR IDs). The bounds within (e.g.,
+            // `for<'a: 'b>`) are not supported by Rust's HRTB grammar
+            // — they should be empty for valid HRTB syntax.
+            lifetime_params: lifetime_params
+                .iter()
+                .map(|lp| HirLifetimeParam {
+                    hir_id: cx.fresh_hir_id(),
+                    ident: lp.ident,
+                    bounds: lp.bounds.clone(),
+                    span: lp.span,
+                })
+                .collect(),
+            bound: Box::new(lower_type_bound(cx, inner_bound)),
+            span: *span,
+        },
     }
 }
 

@@ -236,6 +236,19 @@ pub struct Lifetime {
 pub enum TypeBound {
     Trait(TraitBound),
     Lifetime(Lifetime),
+    /// Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): Higher-ranked trait bound
+    /// `for<'a, 'b> Trait` — universally quantifies over the given
+    /// lifetime parameters, then applies the inner bound.
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): HRTB is explicit in the AST.
+    /// Per §1.0 原則 9 (正确 > 妥协): surface syntax captured here; full
+    /// solver integration is v0.14+ (the bound is parsed + lowered to HIR
+    /// but the trait solver does not yet enforce HRTB semantics).
+    ForLifetimes {
+        lifetime_params: Vec<LifetimeParam>,
+        bound: Box<TypeBound>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]

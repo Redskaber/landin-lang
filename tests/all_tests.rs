@@ -771,3 +771,7 @@ mod stage30_3_drop_elaboration_reclassification_tests;
 // === Stage 30.4 (v0.13 TD-STUB-PROJECTION-RESOLVER): Reclassification ===
 #[path = "v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs"]
 mod stage30_4_projection_resolver_reclassification_tests;
+
+// === Stage 30.5 (v0.13 TD-GAT-HIGHER-RANKED): HRTB parser + AST + HIR ===
+#[path = "v0/stage30/plan/stage30_5_hrtb_parser_tests.rs"]
+mod stage30_5_hrtb_parser_tests;

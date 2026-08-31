@@ -437,3 +437,100 @@ HIR Body (function with ref params + ref return)
 | `apply_elision_rules` | `mir::lower::body_lower` | Replace elided output refs with target_vid (preserving explicit) |
 | `collect_region_vids` | `mir::lower::body_lower` | Gather all `Region::Var(N)` from a MIR type |
 | `resolve_self_param_type` | `mir::lower::body_lower` | Build `&Self`/`&mut Self`/`Self` type for self param |
+
+---
+
+## HRTB (Higher-Ranked Trait Bounds) Data Flow (Stage 30.5, v0.13)
+
+> **Date**: 2026-08-31
+> **Version**: v0.546.0 (Stage 30.5 — TD-GAT-HIGHER-RANKED partial implementation)
+
+```
+Source: `fn bar<T: for<'a> Foo<'a>>(x: &T) { }`
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Parser (src/parser/generics.rs)                               │
+│                                                               │
+│  parse_type_bounds() encounters `for` keyword:                │
+│    1. bump `for`                                              │
+│    2. parse_for_lifetime_params() → Vec<LifetimeParam>        │
+│       - parse `'ident (, 'ident)*`                            │
+│       - consume closing `>`                                    │
+│    3. recursively parse inner bound (Trait path)              │
+│    4. construct TypeBound::ForLifetimes {                     │
+│         lifetime_params, bound, span                           │
+│       }                                                        │
+│                                                               │
+│  Per §1.0 原則 3 (显式 > 隐式): HRTB is explicit in AST.     │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  AST (src/ast/kinds.rs)                                       │
+│                                                               │
+│  TypeBound::ForLifetimes {                                    │
+│    lifetime_params: Vec<LifetimeParam>,                       │
+│    bound: Box<TypeBound>,  // inner trait bound               │
+│    span: Span,                                                │
+│  }                                                            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  HIR Lower (src/hir/lower/generics.rs)                        │
+│                                                               │
+│  lower_type_bound() ForLifetimes arm:                         │
+│    - Convert AST LifetimeParam → HirLifetimeParam             │
+│    - Recursively lower inner bound                            │
+│    - Construct HirTypeBound::ForLifetimes { ... }             │
+│                                                               │
+│  Per §1.0 原則 9 (正确 > 妥协): surface syntax lowered;      │
+│  solver integration deferred to v0.14+.                       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  HIR (src/hir/kinds.rs)                                       │
+│                                                               │
+│  HirTypeBound::ForLifetimes {                                 │
+│    lifetime_params: Vec<HirLifetimeParam>,                    │
+│    bound: Box<HirTypeBound>,                                  │
+│    span: Span,                                                │
+│  }                                                            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Trait Solver (src/traits/solver/) — NOT YET WIRED            │
+│                                                               │
+│  Binder<T> infrastructure EXISTS (mod.rs:116-150) but is     │
+│  not used for HRTB. The bound is treated as a regular        │
+│  trait bound during selection.                                │
+│                                                               │
+│  TD-HRTB-SOLVER-INTEGRATION (v0.14+) will wire:              │
+│    1. Binder<T> into trait selection                          │
+│    2. enter_universe/restore_universe for placeholder        │
+│       regions                                                 │
+│    3. Verify bound holds for ALL 'a (not just one)            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+                Compiles cleanly
+            (HRTB captured but not enforced —
+             TD-HRTB-SOLVER-INTEGRATION needed
+             for full soundness)
+```
+
+### Key Components
+
+| Component | File | Status |
+|-----------|------|--------|
+| Parser: `parse_type_bounds` + `parse_for_lifetime_params` | `src/parser/generics.rs` | ✅ Stage 30.5 |
+| AST: `TypeBound::ForLifetimes` | `src/ast/kinds.rs` | ✅ Stage 30.5 |
+| HIR: `HirTypeBound::ForLifetimes` | `src/hir/kinds.rs` | ✅ Stage 30.5 |
+| HIR Lower: `lower_type_bound` | `src/hir/lower/generics.rs` | ✅ Stage 30.5 |
+| `Binder<T>` infrastructure | `src/traits/solver/mod.rs:116` | ✅ Exists (not wired) |
+| `enter_universe`/`restore_universe` | `src/borrowck/region_inference.rs` | ✅ Exists (not wired) |
+| Trait solver HRTB enforcement | `src/traits/solver/` | ❌ TD-HRTB-SOLVER-INTEGRATION (v0.14+) |
+| `Fn(...)` trait call syntax | `src/parser/` | ❌ TD-HRTB-FN-SYNTAX (v0.14+) |

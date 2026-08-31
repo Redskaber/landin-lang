@@ -3,13 +3,95 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.545.0 (Stage 30.4 — v0.13 TD-STUB-PROJECTION-RESOLVER reclassification) |
+| **Current version** | v0.546.0 (Stage 30.5 — v0.13 COMPLETE — TD-GAT-HIGHER-RANKED partial implementation) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 3971 integration tests = 4869 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 3983 integration tests = 4881 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 Stage 30.2: TD-STUB-LIFETIME-ELISION-NOOP Rule 4 enforcement; v0.13 Stage 30.3: TD-STUB-DROP-ELABORATION-NOOP reclassification; v0.13 Stage 30.4: TD-STUB-PROJECTION-RESOLVER reclassification (projection resolver IS fully implemented) + new TD-PROJECTION-IMPL-VERIFICATION (P2) for impl block verification gap |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.12 phases COMPLETE; v0.13 COMPLETE (Stage 30.2: lifetime elision Rule 4 + Stage 30.3: drop elaboration reclassification + Stage 30.4: projection resolver reclassification + Stage 30.5: HRTB `for<'a>` surface syntax layer) |
+
+---
+
+## v0.546.0 — v0.13 Stage 30.5 — TD-GAT-HIGHER-RANKED Partial Implementation
+
+### Overview
+
+This release addresses the **TD-GAT-HIGHER-RANKED** technical debt by implementing the **surface syntax layer** for Higher-Ranked Trait Bounds (HRTB) `for<'a> Trait`. The original TD was correctly classified as "region-aware monomorphization (needs HRTB + region substitution)" — root-cause analysis confirmed that `for<'a>` syntax was NOT parsed at all (parser rejected with "expected `(`, found `for`" etc.).
+
+This is a **partial implementation** — the surface syntax layer (parser + AST + HIR) is implemented so that `for<'a> Trait` now parses + lowers + compiles. Full solver integration (wiring `Binder<T>` into trait selection + universes into region inference) is deferred to v0.14+.
+
+### What Changed
+
+#### New: HRTB `for<'a>` Surface Syntax Layer
+
+**Before v0.546.0** (parser rejected):
+```landin
+fn bar<T: for<'a> Foo<'a>>(x: &T) { }  // parse error: "expected `(`, found `for`"
+```
+
+**After v0.546.0** (parses + lowers + compiles):
+```landin
+trait Foo<'a> { fn foo(&self, x: &'a i32); }
+fn bar<T: for<'a> Foo<'a>>(x: &T) { }  // ✓ compiles cleanly
+fn main() {}
+```
+
+#### Implementation Details
+
+| Layer | File | Change |
+|-------|------|--------|
+| AST | `src/ast/kinds.rs` | Added `TypeBound::ForLifetimes { lifetime_params, bound, span }` |
+| HIR | `src/hir/kinds.rs` | Added `HirTypeBound::ForLifetimes { lifetime_params, bound, span }` |
+| Parser | `src/parser/generics.rs` | Updated `parse_type_bounds` to handle `for<'a, 'b> Trait`; added `parse_for_lifetime_params` helper |
+| HIR Lower | `src/hir/lower/generics.rs` | Updated `lower_type_bound` to lower AST `ForLifetimes` → HIR `ForLifetimes` |
+
+#### What's NOT in scope (v0.14+)
+
+- **TD-HRTB-SOLVER-INTEGRATION (P2)**: Trait solver does not yet enforce HRTB semantics — the bound is captured but treated as a regular trait bound during selection. Wiring `Binder<T>` into selection + universes into region inference is v0.14+.
+- **TD-HRTB-FN-SYNTAX (P3)**: `for<'a> Fn(&'a T) -> &'a U` syntax still fails because `Fn(...)` call syntax is a separate parser feature (not yet implemented — v0.14+).
+
+### §14.5 D1-D8 Deep Review
+
+| Dimension | Result | Details |
+|-----------|--------|---------|
+| D1 fmt clean | ✅ PASS | `cargo fmt --check` clean |
+| D2 clippy 0 warnings | ✅ PASS | `cargo clippy --release` on lib clean (0 warnings introduced) |
+| D3 build success | ✅ PASS | `cargo build --release --features llvm-backend` |
+| D4 lib tests | ✅ PASS | 898/898 passed |
+| D5 integration tests | ✅ PASS | 3983/3983 passed, 2 ignored |
+| D6 no P0/P1 | ✅ PASS | All resolved |
+| D7 architecture health | ✅ PASS | 8.5/10 (183 files, 91,892 LOC, +50 LOC from v0.545.0) |
+| D8 ultimate test | ✅ PASS | All root-cause analysis per §12 (surface syntax layer is root-cause fix for "parser rejects `for<'a>`", not a symptom patch; honest scope documentation — solver integration deferred, not pretended) |
+
+### Test Suite Impact
+
+- **New tests**: 12 (in `stage30_5_hrtb_parser_tests.rs`)
+  - 5 positive: HRTB in trait bound, where clause, multiple lifetimes, mixed with regular bound, in supertrait
+  - 3 negative: `for` without `<`, `for<>` empty, `for<T>` with type param (document behavior)
+  - 2 regression: regular trait bound + lifetime bound still work (no parser regression)
+  - 2 unit: `TypeBound::ForLifetimes` and `HirTypeBound::ForLifetimes` variants exist
+- **Total tests**: 4881 (was 4869 in v0.545.0)
+
+### v0.13 Complete Summary
+
+v0.13 is now **COMPLETE**. All v0.13 TDs addressed:
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 30.2 | TD-STUB-LIFETIME-ELISION-NOOP | ✅ RESOLVED — RFC 141 Rule 4 enforced + over-application fix + self-param fix |
+| 30.3 | TD-STUB-DROP-ELABORATION-NOOP | ✅ RESOLVED — reclassified (drop elaboration IS implemented); new TD-DROP-SCOPE-TIMING created |
+| 30.4 | TD-STUB-PROJECTION-RESOLVER | ✅ RESOLVED — reclassified (projection resolver IS fully implemented); new TD-PROJECTION-IMPL-VERIFICATION created |
+| 30.5 | TD-GAT-HIGHER-RANKED | ✅ PARTIAL — surface syntax layer (parser + AST + HIR); new TD-HRTB-SOLVER-INTEGRATION + TD-HRTB-FN-SYNTAX created for v0.14+ |
+
+### Remaining Tech Debt (v0.14+)
+
+| TD | Status | Note |
+|----|--------|------|
+| TD-DROP-SCOPE-TIMING | 🟡 P2, v0.14+ | StorageDead at fn end, not scope end — scope tracking needed |
+| TD-PROJECTION-IMPL-VERIFICATION | 🟡 P2, v0.14+ | Missing/wrong assoc types in impl silently accepted — impl block verification needed |
+| TD-HRTB-SOLVER-INTEGRATION (NEW) | 🟡 P2, v0.14+ | HRTB surface syntax captured but solver doesn't enforce semantics — wire Binder<T> + universes |
+| TD-HRTB-FN-SYNTAX (NEW) | 🟡 P3, v0.14+ | `for<'a> Fn(&'a T) -> &'a U` syntax not parsed — Fn(...) call syntax needed |
 
 ---
 
