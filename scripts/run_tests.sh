@@ -28,33 +28,33 @@ set -e
 cd "$(dirname "$0")/.."
 
 # Source LLVM env.
-source scripts/env.sh >/dev/null 2>&1 || true
+source scripts/env.sh > /dev/null 2>&1 || true
 
 # Stage 18.333: Raise stack limit to unlimited (or 64MB if unlimited fails).
 # LLVM's recursive optimization passes need more than the default 8MB.
 if ulimit -s unlimited 2>/dev/null; then
-  : # unlimited worked
+    : # unlimited worked
 elif ulimit -s 65536 2>/dev/null; then
-  : # 64MB worked
+    : # 64MB worked
 else
-  echo "warning: cannot raise stack limit; LLVM may intermittently segfault" >&2
+    echo "warning: cannot raise stack limit; LLVM may intermittently segfault" >&2
 fi
 
 # Determine thread count based on system resources.
 # Cap at min(num_cpus, 4) to avoid oversubscription.
 CPUS=$(nproc 2>/dev/null || echo 2)
 MAX_THREADS=4
-THREADS=$((CPUS < MAX_THREADS ? CPUS : MAX_THREADS))
+THREADS=$(( CPUS < MAX_THREADS ? CPUS : MAX_THREADS ))
 
 # Also check available memory (in MB).
 AVAIL_MB=$(free -m | awk '/^Mem:/ {print $7}')
 # Each landin-stage0 + cc subprocess uses ~300MB. Don't exceed avail/300.
-MEM_LIMIT=$((AVAIL_MB / 300))
+MEM_LIMIT=$(( AVAIL_MB / 300 ))
 if [ "$MEM_LIMIT" -lt "$THREADS" ]; then
-  THREADS=$MEM_LIMIT
+    THREADS=$MEM_LIMIT
 fi
 if [ "$THREADS" -lt 1 ]; then
-  THREADS=1
+    THREADS=1
 fi
 
 echo "info: running cargo test with --test-threads=$THREADS (cpus=$CPUS, avail=${AVAIL_MB}MB, stack=$(ulimit -s))"

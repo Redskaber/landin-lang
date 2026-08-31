@@ -792,6 +792,10 @@ mod stage30_8_impl_type_match_tests;
 #[path = "v0/stage30/plan/stage30_9_fn_syntax_tests.rs"]
 mod stage30_9_fn_syntax_tests;
 
-// === Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION): HRTB bound collection ===
+// === Stage 30.10
 #[path = "v0/stage30/plan/stage30_10_hrtb_solver_integration_tests.rs"]
 mod stage30_10_hrtb_solver_integration_tests;
+
+// === Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT): Assoc type bindings + pre-typeck projection ===
+#[path = "v0/stage30/plan/stage30_12_typeck_impl_context_tests.rs"]
+mod stage30_12_typeck_impl_context_tests;

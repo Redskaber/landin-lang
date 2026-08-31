@@ -178,7 +178,7 @@ fn main() {
     );
     // typeck DOES catch direct mismatches (no Self::Item involved)
     assert!(
-        result.errors.typeck.len() > 0,
+        !result.errors.typeck.is_empty(),
         "Direct mismatch (i32 -> bool) should be caught by typeck"
     );
 }

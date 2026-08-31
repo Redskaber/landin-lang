@@ -393,7 +393,6 @@ mod tests {
     use crate::traits::resolver::TraitResolver;
     use crate::traits::solver::fulfill::{FulfillmentError, FulfillmentResult};
     use crate::traits::solver::{Obligation, ObligationCause, TraitPredicate};
-    use lasso::Rodeo;
 
     // ----------- Test helpers -----------
 

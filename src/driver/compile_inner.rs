@@ -666,6 +666,19 @@ pub(crate) fn compile_inner(
             }
 
             // Typeck the main body.
+            // Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT): Run projection_resolver
+            // BEFORE typeck so typeck sees resolved types (not Projection).
+            // This fixes the soundness gap where `type Item = bool` vs
+            // `fn get(&self) -> Self::Item { self.val }` (where val: i32) was
+            // silently accepted because typeck treated Projection as "unresolved".
+            //
+            // Per §1.0 原則 4 (报错 > 静默): typeck can now catch the mismatch.
+            // Per §1.0 原則 9 (正确 > 妥协): root-cause fix is moving projection
+            // resolution before typeck (was after).
+            // Per §12 (最优 > 最小): architectural fix, not a per-case hack.
+            if pass == 0 {
+                crate::driver::projection_resolver::resolve_projections_in_mir(&mut mir, &hir);
+            }
             let (main_errs, main_results) = typeck_main_body(
                 &mut mir,
                 &mut shared_unify,

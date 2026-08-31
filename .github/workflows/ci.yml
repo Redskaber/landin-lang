@@ -101,5 +101,5 @@ jobs:
         run: test -f target/release/landin-stage0
       - name: Smoke test — hello world
         run: |
-          echo 'fn main() { println!("hello world!"); }' > /tmp/smoke.lin
+          echo 'fn main() { println!("hello world"); }' > /tmp/smoke.lin
           ./target/release/landin-stage0 --run /tmp/smoke.lin

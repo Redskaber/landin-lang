@@ -668,9 +668,8 @@ mod tests {
     use crate::traits::resolver::TraitResolver;
     use crate::traits::solver::eval::EvalCtxt;
     use crate::traits::solver::{
-        Goal, InferCtxt, Obligation, ObligationCause, ObligationQueue, ParamEnv, TraitPredicate,
+        InferCtxt, Obligation, ObligationCause, ObligationQueue, ParamEnv, TraitPredicate,
     };
-    use std::rc::Rc;
 
     // ----------- Test helpers -----------
 

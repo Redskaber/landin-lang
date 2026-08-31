@@ -11,7 +11,7 @@
 # Step 1: Set up Rust toolchain (idempotent)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/setup-rust-env.sh" ]; then
-  source "$SCRIPT_DIR/setup-rust-env.sh"
+    source "$SCRIPT_DIR/setup-rust-env.sh"
 fi
 
 # Step 2: Set up LLVM 22 environment
@@ -23,3 +23,4 @@ export LD_LIBRARY_PATH="/tmp/llvm-22-prefix/lib:${LD_LIBRARY_PATH:-}"
 echo "LLVM 22 (llvm-sys 221) environment ready."
 echo "  LLVM_SYS_221_PREFIX = $LLVM_SYS_221_PREFIX"
 echo "  LD_LIBRARY_PATH      = $LD_LIBRARY_PATH"
+

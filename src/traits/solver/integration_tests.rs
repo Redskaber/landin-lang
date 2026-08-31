@@ -46,6 +46,7 @@ use lasso::Rodeo;
 /// the parameters control what gets registered.
 struct TestFixture {
     resolver: TraitResolver,
+    #[allow(dead_code)]
     interner: Rodeo,
     trait_def_id: DefId,
     impl_def_id: DefId,
@@ -99,6 +100,7 @@ impl TestFixture {
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
                 hrtb_bounds: Vec::new(),
+                assoc_type_bindings: std::collections::HashMap::new(),
             },
         );
         resolver
@@ -180,6 +182,7 @@ impl TestFixture {
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
                 hrtb_bounds: Vec::new(),
+                assoc_type_bindings: std::collections::HashMap::new(),
             },
         );
         resolver
@@ -199,6 +202,7 @@ impl TestFixture {
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
                 hrtb_bounds: Vec::new(),
+                assoc_type_bindings: std::collections::HashMap::new(),
             },
         );
         resolver
@@ -290,6 +294,7 @@ impl TestFixture {
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
                 hrtb_bounds: Vec::new(),
+                assoc_type_bindings: std::collections::HashMap::new(),
             },
         );
 
@@ -306,6 +311,7 @@ impl TestFixture {
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
                 hrtb_bounds: Vec::new(),
+                assoc_type_bindings: std::collections::HashMap::new(),
             },
         );
 

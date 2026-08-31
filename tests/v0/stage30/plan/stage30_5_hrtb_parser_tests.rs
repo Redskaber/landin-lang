@@ -164,7 +164,7 @@ fn main() {}
     );
     // `for` without `<` is invalid HRTB syntax — should produce parse error.
     assert!(
-        result.errors.parse.len() > 0 || result.errors.typeck.len() > 0,
+        !result.errors.parse.is_empty() || !result.errors.typeck.is_empty(),
         "`for` without `<` should produce an error (parse={}, typeck={})",
         result.errors.parse.len(),
         result.errors.typeck.len()

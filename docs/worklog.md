@@ -35035,3 +35035,80 @@ Stage Summary:
 下一步 (v0.15):
 - TD-TYPECK-IMPL-CONTEXT (P2) — add impl-block context to typeck so Self::Item resolves to T during method body checking
 - TD-HRTB-FULL-ENFORCEMENT (NEW, P2) — wire Binder<T> into trait solver selection + universes for HRTB enforcement
+
+---
+Task ID: stage30.12
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.12 (v0.15) — TD-TYPECK-IMPL-CONTEXT: assoc type bindings collection + pre-typeck projection resolution + warning fixes. L3. v0.552.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: traits/resolver.rs + driver/compile_inner.rs + 13 test files + clippy warning fixes)
+- 对齐: 已查 v0.551.0 (Stage 30.11 complete); TD-TYPECK-IMPL-CONTEXT — was classified as "typeck doesn't resolve Self::Item to T during method body checking"
+- 阻断: Stage 30.11 全绿 (4921 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Warning fixes: 0 clippy warnings (including tests)
+   - 引用 §3.2 (硬性红线): fmt/clippy/build/test must all pass
+   - Fixed 4 lib test warnings (unused imports, dead_code field)
+   - Fixed 7 integration test warnings (length comparison to zero)
+   - 引用 §1.0 原則 4 (报错 > 静默): warnings are reported, not ignored
+
+2. Root-cause analysis: typeck can't resolve Self::Item because no HIR access
+   - 引用 §1.0 原則 9 (正确 > 妥协): honest analysis — typeck marks Projection as "unresolved" (checker.rs line 546)
+   - projection_resolver runs AFTER typeck (compile_inner.rs line 783 vs 633)
+   - Fix: move projection_resolver BEFORE typeck + collect assoc type bindings in ImplInfo
+   - 引用 §12 (最优 > 最小): root-cause fix is reordering pipeline + data contract
+   - 替代: add HIR access to typeck — violates §11 (interface isolation)
+   - 选择: move projection_resolver before typeck + add assoc_type_bindings to ImplInfo
+
+3. Implementation: 3 changes
+   - Added `assoc_type_bindings: HashMap<Spur, Ty>` field to ImplInfo (collected from `type Item = T;` declarations)
+   - Collection logic in resolver.rs collect() — processes HirImplItem::Type bindings
+   - Moved projection_resolver call to BEFORE typeck (compile_inner.rs)
+   - 引用 §1.0 原則 6 (通解 > 特解): one mechanism for all assoc types
+   - 引用 §11 (接口隔离): data contract — resolver collects, typeck reads (no HIR access in typeck)
+
+4. Honest scope: Self::Item resolution may not fully work for all cases
+   - The projection_resolver runs before typeck now, but Self::Item's HIR representation requires deeper self type resolution
+   - Per §1.0 原則 9 (正确 > 妥协): honest about scope — collection done, pipeline reordered, but full resolution deferred
+   - Evidence: `type Item = bool; fn get(&self) -> Self::Item { self.val }` where val: i32 still produces 0 errors (was 0 before, still 0)
+   - The fix is architecturally correct (pipeline reorder + data contract) but may need additional work for Self type resolution
+
+裁剪点:
+- L3 — full §14.5 D1-D8 deep review executed
+- 跳过 full Self::Item resolution — requires deeper HIR self type resolution (not just projection resolution)
+- 安全理由: additive change (new field + pipeline reorder); existing tests all pass; 13 test files updated
+
+5W2H:
+- WHAT: TD-TYPECK-IMPL-CONTEXT — assoc type bindings collection + pre-typeck projection resolution + warning fixes
+- WHY: typeck treated Projection as "unresolved" and skipped type mismatch checks; per §1.0 原則 4, should be reported
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A
+- WHEN: v0.15 Stage 30.12 (after v0.14 complete)
+- WHERE: src/traits/resolver.rs (assoc_type_bindings field + collection) + src/driver/compile_inner.rs (projection_resolver moved before typeck) + 13 test files (added assoc_type_bindings: HashMap::new()) + tests/v0/stage30/plan/stage30_12_typeck_impl_context_tests.rs (6 tests) + warning fixes in 4 source files + 4 test files
+- HOW: (1) Fix 11 clippy warnings (lib + tests) (2) Add assoc_type_bindings to ImplInfo (3) Collect bindings in resolver (4) Move projection_resolver before typeck (5) 6-test suite documenting actual behavior
+- HOW MUCH: 4927 tests (was 4921, +6 new), 0 failures, 2 ignored; fmt clean, 0 clippy warnings (including tests)
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings on lib + tests ✅ (was 11 warnings before)
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4029/4029 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 8.5/10 (183 files, LOC +70 from v0.551.0) ✅
+- D8 (§1.6 终极检验): honest reclassification per §12 ✅ — pipeline reordered + data contract, full Self resolution deferred
+
+Stage Summary:
+- v0.15 Stage 30.12: TD-TYPECK-IMPL-CONTEXT PARTIAL COMPLETE ✅
+- 11 clippy warnings fixed (0 warnings now, including tests)
+- Assoc type bindings collected in ImplInfo.assoc_type_bindings
+- projection_resolver moved BEFORE typeck (was after)
+- Self::Item resolution may not fully work (deferred to deeper HIR work)
+- 6-test suite: 4 positive + 2 regression
+- §3.2 全绿: 4927 tests, 0 failures, 2 ignored
+- fmt clean, 0 clippy warnings (including tests)
+
+下一步 (v0.15 remaining TDs):
+- TD-HRTB-FULL-ENFORCEMENT (P2) — wire Binder<T> into trait solver + universes into region inference
+- TD-SELF-TYPE-RESOLUTION (NEW, P2, v0.16+) — deeper HIR self type resolution for full Self::Item resolution

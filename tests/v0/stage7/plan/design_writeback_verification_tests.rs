@@ -162,6 +162,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
             hrtb_bounds: Vec::new(),
+            assoc_type_bindings: std::collections::HashMap::new(),
         },
     );
     resolver
@@ -238,6 +239,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
             hrtb_bounds: Vec::new(),
+            assoc_type_bindings: std::collections::HashMap::new(),
         },
     );
     resolver

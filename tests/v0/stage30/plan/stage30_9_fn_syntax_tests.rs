@@ -158,7 +158,7 @@ fn main() {}
     );
     // Unclosed `(` should produce parse error.
     assert!(
-        result.errors.parse.len() > 0,
+        !result.errors.parse.is_empty(),
         "Unclosed `(` in Fn(...) should produce parse error"
     );
 }

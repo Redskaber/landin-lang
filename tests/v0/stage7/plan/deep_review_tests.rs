@@ -138,6 +138,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
             hrtb_bounds: Vec::new(),
+            assoc_type_bindings: std::collections::HashMap::new(),
         },
     );
     resolver
@@ -259,6 +260,7 @@ fn stage7_deep_review_design_alignment_dyn_trait() {
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
             hrtb_bounds: Vec::new(),
+            assoc_type_bindings: std::collections::HashMap::new(),
         },
     );
     resolver

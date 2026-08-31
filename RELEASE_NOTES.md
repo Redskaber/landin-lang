@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.551.0 (Stage 30.10 — v0.14 COMPLETE — TD-HRTB-SOLVER-INTEGRATION: HRTB bound collection) |
+| **Current version** | v0.552.0 (Stage 30.12 — v0.15 TD-TYPECK-IMPL-CONTEXT: assoc type bindings + pre-typeck projection + warning fixes) |
 | **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4023 integration tests = 4921 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Test count** | 898 lib tests + 4029 integration tests = 4927 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.13 phases COMPLETE; v0.14 COMPLETE (Stage 30.6: scope tracking + Stage 30.7: impl assoc type verification + Stage 30.8: structural type match + Stage 30.9: Fn trait syntax + Stage 30.10: HRTB bound collection) |
+| **Architecture** | Writeback phases 10 → 7; Phase 5 Step 1+2+4 complete; §20 iterative audit 14 rounds (10 soundness bugs fixed); v0.5 Trait Solver Phase 1-6 COMPLETE; v0.6-v0.14 COMPLETE; v0.15 Stage 30.12: assoc type bindings + pre-typeck projection + 11 clippy warnings fixed |
 
 ---
 

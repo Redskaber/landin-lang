@@ -21,10 +21,10 @@ cd /home/z/my-project/landin-stage0/src/mir/lower
 #   - The function definition lines themselves
 
 for f in body_lower.rs call_lower.rs control_flow.rs expr_operand.rs expr_variants.rs mod.rs; do
-  # Use perl for non-greedy matching. Match `lower_expr_to_X(cx, EXPR)` where
-  # EXPR is a balanced single argument (no nested commas at top level).
-  # We restrict to lines that don't start with // and don't have `fn lower_expr_to_X(` (definition).
-  perl -i -pe '
+    # Use perl for non-greedy matching. Match `lower_expr_to_X(cx, EXPR)` where
+    # EXPR is a balanced single argument (no nested commas at top level).
+    # We restrict to lines that don't start with // and don't have `fn lower_expr_to_X(` (definition).
+    perl -i -pe '
         next if /^\s*\/\//;          # skip comment lines
         next if /^\s*\#\[/;          # skip attribute lines
         # Update lower_expr_to_operand call sites (not the definition)
@@ -34,7 +34,7 @@ for f in body_lower.rs call_lower.rs control_flow.rs expr_operand.rs expr_varian
         s/\b(lower_expr_to_place)\s*\(\s*cx\s*,\s*([^)]+?)\s*\)/${1}(cx, ${2}, None)/g
             unless /^\s*(pub\s*\()?(crate|super|pub\(crate\)|pub\(super\))?\s*fn\s+lower_expr_to_place\b/;
     ' "$f"
-  echo "  updated: $f"
+    echo "  updated: $f"
 done
 
 echo "Done."

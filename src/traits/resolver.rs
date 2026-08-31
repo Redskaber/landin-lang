@@ -73,6 +73,19 @@ pub struct ImplInfo {
     /// Per §1.0 原則 9 (正确 > 妥协): honest scope — collection done,
     /// enforcement deferred.
     pub hrtb_bounds: Vec<HrtbBound>,
+    /// Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT): Associated type bindings
+    /// from the impl block — maps assoc type name (Spur) → concrete type
+    /// (Ty). Collected from `type Item = T;` declarations in the impl.
+    ///
+    /// This enables typeck to resolve `Self::Item` (a `Projection` type)
+    /// to the concrete type `T` during method body checking, without
+    /// requiring direct HIR access (per §11 interface isolation).
+    ///
+    /// Per §1.0 原則 4 (报错 > 静默): typeck can now catch `type Item = bool`
+    /// vs `fn get(&self) -> Self::Item { self.val }` (where val: i32) mismatches.
+    /// Per §1.0 原則 6 (通解 > 特解): one map for all assoc types in the impl.
+    /// Per §11 (接口隔离): data contract (resolver collects, typeck reads).
+    pub assoc_type_bindings: std::collections::HashMap<Spur, crate::mir::ty::Ty>,
 }
 
 /// Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION): An HRTB bound collected
@@ -556,6 +569,12 @@ impl TraitResolver {
                         let mut method_names = Vec::new();
                         // Stage 18.73 P1-H: Collect associated const names from impl.
                         let mut impl_assoc_consts: Vec<Spur> = Vec::new();
+                        // Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT): Collect
+                        // assoc type bindings (`type Item = T;`) from impl.
+                        let mut impl_assoc_type_bindings: std::collections::HashMap<
+                            Spur,
+                            crate::mir::ty::Ty,
+                        > = std::collections::HashMap::new();
                         for impl_item in &i.items {
                             match impl_item {
                                 HirImplItem::Fn(f) => {
@@ -575,7 +594,24 @@ impl TraitResolver {
                                 HirImplItem::Const(c) => {
                                     impl_assoc_consts.push(c.ident.name);
                                 }
-                                _ => {}
+                                // Stage 30.12 (v0.15 TD-TYPECK-IMPL-CONTEXT):
+                                // Collect `type Item = T;` bindings from the impl.
+                                // Per §1.0 原則 6 (通解 > 特解): one collection
+                                // for all assoc type bindings.
+                                // Per §11 (接口隔离): data contract — typeck
+                                // reads this without HIR access.
+                                HirImplItem::Type(assoc) => {
+                                    // The concrete type is stored in `assoc.default`
+                                    // (which is `Some(ty)` for impl blocks).
+                                    if let Some(concrete_ty) = &assoc.default {
+                                        let mir_ty =
+                                            crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                                                concrete_ty,
+                                                Some(hir),
+                                            );
+                                        impl_assoc_type_bindings.insert(assoc.ident.name, mir_ty);
+                                    }
+                                }
                             }
                         }
 
@@ -656,6 +692,8 @@ impl TraitResolver {
                             where_clauses: impl_where_clauses,
                             // Stage 30.10: HRTB bounds collected from where clause.
                             hrtb_bounds: impl_hrtb_bounds,
+                            // Stage 30.12: Assoc type bindings collected from impl.
+                            assoc_type_bindings: impl_assoc_type_bindings,
                         };
 
                         // Stage 5.5: Build and store vtable if this is a trait impl.

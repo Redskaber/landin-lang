@@ -135,7 +135,7 @@ fn main() {}
 "#,
     );
     assert!(
-        result.errors.typeck.len() > 0,
+        !result.errors.typeck.is_empty(),
         "Missing single assoc type should produce typeck error"
     );
     let has_missing_error = result
@@ -166,7 +166,7 @@ fn main() {}
 "#,
     );
     assert!(
-        result.errors.typeck.len() > 0,
+        !result.errors.typeck.is_empty(),
         "Missing one of multiple assoc types should produce typeck error"
     );
     let has_missing_b = result
@@ -217,7 +217,7 @@ fn main() {}
 "#,
     );
     assert!(
-        result.errors.typeck.len() > 0,
+        !result.errors.typeck.is_empty(),
         "Missing assoc type should error even if no method uses it directly"
     );
 }
