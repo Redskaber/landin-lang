@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.566.0 (v0.19 Stage 31.6e — `sizeof TYPE` language feature — Architecture health 9.85/10) |
+| **Version** | v0.567.0 (v0.19 Stage 31.6f — Box::new migrated from intrinsic to prelude impl via sizeof(T) + extern C — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.19 Stage 31.6e — sizeof(T)**. 5063 tests (898 lib + 4165 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.6e: Implemented `sizeof TYPE` language feature — keyword + type argument → `usize` constant at MIR lower time. New `KwSizeof` keyword + `Expr::SizeOf` AST variant + `HirExprKind::SizeOf` HIR variant + parser + MIR lower (evaluates `compute_type_size`) + 8 match-exhaustive locations updated. 16 tests (4 positive + 12 negative, 1:3 ratio). Unblocks Vec::push/get/Box::new prelude impl migration. §18 audit: TD-INT-SIGN-CONFUSION downgraded P1→P3 (downstream correctly separates signed/unsigned). Architecture health: 9.85/10 (stable — additive feature). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6f — migrate `Vec::push` using `sizeof(T)` + extern C. |
+| **Status** | ✅ **v0.19 Stage 31.6f — Box::new Intrinsic → Prelude Impl**. 5079 tests (898 lib + 4181 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.6f: Migrated `Box::new` from MIR intrinsic dispatch to prelude impl using `sizeof(T)` (Stage 31.6e) + `extern "C"` __landin_alloc + pointer cast (`as *mut T`) + Deref store (`*typed = x`) + tuple struct construct (`Box(typed)`). Removed intrinsic dispatch from `expr_variants.rs`. Updated 3 drop elaboration tests (prelude Box creates drop-eligible values). Cleaned dead `type_name`/`method_name` variables. 16 tests (4 positive + 12 negative, 1:3 ratio). Fourth TD-INTRINSIC-OVERUSE Phase 2-B migration. Architecture health: 9.85/10 (stable — migration, no regression). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.6g — migrate `Vec::push` + `Vec::get` using `sizeof(T)`. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

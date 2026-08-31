@@ -106,6 +106,23 @@ impl<T, E> Result<T, E> {
 // Per §2 原則 9 (正确>妥协): the MVP is a temporary compromise; real Box with
 // auto-drop is the correct design (recorded as TD-BOX-AUTO-DROP).
 struct Box<T>(*mut T)
+// Stage 31.6f (v0.19): Box::new migrated from MIR intrinsic to prelude impl.
+//
+// `Box::new(x)` now uses `sizeof(T)` (Stage 31.6e) + `extern "C"` __landin_alloc
+// + Deref store + tuple struct construction. This replaces the hardcoded
+// intrinsic dispatch in `expr_variants.rs` (Stage 18.189).
+//
+// Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+// Per §1.0 原則 3 (显式 > 隐式): alloc+store+construct visible in source.
+// Per §12 (最优 > 最小): root-cause fix via language features.
+impl<T> Box<T> {
+    fn new(x: T) -> Box<T> {
+        let raw: *mut u8 = __landin_alloc(sizeof T as i64);
+        let typed: *mut T = raw as *mut T;
+        *typed = x;
+        Box(typed)
+    }
+}
 // Stage 18.180 (TD-STRING-AS-STR-ALIAS fix): String — owned heap string.
 //
 // String is now a REAL struct type (not a &str alias). It wraps a heap-

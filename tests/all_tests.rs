@@ -841,3 +841,7 @@ mod stage31_6c_push_str_prelude_impl_tests;
 // === Stage 31.6e (v0.19): sizeof(T) language feature ===
 #[path = "v0/stage31/plan/stage31_6e_sizeof_tests.rs"]
 mod stage31_6e_sizeof_tests;
+
+// === Stage 31.6f (v0.19): Box::new prelude impl migration ===
+#[path = "v0/stage31/plan/stage31_6f_box_new_prelude_impl_tests.rs"]
+mod stage31_6f_box_new_prelude_impl_tests;

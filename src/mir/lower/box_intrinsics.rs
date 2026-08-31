@@ -38,6 +38,10 @@ use super::MirLowerCtxt;
 /// Per §1.0 原則 6 (通解>特例): one intrinsic for all Box::new calls.
 /// Per §2 原則 9 (正确>妥协): proper alloc+store, not a stub.
 /// Per §10: `lower_box_new_intrinsic` follows `<verb>_<noun>_<noun>_<noun>` pattern.
+/// Stage 31.6f (v0.19): This function is now DEAD CODE — `Box::new` has been
+/// migrated to prelude impl using `sizeof(T)` + `extern "C"` alloc + Deref store.
+/// Kept for reference per §1.0 原則 13. Will be removed in Stage 31.7.
+#[allow(dead_code)]
 pub(super) fn lower_box_new_intrinsic(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,

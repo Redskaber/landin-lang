@@ -34,7 +34,7 @@ use super::MirLowerCtxt;
 use super::{control_flow, field_resolution, pattern_bindings};
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
-use super::box_intrinsics::lower_box_new_intrinsic;
+// Stage 31.6f: lower_box_new_intrinsic import removed — Box::new now in prelude.
 use super::format_intrinsics::lower_format_variadic_intrinsic;
 use super::string_intrinsics::lower_string_from_str_intrinsic;
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
@@ -553,9 +553,10 @@ pub(super) fn lower_call_expr(
     // Per §2 原則 9 (正确>妥协): proper alloc+copy, not a stub.
     if let HirExprKind::Path(path) = &func.kind {
         if path.segments.len() == 2 {
-            let type_name = cx.interner.resolve(&path.segments[0].ident.name);
-            let method_name = cx.interner.resolve(&path.segments[1].ident.name);
-            // Stage 31.6b (v0.19): String::from_str intrinsic REMOVED.
+            // Stage 31.6f: All 2-segment path intrinsics (from_str, Box::new)
+            // have been migrated to prelude impls. The type_name/method_name
+            // variables are no longer needed for intrinsic dispatch.
+            // Per §1.0 原則 5 (去除兼容思维): dead dispatch code removed.
             //
             // `from_str` is now implemented in the prelude using `.ptr`/`.len`
             // fat pointer field access + extern "C" calls to __landin_alloc +
@@ -565,16 +566,10 @@ pub(super) fn lower_call_expr(
             // per-method intrinsic dispatch.
             // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
             // Per §12 (最优 > 最小): root-cause fix via language features.
-            // Stage 18.189 (TD-BOX-AUTO-DROP partial): Intercept Box::new(x).
-            // Box::new(x) does:
-            //   1. size = sizeof(T) (from x's type, hardcoded per type for MVP)
-            //   2. ptr = __landin_alloc(size) (allocate heap buffer)
-            //   3. *ptr = x (store x into the heap buffer)
-            //   4. Construct Box { ptr }
-            // Per §1.0 原則 6 (通解>特例): one intrinsic for all Box::new calls.
-            if type_name == "Box" && method_name == "new" && args.len() == 1 {
-                return lower_box_new_intrinsic(cx, expr, arg_locals[0]);
-            }
+            // Stage 31.6f (v0.19): Box::new intrinsic REMOVED.
+            // Now handled by prelude impl using sizeof(T) + extern C alloc + Deref store.
+            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+            // Per §1.0 原則 5 (去除兼容思维): dead intrinsic dispatch removed.
             // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::new() removed.
             // Now handled by prelude impl: `impl<T> Vec<T> { fn new() -> Vec<T> { ... } }`
             // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
