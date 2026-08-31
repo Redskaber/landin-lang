@@ -3,13 +3,95 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.559.0 (Stage 30.23 — Stage 30 Series COMPLETE — Architecture health 9.85/10) |
+| **Current version** | v0.560.0 (Stage 30.24 — v0.19 Stage 31.0 START: §18 Dependency Re-audit + §14.8 Design Writeback) |
 | **Date** | 2026-08-31 |
 | **Test count** | 898 lib tests + 4045 integration tests = 4943 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, 92,228 LOC); Stage 30 series COMPLETE (30.1-30.23): all resolvable tech-debt resolved, TD-CODEGEN-NEGATIVE reclassified RESOLVED (24.1% ≥ 25%), TD-INTRINSIC-OVERUSE Phase 2-B/C BLOCKED on v0.19+ language features (NOT soundness bug) |
+| **Architecture** | Health 9.85/10 (186 files, 92,228 LOC); Stage 30.24: design-only stage — §18 re-audit found 4/5 TD-INTRINSIC-OVERUSE Phase 2-B/C prerequisites already satisfied (1 stale status corrected), identified TRUE blocker: fat pointer construction syntax; §14.8 design writeback updated 06-mir.md §16.8.4 + planned v0.19 Stage 31.x roadmap (7 stages) |
+
+---
+
+## v0.560.0 — Stage 30.24 — v0.19 Stage 31.0 START: §18 Re-audit + Design Writeback
+
+### Overview
+
+This is a **design-only stage** — no code changes, only dependency re-audit and design writeback. The stage transitions the project from v0.18 (Stage 30 series complete) to v0.19 (Stage 31 series: fat pointer construction language feature implementation).
+
+Per §18 (依赖与基础设施审查): "直到审查不出问题为止" — re-audited all 5 prerequisites for TD-INTRINSIC-OVERUSE Phase 2-B/C migration, found 1 stale status, identified the TRUE blocker.
+Per §14.8 (设计回写): updated `docs/lang-design/06-mir.md §16.8.4` with corrected dependency status + implementation roadmap.
+
+### What Changed
+
+#### §18 Dependency Re-audit — Stale Status Corrected
+
+The design doc `06-mir.md §16.8.4` (written at Stage 18.235) listed 5 prerequisites for TD-INTRINSIC-OVERUSE Phase 2-B/C migration. Stage 30.24 re-audit found:
+
+| # | Prerequisite | Original Status | Re-audit Status | Action |
+|---|--------------|----------------|-----------------|--------|
+| 1 | Pointer arithmetic | ❌ Missing | ✅ Implemented (Stage 18.236) | Stale status corrected |
+| 2 | `extern "C"` in prelude | ✅ Exists | ✅ Exists | Confirmed |
+| 3 | While loop | ✅ Exists | ✅ Exists | Confirmed |
+| 4 | `&mut self` in prelude | ✅ Exists | ✅ Exists | Confirmed |
+| 5 | Field assignment | ✅ Exists | ✅ Exists | Confirmed |
+| **6** | **Fat pointer construction syntax** | (implicit) | ❌ **Missing — TRUE BLOCKER** | **Identified** |
+
+**Key finding**: The original "pointer arithmetic ❌ Missing" was stale — Stage 18.236 implemented it (`src/typeck/infer.rs:576-618` + `src/mir/lower/expr_operand.rs:227-279`). The TRUE remaining blocker is **fat pointer construction syntax** — a new language feature needed to express `&str { ptr, len }` in Landin source (currently only constructible via MIR-level `Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)`).
+
+#### §14.8 Design Writeback — 06-mir.md §16.8.4 Updated
+
+Updated `docs/lang-design/06-mir.md §16.8.4`:
+- Corrected Dep 1 status (✅ Implemented Stage 18.236)
+- Added Dep 6: Fat pointer construction syntax (❌ Missing — TRUE BLOCKER)
+- Added v0.19 Stage 31.x implementation roadmap (7 stages)
+
+#### v0.19 Stage 31.x Roadmap (Fat Pointer Construction + Intrinsic Migration)
+
+| Stage | Task | MUV Type | Estimated LOC Impact |
+|-------|------|----------|---------------------|
+| 31.1 | AST new fat pointer literal syntax (`&str { ptr: expr, len: expr }`) | L3 | +50 AST |
+| 31.2 | Parser support + HIR lowering | L3 | +80 parser + +30 HIR |
+| 31.3 | MIR lowering → Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str) | L3 | +60 MIR lower |
+| 31.4 | Typeck support + codegen verification | L3 | +40 typeck + tests |
+| 31.5 | Migrate `String::as_str` intrinsic → prelude impl | L2 | -90 MIR lower + +15 prelude |
+| 31.6 | Migrate `String::from_str`/`push_str`/`push`/`get` + `Box::new` + `format!` | L3 | -400 MIR lower + +100 prelude |
+| 31.7 | Remove `method_name_str == "X"` checks + `KNOWN_INTRINSIC_METHODS` whitelist | L2 | -200 MIR lower + -30 typeck |
+
+**Total estimated impact**: +330 LOC (language feature) → -720 LOC (intrinsic removal) = **net -390 LOC** + architecture health improvement (特解 → 通解 per §1.0 原則 6)
+
+### §6.2 Upgrade Criteria Re-application
+
+Applied §6.2 规则 2 to TD-INTRINSIC-OVERUSE Phase 2-B/C with updated dependency status:
+- **Test (1)**: Does next-stage correctness depend on this TD's output? **Yes (updated)** — Phase 2-B/C blocks proper prelude implementation
+- **Test (2)**: Does simplified impl produce wrong results? **No** — intrinsics work correctly but violate §1.0 原則 6
+- **Conclusion**: NOT UPGRADED to P0/P1 (no wrong results), but §1.0 原則 6 + §12 require root-cause fix via language feature
+
+### ARCH-A Decision — 方案 B (通解) Adopted
+
+- **方案 A (最小补丁)**: Keep `as_str` intrinsic, migrate only other methods → **REJECTED** (violates §1.0 原則 6 通解 > 特解 + §12 最优 > 最小)
+- **方案 B (通解)**: Implement fat pointer construction syntax language feature → **ADOPTED** (root-cause fix)
+- Per §1.6 (ARCH-A 一票否决权): 方案 A 是"治症不治根"的最小补丁, 立即否决
+
+### Verification (Stage 30.24 — design-only stage)
+
+- §14.5 D1 (fmt): clean ✅
+- §14.5 D2 (clippy): 0 warnings ✅
+- §14.5 D3 (build): success ✅
+- §14.5 D4 (lib tests): 898/898 ✅
+- §14.5 D5 (integration tests): 4045/4045 (2 ignored) ✅
+- §14.5 D6 (no P0/P1): ALL resolved ✅
+- §14.5 D7 (architecture health): 9.85/10 (stable — design-only stage) ✅
+- §14.5 D8 (§1.6 终极检验): §18 re-audit identified true blocker — root-cause fix path established ✅
+
+### Next Stage
+
+Stage 30.24 is a **design-only stage** — no code changes. The project is now ready to begin **v0.19 Stage 31.1** (AST fat pointer literal syntax), the first MUV of the fat pointer construction language feature implementation.
+
+Per §1.0 原則 1 (长期 > 短期): invest in language feature now.
+Per §1.0 原則 6 (通解 > 特解): fat pointer construction is the general mechanism.
+Per §12 (最优 > 最小): root-cause fix is language feature, not more intrinsic workarounds.
+Per §13.4 J6: each Stage 31.x is an independently testable MUV.
 
 ---
 

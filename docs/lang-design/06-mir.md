@@ -1424,20 +1424,35 @@ impl String {
 
 #### 16.8.4 阻塞依赖
 
-| Prerequisite | Status | Notes |
-|-------------|--------|-------|
-| 指针运算 (`ptr + offset` 或 `ptr[offset]`) | ❌ Missing | 需要 Landin 语言支持 |
-| `extern "C"` 声明 in prelude | ✅ Exists | 已用于 `__landin_alloc` 等 |
-| While 循环 in Landin source | ✅ Exists | 已用于 prelude impl |
-| `&mut self` in prelude methods | ✅ Exists | 已使用 |
-| 字段赋值 (`self.ptr = ...`) | ✅ Exists | 已使用 |
+> **Stage 30.24 (v0.560.0) Update**: Re-audited all 5 prerequisites. Pointer
+> arithmetic (Dep 1) was implemented in Stage 18.236 — the original "❌ Missing"
+> was stale. The TRUE remaining blocker is **fat pointer construction syntax**
+> — a new language feature needed to express `&str { ptr, len }` in Landin
+> source (currently only constructible via MIR-level Aggregate + Cast).
 
-**阻塞依赖**: 指针运算。当前 MIR lower 使用 `GetElementPtr` 进行指针偏移。
-通解中需要在 Landin 源码中表达指针偏移 (如 `ptr + offset` 或 `ptr[offset]`)。
-这是一个 **语言特性**, 需要在迁移前添加。
+| Prerequisite | Status (Stage 18.235) | Status (Stage 30.24 re-audit) | Notes |
+|-------------|----------------------|-------------------------------|-------|
+| 指针运算 (`ptr + offset` 或 `ptr[offset]`) | ❌ Missing | ✅ **Implemented Stage 18.236** | `src/typeck/infer.rs:576-618` + `src/mir/lower/expr_operand.rs:227-279`. typeck allows `ptr + int`/`ptr - int`, MIR lower emits GEP. |
+| `extern "C"` 声明 in prelude | ✅ Exists | ✅ Exists | `src/parser/items.rs:647` `parse_extern_block_or_fn` supports `extern "C" { ... }` block. |
+| While 循环 in Landin source | ✅ Exists | ✅ Exists | `src/parser/expr.rs:665` `KwWhile`. |
+| `&mut self` in prelude methods | ✅ Exists | ✅ Exists | `src/ast/kinds.rs:165` `SelfKind::ByRef`. |
+| 字段赋值 (`self.ptr = ...`) | ✅ Exists | ✅ Exists | `src/ast/kinds.rs:460` `Assign`. |
+| **Fat pointer construction syntax** | (隐含, 未明确) | ❌ **Missing — TRUE BLOCKER** | 需要新语言特性: `&str { ptr: expr, len: expr }` 或 `(*const u8, usize) as &str` 等. 当前 `&str` 只能从 string literal 或 `&expr` (AddrOf) 构造, 不能从独立 ptr+len 字段构造. |
 
-Per user directive "依赖与基础设施完整能力审查": 指针运算是阻塞依赖。
-没有它, stdlib impl 迁移无法进行。记录为 v0.3 Phase 2 的前置条件。
+**真正的阻塞依赖**: Fat pointer construction syntax. 当前 `String::as_str` 的 intrinsic 实现 (`src/mir/lower/method_call_lower.rs:506-604`) 通过 `Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)` 构造 fat pointer — 这是正确的 MIR 模式, 但 Landin source 层面无法表达.
+
+**实现路径 (v0.19 Stage 31.x)**:
+1. **Stage 31.1**: AST 新增 fat pointer literal 语法 (如 `&str { ptr: expr, len: expr }`)
+2. **Stage 31.2**: Parser 支持 + HIR lowering
+3. **Stage 31.3**: MIR lowering → Aggregate(Tuple, [ptr, len]) + Cast(Unsize, &str)
+4. **Stage 31.4**: Typeck 支持 + codegen 验证
+5. **Stage 31.5**: 迁移 `String::as_str` intrinsic → prelude impl (使用新语法)
+6. **Stage 31.6**: 迁移 `String::from_str`/`push_str`/`push`/`get` + `Box::new` + `format!` intrinsics → prelude impl
+7. **Stage 31.7**: 移除 `method_name_str == "X"` 检查 + `KNOWN_INTRINSIC_METHODS` whitelist
+
+Per §1.0 原則 6 (通解 > 特解): fat pointer construction syntax 是通解, 替代 per-method intrinsic dispatch 特解.
+Per §12 (最优 > 最小): 实现 language feature 是 root-cause fix, 不是更多 intrinsic workarounds.
+Per §13.4 J6 (科学合理粒度): 每个 Stage 是独立 MUV, 可独立测试.
 
 #### 16.8.5 与现有 TD 的关系
 

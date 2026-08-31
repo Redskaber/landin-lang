@@ -36216,3 +36216,73 @@ Stage Summary:
 - Project ready for v0.19 feature development phase
 - v0.19 focus: (1) fat pointer construction syntax, (2) extern C in prelude impl
 - These language features will unblock TD-INTRINSIC-OVERUSE Phase 2-B/C resolution
+
+---
+Task ID: stage30.24
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 30.24 (v0.18→v0.19 transition) — §18 Dependency Re-audit + §14.8 Design Writeback for TD-INTRINSIC-OVERUSE Phase 2-B/C. L3 (design-only). v0.560.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module dependency audit + design writeback, no code changes)
+- 对齐: 已查 docs/lang-design/06-mir.md §16.8.4 + docs/develop/v0/tech-debt-register.md + src/ 实测
+- 阻断: v0.559.0 全绿 (4943 tests), 0 P0/P1, architecture health 9.85/10
+
+决策点 (设计选择):
+
+1. §18 Dependency Re-audit methodology:
+   - 引用 §18 (依赖与基础设施审查): "直到审查不出问题为止" — 发现一个 stale status 必须深挖
+   - 引用 §1.0 原則 3 (显式 > 隐式): explicitly verify each dependency against actual source code
+   - Methodology: 逐一对照 docs/lang-design/06-mir.md §16.8.4 列出的 5 个 prerequisite vs 当前 src/ 实现
+   - Key finding: Dep 1 (pointer arithmetic) was marked "❌ Missing" at Stage 18.235, but Stage 18.236 implemented it — the design doc was stale
+   - New finding: Dep 6 (fat pointer construction syntax) was implicit but unstated — this is the TRUE blocker
+
+2. §6.2 升级判据 re-application:
+   - 引用 §6.2 规则 2: "如果下一阶段（或下游消费者）的输入依赖该项的输出，且该项的'简化实现'会产出错误结果，则该 P3 必须升级"
+   - Test (1): 影响下一阶段正确性？**Yes (updated)** — Phase 2-B/C blocks proper prelude impl
+   - Test (2): 简化实现产出错误结果？**No** — intrinsics work correctly but violate §1.0 原則 6
+   - Conclusion: NOT UPGRADED to P0/P1 (no wrong results), but §1.0 原則 6 + §12 require root-cause fix via language feature
+
+3. ARCH-A 一票否决权 exercise:
+   - 引用 §1.6 (ARCH-A 一票否决权): 发现架构致命伤时立即否决
+   - 方案 A (最小补丁): 保持 as_str intrinsic, 只迁移其他方法 → 否决 (违反 §1.0 原則 6 通解 > 特解 + §12 最优 > 最小)
+   - 方案 B (通解): 实现 fat pointer construction syntax language feature → 采纳 (root-cause fix)
+   - Decision: v0.19 Stage 31.x 路线图 (7 stages) 实现方案 B
+
+裁剪点:
+- L3 design-only stage — no code changes, only dependency audit + design writeback
+- 跳过 implementing Stage 31.1 — exceeds single-MUV scope (needs AST + Parser + HIR + MIR + typeck + codegen全流水线)
+- 安全理由: §13.4 J6 — each Stage 31.x is independently testable MUV
+
+5W2H:
+- WHAT: §18 re-audit TD-INTRINSIC-OVERUSE Phase 2-B/C blockers + §14.8 design writeback
+- WHY: Per user instruction "推进技术债修复, 如果修复完该阶段所有 tech-debt, 进入下一阶段"
+- WHO: PM-A + ARCH-A (dependency audit + design decision)
+- WHEN: v0.18→v0.19 transition (Stage 30.24)
+- WHERE: docs/lang-design/06-mir.md §16.8.4 + docs/develop/v0/tech-debt-register.md
+- HOW: (1) Re-audit 5 prerequisites against actual source (2) Identify true blocker (3) Plan v0.19 Stage 31.x roadmap
+- HOW MUCH: 4943 tests (unchanged — design-only), 0 failures, 2 ignored; 0 clippy warnings; fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4045/4045 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (stable — design-only stage) ✅
+- D8 (§1.6 终极检验): §18 re-audit identified true blocker — root-cause fix path established ✅
+
+Stage Summary:
+- v0.18 Stage 30.24: §18 Dependency Re-audit + §14.8 Design Writeback COMPLETE ✅
+- Re-audited 5 prerequisites: 4 already satisfied (1 stale status corrected)
+- Identified TRUE blocker: fat pointer construction syntax (was hidden)
+- Updated docs/lang-design/06-mir.md §16.8.4 with corrected status + Stage 31.x roadmap
+- Architecture health: 9.85/10 (stable — design-only stage)
+- Tests: 4943 (898 lib + 4045 integration), 0 failures, 2 ignored
+- 0 P0/P1, 0 clippy warnings, fmt clean
+
+下一步:
+- Stage 30.24 COMPLETE — design-only stage, no code changes
+- v0.19 Stage 31.1: Begin AST fat pointer literal syntax implementation
+- First MUV of fat pointer construction language feature (7-stage roadmap)
+- This will unblock TD-INTRINSIC-OVERUSE Phase 2-B/C resolution
