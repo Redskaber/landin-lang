@@ -807,3 +807,7 @@ mod stage30_13_hrtb_enforcement_tests;
 // === Stage 30.14 (v0.16 TD-SELF-TYPE-RESOLUTION): Self::Item multi-segment path ===
 #[path = "v0/stage30/plan/stage30_14_self_type_resolution_tests.rs"]
 mod stage30_14_self_type_resolution_tests;
+
+// === Stage 30.15 (v0.16 TD-HRTB-PLACEHOLDER-CHECK): HRTB enforcement reclassification ===
+#[path = "v0/stage30/plan/stage30_15_hrtb_placeholder_check_tests.rs"]
+mod stage30_15_hrtb_placeholder_check_tests;
