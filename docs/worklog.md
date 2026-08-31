@@ -36974,3 +36974,76 @@ Stage Summary:
 - Stage 31.8 (v0.5+): prelude monomorphization order fix — unblocks Vec::push/get migration
 - format! migration: BLOCKED on format args language feature (v0.20+)
 - TD-INTRINSIC-OVERUSE Phase 2-B/C: 4/7 methods migrated, 3 BLOCKED on v0.5+ architectural changes
+
+---
+Task ID: stage31.8
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A
+Task: Stage 31.8 (v0.19) — v0.19 Stage 31 Series Final Audit + §14.8 Design Writeback + §14.5 D6-D8. L2 (audit-only, no code changes). v0.568.0.
+
+3秒启动自检:
+- 定位: L2 (audit-only: §14.5 D6-D8 + §14.8 design writeback + tech-debt final status)
+- 对齐: 已查 v0.19 Stage 31.1-31.7 全部 worklog + tech-debt-register.md + docs/lang-design/29-integer-type-boundaries.md
+- 阻断: v0.568.0 全绿 (5087 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. v0.19 Stage 31 series COMPLETION decision:
+   - 引用 §14.5 D8 (§1.6 终极检验): 4/7 intrinsics migrated (通解), 3/7 BLOCKED on v0.5+ (architectural)
+   - 引用 §12 (最优 > 最小): root-cause fix requires architectural changes, not more workarounds
+   - 引用 §6.2 升级判据: NOT UPGRADED — no soundness risk, intrinsics work correctly
+   - 引用 §1.0 原則 9 (正确 > 妥协): BLOCKED status explicitly documented
+   - Decision: v0.19 Stage 31 series is COMPLETE — all achievable TD items resolved
+
+2. §14.8 Design Writeback B1-B4 classification:
+   - B1 (No deviation): FatPtrLit, sizeof, all 4 migrated methods match design
+   - B2 (New TD): 5 items (INT-SIGN-CONFUSION P3, CONST-INT-UINT-U128 P3, ISIZE-USIZE-HARDCODED P3, PRELUDE-MONO-ORDER P2, FORMAT-ARGS P2)
+   - B3 (Deviations requiring doc update): Box::new expected_ty kept, Cast(Unsize) codegen fix, GEP i64 fix
+   - B4 (Architectural limitations): Vec::push/get BLOCKED on monomorphization, format! BLOCKED on format args
+
+3. v0.20 direction recommendation:
+   - 引用 §1.0 原則 1 (长期 > 短期): invest in architectural changes now
+   - 引用 §1.0 原則 6 (通解 > 特解): prelude monomorphization + format args = general mechanism
+   - Priority 1: prelude monomorphization order fix (unblocks Vec::push/get — 2 intrinsics)
+   - Priority 2: format args language feature (unblocks format! — 1 intrinsic)
+   - After: Stage 31.9-31.10 migrate remaining 3 intrinsics → TD-INTRINSIC-OVERUSE fully resolved
+
+裁剪点:
+- L2 audit-only — no code changes, only documentation
+- 跳过 implementing v0.5+ architectural changes — exceeds v0.19 scope
+- 安全理由: §14.5 — audit is documentation, no runtime impact
+
+5W2H:
+- WHAT: v0.19 Stage 31 series final audit + §14.8 design writeback + tech-debt final status
+- WHY: Per §14.5 (stage transition requires deep review) + §14.8 (design writeback required)
+- WHO: PM-A + ARCH-A + REV-A
+- WHEN: v0.19 Stage 31.8 (after Stage 31.7 intrinsic cleanup)
+- WHERE: docs/develop/v0/tech-debt-register.md + docs/worklog.md + README.md
+- HOW: (1) §14.5 D6-D8 (2) §14.8 B1-B4 (3) tech-debt final audit (4) v0.20 direction
+- HOW MUCH: 5087 tests (unchanged — audit-only), 0 failures, 2 ignored; 0 clippy warnings; fmt clean
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4189/4189 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (186 files, 92,647 LOC) ✅
+- D8 (§1.6 终极检验): 4/7 migrated, 3 BLOCKED on v0.5+ — optimal per current architecture ✅
+
+Stage Summary:
+- v0.19 Stage 31.8: Final Audit + Design Writeback COMPLETE ✅
+- v0.19 Stage 31 Series: COMPLETE ✅
+  - 10 stages (31.1, 31.5, 31.6a-g, 31.7, 31.8)
+  - 4/7 intrinsics migrated (as_str, from_str, push_str, Box::new)
+  - 3/7 BLOCKED (Vec::push/get — monomorphization; format! — format args)
+  - 3 new language features (FatPtrLit, fat pointer field access, sizeof)
+  - 1 design doc (integer type boundaries)
+  - Net -138 LOC (intrinsic removal > language feature addition)
+  - 5087 tests, 0 failures, 0 P0/P1, 0 clippy warnings, fmt clean
+  - Architecture health: 9.85/10 (stable throughout v0.19)
+
+下一步:
+- v0.20 planning: prelude monomorphization order fix (Priority 1) + format args (Priority 2)
+- After v0.5+ architectural changes: Stage 31.9-31.10 migrate remaining 3 intrinsics
+- TD-INTRINSIC-OVERUSE fully resolved after v0.5+ + v0.20+

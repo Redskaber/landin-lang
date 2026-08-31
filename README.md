@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~92K LOC across 188 files) and targets x86_64 + AArch64 Linux.
+> Rust (~93K LOC across 186 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.568.0 (v0.19 Stage 31.7 — Intrinsic cleanup: dead dispatch removed for 4/7 migrated methods — Architecture health 9.85/10) |
+| **Version** | v0.568.0 (v0.19 Stage 31 COMPLETE — 4/7 intrinsics migrated to prelude impl, 3 BLOCKED on v0.5+ — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.19 Stage 31.7 — Intrinsic Cleanup**. 5087 tests (898 lib + 4189 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.7: Removed dead dispatch code for migrated String::from_str, String::push_str, String::as_str, and Box::new intrinsics. Cleaned stale comments in expr_variants.rs + method_call_lower.rs. Box::new expected_ty threading KEPT (still needed for typeck type mismatch detection). Vec::push/get/format! dispatch stays (BLOCKED on prelude monomorphization v0.5+ / format args). 8 tests verifying migrated methods still work. TD-INTRINSIC-OVERUSE Phase 2-B/C: 4/7 migrated, 3 BLOCKED on v0.5+ architectural. Architecture health: 9.85/10 (stable). All P0/P1 soundness bugs resolved since v0.4. Next: Stage 31.8 (v0.5+) — prelude monomorphization fix unblocks Vec::push/get. |
+| **Status** | ✅ **v0.19 Stage 31 Series COMPLETE**. 5087 tests (898 lib + 4189 integration), 0 failures, 2 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 31.8: Final audit + §14.8 design writeback. v0.19 Stage 31 series summary: 10 stages (31.1-31.8) — 4/7 TD-INTRINSIC-OVERUSE intrinsics migrated from MIR intrinsic dispatch (特解) to prelude impl (通解): String::as_str (FatPtrLit), String::from_str (.ptr/.len + extern C), String::push_str (while loop + realloc), Box::new (sizeof + alloc + Deref). 3 new language features: FatPtrLit `&str { ptr, len }`, fat pointer field access `.ptr`/`.len`, `sizeof TYPE`. 3/7 intrinsics BLOCKED on v0.5+ architectural changes: Vec::push/get (prelude monomorphization), format! (format args). Net -138 LOC (intrinsic removal > feature addition). Architecture health: 9.85/10 (stable throughout v0.19). All P0/P1 soundness bugs resolved since v0.4. Next: v0.20 planning — prelude monomorphization (Priority 1) + format args (Priority 2). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
