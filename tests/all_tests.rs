@@ -791,3 +791,7 @@ mod stage30_8_impl_type_match_tests;
 // === Stage 30.9 (v0.14 TD-HRTB-FN-SYNTAX): Fn(T) -> U trait bound syntax ===
 #[path = "v0/stage30/plan/stage30_9_fn_syntax_tests.rs"]
 mod stage30_9_fn_syntax_tests;
+
+// === Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION): HRTB bound collection ===
+#[path = "v0/stage30/plan/stage30_10_hrtb_solver_integration_tests.rs"]
+mod stage30_10_hrtb_solver_integration_tests;

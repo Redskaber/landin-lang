@@ -98,6 +98,7 @@ impl TestFixture {
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
+                hrtb_bounds: Vec::new(),
             },
         );
         resolver
@@ -178,6 +179,7 @@ impl TestFixture {
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
+                hrtb_bounds: Vec::new(),
             },
         );
         resolver
@@ -196,6 +198,7 @@ impl TestFixture {
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
+                hrtb_bounds: Vec::new(),
             },
         );
         resolver
@@ -286,6 +289,7 @@ impl TestFixture {
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
+                hrtb_bounds: Vec::new(),
             },
         );
 
@@ -301,6 +305,7 @@ impl TestFixture {
                 span: Span::DUMMY,
                 associated_consts: Vec::new(),
                 where_clauses: Vec::new(),
+                hrtb_bounds: Vec::new(),
             },
         );
 

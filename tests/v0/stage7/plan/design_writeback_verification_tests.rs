@@ -161,6 +161,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             span: Span::DUMMY,
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
+            hrtb_bounds: Vec::new(),
         },
     );
     resolver
@@ -236,6 +237,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             span: Span::DUMMY,
             associated_consts: Vec::new(),
             where_clauses: Vec::new(),
+            hrtb_bounds: Vec::new(),
         },
     );
     resolver

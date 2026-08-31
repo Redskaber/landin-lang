@@ -62,6 +62,39 @@ pub struct ImplInfo {
     /// Per §1.0 原則 4 (报错 > 静默): where clauses are now collected, not empty.
     /// Per §1.0 原則 6 (通解 > 特解): one field stores all where clause kinds.
     pub where_clauses: Vec<ImplWhereClause>,
+    /// Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION): HRTB bounds collected
+    /// from the impl's where clause. Each entry is a (bounded_type_name,
+    /// trait_def_id, lifetime_param_count) triple extracted from
+    /// `HirTypeBound::ForLifetimes` bounds.
+    ///
+    /// Per §1.0 原則 4 (报错 > 静默): HRTB bounds are now collected, not
+    /// silently dropped. Full enforcement (with placeholder universes) is
+    /// deferred to TD-HRTB-FULL-ENFORCEMENT (P2, v0.15+).
+    /// Per §1.0 原則 9 (正确 > 妥协): honest scope — collection done,
+    /// enforcement deferred.
+    pub hrtb_bounds: Vec<HrtbBound>,
+}
+
+/// Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION): An HRTB bound collected
+/// from an impl's where clause or a function's generic bounds.
+///
+/// Represents `T: for<'a, 'b> Trait` where:
+/// - `bounded_type_name` is the name of `T`
+/// - `trait_def_id` is the DefId of `Trait`
+/// - `lifetime_param_count` is the number of universally quantified
+///   lifetimes (e.g., 2 for `for<'a, 'b>`)
+///
+/// Per §23: `HrtbBound` follows `<Noun><Noun>` pattern.
+#[derive(Debug, Clone)]
+pub struct HrtbBound {
+    /// Name of the bounded type (e.g., `T` in `T: for<'a> Foo<'a>`).
+    pub bounded_type_name: Spur,
+    /// DefId of the trait being bounded.
+    pub trait_def_id: DefId,
+    /// Number of universally quantified lifetimes (e.g., 1 for `for<'a>`).
+    pub lifetime_param_count: usize,
+    /// Source span for error reporting.
+    pub span: crate::session::Span,
 }
 
 /// Stage 25.1 (v0.7): A where clause from an impl block, stored in ImplInfo.
@@ -557,6 +590,11 @@ impl TraitResolver {
                         // Per §1.0 原則 4 (报错 > 静默): where clauses are now
                         // collected, not silently empty.
                         let mut impl_where_clauses: Vec<ImplWhereClause> = Vec::new();
+                        // Stage 30.10 (v0.14 TD-HRTB-SOLVER-INTEGRATION):
+                        // Collect HRTB bounds (`for<'a> Trait`) alongside
+                        // regular where clauses. Per §1.0 原則 4: HRTB bounds
+                        // are now collected, not silently dropped.
+                        let mut impl_hrtb_bounds: Vec<HrtbBound> = Vec::new();
                         for hir_pred in &i.generics.where_clause {
                             // Extract the bounded type's name Spur.
                             let bounded_type_name = match &hir_pred.bounded_ty.kind {
@@ -577,6 +615,30 @@ impl TraitResolver {
                                             });
                                         }
                                     }
+                                    // Stage 30.10: Collect HRTB bounds.
+                                    // `for<'a, 'b> Trait` → HrtbBound with
+                                    // lifetime_param_count = 2.
+                                    if let crate::hir::HirTypeBound::ForLifetimes {
+                                        lifetime_params,
+                                        bound: inner_bound,
+                                        span,
+                                    } = bound
+                                    {
+                                        // Extract trait DefId from the inner bound.
+                                        if let crate::hir::HirTypeBound::Trait(tc) = &**inner_bound
+                                        {
+                                            if let crate::hir::Res::Def(trait_def_id, _) =
+                                                tc.path.res
+                                            {
+                                                impl_hrtb_bounds.push(HrtbBound {
+                                                    bounded_type_name: bt_name,
+                                                    trait_def_id,
+                                                    lifetime_param_count: lifetime_params.len(),
+                                                    span: *span,
+                                                });
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -592,6 +654,8 @@ impl TraitResolver {
                             span: i.span,
                             associated_consts: impl_assoc_consts,
                             where_clauses: impl_where_clauses,
+                            // Stage 30.10: HRTB bounds collected from where clause.
+                            hrtb_bounds: impl_hrtb_bounds,
                         };
 
                         // Stage 5.5: Build and store vtable if this is a trait impl.
