@@ -37687,3 +37687,79 @@ Stage Summary:
   enter the impl block's generic scope when resolving impl method signatures.
   This unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION (the Stage
   33.1 infrastructure is ready).
+
+---
+Task ID: stage33.1-final
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 33.1 (v0.21) FINAL — Vec::push/get migration to prelude impl COMPLETE.
+TD-VEC-PUSH-GET-MIGRATION + TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION RESOLVED.
+v0.572.0. 5095 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (documentation + version bump — Vec::push/get migration code complete)
+- 对齐: 已查 Stage 33.1 所有会话进展 — 7 fixes implemented, all tests pass
+- 阻断: v0.571.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Vec::push/get migration COMPLETE
+   - 引用 §12 (最优 > 最小): prelude impl replaces 647 LOC intrinsic (特解→通解)
+   - 引用 §1.0 原则 6 (通解 > 特解): standard method resolution for all Vec methods
+   - 引用 §1.0 原则 5 (去除兼容思维): vec_intrinsics.rs deleted
+
+2. 7 infrastructure fixes (all necessary, all tested):
+   a. Recursive collect_param_bindings (writeback.rs) — handles nested Vec<T>
+   b. type_name_by_def_id threading (codegen/function.rs + terminator.rs + pipeline.rs)
+   c. substitute Load/GEP/Store (substitute.rs) — substitutes Param in generic fn body
+   d. Resolver enters impl generic scope (path_resolve.rs) — value: T → Param(0)
+   e. Constant operand codegen reads FnDef substs (terminator.rs) — specialized names + return types
+   f. collect_param_bindings binding guard (writeback.rs) — don't overwrite concrete with Param
+   g. Second writeback_type_propagation pass (compile_inner.rs) — propagate substituted return type to let bindings
+
+3. Additional fixes:
+   - Rvalue::SizeOf(Ty) — deferred sizeof evaluation for Param types (codegen after monomorphization)
+   - query_method_return_type_uncached — uses lower_hir_ty_to_mir_ty_with_hir_and_generics (T → Param(0))
+   - ref_ty in method_call_lower — set to actual Ref type (not fresh Infer)
+   - call-site prefix strip — matches build_mono_item_names
+   - skip generic fn bodies in codegen_from_mir — prevents invalid IR from Param types
+
+裁剪点:
+- L2 — documentation + version bump only, no code changes
+- 安全理由: all code changes from previous sessions, tests pass
+
+5W2H:
+- WHAT: Vec::push/get migration to prelude impl COMPLETE
+- WHY: TD-VEC-PUSH-GET-MIGRATION + TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION RESOLVED
+- WHO: PM-A + ARCH-A + DEV-A + REV-A + QA-A (Super Z)
+- WHEN: v0.21 Stage 33.1 (multiple sessions)
+- WHERE: src/stdlib/prelude.rs + src/mir/lower/* + src/codegen/* + src/resolve/* + tests/*
+- HOW: 7 infrastructure fixes + Rvalue::SizeOf + ref_ty + query_method_return_type
+- HOW MUCH: 5095 tests (898 lib + 4197 integration, 4 ignored), 0 failures, fmt clean, 0 clippy warnings
+
+§14.5 D1-D8 Final Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): TD-VEC-PUSH-GET-MIGRATION + TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION RESOLVED ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): root-cause architectural fix, 7 fixes, not minimal patch ✅
+
+TD-INTRINSIC-OVERUSE Phase 2 Status:
+- String::as_str → prelude impl ✅ (Stage 31.5)
+- String::from_str → prelude impl ✅ (Stage 31.6b)
+- String::push_str → prelude impl ✅ (Stage 31.6c)
+- Box::new → prelude impl ✅ (Stage 31.6f)
+- Vec::push → prelude impl ✅ (Stage 33.1) ← NEW
+- Vec::get → prelude impl ✅ (Stage 33.1) ← NEW
+- format! → prelude impl BLOCKED (TD-FORMAT-MIGRATION, v0.5+)
+
+6/7 intrinsics migrated. Only format! remains (blocked on variadic args handling).
+
+下一步:
+- v0.22: Migrate format! to prelude impl (TD-FORMAT-MIGRATION) — blocked on
+  format_variadic_intrinsic's variadic args handling. May need macro expansion
+  approach (expand format! at parse time to inline String::push_str calls).
+- Or: proceed to v0.5+ architectural planning (method monomorphization for
+  full generic dispatch).
