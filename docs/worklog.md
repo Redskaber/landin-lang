@@ -37763,3 +37763,89 @@ TD-INTRINSIC-OVERUSE Phase 2 Status:
   approach (expand format! at parse time to inline String::push_str calls).
 - Or: proceed to v0.5+ architectural planning (method monomorphization for
   full generic dispatch).
+
+---
+Task ID: stage33.2
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 33.2 (v0.21) — TD audit + stage transition evaluation. v0.572.0.
+
+3秒启动自检:
+- 定位: L2 (TD audit + documentation — no code changes)
+- 对齐: 已查 tech-debt-register.md 全部 TD 状态
+- 阻断: v0.572.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. TD-FORMAT-MIGRATION evaluation: BLOCKED, not feasible at current architecture
+   - 引用 §12 (最优 > 最小): format! 的 prelude impl migration 需要在 macro 层
+     展开 format!("x={}", x) 为 inline 代码（Rust 风格）。这需要修改
+     make_format_macro_rule 的 token-level expansion，从 `__landin_format(args)`
+     改为 `{ let mut s = String::new(); s.push_str("x="); s.push_str(
+     __landin_i64_to_str(x)); s }`。
+   - 但 Landin 的 macro 系统是 token-based（pattern match → token replacement），
+     无法在 token 层生成复杂的 block expression + 多个语句。
+   - ARCH-A 决策: TD-FORMAT-MIGRATION 保持 BLOCKED on v0.5+。
+     format! 的 variadic args 处理需要 AST-level macro expansion 或
+     variadic fn 特性，两者都是 v0.5+ 范围。
+
+2. v0.21 Stage 33.1 TD audit summary:
+   - TD-PRELUDE-MONO-ORDER: ✅ Resolved Stage 32.3
+   - TD-VEC-PUSH-GET-MIGRATION: ✅ Resolved Stage 33.1
+   - TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION: ✅ Resolved Stage 33.1
+   - TD-FORMAT-ARGS: ✅ Resolved Stage 32.5 (duplicate)
+   - TD-FORMAT-MIGRATION: 🟡 BLOCKED (v0.5+ — variadic args handling)
+   - TD-SELF-OUTSIDE-IMPL-CONTEXT: 🟡 Documented (v0.5+)
+   - TD-TYPECK-PARAM-RETURN-MISMATCH: 🟡 Documented (pre-existing)
+   - TD-TYPECK-PARAM-ARG-COUNT: 🟡 Documented (pre-existing)
+   - TD-INT-SIGN-CONFUSION: 🟡 P3 Documented
+   - TD-CONST-INT-UINT-U128: 🟡 P3 Documented
+   - TD-ISIZE-USIZE-HARDCODED: 🟡 P3 Documented
+
+3. v0.21 → v0.22 stage transition:
+   - All v0.21-scoped P2 TDs RESOLVED (TD-PRELUDE-MONO-ORDER, TD-VEC-PUSH-GET-MIGRATION,
+     TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION, TD-FORMAT-ARGS)
+   - Remaining P2 TD (TD-FORMAT-MIGRATION) BLOCKED on v0.5+ architecture
+   - P3 TDs all documented (not actionable at current architecture)
+   - v0.21 is COMPLETE
+
+裁剪点:
+- L2 — TD audit + documentation only, no code changes
+- 安全理由: all code from previous sessions, tests pass
+
+5W2H:
+- WHAT: v0.21 TD audit + stage transition evaluation
+- WHY: Confirm all v0.21-scoped TDs resolved, document remaining blockers
+- WHO: PM-A + ARCH-A
+- WHEN: v0.21 Stage 33.2
+- WHERE: docs/develop/v0/tech-debt-register.md + docs/worklog.md
+- HOW: (1) Audit all TDs (2) Evaluate TD-FORMAT-MIGRATION feasibility (3) Document
+- HOW MUCH: 0 LOC code changes; 5095 tests (unchanged), 0 failures
+
+§14.5 D1-D8 Stage 33.2 Verification (audit-only):
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): all v0.21-scoped resolved ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): honest TD audit, not surface work ✅
+
+Stage Summary:
+- v0.21 COMPLETE: TD-PRELUDE-MONO-ORDER + TD-VEC-PUSH-GET-MIGRATION +
+  TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION + TD-FORMAT-ARGS all RESOLVED
+- 6/7 TD-INTRINSIC-OVERUSE Phase 2 intrinsics migrated (only format! remains)
+- Remaining TDs ALL BLOCKED on v0.5+ architectural changes:
+  - TD-FORMAT-MIGRATION (P2): variadic args / AST-level macro expansion
+  - TD-SELF-OUTSIDE-IMPL-CONTEXT (P3): owner context threading into body
+  - TD-TYPECK-PARAM-RETURN-MISMATCH (P3): typeck Param(N) unification
+  - TD-TYPECK-PARAM-ARG-COUNT (P3): typeck arg count validation
+  - TD-INT-SIGN-CONFUSION (P3): IntTy/UintTy separation
+  - TD-CONST-INT-UINT-U128 (P3): ConstVal storage
+  - TD-ISIZE-USIZE-HARDCODED (P3): 64-bit only
+
+下一步:
+- v0.21 → v0.22 stage transition
+- v0.22 scope: v0.5+ architectural planning (method monomorphization design doc)
+  OR: tackle P3 TDs that may be feasible (TD-INT-SIGN-CONFUSION is a lexer
+  refactor, TD-CONST-INT-UINT-U128 is a ConstVal refactor)
