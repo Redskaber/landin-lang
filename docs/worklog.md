@@ -37984,3 +37984,52 @@ v0.573.0. 5095 tests, 0 failures.
   TD-ISIZE-USIZE-HARDCODED (64-bit only MVP), TD-SELF-OUTSIDE-IMPL-CONTEXT
   (v0.5+), TD-TYPECK-PARAM-* (v0.5+)
 - v0.5+ architectural planning: method monomorphization for full generic dispatch
+
+---
+Task ID: stage34.3
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 34.3 (v0.22) — Final TD audit + v0.22 stage transition.
+v0.573.0. All fixable TDs resolved. Remaining ALL BLOCKED on v0.5+.
+
+3秒启动自检:
+- 定位: L2 (TD audit + documentation — no code changes)
+- 对齐: 已查 tech-debt-register.md 完整状态
+- 阻断: v0.573.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. v0.22 TD final audit:
+   All fixable P2/P3 TDs have been resolved across v0.19-v0.22:
+   - TD-PRELUDE-MONO-ORDER (P2): ✅ Resolved Stage 32.3
+   - TD-VEC-PUSH-GET-MIGRATION (P2): ✅ Resolved Stage 33.1
+   - TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION (P2): ✅ Resolved Stage 33.1
+   - TD-FORMAT-ARGS (P2): ✅ Resolved Stage 32.5
+   - TD-INT-SIGN-CONFUSION (P3): ✅ Resolved Stage 34.2
+   - TD-CONST-INT-UINT-U128 (P3): ACCEPTABLE as documented (design decision)
+   - TD-ISIZE-USIZE-HARDCODED (P3): ACCEPTABLE as documented (64-bit MVP)
+
+   Remaining TDs ALL BLOCKED on v0.5+:
+   - TD-FORMAT-MIGRATION (P2): variadic args / AST-level macro expansion
+   - TD-SELF-OUTSIDE-IMPL-CONTEXT (P3): owner context threading into body
+   - TD-TYPECK-PARAM-RETURN-MISMATCH (P3): typeck Param(N) unification
+   - TD-TYPECK-PARAM-ARG-COUNT (P3): typeck arg count validation
+
+2. v0.22 is COMPLETE — all fixable TDs resolved.
+
+3. v0.22 → v0.23 stage transition:
+   - v0.22 has resolved all TDs feasible at current architecture
+   - Remaining TDs require v0.5+ architectural changes (method monomorphization,
+     AST-level macro expansion, typeck improvements)
+   - v0.23 scope: v0.5+ architectural planning (design docs for method
+     monomorphization + format! macro expansion + typeck Param improvements)
+
+裁剪点:
+- L2 — audit + documentation only, no code changes
+- 安全理由: all code from previous sessions, tests pass
+
+§14.5 D1-D8 Stage 34.3 Verification (audit-only):
+- D1-D8: all pass (5095 tests, 0 failures, fmt clean, 0 clippy warnings) ✅
+
+下一步:
+- v0.22 → v0.23 stage transition
+- v0.23 scope: v0.5+ architectural design docs (no code changes)
