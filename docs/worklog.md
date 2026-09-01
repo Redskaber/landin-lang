@@ -37047,3 +37047,202 @@ Stage Summary:
 - v0.20 planning: prelude monomorphization order fix (Priority 1) + format args (Priority 2)
 - After v0.5+ architectural changes: Stage 31.9-31.10 migrate remaining 3 intrinsics
 - TD-INTRINSIC-OVERUSE fully resolved after v0.5+ + v0.20+
+
+---
+Task ID: v019-to-v020-transition
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: v0.19 → v0.20 Stage Transition — tech-debt final audit confirms all resolvable TD items resolved; remaining items ALL BLOCKED on v0.5+/v0.20+ architectural changes. v0.568.0.
+
+3秒启动自检:
+- 定位: L2 (stage transition documentation — audit-only, no code changes)
+- 对齐: 已查 v0.19 Stage 31.1-31.8 全部 worklog + tech-debt-register.md 最终审计
+- 阻断: v0.568.0 全绿 (5087 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Stage transition decision: v0.19 COMPLETE → v0.20 START
+   - 引用 §14.5 D8 (§1.6 终极检验): all resolvable TD items at current architecture resolved
+   - 引用 §6.2 升级判据: remaining TD items NOT UPGRADED (BLOCKED on architectural changes, no soundness risk)
+   - 引用 §12 (最优 > 最小): root-cause fix requires architectural changes, not more workarounds
+   - 引用 §1.0 原則 9 (正确 > 妥协): BLOCKED status explicitly documented, not silently ignored
+   - Decision: v0.19 stage transition to v0.20 APPROVED
+
+2. v0.20 priorities:
+   - 引用 §1.0 原則 1 (长期 > 短期): invest in architectural changes now
+   - 引用 §1.0 原則 6 (通解 > 特解): prelude monomorphization + format args = general mechanism
+   - Priority 1: prelude monomorphization order fix (unblocks Vec::push/get — 2 intrinsics)
+   - Priority 2: format args language feature (unblocks format! — 1 intrinsic)
+   - After: Stage 31.9-31.10 migrate remaining 3 intrinsics → TD-INTRINSIC-OVERUSE fully resolved
+
+裁剪点:
+- L2 — stage transition documentation only, no code changes
+- 跳过 implementing v0.5+ architectural changes — v0.20 scope
+- 安全理由: §14.5 — stage transition is documentation, no runtime impact
+
+5W2H:
+- WHAT: v0.19 → v0.20 stage transition documentation
+- WHY: All resolvable tech-debt at v0.19 architecture level resolved; remaining BLOCKED on v0.5+/v0.20+
+- WHO: PM-A + ARCH-A
+- WHEN: v0.19 Stage 31.8 → v0.20 Stage 32.1
+- WHERE: docs/worklog.md + docs/develop/v0/tech-debt-register.md + README.md
+- HOW: (1) Tech-debt final audit (2) Confirm all resolvable items done (3) Document v0.20 direction
+- HOW MUCH: 5087 tests (unchanged), 0 failures, 0 P0/P1, 0 clippy warnings, fmt clean
+
+§14.5 D1-D8 Stage Transition Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4189/4189 (2 ignored) ✅
+- D6 (no P0/P1): ALL resolved ✅
+- D7 (architecture health): 9.85/10 (186 files, 92,647 LOC) ✅
+- D8 (§1.6 终极检验): v0.19 COMPLETE, all resolvable TD resolved, remaining BLOCKED on v0.5+/v0.20+ ✅
+
+Stage Transition Summary:
+- v0.19 Stage 31 Series: COMPLETE ✅
+  - 10 stages (31.1, 31.5, 31.6a-g, 31.7, 31.8)
+  - 4/7 intrinsics migrated (as_str, from_str, push_str, Box::new)
+  - 3 new language features (FatPtrLit, fat pointer field access, sizeof)
+  - 1 design doc (integer type boundaries)
+  - Net -138 LOC (intrinsic removal > feature addition)
+  - 5087 tests, 0 failures, 0 P0/P1, 0 clippy warnings, fmt clean
+  - Architecture health: 9.85/10 (stable throughout v0.19)
+
+- v0.20 Planning:
+  - Priority 1: Prelude monomorphization order fix (unblocks Vec::push/get — 2 intrinsics)
+  - Priority 2: Format args language feature (unblocks format! — 1 intrinsic)
+  - After: Stage 31.9-31.10 migrate remaining 3 intrinsics → TD-INTRINSIC-OVERUSE fully resolved
+
+下一步:
+- v0.20 Stage 32.1: Prelude monomorphization order design + implementation
+- v0.20 Stage 32.2: Format args language feature design + implementation
+- v0.20 Stage 31.9-31.10: Migrate remaining 3 intrinsics (Vec::push/get, format!)
+
+---
+Task ID: stage32.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 32.1 (v0.20) — Attempted prelude monomorphization fix (find_generics + resolve_self_param_type). BLOCKED on deeper type resolution issue. Reverted. v0.568.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: hir/generics.rs + driver/mod.rs + mir/lower/mod.rs + prelude.rs)
+- 对齐: 已查 Stage 31.6g worklog (Vec::push/get BLOCKED) + tech-debt TD-PRELUDE-MONO-ORDER
+- 阻断: v0.568.0 全绿 (5087 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Root cause analysis: find_generics not handling impl method generics
+   - 引用 §18 (依赖审查): found that find_generics doesn't look up enclosing impl block generics
+   - 引用 §1.0 原則 6 (通解 > 特解): one find_generics path for all fn owners
+   - Fix 1: Modified find_generics to search for enclosing impl block generics
+   - Fix 2: Modified resolve_self_param_type_for_sig to pass impl generics to type lower
+   - Result: find_generics now correctly finds impl block's T (Param(0))
+   - But: self.cap still resolves to () — deeper issue in field type resolution
+
+2. Deeper issue discovered: field type resolution for generic struct methods
+   - Even with T=Param(0) in generic_params, struct field access (self.cap) still fails
+   - Error: "cannot apply arithmetic to ()" — self.cap resolves to () not usize
+   - Root cause: the struct field resolution pipeline has MULTIPLE places where generic params
+     are not propagated:
+     a. resolve_self_param_type_for_sig uses lower_hir_ty_to_mir_ty (no generics) — FIXED
+     b. But the self_ty still resolves incorrectly because AdtLayouts aren't populated
+        with the substituted generic params
+     c. Field type lookup on Adt(vec_def_id, [Param(0)]) fails because AdtLayouts
+        system doesn't handle Param substitution
+   - This is the SAME class as TD-TYPECK-LOCAL-DECL-ERROR-CHECK — prelude generic
+     functions lowered with T=Param before monomorphization
+
+3. ARCH-A 一票否决权: deeper monomorphization issue is v0.5+ architectural
+   - 引用 §1.6: discovered architecture-level issue
+   - 引用 §12: root-cause fix requires monomorphization order change (not just find_generics)
+   - 引用 §1.0 原則 9 (正确 > 妥协): revert, document, don't force partial fix
+   - Per §6.2: NOT UPGRADED — no soundness risk, intrinsics work correctly
+
+裁剪点:
+- L3 — attempted fix + reverted
+- 跳过 implementing full monomorphization order change — v0.5+ architectural scope
+- 安全理由: §6.2 — partial fix causes regression (user generic impls break), reverted to green
+
+5W2H:
+- WHAT: Attempted find_generics + resolve_self_param_type fix for prelude monomorphization
+- WHY: Unblocks Vec::push/get migration (TD-PRELUDE-MONO-ORDER)
+- WHO: PM-A + ARCH-A (blocked by deeper field type resolution issue)
+- WHEN: v0.20 Stage 32.1
+- WHERE: src/hir/generics.rs + src/driver/mod.rs + src/mir/lower/mod.rs + src/stdlib/prelude.rs
+- HOW: (1) Fix find_generics to search enclosing impl (2) Fix resolve_self_param_type to pass generics (3) Test → FAIL → revert
+- HOW MUCH: 0 LOC net (reverted); 5087 tests (unchanged), 0 failures
+
+Stage Summary:
+- v0.20 Stage 32.1: Prelude Monomorphization Fix BLOCKED ✅ (documented)
+- Root cause: find_generics fix works (T=Param(0) found), but field type resolution
+  on Adt(vec_def_id, [Param(0)]) still fails — deeper AdtLayouts/substitution issue
+- Per §18: monomorphization order is a MULTI-POINT fix, not a single find_generics change
+- Reverted to v0.568.0 baseline (5087 tests, 0 failures)
+- TD-PRELUDE-MONO-ORDER: still BLOCKED, now with deeper understanding of root cause
+
+下一步:
+- v0.20 Stage 32.2: Design full monomorphization order fix (AdtLayouts + field resolution + typeck)
+- After: Stage 32.3 retry Vec::push/get migration
+
+---
+Task ID: stage32.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 32.2 (v0.20) — Attempted fix point 3: resolve_self_param_type in body_lower.rs uses generics. Partial success: field access for usize fields (self.len, self.cap) works, but method resolution on Param-typed fields (self.x.f() where x: T: SomeTrait) fails. Reverted. v0.568.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: hir/generics.rs + mir/lower/body_lower.rs + mir/lower/mod.rs)
+- 对齐: 已查 Stage 32.1 worklog (4 fix points identified, 2 fixed but reverted)
+- 阻断: v0.568.0 全绿 (5087 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Fix point 3: resolve_self_param_type in body_lower.rs
+   - 引用 §18: "直到审查不出问题为止" — Stage 32.1 found 4 fix points, need to fix all
+   - 引用 §1.0 原則 6 (通解 > 特解): one type resolution path for all impl methods
+   - Fix: Changed `lower_hir_ty_to_mir_ty(&impl_block.self_ty)` to `lower_hir_ty_to_mir_ty_with_hir_and_generics(&impl_block.self_ty, hir, &impl_generics)`
+   - Added `find_generics_for_impl_owner` to generics.rs
+   - Made `ty_lower` module `pub(crate)` so body_lower.rs can access it
+   - Result: self type correctly resolves to `Adt(vec_def_id, [Param(0)])` for generic impl methods
+
+2. §20 iterative audit: 1 test regression found
+   - `stage16_53_generic_struct_trait_impl_method_call` fails: `self.x.f()` where `x: X: T` (trait bound)
+   - Root cause: `resolve_trait_method` doesn't handle `TyKind::Param` — it expects `Adt` or primitive
+   - This is fix point 4: method resolution on Param-typed fields needs trait bound resolution
+   - Before fix: `self.x` resolved to `Error` (lower_hir_ty_to_mir_ty without generics), and `Error.f()` was silently skipped (not a typeck error, just no method found — which was the pre-existing behavior)
+   - After fix: `self.x` correctly resolves to `Param(0)`, but `resolve_trait_method` can't match `Param(0)` against `X` in `impl<X: T> T for S<X>` — it returns None, causing "no method `f` found for type `X`" typeck error
+   - This is a DEEPER issue: trait method resolution on generic types requires monomorphization (v0.5+ architectural change)
+
+3. ARCH-A 一票否决: partial fix causes regression
+   - 引用 §1.6: partial fix (fix point 3) breaks fix point 4 (trait method resolution on Param types)
+   - 引用 §12: root-cause fix requires ALL 4 fix points, not just 3
+   - 引用 §1.0 原則 9 (正确 > 妥协): revert, document deeper root cause
+   - Decision: revert all changes, document the complete 4-point fix plan
+
+裁剪点:
+- L3 — attempted fix + reverted
+- 跳过 implementing fix point 4 (trait method resolution on Param) — v0.5+ architectural scope
+- 安全理由: §6.2 — partial fix causes regression, must revert to green
+
+5W2H:
+- WHAT: Attempted fix point 3 (resolve_self_param_type with generics in body_lower.rs)
+- WHY: 3rd of 4 fix points for TD-PRELUDE-MONO-ORDER
+- WHO: PM-A + ARCH-A (blocked by fix point 4: trait method resolution on Param)
+- WHEN: v0.20 Stage 32.2 (after Stage 32.1 BLOCKED)
+- WHERE: src/hir/generics.rs + src/mir/lower/body_lower.rs + src/mir/lower/mod.rs
+- HOW: (1) Add find_generics_for_impl_owner (2) Change resolve_self_param_type to use generics (3) Make ty_lower pub(crate) (4) Test → 1 regression → revert
+- HOW MUCH: 0 LOC net (reverted); 5087 tests (unchanged), 0 failures
+
+Stage Summary:
+- v0.20 Stage 32.2: Fix Point 3 (body_lower.rs self param type) BLOCKED ✅ (documented)
+- Root cause: fix point 3 works (self type = Adt(def_id, [Param(0)])), but fix point 4 (trait method resolution on Param-typed fields) is needed and is a v0.5+ architectural change
+- Per §18: monomorphization is a 4-POINT fix, ALL must be done together
+- Per §20: iterative audit found 1 regression — partial fix is worse than no fix
+- Reverted to v0.568.0 baseline (5087 tests, 0 failures)
+
+下一步:
+- v0.20 Stage 32.3: Design COMPLETE 4-point monomorphization fix plan:
+  1. find_generics (understood, can fix)
+  2. resolve_self_param_type_for_sig in driver/mod.rs (understood, can fix)
+  3. resolve_self_param_type in body_lower.rs (understood, can fix)
+  4. resolve_trait_method on Param-typed fields (needs design — trait bound resolution)
+  ALL 4 must be implemented together, then tested
+- After: Stage 32.4 retry Vec::push/get migration
