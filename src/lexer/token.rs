@@ -20,7 +20,7 @@ pub struct Token {
 pub enum TokenKind {
     // --- Literals ---
     /// Integer literal: value + optional suffix.
-    IntLit(u128, Option<IntTy>),
+    IntLit(u128, Option<IntSuffix>),
     /// Float literal: value + optional suffix.
     FloatLit(f64, Option<FloatTy>),
     /// Character literal.
@@ -159,21 +159,20 @@ pub enum TokenKind {
     Eof,
 }
 
-/// Integer type suffix.
+/// Stage 34.2 (TD-INT-SIGN-CONFUSION): Integer type suffix.
+///
+/// Was: a single `IntTy` enum with 12 variants conflating signed/unsigned.
+/// Now: `IntSuffix` is either `Signed(ast::IntTy)` or `Unsigned(ast::UintTy)`,
+/// using the AST's already-separated enums. This makes the sign explicit at
+/// the token level, preventing downstream confusion.
+///
+/// Per §1.0 原則 3 (显式 > 隐式): sign is explicit in the type system.
+/// Per §1.0 原則 6 (通解 > 特解): reuse existing ast::IntTy/UintTy enums.
+/// Per §12 (最优 > 最小): root-cause fix — eliminate the conflated enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntTy {
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    Isize,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    Usize,
+pub enum IntSuffix {
+    Signed(crate::ast::IntTy),
+    Unsigned(crate::ast::UintTy),
 }
 
 /// Float type suffix.

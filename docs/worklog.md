@@ -37925,3 +37925,62 @@ Stage Summary:
 - v0.22 Stage 34.2: TD-INT-SIGN-CONFUSION refactor — eliminate lexer::IntTy,
   use ast::IntTy + ast::UintTy in TokenKind::IntLit. ~40 sites to modify.
   Design doc needed per §13.1.
+
+---
+Task ID: stage34.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 34.2 (v0.22) — TD-INT-SIGN-CONFUSION RESOLVED. Eliminated
+lexer::token::IntTy (12-variant conflated enum), replaced with
+lexer::token::IntSuffix (Signed(ast::IntTy) | Unsigned(ast::UintTy)).
+v0.573.0. 5095 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (cross-module: lexer/token.rs + lexer/number.rs + lexer/mod.rs +
+  parser/expr.rs + tests/v0/stage0/plan/lexer_tests.rs +
+  tests/v0/stage0/plan/ast_structure_tests.rs)
+- 对齐: 已查 docs/lang-design/29-integer-type-boundaries.md §5.1 — split IntTy
+- 阻断: v0.572.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Eliminate lexer::token::IntTy → reuse ast::IntTy/UintTy
+   - 引用 §1.0 原則 6 (通解 > 特解): reuse existing ast enums, no new types
+   - 引用 §1.0 原則 3 (显式 > 隐式): sign is explicit in IntSuffix::Signed/Unsigned
+   - 引用 §12 (最优 > 最小): root-cause fix — eliminate conflated enum
+
+2. IntSuffix::Signed(ast::IntTy) | Unsigned(ast::UintTy) design
+   - Per §1.0 原則 11 (确定性边界): sign is now a type-level distinction
+   - "让非法状态不可表示": can't accidentally treat U8 as signed
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 深度审查 (P3 TD, no soundness impact)
+- 安全理由: §1.2.1 — P3 TDs can use §7.3 gate review instead of §14.5
+
+5W2H:
+- WHAT: Eliminate lexer::token::IntTy (12-variant conflated enum)
+- WHY: TD-INT-SIGN-CONFUSION — sign confusion at token level
+- WHO: PM-A + ARCH-A + DEV-A
+- WHEN: v0.22 Stage 34.2
+- WHERE: src/lexer/token.rs + src/lexer/number.rs + src/lexer/mod.rs +
+  src/parser/expr.rs + tests/v0/stage0/plan/lexer_tests.rs +
+  tests/v0/stage0/plan/ast_structure_tests.rs
+- HOW: (1) Replace IntTy with IntSuffix(Signed/Unsigned) (2) Update lexer
+  number parsing (3) Update parser literal handling (4) Update tests
+- HOW MUCH: ~40 LOC modified; 5095 tests (unchanged), 0 failures
+
+§14.5 D1-D8 Stage 34.2 Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): TD-INT-SIGN-CONFUSION RESOLVED ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): root-cause fix, eliminates conflated enum ✅
+
+下一步:
+- Remaining P3 TDs: TD-CONST-INT-UINT-U128 (ACCEPTABLE as documented),
+  TD-ISIZE-USIZE-HARDCODED (64-bit only MVP), TD-SELF-OUTSIDE-IMPL-CONTEXT
+  (v0.5+), TD-TYPECK-PARAM-* (v0.5+)
+- v0.5+ architectural planning: method monomorphization for full generic dispatch

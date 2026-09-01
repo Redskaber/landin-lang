@@ -40,7 +40,12 @@ fn test_int_dec_suffix_i32() {
     assert_eq!(
         lex("42i32"),
         vec![
-            TokenKind::IntLit(42, Some(landin_compiler::lexer::token::IntTy::I32)),
+            TokenKind::IntLit(
+                42,
+                Some(landin_compiler::lexer::token::IntSuffix::Signed(
+                    landin_compiler::ast::IntTy::I32
+                ))
+            ),
             TokenKind::Eof
         ]
     );
@@ -51,7 +56,12 @@ fn test_int_dec_suffix_u64() {
     assert_eq!(
         lex("42u64"),
         vec![
-            TokenKind::IntLit(42, Some(landin_compiler::lexer::token::IntTy::U64)),
+            TokenKind::IntLit(
+                42,
+                Some(landin_compiler::lexer::token::IntSuffix::Unsigned(
+                    landin_compiler::ast::UintTy::U64
+                ))
+            ),
             TokenKind::Eof
         ]
     );
@@ -62,7 +72,12 @@ fn test_int_dec_suffix_isize() {
     assert_eq!(
         lex("42isize"),
         vec![
-            TokenKind::IntLit(42, Some(landin_compiler::lexer::token::IntTy::Isize)),
+            TokenKind::IntLit(
+                42,
+                Some(landin_compiler::lexer::token::IntSuffix::Signed(
+                    landin_compiler::ast::IntTy::Isize
+                ))
+            ),
             TokenKind::Eof
         ]
     );

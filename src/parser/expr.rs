@@ -632,38 +632,40 @@ impl<'a> Parser<'a> {
             TokenKind::IntLit(val, suffix) => {
                 self.bump();
                 let lit_kind = match suffix {
-                    Some(crate::lexer::token::IntTy::I8) => LitKind::Int(val, Some(ast::IntTy::I8)),
-                    Some(crate::lexer::token::IntTy::I16) => {
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::I8)) => {
+                        LitKind::Int(val, Some(ast::IntTy::I8))
+                    }
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::I16)) => {
                         LitKind::Int(val, Some(ast::IntTy::I16))
                     }
-                    Some(crate::lexer::token::IntTy::I32) => {
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::I32)) => {
                         LitKind::Int(val, Some(ast::IntTy::I32))
                     }
-                    Some(crate::lexer::token::IntTy::I64) => {
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::I64)) => {
                         LitKind::Int(val, Some(ast::IntTy::I64))
                     }
-                    Some(crate::lexer::token::IntTy::I128) => {
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::I128)) => {
                         LitKind::Int(val, Some(ast::IntTy::I128))
                     }
-                    Some(crate::lexer::token::IntTy::Isize) => {
+                    Some(crate::lexer::token::IntSuffix::Signed(ast::IntTy::Isize)) => {
                         LitKind::Int(val, Some(ast::IntTy::Isize))
                     }
-                    Some(crate::lexer::token::IntTy::U8) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::U8)) => {
                         LitKind::Uint(val, Some(ast::UintTy::U8))
                     }
-                    Some(crate::lexer::token::IntTy::U16) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::U16)) => {
                         LitKind::Uint(val, Some(ast::UintTy::U16))
                     }
-                    Some(crate::lexer::token::IntTy::U32) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::U32)) => {
                         LitKind::Uint(val, Some(ast::UintTy::U32))
                     }
-                    Some(crate::lexer::token::IntTy::U64) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::U64)) => {
                         LitKind::Uint(val, Some(ast::UintTy::U64))
                     }
-                    Some(crate::lexer::token::IntTy::U128) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::U128)) => {
                         LitKind::Uint(val, Some(ast::UintTy::U128))
                     }
-                    Some(crate::lexer::token::IntTy::Usize) => {
+                    Some(crate::lexer::token::IntSuffix::Unsigned(ast::UintTy::Usize)) => {
                         LitKind::Uint(val, Some(ast::UintTy::Usize))
                     }
                     None => LitKind::Int(val, None),

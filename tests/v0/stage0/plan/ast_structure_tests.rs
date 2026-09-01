@@ -258,7 +258,12 @@ fn test_regression_oct_suffix() {
     let (tokens, _) = tokenize("0o77u8", &mut interner);
     match &tokens[0].kind {
         landin_compiler::lexer::token::TokenKind::IntLit(_, Some(suffix)) => {
-            assert_eq!(*suffix, landin_compiler::lexer::token::IntTy::U8);
+            assert_eq!(
+                *suffix,
+                landin_compiler::lexer::token::IntSuffix::Unsigned(
+                    landin_compiler::ast::UintTy::U8
+                )
+            );
         }
         other => panic!("expected IntLit with U8 suffix, got {:?}", other),
     }
@@ -271,7 +276,12 @@ fn test_regression_bin_suffix() {
     let (tokens, _) = tokenize("0b1010u8", &mut interner);
     match &tokens[0].kind {
         landin_compiler::lexer::token::TokenKind::IntLit(_, Some(suffix)) => {
-            assert_eq!(*suffix, landin_compiler::lexer::token::IntTy::U8);
+            assert_eq!(
+                *suffix,
+                landin_compiler::lexer::token::IntSuffix::Unsigned(
+                    landin_compiler::ast::UintTy::U8
+                )
+            );
         }
         other => panic!("expected IntLit with U8 suffix, got {:?}", other),
     }

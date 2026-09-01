@@ -9,6 +9,7 @@
 //! - `lex_hex` / `lex_oct` / `lex_bin` (hex/octal/binary integers)
 //! - `try_lex_number_suffix` (parse `i32`/`u64`/`f32`/... suffix)
 
+use crate::ast;
 use crate::lexer::token::*;
 use crate::lexer::LexErrorKind;
 use crate::session::{BytePos, Span};
@@ -24,20 +25,20 @@ impl<'a> Lexer<'a> {
     ///
     /// **After**: This helper emits a proper LexError for invalid suffixes,
     /// matching the decimal path's behavior.
-    fn parse_int_suffix_with_error(&mut self, suffix_start: BytePos) -> Option<IntTy> {
+    fn parse_int_suffix_with_error(&mut self, suffix_start: BytePos) -> Option<IntSuffix> {
         self.try_lex_number_suffix().and_then(|s| match s.as_str() {
-            "i8" => Some(IntTy::I8),
-            "i16" => Some(IntTy::I16),
-            "i32" => Some(IntTy::I32),
-            "i64" => Some(IntTy::I64),
-            "i128" => Some(IntTy::I128),
-            "isize" => Some(IntTy::Isize),
-            "u8" => Some(IntTy::U8),
-            "u16" => Some(IntTy::U16),
-            "u32" => Some(IntTy::U32),
-            "u64" => Some(IntTy::U64),
-            "u128" => Some(IntTy::U128),
-            "usize" => Some(IntTy::Usize),
+            "i8" => Some(IntSuffix::Signed(ast::IntTy::I8)),
+            "i16" => Some(IntSuffix::Signed(ast::IntTy::I16)),
+            "i32" => Some(IntSuffix::Signed(ast::IntTy::I32)),
+            "i64" => Some(IntSuffix::Signed(ast::IntTy::I64)),
+            "i128" => Some(IntSuffix::Signed(ast::IntTy::I128)),
+            "isize" => Some(IntSuffix::Signed(ast::IntTy::Isize)),
+            "u8" => Some(IntSuffix::Unsigned(ast::UintTy::U8)),
+            "u16" => Some(IntSuffix::Unsigned(ast::UintTy::U16)),
+            "u32" => Some(IntSuffix::Unsigned(ast::UintTy::U32)),
+            "u64" => Some(IntSuffix::Unsigned(ast::UintTy::U64)),
+            "u128" => Some(IntSuffix::Unsigned(ast::UintTy::U128)),
+            "usize" => Some(IntSuffix::Unsigned(ast::UintTy::Usize)),
             _ => {
                 self.errors.push(LexError {
                     message: format!("invalid integer suffix: {s}"),
@@ -149,18 +150,18 @@ impl<'a> Lexer<'a> {
         } else {
             let cleaned: String = text.chars().filter(|c| *c != '_').collect();
             let int_ty = suffix.and_then(|s| match s.as_str() {
-                "i8" => Some(IntTy::I8),
-                "i16" => Some(IntTy::I16),
-                "i32" => Some(IntTy::I32),
-                "i64" => Some(IntTy::I64),
-                "i128" => Some(IntTy::I128),
-                "isize" => Some(IntTy::Isize),
-                "u8" => Some(IntTy::U8),
-                "u16" => Some(IntTy::U16),
-                "u32" => Some(IntTy::U32),
-                "u64" => Some(IntTy::U64),
-                "u128" => Some(IntTy::U128),
-                "usize" => Some(IntTy::Usize),
+                "i8" => Some(IntSuffix::Signed(ast::IntTy::I8)),
+                "i16" => Some(IntSuffix::Signed(ast::IntTy::I16)),
+                "i32" => Some(IntSuffix::Signed(ast::IntTy::I32)),
+                "i64" => Some(IntSuffix::Signed(ast::IntTy::I64)),
+                "i128" => Some(IntSuffix::Signed(ast::IntTy::I128)),
+                "isize" => Some(IntSuffix::Signed(ast::IntTy::Isize)),
+                "u8" => Some(IntSuffix::Unsigned(ast::UintTy::U8)),
+                "u16" => Some(IntSuffix::Unsigned(ast::UintTy::U16)),
+                "u32" => Some(IntSuffix::Unsigned(ast::UintTy::U32)),
+                "u64" => Some(IntSuffix::Unsigned(ast::UintTy::U64)),
+                "u128" => Some(IntSuffix::Unsigned(ast::UintTy::U128)),
+                "usize" => Some(IntSuffix::Unsigned(ast::UintTy::Usize)),
                 _ => {
                     self.errors.push(LexError {
                         message: format!("invalid integer suffix: {s}"),

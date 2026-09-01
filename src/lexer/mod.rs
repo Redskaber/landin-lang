@@ -21,7 +21,7 @@ pub use reader::{LexError, LexErrorKind, Lexer};
 // `pub use token::*;` to prevent accidental leakage of internal types.
 // Matches the same pattern already established in src/hir/mod.rs and
 // src/mir/mod.rs (Stage 3.57 P0-3 fix).
-pub use token::{keyword_from_str, FloatTy, IntTy, Symbol, Token, TokenKind};
+pub use token::{keyword_from_str, FloatTy, IntSuffix, Symbol, Token, TokenKind};
 // Stage 18.155: public ident validation helper (used by landinc for project
 // name validation).
 pub use ident::is_valid_ident;

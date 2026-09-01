@@ -1049,7 +1049,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 
 | TD ID | Priority | Description | Status |
 |-------|----------|-------------|--------|
-| TD-INT-SIGN-CONFUSION | P3 | lexer::IntTy conflates signed/unsigned (downstream correct) | Documented (Stage 31.6d) |
+| TD-INT-SIGN-CONFUSION | P3 | lexer::IntTy conflates signed/unsigned (downstream correct) | ✅ Resolved Stage 34.2 — eliminated `lexer::token::IntTy` (12-variant conflated enum), replaced with `lexer::token::IntSuffix` (Signed(ast::IntTy) | Unsigned(ast::UintTy)). Reuses existing ast::IntTy/UintTy enums. 40 sites modified across lexer + parser + tests. |
 | TD-CONST-INT-UINT-U128 | P3 | ConstVal::Int/Uint both u128 (acceptable for MVP) | Documented |
 | TD-ISIZE-USIZE-HARDCODED | P3 | isize/usize hardcoded 8 bytes (64-bit only MVP) | Documented |
 | TD-PRELUDE-MONO-ORDER | P2 | prelude impl<T> body lowered with T=Param before monomorphization | ✅ Resolved Stage 32.3 — 4-point monomorphization fix (find_generics_for_fn_owner + resolve_self_param_type_for_sig + resolve_self_param_type + resolve_trait_method on Param(N) via trait bounds) |
