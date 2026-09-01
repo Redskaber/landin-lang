@@ -110,6 +110,24 @@ pub enum Rvalue {
         /// Result pointer type (for codegen).
         result_ty: Ty,
     },
+    /// Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): SizeOf — compute byte size
+    /// of a type at codegen time (AFTER monomorphization substitution).
+    /// `x = sizeof T` → evaluates to usize constant of T's byte size.
+    ///
+    /// Was: `sizeof T` was folded to a constant at MIR lower time, which
+    /// returned the fallback value (8) for Param types. After monomorphization
+    /// substituted Param(0) → i64, the constant was still 8 (not recomputed).
+    /// This caused wrong elem_size for non-i32 types in Vec::push (i64, i8, struct).
+    ///
+    /// Fix: keep `sizeof T` as a deferred Rvalue::SizeOf(Ty) that codegen
+    /// evaluates AFTER substitute_mir_body has replaced Param(0) with the
+    /// concrete type. Codegen calls compute_type_size_with_fallback on the
+    /// substituted type.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one SizeOf for all types.
+    /// Per §1.0 原則 3 (显式 > 隐式): size is explicitly deferred.
+    /// Per §12 (最优 > 最小): root-cause fix — defer evaluation to codegen.
+    SizeOf(Ty /* type to compute size of */),
 }
 
 /// Binary operator in MIR.

@@ -133,11 +133,10 @@ fn collect_from_rvalue(rvalue: &Rvalue, collected: &mut HashSet<MonoItem>) {
             collect_from_operand(b, collected);
         }
         Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
-
-            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
-
-            // Will be implemented in Stage 18.226c (codegen support)
+            // Stage 18.226: MIR intrinsic ops — no MonoItems to collect.
         }
+        // Stage 33.1: SizeOf — no MonoItems to collect (just a type size query).
+        Rvalue::SizeOf(_) => {}
 
         Rvalue::Ref(_, _, place) => {
             collect_from_place(place, collected);

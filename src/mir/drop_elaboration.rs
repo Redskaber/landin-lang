@@ -333,6 +333,8 @@ fn collect_moved_locals_from_rvalue(rv: &Rvalue, moved: &mut HashSet<LocalId>) {
             }
         }
         Rvalue::Ref(_, _, _) => {} // Refs don't move.
+        // Stage 33.1: SizeOf — no operands to move.
+        Rvalue::SizeOf(_) => {}
     }
 }
 

@@ -838,6 +838,8 @@ impl<'a> BorrowChecker<'a> {
                     self.check_operand(mir, op, span);
                 }
             }
+            // Stage 33.1: SizeOf — no operands to check.
+            Rvalue::SizeOf(_) => {}
         }
     }
 

@@ -193,6 +193,22 @@ pub(crate) fn check_index_access_syntax(cx: &MirLowerCtxt, base_local: LocalId) 
     }
 }
 
+/// Stage 33.1: Check if a type contains any Param (generic type parameter).
+/// Used by sizeof to decide whether to defer evaluation to codegen.
+fn type_contains_param(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param(inner)
+        }
+        TyKind::Array(inner, _) => type_contains_param(inner),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param),
+        _ => false,
+    }
+}
+
 pub(crate) fn lower_expr_to_operand(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,
@@ -1823,20 +1839,29 @@ pub(crate) fn lower_expr_to_operand(
         } => lower_fat_ptr_lit(cx, expr, target_ty, ptr, len),
 
         // Stage 31.6e (v0.19): `sizeof TYPE` — compile-time type size.
-        // Evaluates to a usize constant at MIR lower time.
+        // Stage 33.1: If the type contains Param (generic), defer to codegen
+        // via Rvalue::SizeOf. If the type is concrete, fold to constant as before.
+        // Per §1.0 原則 6 (通解 > 特解): one path for both cases.
+        // Per §12 (最优 > 最小): only defer when necessary (Param types).
         HirExprKind::SizeOf { ty } => {
             let mir_ty = crate::mir::lower::ty_lower::lower_hir_ty_to_mir_ty_with_hir(ty, cx.hir);
-            let size =
-                crate::mir::lower::adt_layout::compute_type_size_with_fallback(&mir_ty, cx.hir, 8);
             let usize_ty = Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span);
-            cx.eval_rvalue_to_temp(
-                Rvalue::Use(Operand::Constant(crate::mir::ty::Const {
-                    ty: usize_ty.clone(),
-                    val: crate::mir::ty::ConstVal::Uint(size as u128),
-                })),
-                usize_ty,
-                expr.span,
-            )
+            // Check if the type contains Param (generic type parameter).
+            if type_contains_param(&mir_ty) {
+                // Generic type — defer to codegen (after monomorphization).
+                cx.eval_rvalue_to_temp(Rvalue::SizeOf(mir_ty), usize_ty, expr.span)
+            } else {
+                // Concrete type — fold to constant as before.
+                let size = crate::mir::lower::compute_type_size_with_fallback(&mir_ty, cx.hir, 8);
+                cx.eval_rvalue_to_temp(
+                    Rvalue::Use(Operand::Constant(crate::mir::ty::Const {
+                        ty: usize_ty.clone(),
+                        val: crate::mir::ty::ConstVal::Uint(size as u128),
+                    })),
+                    usize_ty,
+                    expr.span,
+                )
+            }
         }
 
         // MethodCall: `receiver.method(args)` → simplified to Call

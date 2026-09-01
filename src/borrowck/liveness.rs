@@ -323,6 +323,8 @@ pub fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::place::LocalId>) {
                 operand_reads(op, out);
             }
         }
+        // Stage 33.1: SizeOf — no operands to read.
+        Rvalue::SizeOf(_) => {}
     }
 }
 

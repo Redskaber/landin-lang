@@ -70,7 +70,7 @@ impl TypeChecker {
                 // Range ops — return the first operand's type (best effort).
                 self.infer_operand_type_only(mir, a)
             }
-            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } | Rvalue::SizeOf(_) => {
                 // Stage 18.226: MIR intrinsic ops — return Infer for now
 
                 Ty::from_kind(TyKind::Error)
@@ -664,7 +664,7 @@ impl TypeChecker {
                 ));
                 Ty::from_kind(TyKind::Error)
             }
-            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } | Rvalue::SizeOf(_) => {
                 // Stage 18.226: MIR intrinsic ops — return Infer for now
 
                 Ty::from_kind(TyKind::Error)

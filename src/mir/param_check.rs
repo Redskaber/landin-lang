@@ -218,6 +218,15 @@ fn check_rvalue(rv: &Rvalue, span: Span, fn_name: &str, errors: &mut Vec<TypeErr
                 ));
             }
         }
+        // Stage 33.1: SizeOf carries a type — check if it's unresolved.
+        Rvalue::SizeOf(ty) => {
+            if let Some(k) = unresolved_kind(ty) {
+                errors.push(TypeError::new(
+                    format!("SizeOf type `{}` in `{}` is unresolved", k, fn_name),
+                    span,
+                ));
+            }
+        }
     }
 }
 

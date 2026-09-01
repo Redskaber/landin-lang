@@ -221,6 +221,8 @@ fn collect_rvalue_locals(rvalue: &Rvalue, used: &mut HashSet<crate::mir::place::
                 collect_operand_locals(idx_op, used);
             }
         }
+        // Stage 33.1: SizeOf — no operands to collect (just a type size query).
+        Rvalue::SizeOf(_) => {}
     }
 }
 

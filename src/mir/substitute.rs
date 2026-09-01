@@ -304,6 +304,10 @@ fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]
             }
             *result_ty = crate::mir::substitute(result_ty, substs);
         }
+        // Stage 33.1: Substitute SizeOf's type parameter.
+        Rvalue::SizeOf(ty) => {
+            *ty = crate::mir::substitute(ty, substs);
+        }
 
         Rvalue::UnaryOp(_, op) => {
             substitute_operand_type(op, substs);

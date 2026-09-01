@@ -699,6 +699,19 @@ pub(crate) fn codegen_rvalue(
                 crate::session::Span::DUMMY,
             ));
         }
+        // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): SizeOf — evaluate type
+        // size at codegen time (AFTER monomorphization has substituted
+        // Param(0) → concrete type like i64, i8, Point struct).
+        // Per §1.0 原則 6 (通解 > 特解): one SizeOf for all types.
+        // Per §12 (最优 > 最小): root-cause fix — defer to codegen.
+        Rvalue::SizeOf(ty) => {
+            // Stage 33.1: Evaluate type size at codegen time (after monomorphization).
+            let size = crate::mir::lower::compute_type_size_with_fallback(ty, None, 8);
+            // Return as i64 (matches usize = i64 on 64-bit target).
+            // Was: returned as string without type prefix → codegen treated as i32.
+            // Per §1.0 原則 3 (显式 > 隐式): explicit i64 type.
+            emitter.emit_const_typed(size, &EmitType::I64)
+        }
         // Stage 18.227 (v0.2.5c): MIR intrinsic Load — load value from raw
         // pointer. Used by v0.2.5d-g migration to replace compound C helpers
         // (e.g. `__landin_vec_get` element load).
