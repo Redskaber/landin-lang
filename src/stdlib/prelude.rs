@@ -269,10 +269,31 @@ impl String {
 // Per §1.0 原則 4 (报错 > 静默): TD item documents the limitation.
 // Per §12 (最优 > 最小): root-cause fix requires v0.5+ architectural change.
 struct Vec<T> { ptr: *mut T, len: usize, cap: usize }
-// Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec methods via prelude impl.
+// Stage 33.1: Vec::push/get migrated to prelude impl (TD-VEC-PUSH-GET-MIGRATION).
 impl<T> Vec<T> {
     fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0usize, cap: 0usize } }
     fn len(&self) -> usize { self.len }
+    fn push(&mut self, value: T) {
+        if self.len >= self.cap {
+            let new_cap: usize = if self.cap == 0usize { 4usize } else { self.cap + self.cap };
+            let elem_size: usize = sizeof T;
+            let new_bytes: usize = new_cap * elem_size;
+            let old_bytes: usize = self.cap * elem_size;
+            let new_ptr_u8: *mut u8 = __landin_realloc(self.ptr as *mut u8, old_bytes as i64, new_bytes as i64);
+            self.ptr = new_ptr_u8 as *mut T;
+            self.cap = new_cap;
+        }
+        let elem_ptr: *mut T = self.ptr + self.len;
+        *elem_ptr = value;
+        self.len = self.len + 1usize;
+    }
+    fn get(&self, idx: usize) -> T {
+        if idx >= self.len {
+            __landin_panic_bounds_check(idx as i64, self.len as i64);
+        }
+        let elem_ptr: *mut T = self.ptr + idx;
+        *elem_ptr
+    }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //

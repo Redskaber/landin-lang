@@ -791,7 +791,7 @@ pub fn writeback_fndef_substs(
                 // Skip if the function is not generic.
                 let generic_params = match generics_map.get(&def_id) {
                     Some(params) if !params.is_empty() => params,
-                    _ => continue, // Non-generic function
+                    _ => continue,
                 };
 
                 // Look up the function's sig.
@@ -935,8 +935,17 @@ pub fn writeback_fndef_substs(
 /// Per §12 (最优 > 最小): unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION.
 fn collect_param_bindings(param_ty: &Ty, concrete_ty: &Ty, bindings: &mut HashMap<u32, Ty>) {
     // Base case: param_ty is Param(N) → record binding.
+    // Stage 33.1: Only bind if concrete_ty is NOT itself Param/Infer/Error
+    // (those are unresolved types, not useful for inference).
+    // Was: always bound, even when concrete_ty was Param(0) — this overwrote
+    // correct bindings from arg types with Param(0) from dest local.
     if let TyKind::Param(param) = &param_ty.kind {
-        bindings.insert(param.index, concrete_ty.clone());
+        if !matches!(
+            &concrete_ty.kind,
+            TyKind::Param(_) | TyKind::Infer(_) | TyKind::Error
+        ) {
+            bindings.insert(param.index, concrete_ty.clone());
+        }
         return;
     }
 

@@ -27,14 +27,11 @@ mod expr_operand;
 mod expr_variants;
 mod field_resolution;
 // Stage 18.273 §13.4 J1-J6: extract intrinsic lowering from expr_variants.rs
-// Stage 18.305 §13.4 J1-J6: split intrinsic_lower.rs into 4 sub-modules
-// per type (string/box/vec/format). Per §13.4 J2 (单一职责).
-// Stage 33.1: vec_intrinsics kept — Vec::push/get migration BLOCKED on
-// Vec::get T inference (writeback reads Param(0) instead of Int(I32)).
+// Stage 18.305 §13.4 J1-J6: split intrinsic_lower.rs into sub-modules.
+// Stage 33.1: vec_intrinsics removed — Vec::push/get now in prelude impl.
 mod box_intrinsics;
 mod format_intrinsics;
 mod string_intrinsics;
-mod vec_intrinsics;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
 // Stage 18.309 §13.4 J1-J6: extract `lower_method_call_expr` from
