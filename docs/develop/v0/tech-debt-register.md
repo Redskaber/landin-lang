@@ -1043,7 +1043,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | String::push_str → prelude impl | .ptr/.len/.cap + extern C realloc/memcpy + while loop | ✅ Match |
 | Box::new → prelude impl | sizeof(T) + alloc + Deref store + tuple struct construct | ✅ Match |
 | Vec::push/get → prelude impl | BLOCKED on v0.5+ method monomorphization (TD-VEC-PUSH-GET-MIGRATION) — Stage 32.3 unblocked type resolution but codegen doesn't substitute Param(N) in generic fn bodies | v0.5+ (method monomorphization architectural change) |
-| format! → prelude impl | BLOCKED on format args language feature (v0.20+) | B4 (architectural limitation) |
+| format! → prelude impl | BLOCKED on v0.5+ method monomorphization (TD-FORMAT-MIGRATION) — same root cause as Vec::push/get; format_variadic_intrinsic (598 LOC) needs Param(N) substitution for prelude impl migration. Note: format! FEATURE itself works (Stage 18.186+18.202) — only the intrinsic→prelude migration is blocked. | v0.5+ (method monomorphization architectural change) |
 
 #### B2: New TD Items Created During v0.19
 
@@ -1053,7 +1053,8 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | TD-CONST-INT-UINT-U128 | P3 | ConstVal::Int/Uint both u128 (acceptable for MVP) | Documented |
 | TD-ISIZE-USIZE-HARDCODED | P3 | isize/usize hardcoded 8 bytes (64-bit only MVP) | Documented |
 | TD-PRELUDE-MONO-ORDER | P2 | prelude impl<T> body lowered with T=Param before monomorphization | ✅ Resolved Stage 32.3 — 4-point monomorphization fix (find_generics_for_fn_owner + resolve_self_param_type_for_sig + resolve_self_param_type + resolve_trait_method on Param(N) via trait bounds) |
-| TD-FORMAT-ARGS | P2 | format! variadic args type handling not implemented | BLOCKED (v0.20+) |
+| TD-FORMAT-ARGS | P2 | format! variadic args type handling not implemented | ✅ Resolved Stage 32.5 — DUPLICATE of TD-NO-FORMAT-MACRO (✅ Stage 18.186+18.202) + TD-FORMAT-VARIADIC (✅ Stage 18.202). The actual variadic args work was completed at Stage 18.202; TD-FORMAT-ARGS was a stale carry-forward. Replaced by TD-FORMAT-MIGRATION (P2, v0.5+ BLOCKED) which properly tracks the prelude impl migration blocker. |
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl blocked on method monomorphization — same root cause as TD-VEC-PUSH-GET-MIGRATION | BLOCKED (v0.5+ — needs per-instantiation fn body codegen with Param(N) substitution) |
 | TD-VEC-PUSH-GET-MIGRATION | P2 | Vec::push/get migration to prelude impl blocked on method monomorphization — codegen doesn't substitute Param(N) in generic fn bodies | BLOCKED (v0.5+ — needs per-instantiation fn body codegen) |
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | Documented (Stage 32.3) — v0.5+ architectural fix |
 | TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | Documented (Stage 32.3) — pre-existing limitation |

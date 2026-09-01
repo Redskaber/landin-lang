@@ -37476,3 +37476,95 @@ Note: Stage 32.3's work (TD-PRELUDE-MONO-ORDER RESOLVED) is preserved —
 the 4-point monomorphization fix is correct and necessary for v0.5+
 method monomorphization. Stage 32.4 just exposed that type resolution
 alone is not sufficient; codegen also needs Param(N) substitution.
+
+---
+Task ID: stage32.5
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REC-A
+Task: Stage 32.5 (v0.20) — TD-FORMAT-ARGS resolution (duplicate TD cleanup).
+v0.570.0. Audit-only stage, 0 LOC code changes.
+
+3秒启动自检:
+- 定位: L2 (documentation cleanup — TD duplicate resolution, no code changes)
+- 对齐: 已查 docs/lang-design/02-grammar.md §4.4 (format! listed as supported
+  builtin macro) + tech-debt-register.md TD-NO-FORMAT-MACRO + TD-FORMAT-VARIADIC
+  (both ✅ Resolved Stage 18.186/18.202)
+- 阻断: v0.569.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. TD-FORMAT-ARGS analysis: stale/duplicate TD
+   - 引用 §8.4.5 (文档同步规则): TD-FORMAT-ARGS description was factually wrong
+   - TD-FORMAT-ARGS said "format! variadic args type handling not implemented"
+   - But TD-NO-FORMAT-MACRO ✅ Resolved Stage 18.186+18.202 (format! macro MVP)
+   - And TD-FORMAT-VARIADIC ✅ Resolved Stage 18.202 (variadic args via intrinsic)
+   - Conclusion: TD-FORMAT-ARGS was a stale carry-forward from v0.19 Stage 31.8
+     audit, which didn't realize the work was already done
+
+2. ARCH-A decision: honest TD bookkeeping vs forcing migration
+   - 引用 §1.0 原則 4 (报错 > 静默): TD-FORMAT-ARGS stale description was a
+     silent inaccuracy — fixing it makes the TD register honest
+   - 引用 §1.0 原则 9 (正确 > 妥协): don't pretend the migration is doable in
+     v0.20 when it's blocked on v0.5+ method monomorphization (same root cause
+     as TD-VEC-PUSH-GET-MIGRATION, Stage 32.4)
+   - 引用 §12 (最优 > 最小): the OPTIMAL solution is honest TD bookkeeping,
+     not forcing a migration that's blocked on v0.5+ architecture
+   - Decision: Mark TD-FORMAT-ARGS as ✅ Resolved (duplicate), add new
+     TD-FORMAT-MIGRATION (P2, v0.5+ BLOCKED) to properly track the actual
+     remaining migration work
+
+3. Why was Stage 32.4 (Vec::push/get) attempted but Stage 32.5 (format!) not?
+   - Vec::push/get migration was ATTEMPTED because the language features
+     (pointer arithmetic, *ptr=val, extern C) all exist — the BLOCKED issue
+     (method monomorphization) was discovered during testing
+   - format! migration would face the SAME method monomorphization blocker
+     (format_variadic_intrinsic is generic-aware via i64 cast, but prelude
+     impl would need Param(N) substitution in codegen)
+   - Per §20 (iterative audit): "发现一个 bug 必须顺着同类路径深挖到底"
+   - Stage 32.4 already exposed the v0.5+ blocker; Stage 32.5 doesn't need
+     to repeat the experiment — it can directly document the same blocker
+
+裁剪点:
+- L2 — documentation cleanup only, no code changes
+- 跳过 implementing format! migration — BLOCKED on v0.5+ method monomorphization
+  (same root cause as Stage 32.4)
+- 安全理由: §1.0 原则 9 (正确 > 妥协) — don't pretend v0.20 can do v0.5+ work
+
+5W2H:
+- WHAT: Resolve TD-FORMAT-ARGS (stale duplicate TD)
+- WHY: TD register accuracy; the actual work was done at Stage 18.202
+- WHO: PM-A + ARCH-A (TD audit + cleanup)
+- WHEN: Stage 32.5, after Stage 32.4 documented Vec::push/get blocker
+- WHERE: docs/develop/v0/tech-debt-register.md + design doc + worklog
+- HOW: (1) Investigate format_intrinsics.rs + format! test cases (2) Compare
+  TD-FORMAT-ARGS description vs actual Stage 18.202 work (3) Determine it's a
+  stale duplicate (4) Mark RESOLVED + add TD-FORMAT-MIGRATION for actual
+  v0.5+ blocker (5) Write design doc + worklog
+- HOW MUCH: 0 LOC code changes; ~50 LOC documentation updates; 5095 tests
+  (unchanged), 0 failures
+
+§14.5 D1-D8 Stage 32.5 Verification (audit-only):
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): TD-FORMAT-ARGS RESOLVED ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): honest TD cleanup, not surface work ✅
+
+Stage Summary:
+- v0.20 Stage 32.5: TD-FORMAT-ARGS RESOLVED ✅ (duplicate TD cleanup)
+- TD-FORMAT-ARGS was a stale carry-forward — actual work done at Stage 18.202
+- New TD-FORMAT-MIGRATION (P2, v0.5+ BLOCKED) properly tracks the real
+  migration blocker (same root cause as TD-VEC-PUSH-GET-MIGRATION)
+- 0 LOC code changes; 5095 tests (unchanged); 0 failures
+- Architecture health: 9.85/10 (stable)
+- v0.20 TD audit complete: all v0.20-scoped TDs either RESOLVED or properly
+  reclassified as v0.5+ BLOCKED
+
+下一步:
+- v0.20 is COMPLETE: all v0.20-scoped TDs resolved
+- v0.5+ architectural work (method monomorphization) is the next major milestone:
+  unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION + TD-SELF-OUTSIDE-IMPL-CONTEXT
+  + TD-TYPECK-PARAM-RETURN-MISMATCH + TD-TYPECK-PARAM-ARG-COUNT (5 TDs)
+- v0.20 → v0.21 stage transition recommended (focus: v0.5+ architectural planning)
