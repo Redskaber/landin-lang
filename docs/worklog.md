@@ -37568,3 +37568,122 @@ Stage Summary:
   unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION + TD-SELF-OUTSIDE-IMPL-CONTEXT
   + TD-TYPECK-PARAM-RETURN-MISMATCH + TD-TYPECK-PARAM-ARG-COUNT (5 TDs)
 - v0.20 → v0.21 stage transition recommended (focus: v0.5+ architectural planning)
+
+---
+Task ID: stage33.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 33.1 (v0.21) — Recursive collect_param_bindings + type_name_by_def_id
+threading + substitute Load/GEP/Store. Vec::push/get migration BLOCKED on
+TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION. v0.571.0.
+
+3秒启动自检:
+- 定位: L3 (cross-module: writeback.rs + codegen/function.rs + codegen/terminator.rs +
+  codegen/pipeline.rs + substitute.rs + prelude.rs + method_call_lower.rs + tests)
+- 对齐: 已查 Stage 32.4 worklog (Vec::push/get BLOCKED on method monomorphization)
+  + tech-debt-register.md TD-VEC-PUSH-GET-MIGRATION + existing codegen_mono_functions
+  infrastructure
+- 阻断: v0.570.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Initial hypothesis: "method monomorphization not implemented" (from Stage 32.4)
+   - 引用 §18 (依赖审查): investigated codegen_mono_functions + substitute_mir_body
+   - Finding: infrastructure ALREADY EXISTS (Stage 18.103 TD-MONO-CODEGEN) —
+     collect_mono_items + substitute_mir_body + codegen_mono_functions all work
+   - The actual blocker was: collect_param_bindings is NON-RECURSIVE (only matches
+     top-level Param(N), not nested Adt(Vec, [Param(N)]))
+   - 引用 §2.2 (根因思维): root cause was shallower than Stage 32.4 thought
+
+2. Fix 1: Recursive collect_param_bindings (writeback.rs)
+   - 引用 §1.0 原则 6 (通解 > 特解): one recursive function for all nested types
+   - Now handles Adt vs Adt, Tuple vs Tuple, Ref vs Ref, RawPtr vs RawPtr,
+     Slice vs Slice, Array vs Array, FnDef vs FnDef, FnPtr vs FnPtr
+   - Unblocks Vec::new() T inference (was: only matched top-level Param)
+
+3. Fix 2: type_name_by_def_id threading through codegen
+   - Was: call site used empty type_names HashMap → mangle fell back to Adt_N
+   - 引用 §1.0 原则 4 (报错 > 静默): name mismatch caused linker errors
+   - Now: type_name_by_def_id threaded: pipeline → codegen_from_mir → codegen_function
+     → codegen_terminator → mono_item_name. Also threaded through codegen_mono_functions
+     + codegen_synthesized_closure_functions.
+
+4. Fix 3: Call-site prefix strip in codegen_terminator
+   - Was: call site used `landin_Vec_new_MyType` but definition used `Vec_new_MyType`
+   - 引用 §1.0 原则 3 (显式 > 隐式): both must use SAME base name
+   - Now: call site strips `landin_` prefix to match build_mono_item_names
+
+5. Fix 4: substitute_rvalue_types for Load + GetElementPtr
+   - Was: skipped (comment said "not yet codegen-enabled" from Stage 18.226)
+   - 引用 §1.0 原则 4 (报错 > 静默): Param leak in Vec::push body's GEP result_ty
+   - Now: Load's pointee_ty + GEP's result_ty are substituted
+
+6. Fix 5: substitute_mir_body for StatementKind::Store
+   - Was: Store's val_ty not substituted → Param leak in `*elem_ptr = value`
+   - Now: Store's val_ty is substituted
+
+7. Vec::push/get migration attempted + BLOCKED
+   - After all fixes, Vec::new() mono works (Vec_new_Point emitted)
+   - But Vec::push still calls landin_Vec_push (generic, not specialized)
+   - Root cause discovered: `value: T` in push's sig resolves to Error (not Param(0))
+   - The resolver (resolve_impl_item_paths → resolve_fn_sig_paths) doesn't enter
+     the impl block's generic scope when resolving the fn's param types
+   - This is TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION (P2, v0.5+)
+   - 引用 §1.6 (ARCH-A 一票否决): don't hack the resolver in v0.21
+   - 引用 §1.0 原则 9 (正确 > 妥协): document the blocker, revert migration
+
+裁剪点:
+- L3 — full process applies
+- 跳过 fixing TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION — v0.5+ scope
+  (resolver architecture change for impl method generic scope)
+- 安全理由: partial migration causes runtime failures (Vec::push sig has
+  Error for value type → writeback can't infer T → calls generic body
+  with Param types → LLVM verification fails)
+
+5W2H:
+- WHAT: Recursive collect_param_bindings + type_name_by_def_id threading +
+  substitute Load/GEP/Store. Vec::push/get migration attempted, BLOCKED.
+- WHY: Progress toward TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION.
+- WHO: PM-A + ARCH-A + DEV-A
+- WHEN: v0.21 Stage 33.1
+- WHERE: writeback.rs + codegen/function.rs + codegen/terminator.rs +
+  codegen/pipeline.rs + substitute.rs + prelude.rs + method_call_lower.rs +
+  tests/v0/stage18/plan/stage18_98_103_monomorphization_tests.rs
+- HOW: (1) Make collect_param_bindings recursive (2) Thread type_name_by_def_id
+  through codegen (3) Strip landin_ prefix at call site (4) Substitute
+  Load/GEP/Store types in substitute_mir_body (5) Attempt Vec::push/get
+  migration (6) Discover TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION (7) Revert
+  migration (8) Keep infrastructure fixes (9) Run tests
+- HOW MUCH: ~150 LOC infrastructure fixes (kept); ~50 LOC Vec::push/get
+  migration (reverted); 1 test updated (stage18_103 calls_use_specialized_names).
+  5095 tests (unchanged), 0 failures.
+
+§14.5 D1-D8 Stage 33.1 Verification:
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION documented ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): root-cause analysis, not surface work ✅
+
+Stage Summary:
+- v0.21 Stage 33.1: Infrastructure improvements for method monomorphization ✅
+  - Recursive collect_param_bindings (handles nested Vec<T>, Option<T>, etc.)
+  - type_name_by_def_id threaded through all codegen paths
+  - Call-site prefix strip (fixes name mismatch)
+  - substitute Load/GEP/Store types (fixes Param leak in bodies)
+- Vec::push/get migration: BLOCKED on TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION ✅
+  - Root cause: resolver doesn't enter impl generic scope for method sigs
+  - `value: T` in `fn push(&mut self, value: T)` resolves to Error, not Param(0)
+  - This prevents writeback_fndef_substs from inferring T at call sites
+  - All infrastructure fixes ARE correct and necessary — they just need the
+    resolver fix to fully unblock the migration
+- 5095 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- v0.5+: Fix TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION — make the resolver
+  enter the impl block's generic scope when resolving impl method signatures.
+  This unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION (the Stage
+  33.1 infrastructure is ready).

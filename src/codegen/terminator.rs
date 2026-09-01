@@ -26,6 +26,7 @@ pub(crate) fn codegen_terminator(
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     match &term.kind {
         TerminatorKind::Return => {
@@ -233,25 +234,45 @@ pub(crate) fn codegen_terminator(
                                     // The specialized functions are emitted by
                                     // codegen_mono_functions with names like
                                     // "landin_id_i32" (base + mangled substs).
+                                    //
+                                    // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION):
+                                    // Pass the REAL type_name_by_def_id (was:
+                                    // empty HashMap, causing Adt_N fallback for
+                                    // user-defined types like MyType/Point).
+                                    // This fixes the call-site ↔ definition
+                                    // name mismatch (call site used
+                                    // `landin_Vec_new_Adt_0` but definition
+                                    // was `Vec_new_MyType`).
+                                    //
+                                    // Per §1.0 原則 4 (报错 > 静默): name
+                                    // mismatch caused linker errors (undefined
+                                    // reference), now fixed.
+                                    // Per §1.0 原則 6 (通解 > 特解): one
+                                    // type_name_by_def_id map for all call sites.
                                     use crate::mir::monomorphize::mono_item_name;
                                     use crate::mir::MonoItem;
-                                    let base = fn_name_by_def_id
+                                    let base_with_prefix = fn_name_by_def_id
                                         .get(def_id)
                                         .cloned()
                                         .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
+                                    // Stage 33.1: Strip the `landin_` prefix to
+                                    // match `build_mono_item_names` (which also
+                                    // strips it). The call site and definition
+                                    // must use the SAME base name.
+                                    let base = base_with_prefix
+                                        .strip_prefix("landin_")
+                                        .unwrap_or(&base_with_prefix)
+                                        .to_string();
                                     let item = MonoItem::Fn {
                                         def_id: *def_id,
                                         substs: substs.clone(),
                                     };
-                                    // Build empty type_name_by_def_id (we don't have
-                                    // HIR access here; mono_item_name falls back to
-                                    // Adt_N for unknown types, which is acceptable
-                                    // for primitive substs like i32/bool).
-                                    let type_names: std::collections::HashMap<
-                                        crate::hir::DefId,
-                                        crate::lexer::Symbol,
-                                    > = std::collections::HashMap::new();
-                                    Some(mono_item_name(&item, &base, &type_names, interner))
+                                    Some(mono_item_name(
+                                        &item,
+                                        &base,
+                                        type_name_by_def_id,
+                                        interner,
+                                    ))
                                 }
                             }
                             // Stage 16.30: Closure-typed func local → resolve

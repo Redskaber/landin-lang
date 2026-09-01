@@ -239,12 +239,21 @@ pub fn substitute_mir_body(
 
     // S3: Substitute types in Operand::Constant inside statements + terminators.
     // Rvalue/Place types are NOT substituted (they derive from local_decls).
+    // Stage 33.1: Also substitute StatementKind::Store's val_ty (was: skipped,
+    // caused Param(0) leak in Vec::push's `*elem_ptr = value` Store).
     for bb in &mut new_mir.basic_blocks {
         // Statements
         for stmt in &mut bb.statements {
-            if let StatementKind::Assign(boxed) = &mut stmt.kind {
-                let (_place, rvalue) = &mut **boxed;
-                substitute_rvalue_types(rvalue, substs);
+            match &mut stmt.kind {
+                StatementKind::Assign(boxed) => {
+                    let (_place, rvalue) = &mut **boxed;
+                    substitute_rvalue_types(rvalue, substs);
+                }
+                StatementKind::Store { val, val_ty, .. } => {
+                    substitute_operand_type(val, substs);
+                    *val_ty = crate::mir::substitute(val_ty, substs);
+                }
+                _ => {}
             }
         }
         // Terminator (BasicBlock.terminator is always present, not Option)
@@ -256,6 +265,8 @@ pub fn substitute_mir_body(
 
 /// Helper: substitute types in an Rvalue's operands.
 /// S3: Only substitutes Operand::Constant types (not Place types).
+/// Stage 33.1: Now substitutes Load's pointee type + GetElementPtr's
+/// result_ty (were skipped — caused Param(0) leak in Vec::push/get bodies).
 fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]) {
     use crate::mir::place::Rvalue;
     match rvalue {
@@ -266,11 +277,32 @@ fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]
             substitute_operand_type(a, substs);
             substitute_operand_type(b, substs);
         }
-        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
-
-            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
-
-            // Will be implemented in Stage 18.226c (codegen support)
+        // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Substitute Load's pointee
+        // type. Was: skipped (comment said "not yet codegen-enabled"). But
+        // Vec::get's body has `Rvalue::Load(ptr, *Param(0))` — the Param(0)
+        // pointee type must be substituted to the concrete element type
+        // (e.g., Point) for codegen to emit `load { i32, i32 }, ptr %ptr`.
+        // Without this, codegen falls back to i32, producing wrong IR.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): Param leak produced invalid IR.
+        // Per §1.0 原則 6 (通解 > 特解): one substitution for all Load ops.
+        Rvalue::Load(op, pointee_ty) => {
+            substitute_operand_type(op, substs);
+            *pointee_ty = crate::mir::substitute(pointee_ty, substs);
+        }
+        // Stage 33.1: Substitute GetElementPtr's result_ty + base operand.
+        // Vec::push's body has `Rvalue::GetElementPtr { base, indices,
+        // result_ty: *mut Param(0) }` — the result_ty must be substituted.
+        Rvalue::GetElementPtr {
+            base,
+            indices,
+            result_ty,
+        } => {
+            substitute_operand_type(base, substs);
+            for idx in indices.iter_mut() {
+                substitute_operand_type(idx, substs);
+            }
+            *result_ty = crate::mir::substitute(result_ty, substs);
         }
 
         Rvalue::UnaryOp(_, op) => {

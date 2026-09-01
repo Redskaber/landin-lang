@@ -913,11 +913,83 @@ pub fn writeback_fndef_substs(
 
 /// Helper: collect Param → Ty bindings from matching two types.
 ///
-/// If `param_ty` is `Param(N)`, records `bindings[N] = concrete_ty`.
-/// S1 limitation: does NOT recurse into nested types (e.g., `Vec<T>`).
+/// Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Now RECURSIVE — handles nested
+/// generic types like `Vec<T>` vs `Vec<i32>`, `Option<T>` vs `Option<bool>`,
+/// `Result<T, E>` vs `Result<i32, String>`, etc.
+///
+/// Previously (S1 limitation): only matched top-level `Param(N)`, missing
+/// nested `Adt(def_id, [Param(N)])`. This caused `Vec::new()` (no args, dest
+/// is `Vec<i32>`) to fail T inference — `collect_param_bindings(Vec<T>, Vec<i32>)`
+/// saw `Vec<T>` as Adt (not Param), recorded no binding, so T stayed as Error.
+/// Result: `MonoItem::Fn { substs: [] }` → skipped by codegen_mono_functions
+/// → body's `Param(0)` never substituted → codegen falls back to i32.
+///
+/// The fix: when both types are the same variant (Adt vs Adt, Ref vs Ref,
+/// Tuple vs Tuple, etc.), recurse into their inner types. This is the
+/// general mechanism that handles ALL nested generic types — not just Vec.
+///
+/// Per §1.0 原则 6 (通解 > 特解): one recursive function for all nested types.
+/// Per §1.0 原则 9 (正确 > 妥协): root-cause fix, not per-type hack.
+/// Per §1.0 原则 10 (唯一可信数据源): dest_ty IS the source of truth for
+/// inference — we just read it correctly (recursively).
+/// Per §12 (最优 > 最小): unblocks TD-VEC-PUSH-GET-MIGRATION + TD-FORMAT-MIGRATION.
 fn collect_param_bindings(param_ty: &Ty, concrete_ty: &Ty, bindings: &mut HashMap<u32, Ty>) {
+    // Base case: param_ty is Param(N) → record binding.
     if let TyKind::Param(param) = &param_ty.kind {
         bindings.insert(param.index, concrete_ty.clone());
+        return;
+    }
+
+    // Stage 33.1: Recursive case — match structural variants.
+    match (&param_ty.kind, &concrete_ty.kind) {
+        // Adt vs Adt: match def_id, recurse into substs.
+        // e.g., Vec<T> vs Vec<i32> → recurse [Param(0)] vs [i32].
+        (TyKind::Adt(p_def, p_substs), TyKind::Adt(c_def, c_substs)) if p_def == c_def => {
+            for (p_ty, c_ty) in p_substs.iter().zip(c_substs.iter()) {
+                collect_param_bindings(p_ty, c_ty, bindings);
+            }
+        }
+        // Tuple vs Tuple: match length, recurse element-wise.
+        (TyKind::Tuple(p_tys), TyKind::Tuple(c_tys)) if p_tys.len() == c_tys.len() => {
+            for (p_ty, c_ty) in p_tys.iter().zip(c_tys.iter()) {
+                collect_param_bindings(p_ty, c_ty, bindings);
+            }
+        }
+        // Ref vs Ref: recurse into inner type.
+        (TyKind::Ref(_, _, p_inner), TyKind::Ref(_, _, c_inner)) => {
+            collect_param_bindings(p_inner, c_inner, bindings);
+        }
+        // RawPtr vs RawPtr: recurse into inner type.
+        (TyKind::RawPtr(_, p_inner), TyKind::RawPtr(_, c_inner)) => {
+            collect_param_bindings(p_inner, c_inner, bindings);
+        }
+        // Slice vs Slice: recurse into element.
+        (TyKind::Slice(p_elem), TyKind::Slice(c_elem)) => {
+            collect_param_bindings(p_elem, c_elem, bindings);
+        }
+        // Array vs Array: recurse into element (count should match).
+        (TyKind::Array(p_elem, _), TyKind::Array(c_elem, _)) => {
+            collect_param_bindings(p_elem, c_elem, bindings);
+        }
+        // FnDef vs FnDef: match def_id, recurse into substs.
+        (TyKind::FnDef(p_def, p_substs), TyKind::FnDef(c_def, c_substs)) if p_def == c_def => {
+            for (p_ty, c_ty) in p_substs.iter().zip(c_substs.iter()) {
+                collect_param_bindings(p_ty, c_ty, bindings);
+            }
+        }
+        // FnPtr vs FnPtr: recurse into Sig's inputs + output.
+        (TyKind::FnPtr(p_sig), TyKind::FnPtr(c_sig))
+            if p_sig.inputs.len() == c_sig.inputs.len() =>
+        {
+            for (p_ty, c_ty) in p_sig.inputs.iter().zip(c_sig.inputs.iter()) {
+                collect_param_bindings(p_ty, c_ty, bindings);
+            }
+            collect_param_bindings(&p_sig.output, &c_sig.output, bindings);
+        }
+        // Other cases (primitive vs primitive, mismatched variants): no binding.
+        // Per §1.0 原則 4 (报错 > 静默): typeck should catch real mismatches;
+        // here we just don't record a binding (T stays as Error if no match).
+        _ => {}
     }
 }
 

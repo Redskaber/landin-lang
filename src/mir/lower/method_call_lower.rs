@@ -23,8 +23,9 @@ use super::MirLowerCtxt;
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
 // Stage 31.6c: lower_string_push_str_intrinsic import removed — push_str now in prelude.
-// Stage 32.4: Vec::push/get intrinsics kept — migration BLOCKED on v0.5+
-// method monomorphization (TD-VEC-PUSH-GET-MIGRATION).
+// Stage 33.1: Vec::push/get intrinsics kept — migration BLOCKED on resolver
+// not resolving impl generic params in method signatures
+// (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION, v0.5+).
 use super::vec_intrinsics::{lower_vec_get_intrinsic, lower_vec_push_intrinsic};
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
 // (post-resolution). Per §13.4 J2 (单一职责).
@@ -564,36 +565,16 @@ pub(super) fn lower_method_call_expr(
             cont,
         );
     } else {
-        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): The str::len,
-        // str::is_empty, str::as_bytes early interception has been removed.
-        // These methods now resolve through the prelude `impl str { ... }`
-        // block and dispatch via `lookup_primitive_intrinsic` (called above
-        // after method_def_id resolution).
-        //
-        // Stage 18.342: String::as_str early interception has been moved
-        // BEFORE the method_def_id check (above). The old interception here
-        // is removed — it was only reached when method_def_id was None, but
-        // now that as_str is declared in prelude, method_def_id is always
-        // Some, so this code was unreachable (dead code).
-        //
         // Stage 31.7: String::push_str, String::from_str, and Box::new are
         // now handled by prelude impls (Stages 31.5-31.6f). Their dispatch
         // code has been removed above. Only Vec::push and Vec::get remain as
-        // intrinsics — BLOCKED on v0.5+ method monomorphization
-        // (TD-VEC-PUSH-GET-MIGRATION, see Stage 32.4 worklog).
+        // intrinsics — BLOCKED on resolver not resolving impl generic params
+        // in method signatures (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION, v0.5+).
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
 
-        // Stage 31.7: String::push_str dispatch removed (prelude impl, Stage 31.6c).
-        // Per §1.0 原則 5 (去除兼容思维): dead comments removed.
-        // Per §1.0 原則 6 (通解 > 特解): standard method resolution for migrated methods.
-
         // Stage 18.200: Vec::get(index) intrinsic.
-        // `v.get(i)` → call __landin_vec_get(&v, i, &out, elem_size).
-        // Returns the element at index i (panics on OOB).
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
-        // Stage 32.4: Migration to prelude impl BLOCKED on v0.5+ method
-        // monomorphization (TD-VEC-PUSH-GET-MIGRATION).
         if method_name_str == "get" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
@@ -613,10 +594,7 @@ pub(super) fn lower_method_call_expr(
         }
 
         // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
-        // `v.push(x)` → check if len == cap, realloc if needed, store x at [len], len++.
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
-        // Stage 32.4: Migration to prelude impl BLOCKED on v0.5+ method
-        // monomorphization (TD-VEC-PUSH-GET-MIGRATION).
         if method_name_str == "push" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
@@ -637,33 +615,12 @@ pub(super) fn lower_method_call_expr(
 
         // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
         // instead of silently producing an Error placeholder.
-        //
-        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Removed `Ref(_, _, _)`
-        // from this list. With prelude `impl str { ... }` and extended
-        // `resolve_inherent_method` (which auto-derefs Ref to find the inner
-        // type's impl), Ref receivers now resolve methods properly. Unknown
-        // methods on `&T` should be reported as errors, not silently ignored.
-        // Only `Error` (already-reported type error) and `Infer` (deferred
-        // to typeck post-defaulting) skip the error report.
         let is_known_unsupported = matches!(
             &recv_ty.kind,
             crate::mir::ty::TyKind::Error | crate::mir::ty::TyKind::Infer(_)
         );
-        // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): The str-specific
-        // "known str methods" whitelist has been removed. With the prelude
-        // `impl str { fn len/is_empty/as_bytes ... }` declarations, method
-        // resolution succeeds for known str methods (dispatched via
-        // `lookup_primitive_intrinsic` above) and fails for unknown methods
-        // (falls through to here). The generic "no method found" error
-        // below handles both cases uniformly.
-        //
-        // Per §1.0 原則 6 (通解>特解): one error path for all unknown methods.
-        // Per §17.6 (整体性修复): removes str-specific error reporting special case.
         if !is_known_unsupported {
             cx.type_errors.push(crate::typeck::TypeError::new(
-                // Stage 15.88: use human-readable type name
-                // (was: {:?} Debug format leaking Adt(DefId(N), [])).
-                // Stage 16.85: use cx.format_ty for resolver-backed names.
                 format!(
                     "no method `{}` found for type `{}`",
                     method_name_str,
@@ -672,13 +629,6 @@ pub(super) fn lower_method_call_expr(
                 expr.span,
             ));
         } else if matches!(&recv_ty.kind, crate::mir::ty::TyKind::Infer(_)) {
-            // Stage 18.234 (TD-METHOD-RESOLVE-STRICT fix): For Infer receiver
-            // types, defer method resolution to typeck. Record the call info
-            // so typeck can re-check after type defaulting (Phase 5.5).
-            //
-            // Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
-            // Per §1.0 原則 6 (通解>特例): one deferred path for all Infer receivers.
-            // Per §17.6 (同类型整体修复): tracks method resolution through typeck.
             cx.mir
                 .deferred_method_calls
                 .push(crate::mir::body::DeferredMethodCall {
@@ -687,8 +637,6 @@ pub(super) fn lower_method_call_expr(
                     span: expr.span,
                 });
         }
-        // Still emit the Error placeholder for codegen to not crash,
-        // but the error will abort compilation before codegen runs.
         cx.terminate_kind_and_goto(
             TerminatorKind::Call {
                 func: Operand::Constant(Const {

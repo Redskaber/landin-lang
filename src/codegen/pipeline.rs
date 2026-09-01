@@ -146,6 +146,9 @@ pub fn run_codegen_pipeline(
     };
 
     // 5. Main MIR function bodies
+    // Stage 33.1: Pass type_name_by_def_id so call sites can mangle
+    // user-defined types correctly (was: not passed, causing Adt_N
+    // fallback + linker errors for Vec<MyType> etc.).
     codegen_from_mir(
         &result.mirs,
         &result.body_metas,
@@ -154,6 +157,7 @@ pub fn run_codegen_pipeline(
         &result.interner,
         &mono_layouts,
         emitter,
+        &result.type_name_by_def_id,
     )?;
 
     // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each
@@ -183,6 +187,7 @@ pub fn run_codegen_pipeline(
         &result.interner,
         &mono_layouts,
         emitter,
+        &result.type_name_by_def_id,
     )?;
     Ok(())
 }

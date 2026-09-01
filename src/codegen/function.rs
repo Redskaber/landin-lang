@@ -109,6 +109,9 @@ pub fn codegen_mono_functions(
             // Emit the specialized function.
             // Per §1.0 原則 6 "通用 > 特例": reuse codegen_function (same path
             // as non-generic functions, just with substituted MIR + mangled name).
+            // Stage 33.1: Pass type_name_by_def_id so call sites can mangle
+            // user-defined types correctly (was: not passed, causing Adt_N
+            // fallback + linker errors).
             crate::codegen::function::codegen_function(
                 emitter,
                 &specialized_name,
@@ -121,6 +124,7 @@ pub fn codegen_mono_functions(
                 Some(mono_layouts),
                 matches!(sig.output.kind, crate::mir::ty::TyKind::Tuple(ref tys) if tys.is_empty()),
                 crate::ast::Abi::Landin,
+                type_name_by_def_id,
             )?;
         }
     }
@@ -129,6 +133,8 @@ pub fn codegen_mono_functions(
 
 /// (no HIR, no re-lowering, no re-typeck).
 /// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>`.
+/// Stage 33.1: Added type_name_by_def_id param for call-site mangle.
+#[allow(clippy::too_many_arguments)]
 pub fn codegen_from_mir(
     mirs: &[MirBody],
     body_metas: &[crate::driver::BodyMeta],
@@ -137,6 +143,7 @@ pub fn codegen_from_mir(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
         // Stage 18.348 (P2 soundness fix): Pre-codegen diagnostic —
@@ -177,6 +184,7 @@ pub fn codegen_from_mir(
             Some(mono_layouts),
             meta.is_void,
             meta.abi,
+            type_name_by_def_id,
         )?;
     }
     Ok(())
@@ -210,6 +218,7 @@ pub(crate) fn codegen_synthesized_closure_functions(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     for mir in synthesized_mirs {
         // Stage 16.17: Use the DefId stored on MirBody (set during
@@ -262,6 +271,7 @@ pub(crate) fn codegen_synthesized_closure_functions(
             Some(mono_layouts),
             meta.is_void,
             meta.abi,
+            type_name_by_def_id,
         )?;
     }
     Ok(())
@@ -285,6 +295,7 @@ pub(crate) fn codegen_function(
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     is_void: bool,
     abi: crate::ast::Abi,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     // The entry point `fn main()` is codegen'd as `landin_main` and is called
     // by the C wrapper which declares `extern int landin_main(void)`.
@@ -496,6 +507,7 @@ pub(crate) fn codegen_function(
             interner,
             layouts,
             mono_layouts,
+            type_name_by_def_id,
         )?;
     }
 

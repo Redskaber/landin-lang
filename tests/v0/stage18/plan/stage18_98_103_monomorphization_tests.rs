@@ -279,13 +279,17 @@ fn main() {
     let result = compile(src);
     assert!(!result.has_errors());
     let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
+    // Stage 33.1: Specialized function names use the STRIPPED base (no
+    // `landin_` prefix) to match `build_mono_item_names`. Was: expected
+    // `landin_id_i32` (with prefix) — but the definition is `id_i32`
+    // (stripped), so the call site must also strip to match.
     assert!(
-        ir.contains("call i32 @landin_id_i32("),
-        "expected call to landin_id_i32 in IR"
+        ir.contains("call i32 @id_i32("),
+        "expected call to id_i32 in IR"
     );
     assert!(
-        ir.contains("call i1 @landin_id_bool("),
-        "expected call to landin_id_bool in IR"
+        ir.contains("call i1 @id_bool("),
+        "expected call to id_bool in IR"
     );
 }
 

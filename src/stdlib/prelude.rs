@@ -272,6 +272,15 @@ struct Vec<T> { ptr: *mut T, len: usize, cap: usize }
 // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec methods via prelude impl.
 // Per §1.0 原則 6 (通解 > 特解): methods defined in prelude source, not
 // hardcoded MIR lower intrinsics. Standard method resolution handles these.
+//
+// Stage 33.1: Vec::push/get migration attempted but BLOCKED on a deeper
+// issue — the resolver doesn't resolve `value: T` (impl generic param) in
+// the fn signature of an impl method. The sig input becomes Error instead
+// of Param(0), preventing writeback_fndef_substs from inferring T at call
+// sites. This is TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION (P2, v0.5+).
+// The recursive collect_param_bindings + type_name_by_def_id threading
+// (Stage 33.1) ARE correct and necessary — they just need the resolver fix
+// to fully unblock the migration.
 impl<T> Vec<T> {
     fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0usize, cap: 0usize } }
     fn len(&self) -> usize { self.len }
