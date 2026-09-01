@@ -421,22 +421,30 @@ pub(crate) fn codegen_terminator(
                 Option<crate::hir::DefId>,
                 crate::mir::ty::SubstsRef,
             ) = if let Operand::Constant(c) = func {
-                // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect
-                // instead of `as u32`. See rationale at the other match site above.
-                match &c.val {
-                    ConstVal::Uint(n) => (
-                        Some(crate::hir::DefId(
-                            u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
-                        )),
-                        Vec::new().into(),
-                    ),
-                    ConstVal::Int(n) => (
-                        Some(crate::hir::DefId(
-                            u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
-                        )),
-                        Vec::new().into(),
-                    ),
-                    _ => (None, Vec::new().into()),
+                // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Check c.ty for
+                // FnDef(def_id, substs) FIRST — writeback_fndef_substs updates
+                // c.ty with inferred substs. Was: only read c.val for DefId
+                // and used empty substs — causing call return type to use
+                // generic sig.output (Param) instead of substituted output.
+                if let crate::mir::ty::TyKind::FnDef(did, substs) = &c.ty.kind {
+                    (Some(*did), substs.clone())
+                } else {
+                    // Fallback: read DefId from c.val (old behavior).
+                    match &c.val {
+                        ConstVal::Uint(n) => (
+                            Some(crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                            )),
+                            Vec::new().into(),
+                        ),
+                        ConstVal::Int(n) => (
+                            Some(crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                            )),
+                            Vec::new().into(),
+                        ),
+                        _ => (None, Vec::new().into()),
+                    }
                 }
             } else if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {

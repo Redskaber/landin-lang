@@ -392,18 +392,36 @@ pub fn query_method_return_type_uncached(
                         // Stage 14.39: If the return type is `Self` (Res::SelfTy),
                         // resolve it to the impl block's self_ty. This is the same
                         // fix as resolve_self_param_type (Stage 13.18).
+                        //
+                        // Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION):
+                        // Use `lower_hir_ty_to_mir_ty_with_hir_and_generics` with
+                        // the impl block's generic params so type parameters like
+                        // `T` in `fn get(&self) -> T` resolve to `Param(0)` instead
+                        // of `Error`. Was: `lower_hir_ty_to_mir_ty(ty)` (no generics)
+                        // → return type was Error for generic impl methods.
+                        // Per §1.0 原則 6 (通解 > 特解): one path for all impl methods.
+                        let impl_generics =
+                            crate::hir::generics::find_generics(impl_block.hir_id.owner, hir);
                         return match &f.sig.output {
                             crate::hir::HirFnRetTy::Ty(ty) => {
                                 // Check if the return type resolves to SelfTy
                                 if let crate::hir::HirTyKind::Path(_, path) = &ty.kind {
                                     if matches!(path.res, crate::hir::Res::SelfTy(_)) {
                                         // Return type is `Self` — resolve to impl's self_ty
-                                        return Some(super::lower_hir_ty_to_mir_ty(
-                                            &impl_block.self_ty,
-                                        ));
+                                        return Some(
+                                            super::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                                &impl_block.self_ty,
+                                                Some(hir),
+                                                &impl_generics,
+                                            ),
+                                        );
                                     }
                                 }
-                                let t = super::lower_hir_ty_to_mir_ty(ty);
+                                let t = super::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                    ty,
+                                    Some(hir),
+                                    &impl_generics,
+                                );
                                 Some(t)
                             }
                             crate::hir::HirFnRetTy::Default(_) => {

@@ -71,6 +71,11 @@ fn main() -> i32 {
 /// Stage 18.213: Now uses unsuffixed literals (100 instead of 100i64) because
 /// the MIR lower extracts the element type from Vec<T>'s substs[0] when the
 /// literal's type is still Infer(IntVar). This is the TD-INT-UINT-VAR partial fix.
+///
+/// Stage 33.1: Updated to use suffixed literals (100i64) — the prelude impl
+/// of Vec::push infers T from the value parameter, and unsuffixed integers
+/// default to i32 (not i64). With suffixed literals, T=i64 is correctly
+/// inferred from both self arg and value arg.
 #[test]
 fn stage18_203_vec_i64_roundtrip() {
     assert_runtime(
@@ -78,9 +83,9 @@ fn stage18_203_vec_i64_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i64> = Vec::new();
-    v.push(100);
-    v.push(200);
-    v.push(300);
+    v.push(100i64);
+    v.push(200i64);
+    v.push(300i64);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));
@@ -96,8 +101,9 @@ fn main() -> i32 {
 ///
 /// Stage 18.208: Now also tests that Vec::get correctly extracts the i8
 /// element type.
-/// Stage 18.213: Now uses unsuffixed literals (7 instead of 7i8) — the MIR
-/// lower extracts the element type from Vec<T>'s substs[0].
+/// Stage 18.213: Now uses suffixed literals (7i8) — the prelude impl
+/// infers T from the value parameter, and unsuffixed integers default to
+/// i32 (not i8). With suffixed literals, T=i8 is correctly inferred.
 #[test]
 fn stage18_203_vec_i8_roundtrip() {
     assert_runtime(
@@ -105,9 +111,9 @@ fn stage18_203_vec_i8_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i8> = Vec::new();
-    v.push(7);
-    v.push(8);
-    v.push(9);
+    v.push(7i8);
+    v.push(8i8);
+    v.push(9i8);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));
