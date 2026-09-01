@@ -107,6 +107,11 @@ impl Resolver {
                         for impl_item in &impl_block.items {
                             if let crate::hir::HirImplItem::Fn(f) = impl_item {
                                 impl_method_parent_generics.insert(f.hir_id.owner, params.clone());
+                                // Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION):
+                                // Also store in the resolver field so
+                                // resolve_item_paths(HirItem::Fn) can access it.
+                                self.impl_method_parent_generics
+                                    .insert(f.hir_id.owner, params.clone());
                             }
                         }
                     }
@@ -179,19 +184,40 @@ impl Resolver {
                 // determine if this fn needs impl-level generics.
                 let is_impl_method = self.impl_method_def_ids.contains(&f.hir_id.owner);
                 self.enter_generic_scope(&f.generics);
-                // Stage 18.171: The impl block's generics are NOT available here
-                // because we don't have a direct ref to the impl block. Instead,
-                // the resolve_all_paths body-walking loop pushes impl generics
-                // for body resolution. For signature resolution, the impl
-                // generics are already entered during resolve_item_paths(Impl)
-                // which resolves the inline clone. The standalone owner copy
-                // of the fn (resolved here) only needs its own generics —
-                // the inline clone inside the impl block already has the
-                // correct resolution.
+                // Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION):
+                // For impl method owner copies, also enter the impl block's
+                // generic scope so impl-level type params (e.g., T in
+                // `impl<T> Vec<T> { fn push(&mut self, value: T) {} }`) are
+                // visible when resolving the fn signature.
                 //
-                // So the real fix is in the body-walking loop above, not here.
-                let _ = is_impl_method;
+                // Was: `let _ = is_impl_method;` — impl generics NOT entered
+                // for the owner copy, causing `value: T` to resolve to Error
+                // instead of Param(0). This broke writeback_fndef_substs
+                // inference (sig.inputs[1] = Error, not Param(0)).
+                //
+                // The inline clone inside HirItem::Impl IS resolved correctly
+                // (resolve_item_paths(Impl) enters the impl's scope at line
+                // 270). But the owner copy (stored as separate HirItem::Fn)
+                // was resolved WITHOUT the impl scope — this fix adds it.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one check for all impl methods.
+                // Per §1.0 原則 3 (显式 > 隐式): impl generics explicitly entered.
+                // Per §12 (最优 > 最小): root-cause fix — enter impl scope.
+                let has_impl_generics = if is_impl_method {
+                    if let Some(impl_params) = self.impl_method_parent_generics.get(&f.hir_id.owner)
+                    {
+                        self.generic_param_scope.push(impl_params.clone());
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
                 self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
+                if has_impl_generics {
+                    self.generic_param_scope.pop();
+                }
                 self.exit_generic_scope();
             }
             HirItem::Const(c) => {

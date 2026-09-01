@@ -295,18 +295,51 @@ pub(crate) fn codegen_terminator(
                 // instead of `as u32`. Per §1.0 原則 1 (内存安全决不能妥协):
                 // silent truncation could mask corrupted ConstVal. Per §2 原则 3:
                 // expect documents the FnDef invariant.
-                match &c.val {
-                    ConstVal::Uint(n) => fn_name_by_def_id
-                        .get(&crate::hir::DefId(
-                            u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
-                        ))
-                        .cloned(),
-                    ConstVal::Int(n) => fn_name_by_def_id
-                        .get(&crate::hir::DefId(
-                            u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
-                        ))
-                        .cloned(),
-                    _ => None,
+                //
+                // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Check if the
+                // Constant's type is FnDef with non-empty substs (set by
+                // writeback_fndef_substs). If so, use the specialized name
+                // via mono_item_name. Was: only read c.val for DefId and
+                // used fn_name_by_def_id (ignoring substs entirely) →
+                // generic calls always used the base name.
+                if let crate::mir::ty::TyKind::FnDef(def_id, substs) = &c.ty.kind {
+                    if !substs.is_empty() {
+                        // Generic instantiation — use specialized name.
+                        use crate::mir::monomorphize::mono_item_name;
+                        use crate::mir::MonoItem;
+                        let base_with_prefix = fn_name_by_def_id
+                            .get(def_id)
+                            .cloned()
+                            .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
+                        // Strip landin_ prefix to match build_mono_item_names.
+                        let base = base_with_prefix
+                            .strip_prefix("landin_")
+                            .unwrap_or(&base_with_prefix)
+                            .to_string();
+                        let item = MonoItem::Fn {
+                            def_id: *def_id,
+                            substs: substs.clone(),
+                        };
+                        Some(mono_item_name(&item, &base, type_name_by_def_id, interner))
+                    } else {
+                        fn_name_by_def_id.get(def_id).cloned()
+                    }
+                } else {
+                    // Fallback: read DefId from c.val (old behavior for
+                    // non-FnDef constants).
+                    match &c.val {
+                        ConstVal::Uint(n) => fn_name_by_def_id
+                            .get(&crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                            ))
+                            .cloned(),
+                        ConstVal::Int(n) => fn_name_by_def_id
+                            .get(&crate::hir::DefId(
+                                u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                            ))
+                            .cloned(),
+                        _ => None,
+                    }
                 }
             } else {
                 None

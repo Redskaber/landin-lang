@@ -30,9 +30,7 @@ mod field_resolution;
 // Stage 18.305 §13.4 J1-J6: split intrinsic_lower.rs into 4 sub-modules
 // per type (string/box/vec/format). Per §13.4 J2 (单一职责).
 // Stage 33.1: vec_intrinsics kept — Vec::push/get migration BLOCKED on
-// TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION (resolver doesn't resolve impl
-// generic params in method signatures). The recursive collect_param_bindings
-// + type_name_by_def_id threading (Stage 33.1) ARE correct and necessary.
+// Vec::get T inference (writeback reads Param(0) instead of Int(I32)).
 mod box_intrinsics;
 mod format_intrinsics;
 mod string_intrinsics;

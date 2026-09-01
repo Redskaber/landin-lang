@@ -88,6 +88,19 @@ pub struct Resolver {
     /// Impl methods are accessed via `Type::method` paths (impl_method_index),
     /// NOT as free functions.
     pub(super) impl_method_def_ids: std::collections::HashSet<DefId>,
+    /// Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION): Map from impl
+    /// method fn DefId → impl block's generic type params.
+    ///
+    /// Built by `resolve_all_paths` before owner traversal. Used by
+    /// `resolve_item_paths(HirItem::Fn)` to enter the impl's generic scope
+    /// when resolving the fn owner copy's signature (was: only fn's own
+    /// generics were entered, causing `value: T` in impl methods to resolve
+    /// to Error instead of Param(0)).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one map for all impl methods.
+    /// Per §1.0 原則 3 (显式 > 隐式): impl generics are explicitly tracked.
+    pub(super) impl_method_parent_generics:
+        std::collections::HashMap<DefId, Vec<(crate::lexer::Symbol, usize)>>,
     /// Stage 18.54: Stack of generic type parameter scopes.
     ///
     /// Each entry is a list of `(name, index)` pairs for the current owner's
@@ -136,6 +149,7 @@ impl Resolver {
             current_module: None,
             impl_method_index: HashMap::new(),
             impl_method_def_ids: std::collections::HashSet::new(),
+            impl_method_parent_generics: std::collections::HashMap::new(),
             generic_param_scope: Vec::new(),
             trait_assoc_types: HashMap::new(),
             variant_index: HashMap::new(),

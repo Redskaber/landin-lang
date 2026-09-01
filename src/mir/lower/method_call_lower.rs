@@ -22,10 +22,9 @@ use super::method_resolution::{
 use super::MirLowerCtxt;
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
-// Stage 31.6c: lower_string_push_str_intrinsic import removed — push_str now in prelude.
-// Stage 33.1: Vec::push/get intrinsics kept — migration BLOCKED on resolver
-// not resolving impl generic params in method signatures
-// (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION, v0.5+).
+// Stage 33.1: Vec::push/get intrinsics kept — migration BLOCKED on Vec::get
+// T inference (writeback reads Param(0) instead of Int(I32) for self arg).
+// TD-VEC-PUSH-GET-MIGRATION still BLOCKED (needs deeper writeback investigation).
 use super::vec_intrinsics::{lower_vec_get_intrinsic, lower_vec_push_intrinsic};
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
 // (post-resolution). Per §13.4 J2 (单一职责).
@@ -465,7 +464,27 @@ pub(super) fn lower_method_call_expr(
                     }
                     _ => crate::mir::place::BorrowKind::Shared,
                 };
-                let ref_ty = cx.fresh_infer_ty(receiver.span);
+                // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Set ref_ty to the
+                // actual reference type (Ref(_, mutability, recv_ty)) instead
+                // of a fresh Infer. Was: fresh_infer_ty — caused writeback_
+                // fndef_substs to read Infer for the self arg type, preventing
+                // T inference for Vec::get(&self) -> T.
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): ref type is explicit.
+                // Per §1.0 原則 6 (通解 > 特解): one path for all &self methods.
+                let ref_ty = Ty::new(
+                    TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        match bk {
+                            crate::mir::place::BorrowKind::Mut => {
+                                crate::mir::ty::Mutability::Mutable
+                            }
+                            _ => crate::mir::ty::Mutability::Immutable,
+                        },
+                        Box::new(recv_ty.clone()),
+                    ),
+                    receiver.span,
+                );
                 let ref_local = cx.eval_rvalue_to_temp(
                     Rvalue::Ref(
                         crate::mir::ty::Region::Erased,
@@ -565,16 +584,10 @@ pub(super) fn lower_method_call_expr(
             cont,
         );
     } else {
-        // Stage 31.7: String::push_str, String::from_str, and Box::new are
-        // now handled by prelude impls (Stages 31.5-31.6f). Their dispatch
-        // code has been removed above. Only Vec::push and Vec::get remain as
-        // intrinsics — BLOCKED on resolver not resolving impl generic params
-        // in method signatures (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION, v0.5+).
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
 
         // Stage 18.200: Vec::get(index) intrinsic.
-        // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
         if method_name_str == "get" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
@@ -594,7 +607,6 @@ pub(super) fn lower_method_call_expr(
         }
 
         // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
-        // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
         if method_name_str == "push" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
@@ -613,8 +625,6 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
-        // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
-        // instead of silently producing an Error placeholder.
         let is_known_unsupported = matches!(
             &recv_ty.kind,
             crate::mir::ty::TyKind::Error | crate::mir::ty::TyKind::Infer(_)
