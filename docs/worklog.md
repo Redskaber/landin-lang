@@ -37374,3 +37374,105 @@ Stage Summary:
 - v0.20 Stage 32.4: Migrate Vec::push/get from intrinsic to prelude impl
   (now unblocked by Stage 32.3). Requires designing typed pointer stores.
 - v0.20 Stage 32.5: Tackle TD-FORMAT-ARGS (format! variadic args language feature).
+
+---
+Task ID: stage32.4
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 32.4 (v0.20) — Attempted Vec::push/get migration to prelude impl.
+BLOCKED on v0.5+ method monomorphization (TD-VEC-PUSH-GET-MIGRATION). Reverted.
+v0.569.0 (unchanged from Stage 32.3).
+
+3秒启动自检:
+- 定位: L3 (cross-module: stdlib/prelude.rs + mir/lower/method_call_lower.rs
+  + mir/lower/vec_intrinsics.rs)
+- 对齐: 已查 Stage 32.3 worklog (TD-PRELUDE-MONO-ORDER RESOLVED) + 设计文档
+  stage-32.4-vec-push-get-migration-design.md + Rust vec! design 参考
+- 阻断: v0.569.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Initial decision: implement migration
+   - 引用 §12 (最优 > 最小): 通解（prelude impl）替代特解（intrinsic dispatch）
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution for all Vec methods
+   - All needed language features exist (verified):
+     - Pointer arithmetic `ptr + idx` → GEP (Stage 18.236)
+     - Store through Deref `*ptr = val` (Stage 14.27)
+     - Load from Deref `x = *ptr` (Stage 15.75)
+     - extern "C" calls (Stage 31.6b)
+     - Generic impl method body lowering (Stage 32.3)
+     - sizeof TYPE (Stage 31.6e)
+   - Initial implementation: wrote prelude impl bodies, deleted vec_intrinsics.rs
+
+2. ARCH-A 一票否决权 (§1.6): migration BLOCKED
+   - 引用 §2.2 (根因思维): Test failures revealed deeper issue
+   - 引用 §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N)
+   - Root cause discovered (warning analysis):
+     a. Vec::push body contains `let elem_ptr: *mut T = self.ptr + self.len`
+     b. The `*mut T` type is `Param(0)` (lowered from prelude source)
+     c. Codegen's `mir_type_to_emit_type(*mut Param(0))` falls back to i32
+        (because Param(N) is unresolved at codegen time)
+     d. GEP uses i32 as element type, but actual data is Point struct
+     e. LLVM module verification fails: "Invalid indices for GEP pointer type"
+   - This is NOT a v0.20 fixable issue — it requires v0.5+ method
+     monomorphization: for each call-site `Vec<Point>::push`, generate a
+     specialized fn body with `Param(0)` substituted to `Point`.
+   - Currently Landin's monomorphization only collects MonoItems for layout
+     building (mir/monomorphize/layout.rs), not for function body codegen.
+   - Decision: revert migration, document as TD-VEC-PUSH-GET-MIGRATION (P2,
+     v0.5+ BLOCKED)
+
+3. Why didn't String::push_str / Box::new migration fail?
+   - String::push_str uses *mut u8 (concrete type, not Param)
+   - Box::new uses sizeof T (compile-time const, not runtime Param)
+   - Neither requires codegen to substitute Param(N) in fn body
+   - Vec::push is the FIRST prelude impl that needs Param(N) substitution
+     in codegen — which exposed the architectural gap
+
+裁剪点:
+- L3 — full process applies
+- 跳过 implementing v0.5+ method monomorphization — out of v0.20 scope
+- 安全理由: §6.2 升级判据 — partial migration causes runtime crashes
+  (LLVM module verification fails for Vec<Point>), reverted to v0.569.0 baseline
+
+5W2H:
+- WHAT: Attempted Vec::push/get migration to prelude impl
+- WHY: Unblocks TD-INTRINSIC-OVERUSE Phase 2-D (last 2/7 intrinsics)
+- WHO: PM-A + ARCH-A (vetoed by deeper codegen issue)
+- WHEN: v0.20 Stage 32.4
+- WHERE: src/stdlib/prelude.rs + src/mir/lower/method_call_lower.rs +
+  src/mir/lower/vec_intrinsics.rs
+- HOW: (1) Wrote prelude impl bodies (2) Removed intrinsic dispatch (3) Deleted
+  vec_intrinsics.rs (4) Test → 5 failures (Vec<Point> codegen breaks) (5) ARCH-A
+  vetoed (6) Reverted to v0.569.0 baseline (7) Documented TD-VEC-PUSH-GET-MIGRATION
+- HOW MUCH: 0 LOC net (reverted); 5095 tests (unchanged), 0 failures
+
+§14.5 D1-D8 Stage 32.4 Verification (post-revert):
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib): 898/898 ✅
+- D5 (integration): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): all resolved ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): "正确 > 妥协" — reverted, not hacked ✅
+
+Stage Summary:
+- v0.20 Stage 32.4: Vec::push/get migration BLOCKED ✅ (documented)
+- Root cause: codegen doesn't substitute Param(N) in generic fn bodies —
+  requires v0.5+ method monomorphization (per-instantiation fn body codegen)
+- Per §1.6: ARCH-A vetoed partial migration (would cause runtime LLVM failures)
+- Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N) —
+  wait for proper v0.5+ architectural change
+- Per §6.2 升级判据: NOT UPGRADED — no soundness risk (intrinsics work correctly)
+- Reverted to v0.569.0 baseline (5095 tests, 0 failures)
+- TD-VEC-PUSH-GET-MIGRATION: BLOCKED, with clear root cause + fix direction
+
+下一步:
+- v0.20 Stage 32.5: Tackle TD-FORMAT-ARGS (format! variadic args language feature)
+- v0.5+: Implement method monomorphization (per-instantiation fn body codegen with
+  Param(N) substitution) — unblocks TD-VEC-PUSH-GET-MIGRATION
+
+Note: Stage 32.3's work (TD-PRELUDE-MONO-ORDER RESOLVED) is preserved —
+the 4-point monomorphization fix is correct and necessary for v0.5+
+method monomorphization. Stage 32.4 just exposed that type resolution
+alone is not sufficient; codegen also needs Param(N) substitution.

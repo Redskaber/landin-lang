@@ -3,19 +3,19 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.569.0 (Stage 32.3 — TD-PRELUDE-MONO-ORDER RESOLVED via complete 4-point monomorphization fix) |
+| **Current version** | v0.569.0 (Stage 32.3 — TD-PRELUDE-MONO-ORDER RESOLVED; Stage 32.4 Vec::push/get migration BLOCKED on v0.5+ method monomorphization) |
 | **Date** | 2026-09-01 |
 | **Test count** | 898 lib tests + 4197 integration tests = 5095 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); Stage 32.3: complete 4-point monomorphization fix unblocks prelude impl<T> method bodies (Vec::push/get migration now feasible) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); Stage 32.3: complete 4-point monomorphization fix; Stage 32.4: Vec::push/get migration attempted but BLOCKED on v0.5+ method monomorphization (TD-VEC-PUSH-GET-MIGRATION) |
 
 ---
 
-## v0.569.0 — Stage 32.3 — Complete 4-Point Monomorphization Fix (TD-PRELUDE-MONO-ORDER RESOLVED)
+## v0.569.0 — Stage 32.3 + Stage 32.4 (BLOCKED)
 
-### Overview
+### Stage 32.3: Complete 4-Point Monomorphization Fix (TD-PRELUDE-MONO-ORDER RESOLVED)
 
 This release implements the complete 4-point monomorphization fix that resolves
 **TD-PRELUDE-MONO-ORDER** — the long-standing blocker preventing `impl<T> Vec<T>`
@@ -152,6 +152,59 @@ Now `impl<T> Vec<T>` self_ty resolves to `Adt(Vec, [Param(0)])` instead of
 - `docs/worklog.md` — Stage 32.3 entry.
 - `README.md` — version bump + status update.
 - `Cargo.toml` — version bump to v0.569.0.
+
+---
+
+### Stage 32.4: Vec::push/get Migration — BLOCKED on v0.5+ Method Monomorphization
+
+**Attempted**: Migrate `Vec::push` and `Vec::get` from MIR intrinsic dispatch
+(`lower_vec_push_intrinsic`, `lower_vec_get_intrinsic` in `vec_intrinsics.rs`)
+to prelude impl bodies in `src/stdlib/prelude.rs`.
+
+**Result**: ARCH-A vetoed. The migration was implemented, all needed language
+features were verified to exist (pointer arithmetic, store/load through Deref,
+extern "C" calls, generic impl body lowering from Stage 32.3, sizeof), and
+the build succeeded. However, test failures revealed a deeper architectural gap:
+
+- `Vec::push` body contains `let elem_ptr: *mut T = self.ptr + self.len`
+- The `*mut T` type is `Param(0)` (lowered from prelude source)
+- Codegen's `mir_type_to_emit_type(*mut Param(0))` falls back to `i32`
+- GEP uses i32 as element type, but actual data is Point struct
+- LLVM module verification fails: "Invalid indices for GEP pointer type"
+
+This requires **v0.5+ method monomorphization**: for each call-site
+`Vec<Point>::push`, generate a specialized fn body with `Param(0)` substituted
+to `Point`. Currently Landin's monomorphization only collects MonoItems for
+layout building (`mir/monomorphize/layout.rs`), not for function body codegen.
+
+Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N).
+Per §1.6: ARCH-A one-vote veto — partial migration causes LLVM module verification failure.
+Per §6.2 升级判据: NOT UPGRADED — intrinsics work correctly, no soundness risk.
+
+**Action**: Reverted to v0.569.0 baseline. Vec::push/get remain as MIR
+intrinsics. Documented as **TD-VEC-PUSH-GET-MIGRATION** (P2, BLOCKED on v0.5+
+method monomorphization architectural change).
+
+### New TD Items Documented (Stage 32.3 + 32.4)
+
+- **TD-VEC-PUSH-GET-MIGRATION** (P2, v0.5+): Vec::push/get migration to
+  prelude impl blocked on method monomorphization — codegen doesn't substitute
+  Param(N) in generic fn bodies.
+- **TD-SELF-OUTSIDE-IMPL-CONTEXT** (P3, v0.5+): `Self::Item` in free fn return
+  type silently resolves to Projection.
+- **TD-TYPECK-PARAM-RETURN-MISMATCH** (P3): typeck doesn't unify Param(N) body
+  with concrete return type for generic impl methods.
+- **TD-TYPECK-PARAM-ARG-COUNT** (P3): typeck doesn't validate arg count for
+  trait method calls on Param(N) receivers.
+
+### Files Changed (Stage 32.4 — minimal, just documentation)
+
+- `docs/develop/v0/stage-32/stage-32.4-vec-push-get-migration-design.md` — design doc.
+- `docs/worklog.md` — Stage 32.4 worklog entry.
+- `docs/develop/v0/tech-debt-register.md` — added TD-VEC-PUSH-GET-MIGRATION.
+- `src/stdlib/prelude.rs` — added `__landin_panic_bounds_check` extern declaration
+  (kept for future use, currently unused).
+- `README.md` + `RELEASE_NOTES.md` — status update.
 
 ---
 

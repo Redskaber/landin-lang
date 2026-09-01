@@ -23,6 +23,8 @@ use super::MirLowerCtxt;
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
 // Stage 31.6c: lower_string_push_str_intrinsic import removed — push_str now in prelude.
+// Stage 32.4: Vec::push/get intrinsics kept — migration BLOCKED on v0.5+
+// method monomorphization (TD-VEC-PUSH-GET-MIGRATION).
 use super::vec_intrinsics::{lower_vec_get_intrinsic, lower_vec_push_intrinsic};
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
 // (post-resolution). Per §13.4 J2 (单一职责).
@@ -577,7 +579,8 @@ pub(super) fn lower_method_call_expr(
         // Stage 31.7: String::push_str, String::from_str, and Box::new are
         // now handled by prelude impls (Stages 31.5-31.6f). Their dispatch
         // code has been removed above. Only Vec::push and Vec::get remain as
-        // intrinsics (BLOCKED on prelude monomorphization, v0.5+).
+        // intrinsics — BLOCKED on v0.5+ method monomorphization
+        // (TD-VEC-PUSH-GET-MIGRATION, see Stage 32.4 worklog).
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
 
@@ -589,6 +592,8 @@ pub(super) fn lower_method_call_expr(
         // `v.get(i)` → call __landin_vec_get(&v, i, &out, elem_size).
         // Returns the element at index i (panics on OOB).
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
+        // Stage 32.4: Migration to prelude impl BLOCKED on v0.5+ method
+        // monomorphization (TD-VEC-PUSH-GET-MIGRATION).
         if method_name_str == "get" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
@@ -610,6 +615,8 @@ pub(super) fn lower_method_call_expr(
         // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
         // `v.push(x)` → check if len == cap, realloc if needed, store x at [len], len++.
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
+        // Stage 32.4: Migration to prelude impl BLOCKED on v0.5+ method
+        // monomorphization (TD-VEC-PUSH-GET-MIGRATION).
         if method_name_str == "push" && args.len() == 1 {
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {

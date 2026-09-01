@@ -75,6 +75,20 @@ extern "C" {
     fn __landin_alloc(size: i64) -> *mut u8;
     fn __landin_memcpy(dst: *mut u8, src: *const u8, n: i64);
     fn __landin_realloc(ptr: *mut u8, old_size: i64, new_size: i64) -> *mut u8;
+    // Stage 32.4 (v0.20): Vec::get bounds check panic helper.
+    //
+    // NOTE: Vec::push/get migration is BLOCKED on v0.5+ method monomorphization
+    // (TD-VEC-PUSH-GET-MIGRATION). The prelude impl body needs to substitute
+    // `Param(N)` with the call-site type at codegen time — but Landin's
+    // current monomorphization only collects MonoItems for layout building,
+    // not for function body codegen.
+    //
+    // The declaration is kept for future use (Stage 32.5+ when method
+    // monomorphization is implemented). Currently unused.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): TD item documents the limitation.
+    // Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N).
+    fn __landin_panic_bounds_check(index: i64, len: i64);
 }
 enum Option<T> { None, Some(T) }
 enum Result<T, E> { Ok(T), Err(E) }
@@ -243,6 +257,17 @@ impl String {
 // Per §1.0 原則 6 (通解>特例): one Vec type for all T (generic, not per-type).
 // Per §2 原則 9 (正确>妥协): MVP uses ptr/len/cap layout (not Vec<u8> wrapper
 // like Rust's Vec<T> { buf: RawVec<T>, len }). Simplification acceptable.
+//
+// Stage 32.4 (v0.20): Vec::push/get migration to prelude impl attempted but
+// BLOCKED on v0.5+ method monomorphization (TD-VEC-PUSH-GET-MIGRATION).
+// The prelude impl body needs to substitute `Param(N)` with the call-site
+// type at codegen time — but Landin's current monomorphization only collects
+// MonoItems for layout building, not for function body codegen.
+// Reverted to MIR intrinsics (lower_vec_push_intrinsic, lower_vec_get_intrinsic).
+//
+// Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N).
+// Per §1.0 原則 4 (报错 > 静默): TD item documents the limitation.
+// Per §12 (最优 > 最小): root-cause fix requires v0.5+ architectural change.
 struct Vec<T> { ptr: *mut T, len: usize, cap: usize }
 // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec methods via prelude impl.
 // Per §1.0 原則 6 (通解 > 特解): methods defined in prelude source, not

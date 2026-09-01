@@ -29,6 +29,8 @@ mod field_resolution;
 // Stage 18.273 §13.4 J1-J6: extract intrinsic lowering from expr_variants.rs
 // Stage 18.305 §13.4 J1-J6: split intrinsic_lower.rs into 4 sub-modules
 // per type (string/box/vec/format). Per §13.4 J2 (单一职责).
+// Stage 32.4: vec_intrinsics module kept — Vec::push/get migration is
+// BLOCKED on v0.5+ method monomorphization (TD-VEC-PUSH-GET-MIGRATION).
 mod box_intrinsics;
 mod format_intrinsics;
 mod string_intrinsics;
