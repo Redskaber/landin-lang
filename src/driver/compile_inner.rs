@@ -947,6 +947,18 @@ pub(crate) fn compile_inner(
         // Per §1.0 原則 6 "通用 > 特例": one pass for all generic calls.
         crate::mir::lower::writeback_fndef_substs(&mut mir, &fn_sig_table.sigs, &generics_map);
 
+        // Stage 33.1 (TD-VEC-PUSH-GET-MIGRATION): Re-run type_propagation
+        // AFTER writeback_fndef_substs. Was: only ran before fndef_substs,
+        // so `let q = v.get(0)` couldn't propagate the substituted return
+        // type (Adt(Point)) from the call's dest local to the let binding's
+        // local. Now: fndef_substs replaces the call dest type with the
+        // substituted output (Adt(Point)), then this second type_propagation
+        // pass propagates it to the let binding.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one extra pass for all let bindings.
+        // Per §12 (最优 > 最小): root-cause fix — propagate after substitution.
+        crate::mir::lower::writeback_type_propagation(&mut mir, &fn_sig_table.sigs);
+
         // Stage 18.96: Run MIR optimization passes (DCE → const_prop → DCE)
         // per `06-mir.md` §9.3. Wired here — after writeback (types are
         // final) and before `mirs.push` (so codegen consumes optimized MIR).
