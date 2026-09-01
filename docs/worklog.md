@@ -37849,3 +37849,79 @@ Stage Summary:
 - v0.22 scope: v0.5+ architectural planning (method monomorphization design doc)
   OR: tackle P3 TDs that may be feasible (TD-INT-SIGN-CONFUSION is a lexer
   refactor, TD-CONST-INT-UINT-U128 is a ConstVal refactor)
+
+---
+Task ID: stage34.1
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 34.1 (v0.22) — TD-INT-SIGN-CONFUSION + TD-CONST-INT-UINT-U128 scope evaluation.
+v0.572.0. No code changes — scope analysis + ARCH-A decision.
+
+3秒启动自检:
+- 定位: L2 (TD scope evaluation — no code changes, analysis only)
+- 对齐: 已查 docs/lang-design/29-integer-type-boundaries.md + tech-debt-register.md
+- 阻断: v0.572.0 全绿 (5095 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. TD-INT-SIGN-CONFUSION scope analysis:
+   - lexer::token::IntTy: 12 variants (I8-I128 + Isize + U8-U128 + Usize)
+     conflates signed and unsigned in one enum.
+   - ast::kinds::IntTy: 6 variants (signed only: I8-I128 + Isize) ✓ correct
+   - ast::kinds::UintTy: 6 variants (unsigned only: U8-U128 + Usize) ✓ correct
+   - Usage: lexer::token::IntTy used in 12 sites in parser/expr.rs (maps
+     to ast::IntTy or ast::UintTy) + 28 sites in lexer module.
+   - Fix: Split lexer::token::IntTy into SignedIntTy + UnsignedIntTy,
+     OR replace with ast::IntTy/ast::UintTy (reuse existing enums).
+   - Per §1.0 原则 6 (通解 > 特解): Reuse ast::IntTy/ast::UintTy instead
+     of creating new enums. TokenKind::IntLit(u128, Option<ast::IntTy>,
+     Option<ast::UintTy>) or IntLit(u128, Option<(ast::IntTy, ast::UintTy)>).
+   - Impact: 12 parser sites + 28 lexer sites = 40 sites to modify.
+
+2. TD-CONST-INT-UINT-U128 scope analysis:
+   - ConstVal::Int(u128) and ConstVal::Uint(u128) both use u128 storage.
+   - 186 usage sites across src/ (99 Int + 64 Uint + 23 mixed).
+   - Codegen treats them identically (both format as number string).
+   - Per design doc: "Acceptable for MVP (Rust also uses u128 for both)".
+   - ARCH-A 决策: TD-CONST-INT-UINT-U128 is ACCEPTABLE as documented.
+     No code change needed. The two variants serve as documentation
+     (Int = signed semantics, Uint = unsigned) even though storage is same.
+     Per §1.0 原则 9 (正确 > 妥协): this is a documented design decision,
+     not a bug. Merging Int/Uint would lose semantic information.
+
+3. ARCH-A 一票否决 for TD-INT-SIGN-CONFUSION:
+   - While the fix is straightforward (replace lexer::IntTy with ast::IntTy
+     + ast::UintTy), it touches 40+ sites across lexer + parser.
+   - Per §1.2.1: this is an L3 task (500+ LOC cross-module refactor).
+   - Per §13.4 J6 (科学合理粒度): the refactor should be done as a
+     dedicated stage with its own design doc + test matrix.
+   - Per §12 (最优 > 最小): the OPTIMAL solution is to eliminate
+     lexer::IntTy entirely and use ast::IntTy + ast::UintTy everywhere.
+     But this requires careful refactoring of the lexer's number parsing
+     (which returns Option<IntTy>) and the parser's literal handling
+     (which matches on IntTy variants).
+   - Decision: DEFER to v0.22 Stage 34.2 with dedicated design doc.
+     Not a soundness risk — downstream correctly maps to ast::IntTy/UintTy.
+
+裁剪点:
+- L2 — scope evaluation only, no code changes
+- 安全理由: both TDs are P3, no soundness risk, downstream correct
+
+5W2H:
+- WHAT: Scope evaluation of TD-INT-SIGN-CONFUSION + TD-CONST-INT-UINT-U128
+- WHY: Determine if feasible at current architecture without v0.5+ changes
+- WHO: PM-A + ARCH-A
+- WHEN: v0.22 Stage 34.1
+- WHERE: docs/worklog.md + docs/develop/v0/tech-debt-register.md
+- HOW: (1) Count usage sites (2) Evaluate fix approach (3) ARCH-A decision
+- HOW MUCH: 0 LOC code changes; 5095 tests (unchanged), 0 failures
+
+Stage Summary:
+- TD-INT-SIGN-CONFUSION: DEFER to Stage 34.2 (L3 refactor, 40+ sites)
+- TD-CONST-INT-UINT-U128: ACCEPTABLE as documented (no change needed)
+- All remaining TDs BLOCKED on v0.5+ architectural changes
+- v0.22 scope: dedicated TD-INT-SIGN-CONFUSION refactor stage
+
+下一步:
+- v0.22 Stage 34.2: TD-INT-SIGN-CONFUSION refactor — eliminate lexer::IntTy,
+  use ast::IntTy + ast::UintTy in TokenKind::IntLit. ~40 sites to modify.
+  Design doc needed per §13.1.
