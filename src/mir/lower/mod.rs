@@ -261,6 +261,21 @@ pub struct MirLowerCtxt<'a> {
     /// Empty for non-generic functions.
     /// Per §16: pre-computed from HIR generics, sunk as data.
     pub generic_params: Vec<crate::mir::ty::ParamTy>,
+    /// Stage 32.3 (TD-PRELUDE-MONO-ORDER): The DefId of the body's owner
+    /// (the fn being lowered). Used by `resolve_trait_method` to look up
+    /// the enclosing impl block's generic param trait bounds when resolving
+    /// methods on `TyKind::Param(N)` receivers (e.g., `self.x.f()` where
+    /// `x: X` and `X: T`).
+    ///
+    /// `None` when not set (e.g., test contexts that construct MirLowerCtxt
+    /// without a body). In that case, Param-typed method resolution returns
+    /// None (no error — caller falls through to error path).
+    ///
+    /// Per §16: pre-computed from body.hir_id.owner, sunk as data.
+    /// Per §1.0 原则 3 (显式 > 隐式): owner is explicit, not inferred.
+    /// Per §1.0 原则 10 (唯一可信数据源): the body is the source of truth
+    /// for the owner DefId.
+    pub owner_def_id: Option<crate::hir::DefId>,
 }
 
 /// Stage 16.13 (Task 10 Step 1): A synthesized `call` function for a closure.
@@ -339,6 +354,8 @@ impl<'a> MirLowerCtxt<'a> {
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter: 0,
             generic_params: Vec::new(),
+            // Stage 32.3: owner_def_id is set by body_lower after construction.
+            owner_def_id: None,
         }
     }
 
@@ -430,6 +447,8 @@ impl<'a> MirLowerCtxt<'a> {
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter,
             generic_params: Vec::new(),
+            // Stage 32.3: owner_def_id set by caller (body_lower).
+            owner_def_id: None,
         }
     }
 

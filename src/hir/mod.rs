@@ -17,9 +17,13 @@ pub mod map;
 // Stage 16.61: Re-export generics_of for consistency with mir/mod.rs
 // re-exports. Per §5.1 (explicit list) + §5.2 (stage-tracking).
 // Stage 16.62: build_generics_map gated behind #[cfg(test)] — test-only.
+// Stage 32.3: Added find_generics_for_fn_owner + find_param_trait_bounds
+// + find_enclosing_impl_for_fn for TD-PRELUDE-MONO-ORDER fix.
 #[cfg(test)]
 pub use generics::build_generics_map;
-pub use generics::find_generics;
+pub use generics::{
+    find_enclosing_impl_for_fn, find_generics, find_generics_for_fn_owner, find_param_trait_bounds,
+};
 
 // Re-export the most-used types at the module root for convenience.
 // Stage 3.57 (P0-3 fix): explicit list instead of `pub use kinds::*;`

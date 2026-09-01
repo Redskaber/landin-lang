@@ -249,12 +249,29 @@ pub(super) fn pre_intern_macro_symbols(interner: &mut lasso::Rodeo) {
 /// Build generics_map from HIR: maps DefId to Vec<ParamTy>.
 ///
 /// Per §13.4 J1-J6 (Stage 18.142): extracted from compile_inner.
+///
+/// Stage 32.3 (TD-PRELUDE-MONO-ORDER): For fn owners (which may be inside
+/// impl blocks), use `find_generics_for_fn_owner` to include the impl's
+/// generics. This is the same fix as compile_inner.rs Loop 1 — without
+/// it, monomorphization's `writeback_fndef_substs` would use only the fn's
+/// own generics, missing the impl's T.
+///
+/// Per §1.0 原则 6 (通解 > 特解): one path for all owner kinds — the
+/// `find_generics_for_fn_owner` is a no-op for non-fn owners.
+/// Per §1.0 原则 10 (唯一可信数据源): impl block + fn owner are the
+/// sources of truth for fn generics.
 pub(super) fn build_generics_map(
     hir: &HirCrate,
 ) -> std::collections::HashMap<crate::hir::DefId, Vec<crate::mir::ty::ParamTy>> {
     let mut map = std::collections::HashMap::new();
-    for (def_id, _) in &hir.owners {
-        let params = crate::hir::generics::find_generics(*def_id, hir);
+    for (def_id, owner) in &hir.owners {
+        // Stage 32.3: For fn owners, include impl generics.
+        let params = match owner {
+            crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(_)) => {
+                crate::hir::generics::find_generics_for_fn_owner(*def_id, hir)
+            }
+            _ => crate::hir::generics::find_generics(*def_id, hir),
+        };
         if !params.is_empty() {
             map.insert(*def_id, params);
         }

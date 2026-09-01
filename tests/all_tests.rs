@@ -849,3 +849,9 @@ mod stage31_6f_box_new_prelude_impl_tests;
 // === Stage 31.7 (v0.19): Intrinsic cleanup (dead dispatch removal) ===
 #[path = "v0/stage31/plan/stage31_7_intrinsic_cleanup_tests.rs"]
 mod stage31_7_intrinsic_cleanup_tests;
+
+// === Stage 32.3 (v0.20): Complete 4-point monomorphization fix ===
+// (TD-PRELUDE-MONO-ORDER) — find_generics_for_fn_owner + Param(N) trait
+// method resolution + impl-block generics for self param type.
+#[path = "v0/stage32/plan/stage32_3_prelude_mono_order_fix_tests.rs"]
+mod stage32_3_prelude_mono_order_fix_tests;

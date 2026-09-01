@@ -691,6 +691,17 @@ fn build_method_to_impl_index(
 }
 
 /// Resolve the self param type for a method signature using the pre-built index.
+///
+/// Stage 32.3 (TD-PRELUDE-MONO-ORDER): Now uses
+/// `lower_hir_ty_to_mir_ty_with_hir_and_generics` with the impl block's
+/// generic params, so `impl<T> Vec<T>` self_ty `Vec<T>` resolves to
+/// `Adt(vec_def_id, [Param(0)])` instead of `Adt(vec_def_id, [Error])`.
+///
+/// Per §1.0 原则 6 (通解 > 特解): one path for all impl blocks (generic
+/// and non-generic). Non-generic impls have empty generics → no-op.
+/// Per §1.0 原则 3 (显式 > 隐式): generic params are explicitly threaded
+/// from the impl block's HIR.
+/// Per §1.0 原则 9 (正确 > 妥协): correct type resolution > silent Error.
 fn resolve_self_param_type_for_sig(
     hir: &HirCrate,
     method_def_id: crate::hir::DefId,
@@ -700,7 +711,15 @@ fn resolve_self_param_type_for_sig(
     let owner_idx = *method_to_impl_index.get(&method_def_id)?;
     let (_, owner) = &hir.owners[owner_idx];
     if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
-        let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+        // Stage 32.3: Extract impl block's generics so the self_ty is lowered
+        // with proper Param substitution (e.g., `Vec<T>` → `Adt(Vec, [Param(0)])`).
+        let (impl_def_id, _) = &hir.owners[owner_idx];
+        let impl_generics = crate::hir::generics::find_generics(*impl_def_id, hir);
+        let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+            &impl_block.self_ty,
+            Some(hir),
+            &impl_generics,
+        );
         return match self_kind {
             Some(crate::ast::SelfKind::Ref(mutability)) => {
                 let mir_mut = match mutability {

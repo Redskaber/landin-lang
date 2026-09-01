@@ -1042,7 +1042,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | String::from_str → prelude impl | .ptr/.len + extern C alloc/memcpy | ✅ Match |
 | String::push_str → prelude impl | .ptr/.len/.cap + extern C realloc/memcpy + while loop | ✅ Match |
 | Box::new → prelude impl | sizeof(T) + alloc + Deref store + tuple struct construct | ✅ Match |
-| Vec::push/get → prelude impl | BLOCKED on prelude monomorphization (v0.5+) | B4 (architectural limitation) |
+| Vec::push/get → prelude impl | UNBLOCKED by Stage 32.3 (TD-PRELUDE-MONO-ORDER resolved) — migration now feasible, requires Stage 32.4 design (typed pointer stores, etc.) | Stage 32.4 (next) |
 | format! → prelude impl | BLOCKED on format args language feature (v0.20+) | B4 (architectural limitation) |
 
 #### B2: New TD Items Created During v0.19
@@ -1052,8 +1052,11 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | TD-INT-SIGN-CONFUSION | P3 | lexer::IntTy conflates signed/unsigned (downstream correct) | Documented (Stage 31.6d) |
 | TD-CONST-INT-UINT-U128 | P3 | ConstVal::Int/Uint both u128 (acceptable for MVP) | Documented |
 | TD-ISIZE-USIZE-HARDCODED | P3 | isize/usize hardcoded 8 bytes (64-bit only MVP) | Documented |
-| TD-PRELUDE-MONO-ORDER | P2 | prelude impl<T> body lowered with T=Param before monomorphization | BLOCKED (v0.5+) |
+| TD-PRELUDE-MONO-ORDER | P2 | prelude impl<T> body lowered with T=Param before monomorphization | ✅ Resolved Stage 32.3 — 4-point monomorphization fix (find_generics_for_fn_owner + resolve_self_param_type_for_sig + resolve_self_param_type + resolve_trait_method on Param(N) via trait bounds) |
 | TD-FORMAT-ARGS | P2 | format! variadic args type handling not implemented | BLOCKED (v0.20+) |
+| TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | Documented (Stage 32.3) — v0.5+ architectural fix |
+| TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | Documented (Stage 32.3) — pre-existing limitation |
+| TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers | Documented (Stage 32.3) — pre-existing limitation |
 
 #### B3: Deviations Requiring Design Doc Update
 

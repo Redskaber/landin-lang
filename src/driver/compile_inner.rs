@@ -136,8 +136,17 @@ pub(crate) fn compile_inner(
             // Stage 18.105 (S6 fix): Build generic_params from f.generics so
             // bare type parameters (e.g., `T` in `Box<T>`) resolve to Param(N)
             // instead of Error in fn_sig_table.
+            //
+            // Stage 32.3 (TD-PRELUDE-MONO-ORDER): Use
+            // `find_generics_for_fn_owner` instead of `find_generics`. For
+            // methods inside `impl<T> Vec<T>`, the fn's own generics is `[]`
+            // but the impl's T must be included so `value: T` resolves to
+            // `Param(0)`. This is the same fix as body_lower.rs:165.
+            //
+            // Per §1.0 原则 6 (通解 > 特解): one path for free fns (impl
+            // lookup is a no-op) and impl methods (impl generics prepended).
             let generic_params: Vec<crate::mir::ty::ParamTy> =
-                crate::hir::generics::find_generics(*def_id, &hir);
+                crate::hir::generics::find_generics_for_fn_owner(*def_id, &hir);
             let inputs: Vec<crate::mir::ty::Ty> = f
                 .sig
                 .inputs
@@ -231,6 +240,18 @@ pub(crate) fn compile_inner(
             eprintln!("[DRIVER] owner: def_id={:?} kind={:?}", def_id, owner);
         }
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            // Stage 32.3 (TD-PRELUDE-MONO-ORDER): Pre-compute impl_generics
+            // for non-self param/output type lowering. This is the same fix
+            // as Loop 1 — passes the impl's generic params to
+            // `lower_hir_ty_to_mir_ty_with_hir_and_generics` so `value: T`
+            // in `fn push(&mut self, value: T)` resolves to `Param(0)`.
+            //
+            // Per §1.0 原则 6 (通解 > 特解): one path for generic and
+            // non-generic impls (empty generics = no-op).
+            // Per §1.0 原则 10 (唯一可信数据源): impl block is source of
+            // truth for impl generics.
+            let impl_generics: Vec<crate::mir::ty::ParamTy> =
+                crate::hir::generics::find_generics(*def_id, &hir);
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     use crate::hir::HirFnRetTy;
@@ -255,7 +276,14 @@ pub(crate) fn compile_inner(
                                 )
                                 .unwrap_or_else(|| {
                                     if let Some(ty) = &p.ty {
-                                        crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                                        // Stage 32.3: Use with_hir_and_generics
+                                        // for consistency with the self_kind=None
+                                        // path below.
+                                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                            ty,
+                                            Some(&hir),
+                                            &impl_generics,
+                                        )
                                     } else {
                                         crate::mir::ty::Ty::new(
                                             crate::mir::ty::TyKind::Error,
@@ -264,7 +292,14 @@ pub(crate) fn compile_inner(
                                     }
                                 })
                             } else if let Some(ty) = &p.ty {
-                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                                // Stage 32.3: Pass impl_generics so `value: T`
+                                // in `fn push(&mut self, value: T)` resolves to
+                                // `Param(0)` instead of `Error`.
+                                crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                    ty,
+                                    Some(&hir),
+                                    &impl_generics,
+                                )
                             } else {
                                 crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
                             }
@@ -275,7 +310,14 @@ pub(crate) fn compile_inner(
                             crate::mir::ty::TyKind::Tuple(Vec::new()),
                             f.span,
                         ),
-                        HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                        // Stage 32.3: Pass impl_generics to output type too.
+                        HirFnRetTy::Ty(t) => {
+                            crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                t,
+                                Some(&hir),
+                                &impl_generics,
+                            )
+                        }
                     };
                     fn_sig_table.sigs.insert(
                         method_def_id,

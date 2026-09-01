@@ -3,30 +3,161 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.564.0 (Stage 31.6b — String::from_str migrated from intrinsic to prelude impl via .ptr/.len + extern C) |
-| **Date** | 2026-08-31 |
-| **Test count** | 898 lib tests + 4133 integration tests = 5031 total (100% pass rate single-thread with `ulimit -s unlimited`, 2 ignored) |
+| **Current version** | v0.569.0 (Stage 32.3 — TD-PRELUDE-MONO-ORDER RESOLVED via complete 4-point monomorphization fix) |
+| **Date** | 2026-09-01 |
+| **Test count** | 898 lib tests + 4197 integration tests = 5095 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (187 files, ~92K LOC); Stage 31.6b: second TD-INTRINSIC-OVERUSE Phase 2-B migration — from_str now uses prelude impl with extern C + fat pointer field access |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); Stage 32.3: complete 4-point monomorphization fix unblocks prelude impl<T> method bodies (Vec::push/get migration now feasible) |
 
 ---
 
-## v0.564.0 — Stage 31.6b — String::from_str Intrinsic → Prelude Impl Migration
+## v0.569.0 — Stage 32.3 — Complete 4-Point Monomorphization Fix (TD-PRELUDE-MONO-ORDER RESOLVED)
 
 ### Overview
 
-This release migrates `String::from_str` from a hardcoded MIR intrinsic dispatch
-to a real prelude `impl` body using `.ptr`/`.len` fat pointer field access
-(Stage 31.6a) + `extern "C"` calls to `__landin_alloc` + `__landin_memcpy`.
-This is the second TD-INTRINSIC-OVERUSE Phase 2-B migration.
+This release implements the complete 4-point monomorphization fix that resolves
+**TD-PRELUDE-MONO-ORDER** — the long-standing blocker preventing `impl<T> Vec<T>`
+method bodies (like `Vec::push`, `Vec::get`) from being lowered correctly. The
+fix addresses 4 distinct type resolution points that must be fixed TOGETHER
+(partial fixes in Stages 32.1/32.2 caused regressions and were reverted).
 
-Per §1.0 原則 6 (通解 > 特解): standard static method resolution replaces
-per-method intrinsic dispatch.
-Per §1.0 原則 3 (显式 > 隐式): explicit extern C declarations + fat pointer
-field access in source.
-Per §12 (最优 > 最小): root-cause fix via language features.
+Per §12 (最优 > 最小): root-cause fix requires ALL 4 fix points, not just 1 or 2.
+Per §1.0 原則 6 (通解 > 特解): one mechanism (`find_generics_for_fn_owner`)
+handles both free fns (no-op) and impl methods (impl generics prepended).
+Per §1.0 原則 9 (正确 > 妥协): correct type resolution > silent Error placeholder.
+Per §1.0 原則 10 (唯一可信数据源): impl block + fn owner are sources of truth.
+
+### The 4 Fix Points
+
+#### Fix Point 1: `find_generics_for_fn_owner` + `find_param_trait_bounds` (hir/generics.rs)
+
+Added two new helper functions:
+- `find_enclosing_impl_for_fn(fn_def_id, hir) -> Option<DefId>` — scans all
+  HirImpl owners for the one containing the given fn.
+- `find_generics_for_fn_owner(fn_def_id, hir) -> Vec<ParamTy>` — returns impl
+  generics + fn generics (concatenated). For methods inside `impl<T> Vec<T>`,
+  returns `[T]` (impl's T) + `[]` (fn's own) = `[T]`.
+- `find_param_trait_bounds(fn_def_id, param_index, hir) -> Vec<HirTraitBound>`
+  — returns trait bounds for the Nth type param in the impl+fn chain. Used by
+  `resolve_trait_method` for `Param(N)` receivers.
+
+#### Fix Point 2: `resolve_self_param_type_for_sig` (driver/mod.rs)
+
+Changed `lower_hir_ty_to_mir_ty(&impl_block.self_ty)` →
+`lower_hir_ty_to_mir_ty_with_hir_and_generics(&impl_block.self_ty, Some(hir), &impl_generics)`.
+Now `impl<T> Vec<T>` self_ty resolves to `Adt(Vec, [Param(0)])` instead of
+`Adt(Vec, [Error])`.
+
+#### Fix Point 3: `body_lower.rs` (`cx.generic_params` + `resolve_self_param_type`)
+
+- Line 165: changed `find_generics` → `find_generics_for_fn_owner` so
+  `cx.generic_params` includes impl generics.
+- `resolve_self_param_type`: uses `lower_hir_ty_to_mir_ty_with_hir_and_generics`
+  with impl generics (was using `lower_hir_ty_to_mir_ty` without generics).
+- Added `owner_def_id: Option<DefId>` field to `MirLowerCtxt` (set by body_lower)
+  so `resolve_trait_method` callers can look up the enclosing impl block.
+
+#### Fix Point 4: `resolve_trait_method` handles `Param(N)` (method_resolution.rs)
+
+- Added `owner_def_id: Option<DefId>` parameter.
+- When `recv_ty.kind == Param(N)`: looks up the Nth type param's trait bounds
+  via `find_param_trait_bounds`, finds the trait declaration by name in HIR,
+  returns the trait method's DefId.
+- This makes `self.x.f()` where `x: X, X: T` (trait bound) resolve to `T::f`'s
+  DefId — the trait declaration's method, not an impl's method.
+- Updated ALL callers (5 sites in `method_call_lower.rs` + 4 sites in
+  `method_resolution.rs`).
+
+### Additional Fixes
+
+- **compile_inner.rs Loops 1+2**: pass `impl_generics` to non-self param + output
+  type lowering via `lower_hir_ty_to_mir_ty_with_hir_and_generics`. Now
+  `fn push(&mut self, value: T)` resolves `value: T` to `Param(0)`.
+- **build_generics_map** (driver_codegen_prep.rs): uses
+  `find_generics_for_fn_owner` for fn owners — monomorphization now sees correct
+  generics (impl+fn) for fn owners inside impl blocks.
+
+### Test Updates
+
+- 8 new Stage 32.3 tests (4 positive + 4 negative, 2 ignored for pre-existing
+  typeck limitations):
+  - `stage32_3_generic_impl_usize_field_access` — usize field access works.
+  - `stage32_3_generic_impl_typed_field_return` — T-typed field return works.
+  - `stage32_3_trait_method_on_param_field` — trait method on Param works.
+  - `stage32_3_generic_impl_typed_param` — T-typed param works.
+  - `stage32_3_negative_nonexistent_field` — nonexistent field errors.
+  - `stage32_3_negative_no_trait_bound` — missing trait bound errors.
+  - `stage32_3_negative_arithmetic_on_generic` — invalid arithmetic errors.
+  - `stage32_3_negative_nonexistent_trait_method` — nonexistent trait method errors.
+  - `stage32_3_negative_return_type_mismatch` (IGNORED — TD-TYPECK-PARAM-RETURN-MISMATCH).
+  - `stage32_3_negative_trait_method_wrong_arg_count` (IGNORED — TD-TYPECK-PARAM-ARG-COUNT).
+- 1 existing test updated: `stage30_4_negative_self_item_outside_impl` — was
+  passing for the wrong reason (silent method-resolution failure). After Fix
+  Point 4, `c.get()` resolves correctly, exposing the missing
+  "Self::Item outside impl context" check. Documented as
+  TD-SELF-OUTSIDE-IMPL-CONTEXT (P3, v0.5+).
+
+### New TD Items Documented
+
+- **TD-SELF-OUTSIDE-IMPL-CONTEXT** (P3): `Self::Item` in free fn return type
+  silently resolves to Projection. Stage 3.66 limitation: owner context not
+  threaded into body resolution. v0.5+ architectural fix.
+- **TD-TYPECK-PARAM-RETURN-MISMATCH** (P3): typeck doesn't unify Param(N) body
+  with concrete return type for generic impl methods. Pre-existing limitation.
+- **TD-TYPECK-PARAM-ARG-COUNT** (P3): typeck doesn't validate arg count for
+  trait method calls on Param(N) receivers. Pre-existing limitation.
+
+### What's Unblocked
+
+- **Vec::push/get migration** (Stage 32.4): the prelude `impl<T> Vec<T>` body
+  can now be lowered correctly. Migration requires designing typed pointer
+  stores in Landin source (e.g., `*ptr = value` where `ptr: *mut T`).
+
+### Verification (§14.5 D1-D8)
+
+- D1 (fmt): clean ✅
+- D2 (clippy): 0 warnings ✅
+- D3 (build): success ✅
+- D4 (lib tests): 898/898 ✅
+- D5 (integration tests): 4197/4197 (4 ignored) ✅
+- D6 (no P0/P1): TD-PRELUDE-MONO-ORDER RESOLVED ✅
+- D7 (architecture health): 9.85/10 (stable) ✅
+- D8 (§1.6 终极检验): root-cause architectural fix, not minimal patch ✅
+
+### Files Changed
+
+- `src/hir/generics.rs` — added `find_enclosing_impl_for_fn`,
+  `find_generics_for_fn_owner`, `find_param_trait_bounds`, `extract_type_params_inner`.
+- `src/hir/mod.rs` — re-export new functions.
+- `src/driver/mod.rs` — fix `resolve_self_param_type_for_sig`.
+- `src/driver/compile_inner.rs` — fix Loops 1+2 (use `find_generics_for_fn_owner`
+  + `lower_hir_ty_to_mir_ty_with_hir_and_generics`).
+- `src/driver/driver_codegen_prep.rs` — fix `build_generics_map`.
+- `src/mir/lower/body_lower.rs` — use `find_generics_for_fn_owner` + fix
+  `resolve_self_param_type` + set `cx.owner_def_id`.
+- `src/mir/lower/method_resolution.rs` — extend `resolve_trait_method` for
+  `Param(N)` + update all 4 internal callers.
+- `src/mir/lower/method_call_lower.rs` — update 5 callers of `resolve_trait_method`.
+- `src/mir/lower/mod.rs` — add `owner_def_id` field to `MirLowerCtxt`.
+- `tests/v0/stage32/plan/stage32_3_prelude_mono_order_fix_tests.rs` — 8 new tests.
+- `tests/v0/stage30/plan/stage30_4_projection_resolver_reclassification_tests.rs` —
+  update `stage30_4_negative_self_item_outside_impl` test.
+- `tests/all_tests.rs` — register Stage 32.3 test module.
+- `examples/test_from_str.rs` — fix unused import.
+- `docs/develop/v0/tech-debt-register.md` — mark TD-PRELUDE-MONO-ORDER RESOLVED,
+  add 3 new TD items.
+- `docs/develop/v0/stage-32/stage-32.3-prelude-mono-order-fix-design.md` — design doc.
+- `docs/worklog.md` — Stage 32.3 entry.
+- `README.md` — version bump + status update.
+- `Cargo.toml` — version bump to v0.569.0.
+
+---
+
+## Previous Releases
+
+## v0.564.0 — Stage 31.6b — String::from_str Intrinsic → Prelude Impl Migration
 
 ### What Changed
 

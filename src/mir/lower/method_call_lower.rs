@@ -85,7 +85,9 @@ pub(super) fn lower_method_call_expr(
         if resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name).is_some() {
             return true;
         }
-        if resolve_trait_method(hir, cx.interner, &recv_ty, &method.name).is_some() {
+        // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
+        if resolve_trait_method(hir, cx.interner, &recv_ty, &method.name, cx.owner_def_id).is_some()
+        {
             return true;
         }
         // Stage 14.91: Also try HIR-traced type for trait method resolution.
@@ -102,7 +104,9 @@ pub(super) fn lower_method_call_expr(
                 return false;
             }
         }) {
-            return resolve_trait_method(hir, cx.interner, &init_ty, &method.name).is_some();
+            // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
+            return resolve_trait_method(hir, cx.interner, &init_ty, &method.name, cx.owner_def_id)
+                .is_some();
         }
         false
     });
@@ -328,7 +332,10 @@ pub(super) fn lower_method_call_expr(
         // resolution. If the receiver's ADT type has a trait impl that
         // provides the method, resolve to that trait impl method's DefId.
         // This enables static trait dispatch (`impl Trait for Type`).
-        if let Some(did) = resolve_trait_method(hir, cx.interner, &recv_ty, &method.name) {
+        // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
+        if let Some(did) =
+            resolve_trait_method(hir, cx.interner, &recv_ty, &method.name, cx.owner_def_id)
+        {
             return Some(did);
         }
         // Stage 14.91: Also try HIR-traced type for trait method resolution.
@@ -336,9 +343,13 @@ pub(super) fn lower_method_call_expr(
         if let HirExprKind::Path(path) = &receiver.kind {
             if let crate::hir::Res::Local(hir_id) = path.res {
                 if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
-                    if let Some(did) =
-                        resolve_trait_method(hir, cx.interner, &init_ty, &method.name)
-                    {
+                    if let Some(did) = resolve_trait_method(
+                        hir,
+                        cx.interner,
+                        &init_ty,
+                        &method.name,
+                        cx.owner_def_id,
+                    ) {
                         return Some(did);
                     }
                 }

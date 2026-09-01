@@ -32,6 +32,10 @@ use lasso::Rodeo;
 use super::adt_layout;
 use super::lower_expr_to_operand;
 use super::pattern_bindings;
+// Stage 32.3: lower_hir_ty_to_mir_ty_with_hir_and_generics is needed for
+// proper generic param resolution in resolve_self_param_type (impl<T> Vec<T>
+// self_ty must resolve to Adt(Vec, [Param(0)]) not Adt(Vec, [Error])).
+use super::lower_hir_ty_to_mir_ty_with_hir_and_generics;
 use super::MirLowerCtxt;
 use super::SynthesizedClosureFunction;
 // Stage 18.129: type lowering functions extracted to ty_lower.rs
@@ -161,8 +165,27 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Stage 18.105 (S6 fix): Set generic_params from the function's HIR generics.
     // This allows lower_path_generic_args to resolve bare type parameters (e.g., `T`
     // in `Box<T>`) to Param(N) instead of Error.
+    //
+    // Stage 32.3 (TD-PRELUDE-MONO-ORDER): Use `find_generics_for_fn_owner`
+    // instead of `find_generics`. For methods inside `impl<T> Vec<T>`,
+    // `find_generics` returns `[]` (the fn's own generics), missing T.
+    // `find_generics_for_fn_owner` returns `[T]` (impl generics + fn generics),
+    // so `value: T` in `fn push(&mut self, value: T)` resolves to `Param(0)`.
+    //
+    // Per §1.0 原则 6 (通解 > 特解): one path for free fns (impl lookup is
+    // a no-op) and impl methods (impl generics prepended).
+    // Per §1.0 原则 10 (唯一可信数据源): impl block is source of truth for
+    // impl generics; fn owner is source of truth for fn generics.
     let owner_def_id: crate::hir::DefId = body.hir_id.owner;
-    cx.generic_params = crate::hir::generics::find_generics(owner_def_id, hir);
+    cx.generic_params = crate::hir::generics::find_generics_for_fn_owner(owner_def_id, hir);
+    // Stage 32.3 (TD-PRELUDE-MONO-ORDER): Stash the owner_def_id so
+    // `resolve_trait_method` callers in method_call_lower.rs and
+    // method_resolution.rs can look up the enclosing impl block's generic
+    // param trait bounds when resolving methods on `TyKind::Param(N)`.
+    //
+    // Per §1.0 原则 10 (唯一可信数据源): body.hir_id.owner is the single
+    // source of truth for the owner DefId.
+    cx.owner_def_id = Some(owner_def_id);
 
     // Stage 16.85: Set resolver for rich error messages (Adt type names).
     if let Some(resolver) = resolver {
@@ -1154,6 +1177,20 @@ fn resolve_self_param_type(
         };
 
     // Search all owners for an Impl block that contains this method.
+    //
+    // Stage 32.3 (TD-PRELUDE-MONO-ORDER): We use `find_generics_for_fn_owner`
+    // to get the impl block's generic params (which is a superset including
+    // fn generics, harmless for the self_ty lookup). The self_ty is lowered
+    // with these generics so `impl<T> Vec<T>` resolves to
+    // `Adt(Vec, [Param(0)])` instead of `Adt(Vec, [Error])`.
+    //
+    // Per §1.0 原则 6 (通解 > 特解): one path for generic and non-generic
+    // impls (empty generics = no-op). We don't duplicate the
+    // "find enclosing impl" logic here — `find_generics_for_fn_owner`
+    // already does it.
+    // Per §1.0 原则 10 (唯一可信数据源): impl block is the source of truth
+    // for the self_ty's generic substitution.
+    let impl_generics = crate::hir::generics::find_generics_for_fn_owner(body.hir_id.owner, hir);
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
             // Check if this impl block contains a method whose body matches.
@@ -1164,13 +1201,16 @@ fn resolve_self_param_type(
                             owner: crate::hir::OwnerId(body.hir_id.owner),
                         })
                     {
-                        // Found the owning impl block! Lower its self_ty.
+                        // Found the owning impl block! Lower its self_ty
+                        // WITH generics so Vec<T> becomes Adt(Vec, [Param(0)]).
                         // Stage 14.19 (GAP-31): For &self/&mut self, wrap the
                         // type in TyKind::Ref so the self param is a reference.
                         // This makes mutations propagate to the caller.
-                        // The codegen Deref+Field handling has been fixed in
-                        // mir_translation.rs to support this correctly.
-                        let adt_ty = lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+                        let adt_ty = lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                            &impl_block.self_ty,
+                            Some(hir),
+                            &impl_generics,
+                        );
                         return Some(wrap_with_ref(adt_ty, region_counter));
                     }
                 }
