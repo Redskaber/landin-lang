@@ -791,8 +791,17 @@ impl str {
     // entirely — the method is just a regular field access.
     // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
     fn len(&self) -> usize { self.len }
-    fn is_empty(&self) -> bool { __landin_unreachable("str::is_empty intrinsic not intercepted".ptr) }
-    fn as_bytes(&self) -> &[u8] { __landin_unreachable("str::as_bytes intrinsic not intercepted".ptr) }
+    // Stage 57 (v0.7 — TD-STR-INTRINSIC-MARKER-BODIES continuation):
+    // str::is_empty migrated to real body. Uses `self.len == 0usize`.
+    // Per §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution + field access.
+    fn is_empty(&self) -> bool { self.len == 0usize }
+    // Stage 57 (v0.7): str::as_bytes — `self as &[u8]` cast not supported
+    // by typeck (TD-CAST-STR-TO-U8-SLICE). Keep intrinsic interception
+    // for as_bytes until cast support is added.
+    // Per §1.0 原則 9 (正确 > 妥协): documented as TD-CAST-STR-TO-U8-SLICE.
+    // Per §1.0 原則 4 (报错 > 静默): intrinsic interception reports error if body reached.
+    fn as_bytes(&self) -> &[u8] { __landin_unreachable("str::as_bytes: cast &str→&[u8] not yet supported".ptr) }
 }
 // Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Primitive type
 // impls with REAL bodies (not markers). These verify the architecture is

@@ -429,6 +429,7 @@ pub(super) fn lower_method_call_expr(
             let skip_interception = matches!(
                 intrinsic,
                 super::primitive_intrinsics::PrimitiveIntrinsic::StrLen
+                    | super::primitive_intrinsics::PrimitiveIntrinsic::StrIsEmpty
             );
             if !skip_interception {
                 if args.len() == intrinsic.expected_arg_count() {

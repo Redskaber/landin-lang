@@ -40991,3 +40991,69 @@ Stage Summary:
 - Stage 57: Migrate str::is_empty to real body (`self.len == 0usize`).
 - Stage 58: Migrate str::as_bytes to real body (fat pointer cast).
 - Stage 59+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
+
+---
+Task ID: stage57
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 57 (v0.7) — str::is_empty migrated to real body. str::as_bytes
+attempted but TD-CAST-STR-TO-U8-SLICE discovered (typeck doesn't support
+&str as &[u8] cast). as_bytes keeps marker body.
+v0.607.0. 5436 tests, 0 failures. Runtime: "hello".is_empty()=false.
+
+3秒启动自检:
+- 定位: L3 (prelude + method_call_lower.rs + typeck cast limitation)
+- 对齐: 已查 Stage 56 worklog (str::len done, is_empty/as_bytes next)
+- 阻断: v0.606.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. str::is_empty migrated to real body: `self.len == 0usize`
+   - 引用 §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution + field access.
+   - Intrinsic interception skipped for StrIsEmpty (same pattern as StrLen).
+
+2. str::as_bytes attempted real body: `self as &[u8]`
+   - FAILED: typeck doesn't support `&str as &[u8]` cast.
+   - Error: "invalid cast: `&str` as `&[u8]` — non-numeric/non-pointer types cannot be cast"
+   - Root cause: typeck's cast validation only allows numeric/pointer casts.
+     &str and &[u8] are both fat pointers (same layout), but typeck treats
+     them as different types without a coercion path.
+   - NEW TD DISCOVERED: TD-CAST-STR-TO-U8-SLICE — typeck needs to support
+     &str → &[u8] fat pointer reinterpretation cast.
+   - 引用 §1.0 原則 9 (正确 > 妥协): documented as TD, as_bytes keeps marker.
+   - 引用 §1.0 原則 4 (报错 > 静默): marker body reports error if reached.
+
+3. Intrinsic interception skip list updated
+   - StrLen: skip (real body since Stage 56)
+   - StrIsEmpty: skip (real body since Stage 57)
+   - StrAsBytes: keep interception (marker body, TD-CAST-STR-TO-U8-SLICE)
+   - SliceLen: keep early interception (no prelude impl for [T])
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: "hello".is_empty() → false ✓ (via real body, not intrinsic)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix for is_empty (real body `self.len == 0usize`).
+  Root-cause analysis for as_bytes (TD-CAST-STR-TO-U8-SLICE discovered —
+  typeck needs fat pointer reinterpretation cast support).
+
+Stage Summary:
+- TD-STR-INTRINSIC-MARKER-BODIES: 2/3 fixed (len + is_empty real bodies)
+- str::as_bytes: marker body kept (TD-CAST-STR-TO-U8-SLICE discovered)
+- 1 new TD REGISTERED: TD-CAST-STR-TO-U8-SLICE (typeck &str→&[u8] cast)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause TD fix + new TD discovered)
+
+下一步:
+- Stage 58+: TD-CAST-STR-TO-U8-SLICE — typeck fat pointer reinterpretation
+  cast support (enables str::as_bytes real body).
+- Stage 59+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
+- Stage 60+: TD-PRELUDE-MACRO-TIMING (DefId decoupling + token-level injection).
