@@ -385,14 +385,19 @@ impl<T> Option<T> {
             None => None,
         }
     }
-    // Stage 52 (v0.7): Option::take — extracts the value, leaving None in place.
-    // Per Rust API guidelines: take replaces self with None and returns the old value.
-    // Per §1.0 原則 6 (通解 > 特解): same match dispatch, no new infrastructure.
-    // NOTE: Landin doesn't have `mem::replace`, so take uses a different pattern —
-    // it consumes self (by value) and returns the value. The caller is responsible
-    // for reassigning. This is a simplified version of Rust's take (which uses
-    // &mut self + mem::replace). Per §1.0 原則 9 (正确 > 妥协): documented limitation.
-    fn take(self) -> Option<T> { self }
+    // Stage 55 (v0.7 — TD-OPTION-TAKE-INCOMPLETE FIXED): Option::take now
+    // uses &mut self (correct Rust semantics). Previously consumed self
+    // (simplified version). Now properly replaces self with None and
+    // returns the old value.
+    //
+    // Per §12 (最优 > 最小): root-cause fix — correct &mut self semantics.
+    // Per §1.0 原則 6 (通解 > 特解): uses standard field assignment.
+    // Per Rust API guidelines: take replaces self with None, returns old value.
+    fn take(&mut self) -> Option<T> {
+        let old: Option<T> = *self;
+        *self = None;
+        old
+    }
 }
 // Stage 45 (v0.6): Option::ok_or / ok_or_else — convert Option to Result.
 // These need a separate impl block with <T, E> because Landin doesn't

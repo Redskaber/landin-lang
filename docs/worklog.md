@@ -40796,3 +40796,140 @@ Stage Summary:
 - v0.7+: TD-CLONE-TRAIT-MISSING (Clone trait for cloned/copied methods).
 - v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
 - v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
+
+---
+Task ID: stage54
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A + QA-A
+Task: Stage 54 (v0.7) — Complete TD audit + priority planning + TD register update.
+Stopped prelude extension per user directive. Focused on TD analysis.
+v0.604.0 (no version bump — analysis only). 5436 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (architecture audit + TD planning)
+- 对齐: 已查 Stage 53 worklog + Stage 49 audit report
+- 阻断: v0.604.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Stopped prelude extension per user directive
+   - 引用 §12 (最优 > 最小): fix TDs first, then implement prelude
+     methods properly (not simplified versions).
+   - 引用 §2.2 (根因思维): the root cause of incomplete prelude methods
+     (take, cloned/copied) is missing traits (Clone, mem::replace).
+     Fix the traits first, then the methods will be correct.
+
+2. Complete TD inventory + priority planning
+   - 15 已修复 TDs documented (TD-SPECIAL-2/4/7/9/11, TD-PANIC-*,
+     TD-METHOD-LEVEL-GENERICS, TD-COMPILE-TIME-MACROS, etc.)
+   - 4 P2 TDs (architecture blockers, no trait dependency):
+     * TD-OPTION-TAKE-INCOMPLETE — needs mem::replace or &mut self
+     * TD-STR-INTRINSIC-MARKER-BODIES — needs typeck fat pointer field access
+     * TD-PRINTLN-CODEGEN-INTERCEPT — analyzed, printf path already supports
+       &str via fat pointer field 0 extraction (TD description corrected)
+     * TD-PRELUDE-MACRO-TIMING — needs DefId decoupling
+   - 9 P3 TDs (v0.7+ trait system):
+     * TD-DISPLAY-TRAIT-MISSING — format! &[i64] → &[&dyn Display]
+     * TD-FN-TRAITS — Fn/FnMut/FnOnce
+     * TD-DYN-TRAIT-COMPLETION — typeck trait dispatch
+     * TD-IMPL-TRAIT — impl Trait syntax
+     * TD-CLONE-TRAIT-MISSING — Clone trait
+     * TD-CFG-MACROS / TD-ASM-MACRO / TD-FORMAT-ARGS-WRITE / TD-ENV-MACROS
+   - 6 P3 TDs (architecture refactoring):
+     * TD-SPECIAL-8/10/13/14/15/16
+
+3. TD-PRINTLN-CODEGEN-INTERCEPT description corrected
+   - Was: "println! bypasses __landin_format_v2, doesn't support &str"
+   - Corrected: "println! bypasses __landin_format_v2, BUT emit_printf_call
+     already supports &str via fat pointer field 0 extraction (%s)"
+   - Runtime verified: println!("{}", s.as_str()) → "hello" ✓
+   - Lower priority — current printf path works for basic types.
+
+4. First wave fix priority (no trait dependency):
+   1. TD-OPTION-TAKE-INCOMPLETE — simplest, just needs &mut self support check
+   2. TD-STR-INTRINSIC-MARKER-BODIES — typeck fat pointer field access
+   3. TD-PRELUDE-MACRO-TIMING — DefId decoupling (largest scope)
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (audit + planning, no code changes)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for audit/planning
+
+§3.2 验收检查:
+- No code changes — analysis only
+- 5436 tests preserved (0 failures)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Architecture planning. The TD register provides the complete picture
+  of what needs to be fixed before prelude methods can be implemented
+  correctly (not simplified). Per user directive: fix TDs first.
+
+Stage Summary:
+- Complete TD audit PERFORMED (15 fixed + 19 unfixed TDs documented)
+- TD priority planning COMPLETED (4 waves: prelude limits → trait base → closures → arch)
+- TD-PRINTLN-CODEGEN-INTERCEPT description CORRECTED (printf supports &str)
+- TD register SAVED in docs/develop/v0/tech-debt-register-v0.604.md
+- No code changes (analysis only)
+- 5436 tests, 0 failures
+
+下一步:
+- Stage 55: TD-OPTION-TAKE-INCOMPLETE — implement &mut self for take()
+  or mem::replace primitive. Simplest P2 TD, no trait dependency.
+- Stage 56: TD-STR-INTRINSIC-MARKER-BODIES — typeck fat pointer field access.
+- Stage 57+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
+
+---
+Task ID: stage55
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 55 (v0.7) — TD-OPTION-TAKE-INCOMPLETE FIXED.
+Option::take now uses &mut self (correct Rust semantics).
+v0.605.0. 5436 tests, 0 failures. Runtime: take returns old value,
+self becomes None.
+
+3秒启动自检:
+- 定位: L2 (prelude only, 1 method signature changed)
+- 对齐: 已查 Stage 54 TD register (first wave: TD-OPTION-TAKE-INCOMPLETE)
+- 阻断: v0.604.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Fixed Option::take from (self) → Option<T> to (&mut self) → Option<T>
+   - 引用 §12 (最优 > 最小): root-cause fix — correct &mut self semantics.
+   - 引用 §1.0 原則 6 (通解 > 特解): uses standard field assignment
+     (same as Vec::clear, Wrapper::replace — no special-case handling).
+   - Per Rust API guidelines: take replaces self with None, returns old value.
+   - Implementation: `let old = *self; *self = None; old` — uses Copy
+     (Option<T>: Copy in prelude) + field assignment (verified working
+     via Wrapper::replace test).
+
+2. Verified &mut self + field assignment pattern
+   - Wrapper::replace(&mut self, new_val) → old_val works correctly.
+   - Vec::clear(&mut self) → self.len = 0 works correctly.
+   - Option::take(&mut self) → *self = None works correctly.
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (P2 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - Some(42).take() → old=Some(42) ✓
+  - x.is_some() → false after take ✓ (self replaced with None)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Uses standard &mut self + field assignment (the same
+  pattern used by Vec::clear, Vec::pop, Wrapper::replace). No mem::replace
+  needed — Option<T>: Copy allows `let old = *self; *self = None; old`.
+
+Stage Summary:
+- TD-OPTION-TAKE-INCOMPLETE FIXED (take uses &mut self, correct semantics)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause TD fix, no regression)
+
+下一步:
+- Stage 56: TD-STR-INTRINSIC-MARKER-BODIES — typeck fat pointer field access
+  (str::len/is_empty/as_bytes should have real bodies, not __landin_unreachable).
+- Stage 57+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
