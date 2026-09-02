@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.580.0 (v0.24 Stage 36.6 COMPLETE — TD-FORMAT-MIGRATION RESOLVED; 598-LOC MIR walker replaced by 30-LOC prelude fn; -1396 LOC dead intrinsics removed; runtime verified — Architecture health 9.85/10, improved) |
+| **Version** | v0.581.0 (v0.24 COMPLETE — §14.5 deep review passed; all TDs resolved including TD-FORMAT-MIGRATION; -1166 LOC net; v0.25 scope: format! {:?}/{:x} extensions — Architecture health 9.85/10) |
 | **License** | MIT |
 | **Status** | ✅ **v0.24 Stage 36.6 COMPLETE — TD-FORMAT-MIGRATION RESOLVED**. 5293 tests (898 lib + 4395 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. The 598-LOC `format!` MIR walker (特解) is replaced with a 30-LOC prelude fn `__landin_format_v2(fmt, &[i64])` (通解). format! macro now expands to `__landin_format_v2(fmt, &[args as i64])` via two macro_rules (literal-only + variadic). Dead code removed: format_intrinsics.rs (598 LOC) + string_intrinsics.rs (607 LOC) + box_intrinsics.rs (191 LOC) = -1396 LOC. Runtime verified: `format!("x={}", 42)` → `"x=42"` (len=4, cap=5). v0.24 Stage 36 series COMPLETE — all TDs resolved except TD-DISPLAY-TRAIT-MISSING (P3, v0.6+). Architecture health: 9.85/10 (improved — 特解 → 通解, -1166 LOC net). Next: v0.25 planning (Display trait for type-dispatched formatting, v0.6+). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |

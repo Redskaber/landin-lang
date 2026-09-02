@@ -39144,3 +39144,72 @@ v0.24 Stage 36 Series — COMPLETE:
 下一步:
 - v0.24 complete — all TDs resolved (except TD-DISPLAY-TRAIT-MISSING v0.6+)
 - v0.25 planning: Display trait for type-dispatched formatting (v0.6+)
+
+---
+Task ID: stage37
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 37 (v0.24→v0.25 transition) — §14.5 deep review + v0.25 planning.
+v0.580.0. 5293 tests, 0 failures. v0.24 Stage 36 series COMPLETE.
+
+3秒启动自检:
+- 定位: L2 (deep review + planning — no code changes)
+- 对齐: 已查 docs/stage-committee-process.md §14.5 (8 dimensions) +
+  tech-debt-register.md (remaining TDs) + v0.6-roadmap.md (Display trait scope)
+- 阻断: v0.580.0 全绿 (5293 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. v0.25 scope: format! {:?}/{:x} extensions vs Display trait (v0.6+)
+   - 引用 §1.0 原則 1 (长期 > 短期): Display trait is the long-term 通解
+     for type-dispatched formatting, but it's v0.6+ scope (requires GATs +
+     trait object improvements per v0.6-roadmap).
+   - 引用 §12 (最优 > 最小): format! {:?}/{:x} extensions are the optimal
+     next step — they extend format! without new language features, provide
+     immediate user value, and use the existing prelude fn infrastructure.
+   - Decision: v0.25 = format! {:?}/{:x} extensions (Option B).
+
+2. §14.5 deep review result: GO for v0.25 transition
+   - D1 (arch health): 9.85/10 (improved — -1166 LOC) ✅
+   - D2 (tech debt): 0 P0/P1/P2, 1 P3 (v0.6+) ✅
+   - D3 (test coverage): 5293 tests, 1:5.6 ratio ✅
+   - D4 (next stage readiness): v0.25 scope defined ✅
+   - D5 (design soundness): prelude fn is single source of truth ✅
+   - D6 (performance): no regression ✅
+   - D7 (documentation): all entries documented ✅
+   - D8 (pipeline integrity): no special-case interception ✅
+
+裁剪点:
+- L2 — design review + planning only, no code changes
+- 安全理由: §1.2.1 — L2 can skip §14.6 cross-stage validation
+
+5W2H:
+- WHAT: §14.5 deep review for v0.24 + v0.25 planning
+- WHY: v0.24 Stage 36 series complete — all TDs resolved
+- WHO: PM-A + ARCH-A
+- WHEN: v0.24→v0.25 transition
+- WHERE: docs/develop/v0/stage-37/
+- HOW: (1) Run §3.2 verification (2) Audit 8 dimensions (3) Plan v0.25 scope
+- HOW MUCH: 0 LOC code changes; 5293 tests preserved
+
+§3.2 验收检查 Stage 37 (design-only):
+- cargo fmt --check ✓
+- cargo clippy -- -D warnings ✓
+- cargo test --release ✓ (5293 tests, 0 failures)
+
+§14.5 D1-D8: ALL PASSED ✅
+
+Stage Summary:
+- v0.24 Stage 36 series COMPLETE — all TDs resolved
+- v0.25 scope: format! {:?}/{:x} extensions (prelude + macro, no new features)
+- 5293 tests preserved (0 failures, fmt clean, 0 clippy warnings)
+- Architecture health: 9.85/10 (improved — 特解 → 通解, -1166 LOC)
+
+下一步:
+- v0.25 Stage 37.1: Implement format! {:?} debug formatting
+  - Add `__landin_debug_str` extern C to prelude
+  - Modify format! macro to parse `{:?}` specifier
+  - Modify __landin_format_v2 to dispatch on format specifier
+  - ~50 LOC prelude + ~20 LOC macro + 33 tests
+- v0.25 Stage 37.2: Implement format! {:x} hex formatting
+  - Add `__landin_i64_to_hex` extern C to prelude
+  - ~30 LOC prelude + 33 tests

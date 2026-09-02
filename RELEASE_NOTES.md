@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.580.0 (v0.24 Stage 36.6 — TD-FORMAT-MIGRATION RESOLVED; 598-LOC MIR walker replaced by 30-LOC prelude fn; -1396 LOC dead intrinsics removed; runtime verified: format!("x={}", 42) → "x=42") |
+| **Current version** | v0.581.0 (v0.24 COMPLETE — §14.5 deep review passed; v0.24 Stage 36 series resolved all TDs including TD-FORMAT-MIGRATION; -1166 LOC net; v0.25 scope: format! {:?}/{:x} extensions) |
 | **Date** | 2026-09-01 |
 | **Test count** | 898 lib tests + 4395 integration tests = 5293 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
