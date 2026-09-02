@@ -96,6 +96,13 @@ extern "C" {
     // Per §1.0 原則 6 (通解 > 特解): one C helper for all i64 formatting.
     // Per §1.0 原則 3 (显式 > 隐式): explicit declaration, not hidden DefId.
     fn __landin_i64_to_str(buf: *mut u8, cap: i64, val: i64) -> i64;
+    // Stage 37.2 (v0.25): i64→hex string conversion helper.
+    // Writes the lowercase hexadecimal representation of `val` to `buf`,
+    // returning the number of bytes written. Negative values are formatted
+    // as two's complement (matching Rust's `format!("{:x}", val)`).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one C helper for all hex formatting.
+    fn __landin_i64_to_hex(buf: *mut u8, cap: i64, val: i64) -> i64;
 }
 // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): format! prelude impl.
 //
@@ -150,12 +157,16 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
                     let arg_ptr: *const i64 = args.ptr + arg_idx;
                     let val: i64 = *arg_ptr;
                     // Stage 37.1: {:?} → debug format.
-                    // MVP: same as {} (decimal i64). Full Debug needs Display trait (v0.6+).
+                    // Stage 37.2: {:x} → hex format (lowercase).
+                    // MVP for {:?}: same as {} (decimal i64). Full Debug needs Display trait (v0.6+).
                     // Per §1.0 原則 9 (正确 > 妥协): document the MVP limitation.
                     // Per §1.0 原則 6 (通解 > 特解): one dispatch point for all specifiers.
                     let written: i64 = if spec_char == 63u8 {
                         // '?' — debug format (MVP: decimal, same as {})
                         __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)
+                    } else if spec_char == 120u8 {
+                        // 'x' — lowercase hex format
+                        __landin_i64_to_hex(out_ptr + out_len, buf_size - out_len as i64, val)
                     } else {
                         // Default: decimal
                         __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)

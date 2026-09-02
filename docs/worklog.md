@@ -39295,3 +39295,83 @@ Stage Summary:
   - Add __landin_i64_to_hex extern C to prelude
   - Add hex dispatch in __landin_format_v2 (spec_char == 120u8)
   - ~30 LOC + 33 tests
+
+---
+Task ID: stage37.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 37.2 (v0.25) — format! {:x} hex formatting.
+Added __landin_i64_to_hex extern C helper + dispatch in __landin_format_v2.
+Runtime verified: format!("{:x}", 255) → "ff".
+v0.583.0. 5359 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (~30 LOC prelude + runtime + pipeline + 33 tests)
+- 对齐: 已查 Stage 37.1 worklog (specifier parsing infrastructure) +
+  src/stdlib/prelude.rs (__landin_format_v2 existing impl) +
+  src/codegen/runtime.rs (C wrapper) + src/codegen/pipeline.rs (declare)
+- 阻断: v0.582.0 全绿 (5326 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. {:x} dispatch in prelude fn (same pattern as {:?})
+   - 引用 §1.0 原則 6 (通解 > 特解): one dispatch point in
+     __landin_format_v2 for ALL specifiers. Added `else if spec_char == 120u8`
+     arm that calls __landin_i64_to_hex.
+   - 引用 §1.0 原則 10 (唯一可信数据源): __landin_format_v2 is the
+     single source of truth — specifier dispatch belongs here.
+
+2. C helper __landin_i64_to_hex (wraps snprintf "%lx")
+   - 引用 §12 (最优 > 最小): reuses existing snprintf pattern from
+     __landin_i64_to_str (same C wrapper, same return convention).
+   - Added to LANDIN_C_WRAPPER (src/codegen/runtime.rs) + emit_declare
+     in pipeline.rs (src/codegen/pipeline.rs:86-87).
+
+裁剪点:
+- L2 task — prelude + runtime + pipeline change + tests
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review + §3.2 acceptance
+
+5W2H:
+- WHAT: Add {:x} hex formatting to format!
+- WHY: v0.25 scope — extend format! without new language features
+- WHO: PM-A + ARCH-A + DEV-A + REV-A
+- WHEN: v0.25 Stage 37.2
+- WHERE: src/stdlib/prelude.rs + src/codegen/runtime.rs + src/codegen/pipeline.rs
+- HOW: (1) Add __landin_i64_to_hex extern C to prelude
+  (2) Add hex dispatch in __landin_format_v2 (spec_char == 120u8)
+  (3) Add C implementation in LANDIN_C_WRAPPER (snprintf "%lx")
+  (4) Add emit_declare in pipeline.rs
+- HOW MUCH: ~30 LOC changes; +33 tests; 5359 tests total, 0 failures
+
+§3.2 验收检查 Stage 37.2:
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4461 integration tests ✓ (was 4428; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+- Runtime verified: format!("{:x}", 255) → "ff" (len=2) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The hex formatting is implemented via a C helper
+  (__landin_i64_to_hex) called from the prelude fn's specifier dispatch.
+  No special-case MIR, no per-call-site hacks. The dispatch infrastructure
+  is extensible — {:o}, {:b} can be added by extending the dispatch.
+
+Stage Summary:
+- format! {:x} hex formatting ✅ Implemented Stage 37.2
+- 33 new tests (5 positive + 28 negative) covering 7 error categories
+- 5359 total tests, 0 failures, fmt clean, 0 clippy warnings
+- Runtime verified: format!("{:x}", 255) → "ff" ✓
+
+v0.25 Stage 37 Series — COMPLETE:
+- Stage 37.1: format! {:?} debug formatting ✅
+- Stage 37.2: format! {:x} hex formatting ✅
+
+下一步:
+- v0.25 complete — format! now supports {}, {:?}, {:x} specifiers.
+- v0.26 planning: consider {:o} (octal), {:b} (binary) formatting,
+  or other stdlib improvements (Vec::pop, Option::map, etc.).
+- TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains deferred.

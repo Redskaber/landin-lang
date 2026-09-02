@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.582.0 (v0.25 Stage 37.1 — format! {:?} debug formatting; specifier parsing infrastructure in __landin_format_v2; 5 positive + 28 negative tests; runtime verified) |
+| **Current version** | v0.583.0 (v0.25 Stage 37.2 — format! {:x} hex formatting; __landin_i64_to_hex C helper + dispatch in prelude; 5 positive + 28 negative tests; runtime verified: format!("{:x}", 255) → "ff") |
 | **Date** | 2026-09-02 |
-| **Test count** | 898 lib tests + 4428 integration tests = 5326 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4461 integration tests = 5359 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |

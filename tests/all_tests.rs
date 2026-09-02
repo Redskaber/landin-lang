@@ -902,3 +902,8 @@ mod stage36_5_runtime_coercion_tests;
 // __landin_format_v2 now parses {:?} specifier and dispatches to formatting.
 #[path = "v0/stage37/plan/debug_format_tests.rs"]
 mod stage37_1_debug_format_tests;
+
+// === Stage 37.2 (v0.25): format! {:x} hex formatting ===
+// __landin_format_v2 dispatches {:x} to __landin_i64_to_hex C helper.
+#[path = "v0/stage37/plan/hex_format_tests.rs"]
+mod stage37_2_hex_format_tests;

@@ -83,6 +83,8 @@ pub fn run_codegen_pipeline(
     emitter.emit_declare("void @__landin_memcpy(ptr, ptr, i64)");
     emitter.emit_declare("ptr @__landin_realloc(ptr, i64, i64)");
     emitter.emit_declare("i64 @__landin_i64_to_str(ptr, i64, i64)");
+    // Stage 37.2: Pre-declare __landin_i64_to_hex (used by format! {:x}).
+    emitter.emit_declare("i64 @__landin_i64_to_hex(ptr, i64, i64)");
     emitter.emit_declare("i32 @__landin_str_eq(ptr, i64, ptr, i64)");
     // Stage 18.334: Pre-declare printf (libc variadic) — called directly from
     // codegen for println!/print! macros. Without this, TextEmitter IR is

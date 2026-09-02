@@ -216,6 +216,12 @@ void* __landin_realloc(void* ptr, long long old_size, long long new_size) {
 long long __landin_i64_to_str(char* buf, long long buf_cap, long long val) {
     return (long long)snprintf(buf, (size_t)buf_cap, "%ld", (long)val);
 }
+/* Stage 37.2 (v0.25): i64→hex string helper for format! {:x}.
+   Writes lowercase hexadecimal representation of val to buf.
+   Per §1.0 原則 6 (通解 > 特解): one hex helper for all {:x} formatting. */
+long long __landin_i64_to_hex(char* buf, long long buf_cap, long long val) {
+    return (long long)snprintf(buf, (size_t)buf_cap, "%lx", (unsigned long)val);
+}
 /* Stage 18.232 (v0.2 Phase 2 cleanup): The 4 compound C helpers below have
    been MIGRATED to MIR intrinsics (Stages 18.228-18.231) and are NO LONGER
    called from MIR. They have been REMOVED from this file.
@@ -271,6 +277,8 @@ mod tests {
             "__landin_realloc",
             // Stage 18.231: i64_to_str primitive (used by format! intrinsic).
             "__landin_i64_to_str",
+            // Stage 37.2: i64_to_hex primitive (used by format! {:x}).
+            "__landin_i64_to_hex",
         ];
         for sym in &required {
             assert!(
