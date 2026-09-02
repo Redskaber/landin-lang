@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.584.0 (v0.26 Stage 38.1 — format! {:o} octal + {:b} binary; 5 specifiers total: {}, {:?}, {:x}, {:o}, {:b}; runtime verified) |
+| **Current version** | v0.585.0 (v0.27 Stage 39 — fixed enum variant codegen bug for single-segment paths like `None`/`Some`; Vec::pop re-enabled in prelude; 5392 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4494 integration tests = 5392 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

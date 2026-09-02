@@ -413,18 +413,24 @@ impl<T> Vec<T> {
         let elem_ptr: *mut T = self.ptr + idx;
         *elem_ptr
     }
-    // Stage 38.2 (v0.26): Vec::pop — BLOCKED on Option<T> codegen.
-    // The prelude impl body constructs Option::None/Some from a generic
-    // context, which triggers a pre-existing codegen bug: enum variant
-    // constants (e.g., None = discriminant 1) are emitted as integer
-    // constants with `store {i32, i32} 11` instead of proper struct
-    // constants. This produces invalid LLVM IR rejected by llvm-as.
+    // Stage 38.2 (v0.26): Vec::pop — removes and returns the last element.
+    // Returns Option::None if empty, Option::Some(value) otherwise.
+    // Stage 39 (v0.27): FIXED — enum variant codegen bug (single-segment
+    // paths like `None` were falling through to Constant fallback with
+    // def_id as value instead of constructing Aggregate). Root cause:
+    // `lower_path_expr` checked `path.segments.len() >= 2` but `None`
+    // from prelude body is single-segment. Fix: `>= 1`.
     //
-    // Per §1.0 原則 9 (正确 > 妥协): don't ship broken code.
-    // Per §1.0 原則 4 (报错 > 静默): limitation explicitly documented.
-    // Per §6.2: does NOT upgrade (no soundness issue — just codegen bug).
-    // Fix: requires enum variant codegen fix (tracked as future TD).
-    // fn pop(&mut self) -> Option<T> { ... }  // BLOCKED
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+    // Per §12 (最优 > 最小): root-cause fix in MIR lowerer (expr_variants.rs).
+    fn pop(&mut self) -> Option<T> {
+        if self.len == 0usize {
+            return None;
+        }
+        self.len = self.len - 1usize;
+        let elem_ptr: *mut T = self.ptr + self.len;
+        Some(*elem_ptr)
+    }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //

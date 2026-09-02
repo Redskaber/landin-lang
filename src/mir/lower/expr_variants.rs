@@ -69,7 +69,7 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                 // HIR enum definition to get the variant index.
                 // For unit variants (no args), we construct the
                 // Aggregate directly here.
-                if def_kind == crate::resolve::DefKind::Enum && path.segments.len() >= 2 {
+                if def_kind == crate::resolve::DefKind::Enum && !path.segments.is_empty() {
                     let variant_name = super::method_resolution::variant_name_from_path(path);
                     if let Some((variant_idx, field_tys)) =
                         resolve_enum_variant(cx, def_id, variant_name)
