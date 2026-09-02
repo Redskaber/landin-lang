@@ -441,6 +441,22 @@ impl<T, E> Result<T, E> {
             Err(_) => __landin_panic_msg(msg.ptr),
         }
     }
+    // Stage 46 (v0.6): Result::ok / err — convert Result to Option.
+    // Per Rust API guidelines: ok returns Some(v) if Ok, None if Err;
+    // err returns Some(e) if Err, None if Ok.
+    // Per §1.0 原則 6 (通解 > 特解): same match dispatch, no new infrastructure.
+    fn ok(self) -> Option<T> {
+        match self {
+            Ok(v) => Some(v),
+            Err(_) => None,
+        }
+    }
+    fn err(self) -> Option<E> {
+        match self {
+            Ok(_) => None,
+            Err(e) => Some(e),
+        }
+    }
     // Stage 45 (v0.6): Result::or / or_else — more Result combinators.
     // Per Rust API guidelines: or returns self if Ok, else res;
     // or_else calls a fn to produce the alternative.

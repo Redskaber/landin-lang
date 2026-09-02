@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.596.0 (v0.6 Stage 45 — prelude extension: Option::ok_or/ok_or_else, Result::or/or_else; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.597.0 (v0.6 Stage 46 — Result::ok/err added; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.6 Stage 45 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 45 adds 4 new prelude combinators: `Option::ok_or`/`ok_or_else` (Option→Result conversion) and `Result::or`/`or_else` (fallback combinators). `Result::map_err` deferred as TD-METHOD-LEVEL-GENERICS (3-param impl block not supported by monomorphization yet). Runtime verified: `Some(42).ok_or(99)` → `Ok(42)`, `Err(99).or(Ok(42))` → `Ok(42)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
+| **Status** | ✅ **v0.6 Stage 46 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 46 adds `Result::ok` (→Option<T>) and `Result::err` (→Option<E>) conversion methods. Runtime verified: `Ok(42).ok()` → `Some(42)`, `Err(99).err()` → `Some(99)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
