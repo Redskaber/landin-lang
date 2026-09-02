@@ -295,6 +295,32 @@ impl<T> Option<T> {
             }
         }
     }
+    // Stage 40.3 (v0.28): Option::or / or_else / filter — more combinators.
+    // Per Rust API guidelines: or returns self if Some, else other;
+    // or_else calls a fn to produce the alternative; filter keeps Some
+    // only if predicate returns true.
+    // Per §1.0 原則 6 (通解 > 特解): same match dispatch mechanism as
+    // existing combinators, no new infrastructure needed.
+    fn or(self, other: Option<T>) -> Option<T> {
+        match self {
+            Some(_) => self,
+            None => other,
+        }
+    }
+    fn or_else(self, f: fn() -> Option<T>) -> Option<T> {
+        match self {
+            Some(_) => self,
+            None => f(),
+        }
+    }
+    fn filter(self, predicate: fn(&T) -> bool) -> Option<T> {
+        match self {
+            Some(v) => {
+                if predicate(&v) { Some(v) } else { None }
+            }
+            None => None,
+        }
+    }
 }
 impl<T, E> Result<T, E> {
     fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }

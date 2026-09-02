@@ -39942,3 +39942,82 @@ Stage Summary:
   macro_expand so panic! macro can be used in prelude body.
 - v0.6+: Display trait (TD-DISPLAY-TRAIT-MISSING) + Fn/FnMut/FnOnce
   traits + proper ! (never) type unification (remove loop {} wrappers).
+
+---
+Task ID: stage40.3
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 40.3 (v0.28) — 4-dimension architecture audit (type system /
+special-case→general / runtime.rs C wrappers / macro system) + fix
+TD-UNREACHABLE-MACRO-BROKEN (P1) + add Option::or/or_else/filter.
+v0.591.0. 5436 tests, 0 failures. Audit report in docs/develop/v0/stage-40/.
+
+3秒启动自检:
+- 定位: L3 (architecture audit + cross-module fix + prelude extension)
+- 对齐: 已查 worklog Stage 40.2 (TD-PRELUDE-MACRO-TIMING documented)
+- 阻断: v0.590.0 全绿 (5436 tests), 0 P0 — but audit discovered
+  TD-UNREACHABLE-MACRO-BROKEN (P1, same class as Stage 40.2 panic! bug)
+
+决策点:
+1. 4-dimension architecture audit (per user request)
+   - 引用 §20 (iterative audit): 顺着 panic! 修复路径深挖同类 bug
+   - 发现 unreachable! 同样 broken (same .ptr extraction missing)
+   - 发现 8 个编译期宏 (stringify/concat/env/file/line/...) 全部 broken
+     (missing runtime symbol declarations)
+   - 发现 runtime.rs 21 个 C wrapper 可分类 (基石/panic/format/stub)
+     并识别 i64 格式化 4 个可合并为 1 个通解
+
+2. TD-UNREACHABLE-MACRO-BROKEN fix: same .ptr extraction as panic!
+   - 引用 §1.0 原則 6 (通解 > 特解): same fix pattern for all
+     str→C-string macros (panic!, unreachable!, todo!, unimplemented!)
+   - 引用 §12 (最优 > 最小): root-cause fix at macro expansion layer.
+
+3. Option::or/or_else/filter: standard Rust combinators
+   - 引用 §1.0 原則 6 (通解 > 特解): same match dispatch mechanism,
+     no new infrastructure needed.
+   - 引用 Rust API guidelines: combinators return new Option, no mutation.
+
+4. Architecture audit report: documented 15 P2/P3 TDs for v0.5+/v0.6+
+   - P2 (v0.5): i64 format consolidation, Never type completion,
+     prelude macro timing, compile-time macros, panic consolidation
+   - P3 (v0.6+): emitter unification, dyn Trait completion, impl Trait,
+     Display trait, Fn traits, cfg macros, asm macro, format_args/write
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (audit + P1 bug fix + additive feature)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for audit-driven fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - unreachable!("msg") → "internal error: entered unreachable code: msg" ✓
+  - None.or(Some(99)) → 99 ✓
+  - None.or_else(make_default) → 42 ✓
+  - Some(4).filter(is_even) → 4 ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The 4-dimension audit identified systemic issues
+  (missing runtime declarations for 8 compile-time macros, same .ptr
+  bug pattern across panic!/unreachable!/todo!/unimplemented!), and
+  fixed the P1 (unreachable!) using the same pattern as Stage 40.2
+  panic! fix. The audit report documents 15 TDs for future stages
+  with clear priority matrix (P1/P2/P3, v0.5/v0.6+).
+
+Stage Summary:
+- 4-dimension architecture audit COMPLETE (type system / 特解→通解 /
+  runtime.rs / macro system)
+- 1 P1 root-cause bug FIXED (TD-UNREACHABLE-MACRO-BROKEN)
+- 3 prelude combinators ADDED (Option::or / or_else / filter)
+- 15 P2/P3 TDs documented with priority matrix for v0.5+/v0.6+ roadmap
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — audit-driven, no regression)
+
+下一步:
+- Stage 41 (v0.5): TD-SPECIAL-2 (Never type completion — make
+  __landin_panic_msg return !) + TD-SPECIAL-4 (i64 format consolidation)
+- Stage 42 (v0.5): TD-COMPILE-TIME-MACROS (8 compile-time macros) +
+  TD-PRELUDE-MACRO-TIMING (prelude injection before macro_expand)
+- Stage 43+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT

@@ -284,16 +284,26 @@ pub(crate) fn make_cfg_attr_macro_rule(interner: &mut Rodeo) -> MacroRule {
 /// Stage 18.43: Construct an `unreachable!` macro rule.
 ///
 /// Pattern: `$( $msg:expr )?` — optional message
-/// Body:    `__landin_unreachable($msg)` — function call to runtime panic
+/// Body:    `__landin_unreachable($msg.ptr)` — function call to runtime panic
 ///
 /// `unreachable!()` → `__landin_unreachable("internal error: entered unreachable code")`.
 /// Simplified: requires a message argument (like panic!).
 ///
-/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+/// Stage 40.3 (v0.28 — TD-UNREACHABLE-MACRO-BROKEN): previously the body was
+/// `__landin_unreachable($msg)` which passed a `&str` (fat pointer {ptr, len})
+/// to a C function expecting `const char*`. Same bug as TD-PANIC-MACRO-STR-PTR
+/// (Stage 40.2). Now we extract the `.ptr` field from the `&str` to pass the
+/// raw `const char*` pointer expected by the C runtime.
+///
+/// Per §20 (iterative audit): discovered by following the same class of bug
+/// (macro body not extracting .ptr for &str → C function type mismatch).
+/// Per §1.0 原則 6 (通解 > 特解): same fix pattern as panic! macro.
+/// Per §12 (最优 > 最小): root-cause fix at macro expansion layer.
 pub(crate) fn make_unreachable_macro_rule(interner: &mut Rodeo) -> MacroRule {
     let msg_sym = interner.get_or_intern("msg");
     let expr_sym = interner.get_or_intern("expr");
     let unreach_sym = interner.get_or_intern("__landin_unreachable");
+    let ptr_sym = interner.get_or_intern("ptr");
 
     let pattern = vec![
         Token {
@@ -314,6 +324,8 @@ pub(crate) fn make_unreachable_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
     ];
 
+    // Body: __landin_unreachable ( $ msg . ptr )
+    // Stage 40.3: extract .ptr field from &str to pass raw const char* to C.
     let body = vec![
         Token {
             kind: TokenKind::Ident(unreach_sym),
@@ -329,6 +341,14 @@ pub(crate) fn make_unreachable_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
         Token {
             kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dot,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(ptr_sym),
             span: crate::session::Span::DUMMY,
         },
         Token {

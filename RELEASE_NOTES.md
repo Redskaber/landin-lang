@@ -3,13 +3,83 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.590.0 (v0.28 Stage 40.2 — TD-PANIC-MACRO-BROKEN fix + Option/Result unwrap/expect added; 5436 tests) |
+| **Current version** | v0.591.0 (v0.28 Stage 40.3 — TD-UNREACHABLE-MACRO-BROKEN fix + Option::or/or_else/filter added; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.591.0 — Stage 40.3 (v0.28) — TD-UNREACHABLE-MACRO-BROKEN Fix + Option::or/or_else/filter + Architecture Audit
+
+### Overview
+
+Stage 40.3 (v0.28) performs a comprehensive architecture audit (4 dimensions:
+type system, special-case→general solutions, runtime.rs C wrappers, macro
+system) and fixes a P1 bug discovered during the audit: `unreachable!` macro
+was broken with the same root cause as `panic!` (Stage 40.2).
+
+**Audit findings** documented in `docs/develop/v0/stage-40/stage-40-architecture-audit-and-td-roadmap.md`:
+- Type system: Never (`!`) type partially implemented (unify works, but
+  `__landin_panic_msg` returns `()` not `!`)
+- Special-case solutions: 6 identified (TD-SPECIAL-1 to TD-SPECIAL-6)
+- runtime.rs: 21 C wrappers categorized into 4 groups (基石/panic/format/stub)
+- Macro system: 27 built-in macros audited — 8 compile-time macros broken
+  (missing runtime symbols), `unreachable!` broken (same `.ptr` bug as panic!)
+
+### Root Causes Fixed
+
+#### TD-UNREACHABLE-MACRO-BROKEN (P1 — Macro expansion layer)
+
+**Symptom**: `unreachable!("msg")` failed with `E400: mismatched types:
+expected *const u8, found &str` — same bug as TD-PANIC-MACRO-STR-PTR.
+
+**Root cause**: The `unreachable!` macro body was `__landin_unreachable($msg)`
+which passed `&str` (fat pointer) to a C function expecting `const char*`.
+This bug existed since Stage 18.43 (macro registration) but was never tested
+at runtime until the Stage 40.3 architecture audit.
+
+**Fix**: Changed macro body to `__landin_unreachable($msg.ptr)` to extract
+the `.ptr` field from `&str`, same fix pattern as `panic!` (Stage 40.2).
+
+**Per §20 (iterative audit)**: discovered by following the same class of
+bug (macro body not extracting `.ptr` for `&str` → C function type mismatch).
+**Per §1.0 原則 6 (通解 > 特解)**: same fix pattern as `panic!` macro.
+
+### New Prelude Methods (Stage 40.3)
+
+```landin
+impl<T> Option<T> {
+    fn or(self, other: Option<T>) -> Option<T> {
+        match self { Some(_) => self, None => other }
+    }
+    fn or_else(self, f: fn() -> Option<T>) -> Option<T> {
+        match self { Some(_) => self, None => f() }
+    }
+    fn filter(self, predicate: fn(&T) -> bool) -> Option<T> {
+        match self {
+            Some(v) => { if predicate(&v) { Some(v) } else { None } }
+            None => None,
+        }
+    }
+}
+```
+
+### Runtime Verified
+
+- `unreachable!("msg")` → `internal error: entered unreachable code: msg` ✓
+- `None.or(Some(99))` → `99` ✓
+- `None.or_else(make_default)` → `42` ✓
+- `Some(4).filter(is_even)` → `4` ✓
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
 
 ---
 
