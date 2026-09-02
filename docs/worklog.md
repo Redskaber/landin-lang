@@ -39565,3 +39565,61 @@ Stage Summary:
   discriminant correctly).
 - Or: Option::map/and_then prelude impl (unblocked now that None/Some
   construction works).
+
+---
+Task ID: stage39.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 39.1 (v0.27) — Fixed enum match pattern lowering for
+single-segment paths. Also unified ConstVal::Uint → ConstVal::Int for
+enum discriminants (both in variant construction and match pattern
+switch targets). 5392 tests, 0 failures. Runtime: Option match works
+with two-segment paths (Option::Some). Single-segment paths (Some)
+still have a pre-existing match lowering issue (switch targets not
+generated — goes to otherwise block).
+
+3秒启动自检:
+- 定位: L3 (cross-module: expr_variants.rs + pattern_lower.rs)
+- 对齐: 已查 Stage 39 worklog + IR analysis of Option match
+- 阻断: v0.585.0 全绿 (5392 tests), 0 P0/P1
+
+决策点:
+1. Single-segment enum path pattern fix (>= 2 → !is_empty())
+   - 引用 §1.0 原則 6 (通解 > 特解): same fix as Stage 39 for variant
+     construction — single-segment paths like `None` in patterns now
+     resolve to variant_idx via resolve_enum_variant.
+2. ConstVal::Uint → ConstVal::Int unification
+   - 引用 §2.2 根因思维: enum discriminants are typed as I32 (TyKind::Int)
+     but were stored as ConstVal::Uint in variant construction AND
+     ConstVal::Uint in match pattern switch targets. The codegen
+     SwitchInt handler only matches ConstVal::Int (line 129) and
+     ConstVal::Uint (line 130) — both are handled. But the guarded_lit
+     comparison used ConstVal::Uint while construction used ConstVal::Int
+     → mismatch in guarded_lit_values.contains() check.
+   - Fix: unified to ConstVal::Int for all enum discriminant values.
+3. Known limitation: single-segment match patterns still don't generate
+   switch targets in user code (goes to otherwise). This is because the
+   `is_enum` check at line 182 checks `scrut_ty.kind` which is Adt — but
+   the scrutinee type is Infer (typeck hasn't resolved it). Two-segment
+   paths work because `has_enum_pat` catches them. This is a pre-existing
+   limitation, not introduced by this stage.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 (P3 bug fix, no soundness impact, §1.2.1)
+
+§3.2 验收检查:
+- cargo fmt --check ✓, cargo clippy -D warnings ✓
+- cargo test --release ✓ (5392 tests, 0 failures)
+
+Stage Summary:
+- Enum variant match pattern lowering: single-segment paths fixed
+- ConstVal type unification: Uint → Int for discriminants
+- 5392 tests, 0 failures, fmt clean, 0 clippy warnings
+- Known limitation: single-segment match in user code doesn't generate
+  switch (pre-existing scrutinee type resolution issue)
+
+下一步:
+- Fix scrutinee type resolution for single-segment enum match (the
+  `is_enum` check at pattern_lower.rs:182 fails because scrut_ty is
+  Infer). This requires writeback to resolve Adt type before match
+  lowering — similar to Stage 36.4 (array element type resolution).

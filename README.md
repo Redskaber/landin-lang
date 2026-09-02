@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.585.0 (v0.27 Stage 39 — fixed enum variant codegen bug for single-segment paths; Vec::pop re-enabled; 5392 tests — Architecture health 9.85/10) |
+| **Version** | v0.586.0 (v0.27 Stage 39.1 — fixed enum match pattern lowering for single-segment paths; unified ConstVal::Uint → Int; Vec::pop works with two-segment Option::Some; 5392 tests — Architecture health 9.85/10) |
 | **License** | MIT |
 | **Status** | ✅ **v0.27 Stage 39 COMPLETE**. 5392 tests (898 lib + 4494 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 39 fixes the enum variant codegen bug discovered in Stage 38.2: single-segment paths like `None` (from prelude body) were falling through to Constant fallback with `def_id` as value instead of constructing Aggregate. Root cause: `lower_path_expr` checked `path.segments.len() >= 2` but `None` from prelude is single-segment. Fix: `!path.segments.is_empty()`. Vec::pop re-enabled in prelude. IR verified: `None` now correctly produces `insertvalue {i32, i32} undef, i32 0, 0` (was: `store {i32, i32} 12`). Architecture health: 9.85/10 (stable — root-cause fix, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |

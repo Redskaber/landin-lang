@@ -92,7 +92,7 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                             // Per §2 原则 4 (报错>静默): better error location.
                             let discr = Operand::Constant(Const {
                                 ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span),
-                                val: ConstVal::Uint(variant_idx as u128),
+                                val: ConstVal::Int(variant_idx as u128),
                             });
                             return cx.eval_rvalue_to_temp(
                                 Rvalue::Aggregate(
@@ -843,7 +843,7 @@ pub(super) fn lower_call_expr(
             // Stage 18.159 (TD-SPAN-DUMMY-CLEANUP): use expr.span (was: Span::DUMMY).
             let discr = Operand::Constant(Const {
                 ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span),
-                val: ConstVal::Uint(variant_idx as u128),
+                val: ConstVal::Int(variant_idx as u128),
             });
             all_operands.push(discr);
         }

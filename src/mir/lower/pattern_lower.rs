@@ -382,7 +382,8 @@ pub(crate) fn lower_match(
             match &arm.pat.kind {
                 HirPatKind::Path(path) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
-                        if path.segments.len() >= 2 {
+                        // Stage 39.1: Support single-segment paths like `None`.
+                        if !path.segments.is_empty() {
                             super::resolve_enum_variant(
                                 cx,
                                 def_id,
@@ -398,7 +399,7 @@ pub(crate) fn lower_match(
                 }
                 HirPatKind::TupleStruct(path, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
-                        if path.segments.len() >= 2 {
+                        if !path.segments.is_empty() {
                             super::resolve_enum_variant(
                                 cx,
                                 def_id,
@@ -414,7 +415,7 @@ pub(crate) fn lower_match(
                 }
                 HirPatKind::Struct(path, _, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
-                        if path.segments.len() >= 2 {
+                        if !path.segments.is_empty() {
                             super::resolve_enum_variant(
                                 cx,
                                 def_id,
@@ -435,7 +436,7 @@ pub(crate) fn lower_match(
         };
 
         if let Some(idx) = enum_variant_idx {
-            let val = ConstVal::Uint(idx as u128);
+            let val = ConstVal::Int(idx as u128);
             // Stage 14.89 (Bug 4 fix): Check if this enum variant arm has
             // inner sub-patterns that could differentiate it from other arms
             // with the same variant. If so, don't add as a switch target —
@@ -618,7 +619,7 @@ pub(crate) fn lower_match(
                 _ => None,
             };
             if let Some(idx) = variant_idx {
-                guarded_lit_values.contains(&ConstVal::Uint(idx as u128))
+                guarded_lit_values.contains(&ConstVal::Int(idx as u128))
             } else {
                 false
             }
@@ -655,7 +656,7 @@ pub(crate) fn lower_match(
                 _ => None,
             };
             if let Some(idx) = variant_idx {
-                let val = ConstVal::Uint(idx as u128);
+                let val = ConstVal::Int(idx as u128);
                 targets.iter().any(|(t_val, _)| *t_val == val)
             } else {
                 false
