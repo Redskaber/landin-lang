@@ -899,14 +899,26 @@ pub(crate) fn lower_expr_to_operand(
         }
 
         // Cast: `expr as Ty` → Rvalue::Cast
+        // Stage 58 (v0.7 — TD-CAST-STR-TO-U8-SLICE): Determine cast kind
+        // based on source and target types. Previously all casts used
+        // CastKind::Numeric — now we check for fat pointer reinterpretation
+        // (&str as &[u8], &[T; N] as &[T]) and use CastKind::Unsize.
+        //
+        // Per §12 (最优 > 最小): root-cause fix — determine cast kind at
+        // MIR lowering time (where types are known), not hardcode Numeric.
+        // Per §1.0 原則 6 (通解 > 特解): one cast kind inference for all
+        // fat pointer reinterpretations (&str→&[u8], &[T;N]→&[T], etc.).
         HirExprKind::Cast {
             expr: inner, ty, ..
         } => {
             let inner_local = lower_expr_to_operand(cx, inner, None);
             let target_ty = lower_hir_ty_to_mir_ty(ty);
+            // Stage 58: Determine cast kind based on source/target types.
+            let src_ty = cx.mir.local(inner_local).ty.clone();
+            let cast_kind = infer_cast_kind(&src_ty, &target_ty);
             cx.eval_rvalue_to_temp(
                 Rvalue::Cast(
-                    CastKind::Numeric,
+                    cast_kind,
                     Operand::Copy(Place::local(inner_local, inner.span)),
                     target_ty.clone(),
                 ),
@@ -2060,4 +2072,37 @@ fn lower_fat_ptr_lit(
     let _ = (len_ty, usize_ty, ptr_ty);
 
     fat_ptr_local
+}
+
+/// Stage 58 (v0.7 — TD-CAST-STR-TO-U8-SLICE): Infer the appropriate
+/// `CastKind` based on source and target types.
+///
+/// - `CastKind::Numeric` for int/uint/float/char/bool casts (default).
+/// - `CastKind::Unsize` for fat pointer reinterpretations:
+///   - `&str` → `&[u8]` (same layout {ptr, len})
+///   - `&[T; N]` → `&[T]` (sized array → slice)
+///   - `*mut T` → `*mut U` (pointer reinterpretation)
+///
+/// Per §1.0 原則 6 (通解 > 特解): one inference function for all cast kinds.
+/// Per §12 (最优 > 最小): root-cause fix — determine cast kind at MIR
+/// lowering time (where types are known), not hardcode Numeric.
+/// Per §1.0 原則 4 (报错 > 静默): if types don't match a known pattern,
+/// default to Numeric (typeck will reject invalid casts).
+fn infer_cast_kind(src_ty: &Ty, dst_ty: &Ty) -> CastKind {
+    use crate::mir::ty::TyKind;
+    match (&src_ty.kind, &dst_ty.kind) {
+        // &str → &[u8]: fat pointer reinterpretation (same layout).
+        // Both are {ptr, len} fat pointers — just different type tags.
+        (TyKind::Ref(_, _, inner_src), TyKind::Ref(_, _, inner_dst)) => {
+            match (&inner_src.kind, &inner_dst.kind) {
+                (TyKind::Str, TyKind::Slice(_)) => CastKind::Unsize,
+                (TyKind::Array(_, _), TyKind::Slice(_)) => CastKind::Unsize,
+                _ => CastKind::Numeric,
+            }
+        }
+        // RawPtr → RawPtr: pointer reinterpretation.
+        (TyKind::RawPtr(_, _), TyKind::RawPtr(_, _)) => CastKind::Pointer,
+        // Default: numeric cast (typeck validates).
+        _ => CastKind::Numeric,
+    }
 }

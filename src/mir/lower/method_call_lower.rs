@@ -430,6 +430,7 @@ pub(super) fn lower_method_call_expr(
                 intrinsic,
                 super::primitive_intrinsics::PrimitiveIntrinsic::StrLen
                     | super::primitive_intrinsics::PrimitiveIntrinsic::StrIsEmpty
+                    | super::primitive_intrinsics::PrimitiveIntrinsic::StrAsBytes
             );
             if !skip_interception {
                 if args.len() == intrinsic.expected_arg_count() {

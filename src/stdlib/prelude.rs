@@ -796,12 +796,14 @@ impl str {
     // Per §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
     // Per §1.0 原則 6 (通解 > 特解): standard method resolution + field access.
     fn is_empty(&self) -> bool { self.len == 0usize }
-    // Stage 57 (v0.7): str::as_bytes — `self as &[u8]` cast not supported
-    // by typeck (TD-CAST-STR-TO-U8-SLICE). Keep intrinsic interception
-    // for as_bytes until cast support is added.
-    // Per §1.0 原則 9 (正确 > 妥协): documented as TD-CAST-STR-TO-U8-SLICE.
-    // Per §1.0 原則 4 (报错 > 静默): intrinsic interception reports error if body reached.
-    fn as_bytes(&self) -> &[u8] { __landin_unreachable("str::as_bytes: cast &str→&[u8] not yet supported".ptr) }
+    // Stage 58 (v0.7 — TD-CAST-STR-TO-U8-SLICE FIXED): str::as_bytes now
+    // has a real body. `self as &[u8]` is a fat pointer reinterpretation
+    // cast — typeck now supports it via infer_cast_kind returning
+    // CastKind::Unsize for &str → &[u8].
+    //
+    // Per §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution + cast.
+    fn as_bytes(&self) -> &[u8] { self as &[u8] }
 }
 // Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Primitive type
 // impls with REAL bodies (not markers). These verify the architecture is

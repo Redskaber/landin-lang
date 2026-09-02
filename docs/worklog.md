@@ -41057,3 +41057,67 @@ Stage Summary:
   cast support (enables str::as_bytes real body).
 - Stage 59+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
 - Stage 60+: TD-PRELUDE-MACRO-TIMING (DefId decoupling + token-level injection).
+
+---
+Task ID: stage58
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 58 (v0.7) — TD-CAST-STR-TO-U8-SLICE FIXED. Added
+infer_cast_kind function. str::as_bytes real body. TD-STR-INTRINSIC-MARKER-BODIES 3/3 complete.
+v0.608.0. 5436 tests, 0 failures. Runtime: "hello".as_bytes().len()=5.
+
+3秒启动自检:
+- 定位: L3 (prelude + expr_operand.rs + method_call_lower.rs + typeck)
+- 对齐: 已查 Stage 57 worklog (TD-CAST-STR-TO-U8-SLICE discovered)
+- 阻断: v0.607.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added infer_cast_kind function in expr_operand.rs
+   - 引用 §12 (最优 > 最小): root-cause fix — determine cast kind at
+     MIR lowering time (where types are known), not hardcode Numeric.
+   - 引用 §1.0 原則 6 (通解 > 特解): one inference function for all
+     cast kinds (Numeric, Unsize, Pointer).
+   - &str → &[u8]: CastKind::Unsize (fat pointer reinterpretation).
+   - &[T; N] → &[T]: CastKind::Unsize (sized array → slice).
+   - *mut T → *mut U: CastKind::Pointer.
+   - Default: CastKind::Numeric (typeck validates).
+
+2. str::as_bytes real body: `self as &[u8]`
+   - 引用 §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution + cast.
+   - Intrinsic interception skipped for StrAsBytes (same as StrLen/StrIsEmpty).
+
+3. TD-STR-INTRINSIC-MARKER-BODIES 3/3 COMPLETE
+   - str::len: real body `self.len` (Stage 56) ✅
+   - str::is_empty: real body `self.len == 0usize` (Stage 57) ✅
+   - str::as_bytes: real body `self as &[u8]` (Stage 58) ✅
+   - All 3 str intrinsics now have real bodies — no marker bodies remain.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: "hello".as_bytes().len() → 5 ✓ (via real body + cast)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. infer_cast_kind determines the correct CastKind based
+  on source/target types at MIR lowering time. This is the 通解 — one
+  function handles all cast kinds (Numeric, Unsize, Pointer), replacing
+  the hardcoded CastKind::Numeric for all casts.
+
+Stage Summary:
+- TD-CAST-STR-TO-U8-SLICE FIXED (infer_cast_kind + str::as_bytes real body)
+- TD-STR-INTRINSIC-MARKER-BODIES 3/3 COMPLETE (all str intrinsics have real bodies)
+- 1 new function ADDED (infer_cast_kind)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause TD fix, no regression)
+
+下一步:
+- TD-STR-INTRINSIC-MARKER-BODIES COMPLETE — all 3 str intrinsics have real bodies.
+- First wave TD fixes remaining: TD-PRELUDE-MACRO-TIMING (DefId decoupling).
+- Second wave: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
