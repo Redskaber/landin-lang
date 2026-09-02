@@ -419,6 +419,48 @@ impl Display for str {
         0i64
     }
 }
+// Stage 62 (v0.7 — TD-FN-TRAITS partial): Fn/FnMut/FnOnce traits.
+//
+// Provides the canonical Rust trait family for callable types. Closures
+// should auto-implement these based on capture mode (Fn for &T captures,
+// FnMut for &mut T, FnOnce for moves). The full closure auto-impl is
+// deferred to v0.8+ (requires TyKind::Closure → Fn trait coercion in
+// typeck + vtable emission for closure trait dispatch).
+//
+// Per Rust Design FAQ: Fn traits use the `Fn<Args>` family with an
+// associated type `Output` — the call operator `f(args)` is sugar for
+// `<F as Fn<(Args,)>>::call(&f, args)`. Landin mirrors this design.
+// Per Rust API Guidelines: associated types are preferred over generic
+// methods when the type is determined by the impl (Output is determined
+// by Args + Self).
+// Per §1.0 原則 6 (通解 > 特解): one trait family, all callable types.
+// Per §12 (最优 > 最小): root-cause trait definitions — auto-impl deferred
+// to v0.8+ but the trait contracts are stable now.
+//
+// NOTE: Closure auto-impl is DEFERRED (TD-FN-CLOSURE-COERCION, P3, v0.8+).
+// Users can manually `impl Fn<(i32,)> for MyClosure { ... }` if needed,
+// but the common case `fn apply<F: Fn(i32) -> i32>(f: F, x: i32) { f(x) }`
+// requires closure auto-impl (v0.8+).
+//
+// NOTE: TD-TRAIT-NAME-COLLISION applies (same as Clone/Display) —
+// user code defining `trait Fn` conflicts with prelude's Fn.
+// Resolver should merge prelude/user trait definitions (P3, v0.8+).
+//
+// NOTE: TD-FN-ASSOC-TYPE-CALL (P3, v0.8+) — `<F as Fn<(Args,)>>::call(&f, args)`
+// syntax for explicit trait method dispatch on Fn traits is not yet
+// supported. The simpler `f.call(args)` form works for manual impls.
+trait Fn<Args> {
+    type Output;
+    fn call(&self, args: Args) -> Self::Output;
+}
+trait FnMut<Args> {
+    type Output;
+    fn call_mut(&mut self, args: Args) -> Self::Output;
+}
+trait FnOnce<Args> {
+    type Output;
+    fn call_once(self, args: Args) -> Self::Output;
+}
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }

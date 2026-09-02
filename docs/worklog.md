@@ -41334,3 +41334,77 @@ Stage Summary:
   TD-DYN-TRAIT-COMPLETION (full TyKind::Dyn(DefId)),
   TD-TRAIT-NAME-COLLISION (resolver merge prelude/user traits),
   format! param redesign (&[i64] → &[&dyn Display]).
+
+---
+Task ID: stage62
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 62 (v0.7) — TD-FN-TRAITS PARTIAL FIX.
+Fn/FnMut/FnOnce traits + associated type Output added to prelude.
+Manual impl pattern verified. Closure auto-impl deferred to v0.8+.
+6 new TDs discovered (all P3, v0.8+).
+v0.612.0. 5473 tests, 0 failures, 9 ignored. Runtime: Doubler.call((21,))→42.
+
+3秒启动自检:
+- 定位: L3 (prelude 3 trait definitions + 20 new tests + 5 ignored TDs)
+- 对齐: 已查 Stage 61 worklog, closure design docs (27-closure-redesign.md)
+- 阻断: v0.611.0 全绿 (5458 tests), 0 P0/P1
+
+决策点:
+1. Trait definitions only (defer closure auto-impl)
+   - 引用 §12 (最优 > 最小): trait contract IS the root-cause definition.
+   - 引用 §13.4 (重构判据): closure auto-impl needs TyKind::Closure → Fn
+     trait coercion in typeck + vtable emission (v0.8+).
+   - trait Fn<Args> { type Output; fn call(&self, args: Args) -> Self::Output; }
+   - Same pattern for FnMut (call_mut) and FnOnce (call_once).
+   - Per Rust Design FAQ: Fn traits use Fn<Args> family + associated type Output.
+
+2. Use associated type Output (Rust-style)
+   - Per Rust API Guidelines: associated types preferred over generic methods
+     when type is determined by impl.
+   - Landin has associated type support (Stage 18.52 GATs Phase 1).
+
+3. 5 ignored tests document real TDs (explicit §1.0 原則 4)
+   - TD-FN-UNIT-ARGS: Fn<()> unit tuple arg unsupported.
+   - TD-ASSOC-TYPE-SCOPE: Output in 2 impls conflicts.
+   - TD-FN-IMPL-SIG-VALIDATION: typeck doesn't check impl sig matches Args/Output.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P3 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5473 tests, 0 failures, 9 ignored)
+- Runtime verified: Doubler.call((21,))→42, Counter.call_mut((5,))→15,
+  Consumer.call_once((41,))→42 ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The Fn trait family is now defined in prelude with the
+  canonical Rust design (Fn<Args> + associated type Output). Users can
+  implement these traits for callable types and use .call()/.call_mut()/
+  .call_once() syntax. The deferrals (closure auto-impl, generic bound
+  dispatch, explicit-trait call syntax) are documented as 6 separate
+  TD items with clear dependencies, not workarounds.
+
+Stage Summary:
+- TD-FN-TRAITS PARTIALLY FIXED (3 trait definitions + manual impl pattern)
+- 20 new tests added (15 passing + 5 ignored for documented TDs)
+- 6 new TDs discovered (all P3, v0.8+):
+  - TD-FN-CLOSURE-COERCION (closure auto-impl)
+  - TD-FN-UNIT-ARGS (Fn<()> unit tuple arg)
+  - TD-ASSOC-TYPE-SCOPE (associated type scope across impls)
+  - TD-FN-IMPL-SIG-VALIDATION (impl signature validation)
+  - TD-GENERIC-TRAIT-METHOD-MANGLING (generic trait method call mangling)
+  - TD-FN-ASSOC-TYPE-CALL (explicit trait dispatch syntax)
+- 5473 tests (898 lib + 4575 integration), 0 failures, 9 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause TD fix, no regression)
+
+下一步:
+- TD-IMPL-TRAIT: impl Trait syntax in param/return position (Wave 3).
+- TD-SPECIAL-16: Drop trait + drop glue (Wave 3).
+- TD-PRELUDE-MACRO-TIMING: DefId decoupling + token-level injection (Wave 4).
+- v0.8+: 6 new TDs discovered in Stage 62.

@@ -3,13 +3,94 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.611.0 (v0.7 Stage 61 — TD-DISPLAY-TRAIT-MISSING partial fix: Display trait + 5 primitive impls; TextEmitter @.data dedup fixed; 5458 tests) |
+| **Current version** | v0.612.0 (v0.7 Stage 62 — TD-FN-TRAITS partial fix: Fn/FnMut/FnOnce traits + associated type Output; manual impl pattern verified; closure auto-impl deferred to v0.8+; 5473 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4560 integration tests = 5458 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4575 integration tests = 5473 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.612.0 — Stage 62 (v0.7) — TD-FN-TRAITS Partial Fix + 6 New TDs Discovered
+
+### Overview
+
+Stage 62 partially fixes **TD-FN-TRAITS** by adding the `Fn`/`FnMut`/`FnOnce` trait family to the prelude with associated type `Output`. This establishes the canonical Rust-style callable trait contracts. Users can manually implement these traits for callable types and use `.call()`/`.call_mut()`/`.call_once()` syntax. Closure auto-impl (the common case `fn apply<F: Fn(i32) -> i32>(f: F)`) is deferred to v0.8+ (requires TyKind::Closure → Fn trait coercion in typeck + vtable emission for closure trait dispatch).
+
+### Root-cause analysis (§2.2)
+
+**Problem**: Closures have type `TyKind::Closure(def_id, captures)` and only direct `f(args)` call lowering exists (Stage 16.x). No trait integration means closures can't be: (1) stored as `dyn Fn(i32) -> i32`, (2) passed to generic `fn apply<F: Fn(i32) -> i32>(f: F)`.
+
+**Root cause**: No Fn/FnMut/FnOnce trait definitions in prelude; no auto-impl mechanism for closures.
+
+**Fix**: Define the 3 trait contracts now (root-cause trait definition per §12). Per Rust Design FAQ: Fn traits use `Fn<Args>` family with associated type `Output`. Landin has associated type support (Stage 18.52 GATs Phase 1), so we use it. Closure auto-impl is a separate TD-FN-CLOSURE-COERCION (v0.8+).
+
+### Trait contracts
+
+```landin
+trait Fn<Args> {
+    type Output;
+    fn call(&self, args: Args) -> Self::Output;
+}
+trait FnMut<Args> {
+    type Output;
+    fn call_mut(&mut self, args: Args) -> Self::Output;
+}
+trait FnOnce<Args> {
+    type Output;
+    fn call_once(self, args: Args) -> Self::Output;
+}
+```
+
+### Deferrals (6 new TDs discovered, all P3 v0.8+)
+
+- **TD-FN-CLOSURE-COERCION**: closures don't auto-impl Fn traits (needs TyKind::Closure → Fn trait coercion in typeck + vtable emission for closure trait dispatch).
+- **TD-FN-UNIT-ARGS**: `Fn<()>` unit tuple arg not supported by typeck/codegen (LLVM module verification fails).
+- **TD-ASSOC-TYPE-SCOPE**: associated type `Output` in 2 impls of same trait conflicts (resolver doesn't scope assoc types per impl block — same TD-TRAIT-NAME-COLLISION pattern as Clone/Display).
+- **TD-FN-IMPL-SIG-VALIDATION**: typeck doesn't validate impl fn signature matches trait's Args/Output.
+- **TD-GENERIC-TRAIT-METHOD-MANGLING**: generic trait method call produces wrong mangled name (e.g., `From::<i32>::from(42)` → undefined `fn_0_i32`).
+- **TD-FN-ASSOC-TYPE-CALL**: `<F as Fn<(Args,)>>::call(&f, args)` explicit trait dispatch syntax not supported by parser/typeck.
+
+### Test impact
+
+- 20 new tests added in `tests/v0/stage62/plan/fn_traits_tests.rs`
+- 15 passing tests cover the trait definitions + manual impl pattern
+- 5 `#[ignore]` tests document the deferred TDs (TD-FN-UNIT-ARGS, TD-ASSOC-TYPE-SCOPE × 2, TD-FN-IMPL-SIG-VALIDATION × 2)
+- No existing tests modified (no `Fn`/`FnMut`/`FnOnce` trait name conflicts in tests)
+- 5458 tests → **5473 tests** (+15 passing, +5 ignored)
+- All tests pass single-threaded with `ulimit -s unlimited`
+
+### Runtime verification
+
+```landin
+struct Doubler;
+impl Fn<(i32,)> for Doubler {
+    type Output = i32;
+    fn call(&self, args: (i32,)) -> i32 {
+        let x: i32 = args.0;
+        x * 2
+    }
+}
+
+fn main() {
+    let d = Doubler;
+    let r = d.call((21,));  // → 42
+    println!("{}", r);
+}
+```
+
+### Acceptance checks (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5473 tests, 0 failures, 9 ignored)
+- Runtime verified: `Doubler.call((21,))` → 42, `Counter.call_mut((5,))` → 15, `Consumer.call_once((41,))` → 42 ✓
+
+### Architecture health
+
+9.85/10 (stable — root-cause TD fix, no regression). The Fn trait family establishes the canonical Rust-style callable trait contracts. The 6 deferred TDs are clearly scoped v0.8+ architectural items, not workarounds.
 
 ---
 

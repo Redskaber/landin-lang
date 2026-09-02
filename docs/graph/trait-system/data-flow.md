@@ -183,3 +183,28 @@ impl_by_trait_and_type:              impls_by_def_ids:
 - TD-TRAIT-NAME-COLLISION — resolver should merge prelude/user trait definitions (P3, v0.8+)
 
 **Test impact**: 7 test/conformance files renamed `Display` → `Show` (TD-TRAIT-NAME-COLLISION workaround, same pattern as Stage 59 Clone→Display rename).
+
+---
+
+## Stage 62 (v0.612.0) — Fn/FnMut/FnOnce trait family addition
+
+**Added**: 3 traits in prelude:
+```landin
+trait Fn<Args> { type Output; fn call(&self, args: Args) -> Self::Output; }
+trait FnMut<Args> { type Output; fn call_mut(&mut self, args: Args) -> Self::Output; }
+trait FnOnce<Args> { type Output; fn call_once(self, args: Args) -> Self::Output; }
+```
+
+Per Rust Design FAQ: Fn traits use `Fn<Args>` family with associated type `Output` — the call operator `f(args)` is sugar for `<F as Fn<(Args,)>>::call(&f, args)`.
+
+**Manual impl pattern verified**: Users can manually `impl Fn<(i32,)> for MyCallable { type Output = i32; fn call(&self, args: (i32,)) -> i32 { ... } }` and call via `.call()`, `.call_mut()`, `.call_once()`.
+
+**Deferred** (documented as 6 new TDs, all P3 v0.8+):
+- TD-FN-CLOSURE-COERCION: closures don't auto-impl Fn traits (needs TyKind::Closure → Fn trait coercion in typeck + vtable emission)
+- TD-FN-UNIT-ARGS: `Fn<()>` unit tuple arg not supported by typeck/codegen
+- TD-ASSOC-TYPE-SCOPE: associated type `Output` in 2 impls of same trait conflicts (resolver scope issue)
+- TD-FN-IMPL-SIG-VALIDATION: typeck doesn't validate impl sig matches Args/Output
+- TD-GENERIC-TRAIT-METHOD-MANGLING: generic trait method call produces wrong mangled name (e.g., `From::<i32>::from(42)` → undefined `fn_0_i32`)
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` explicit dispatch syntax not supported
+
+**Test impact**: 20 new tests added (15 passing + 5 ignored for documented TDs). No existing tests modified (no `Fn`/`FnMut`/`FnOnce` trait name conflicts in tests).
