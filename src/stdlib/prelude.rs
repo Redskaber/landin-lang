@@ -698,6 +698,13 @@ impl<T> Vec<T> {
     // Per §1.0 原則 6 (通解 > 特解): same field access pattern.
     fn is_empty(&self) -> bool { self.len == 0usize }
     fn capacity(&self) -> usize { self.cap }
+    // Stage 51 (v0.6): Vec::clear / truncate — more Vec methods.
+    // Per Rust API guidelines: clear sets len to 0; truncate sets len to min(len, new_len).
+    // Per §1.0 原則 6 (通解 > 特解): same field access pattern.
+    fn clear(&mut self) { self.len = 0usize; }
+    fn truncate(&mut self, new_len: usize) {
+        if new_len < self.len { self.len = new_len; }
+    }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //

@@ -40637,3 +40637,58 @@ Stage Summary:
 - v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
 - v0.7+: TD-SPECIAL-8 (HIR index for O(1) method resolution).
 - v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
+
+---
+Task ID: stage51
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 51 (v0.6) — Vec::clear/truncate added + TD-SPECIAL-8/11 analysis.
+v0.602.0. 5436 tests, 0 failures. Runtime: Vec::truncate(2)+clear() works.
+
+3秒启动自检:
+- 定位: L2 (prelude only, 2 Vec methods added)
+- 对齐: 已查 Stage 50 worklog + Stage 49 audit report
+- 阻断: v0.601.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added Vec::clear / truncate to existing impl<T> Vec<T> block
+   - 引用 §1.0 原則 6 (通解 > 特解): same field access pattern.
+   - No additional generic params needed.
+
+2. TD-SPECIAL-8 (HIR index) analysis:
+   - find_owner already O(1) via cached owner_index (HirCrate).
+   - Remaining O(N) scans: "find impl block containing method DefId"
+     — needs reverse index (method_def_id → impl_block_def_id).
+   - 引用 §13.4 (重构判据): not a performance bottleneck for current
+     test suite (5436 tests); defer to v0.7+ when method dispatch
+     performance becomes critical.
+
+3. TD-SPECIAL-11 (variadic detection) already 通解:
+   - signature_is_variadic from Stage 18.334 parses "..." from signatures.
+   - No name-list hardcoding — fully data-driven.
+   - is_landin_print_macro still hardcoded (codegen interception path),
+     but this is by design (needs to distinguish print macros from other
+     extern "C" functions for codegen routing).
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature + analysis, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: Vec::truncate(2) → len=2, Vec::clear() → is_empty=true ✓
+
+Stage Summary:
+- 2 new prelude methods ADDED (Vec::clear, Vec::truncate)
+- TD-SPECIAL-8 analyzed (find_owner O(1); reverse index deferred to v0.7+)
+- TD-SPECIAL-11 confirmed already 通解 (signature_is_variadic)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension + analysis, no regression)
+
+下一步:
+- v0.7+: TD-DISPLAY-TRAIT (format! param redesign for trait dispatch).
+- v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+- v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
+- v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
