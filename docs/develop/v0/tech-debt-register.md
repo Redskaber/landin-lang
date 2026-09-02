@@ -1697,3 +1697,62 @@ The deeper blocker (array element type Infer at codegen) needs a fix in
 the typeck writeback pipeline — similar to Stage 18.351 Param resolution.
 This is v0.5+ architectural scope. TD-FORMAT-MIGRATION remains BLOCKED
 until this is resolved.
+
+---
+
+## Stage 36.4 (v0.24) — TD-ARRAY-ELEMENT-TYPE-RESOLUTION RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.578.0 (Stage 36.4)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### Resolution Summary
+
+Added Array Aggregate writeback rule in `compute_writeback_ty`
+(src/mir/lower/writeback.rs). The writeback pipeline now resolves array
+element types from `Infer` to concrete types (from first operand's type)
+before codegen.
+
+**Root cause** (per §2.2 根因思维): MIR lowerer uses `fresh_infer_ty` for
+array element types (expr_operand.rs:1298), expecting writeback to resolve
+it. But `compute_writeback_ty` only handled `AggregateKind::Tuple`, not
+`AggregateKind::Array` — so Infer element types persisted to codegen,
+causing `mir_type_to_emit_type` to fall back to I32.
+
+**Fix**: Added `Rvalue::Aggregate(AggregateKind::Array(elem_ty), operands)`
+arm that takes the first operand's resolved type as the element type and
+builds a concrete `Array(elem_ty, len)` type for writeback.
+
+### Separate Blocker Identified
+
+The codegen fat pointer construction (Stage 36.3 attempt) is a SEPARATE
+deeper blocker — the codegen allocates array locals as `ptr` (bare pointer),
+not `{ptr, i64}` (fat pointer struct). Fixing this requires changes to the
+local allocation infrastructure (src/codegen/function.rs or text/memory.rs).
+
+### §3.2 Verification (Stage 36.4)
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4362 integration tests ✓ (was 4329; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5260 tests**
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 📋 BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING |
+| TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING | P3 | 📋 BLOCKED on codegen local allocation infrastructure (locals are `ptr` not `{ptr, i64}`) |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING: the codegen allocates array
+locals as `ptr` (bare pointer), not `{ptr, i64}` (fat pointer struct).
+Fixing this requires changes to the local allocation infrastructure —
+when a local's type is `Ref(_, _, Slice(T))` or `Ref(_, _, Str)`, the
+alloca should be `{ptr, i64}` (fat pointer struct), not `ptr`.

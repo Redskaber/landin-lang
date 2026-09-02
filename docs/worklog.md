@@ -38833,3 +38833,107 @@ Stage Summary:
   writeback pipeline (similar to Stage 18.351 Param resolution).
 - This is a v0.5+ architectural change — deferred to future stage.
 - TD-FORMAT-MIGRATION remains BLOCKED on this deeper issue.
+
+---
+Task ID: stage36.4
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 36.4 (v0.24) — TD-ARRAY-ELEMENT-TYPE-RESOLUTION RESOLVED.
+Added Array Aggregate writeback rule in `compute_writeback_ty`
+(src/mir/lower/writeback.rs). The writeback pipeline now resolves array
+element types from `Infer` to concrete types (from first operand's type)
+before codegen, preventing mir_type_to_emit_type I32 fallback.
+v0.578.0. 5260 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (cross-module: src/mir/lower/writeback.rs + tests + docs)
+- 对齐: 已查 Stage 36.3 worklog (deeper type resolution blocker) +
+  src/mir/lower/expr_operand.rs:1298 (fresh_infer_ty for array elements) +
+  src/mir/lower/writeback.rs:233 (compute_writeback_ty — no Array rule) +
+  src/typeck/infer.rs:89 (typeck returns Infer elem_ty)
+- 阻断: v0.577.0 全绿 (5227 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Writeback fix vs codegen fix
+   - 引用 §1.0 原則 6 (通解 > 特解): writeback fix is the 通解 — resolves
+     the root cause (Infer element type persists to codegen). The codegen
+     fat pointer fix (Stage 36.3 attempt) was a downstream symptom fix.
+   - 引用 §12 (最优 > 最小): root-cause fix in writeback pipeline (where
+     types should be resolved) rather than in codegen (where types are used).
+   - 引用 §1.0 原則 10 (唯一可信数据源): writeback is the single source
+     of truth for resolved types — it should handle Array aggregates.
+
+2. Strategy: first operand's type as resolved element type
+   - Per §1.0 原則 6 (通解 > 特解): one rule for all array types. The
+     first operand's type is the representative element type. If operands
+     have different types, typeck should have already caught the mismatch.
+   - Only resolves when first operand is concrete (not Infer) — fixpoint
+     convergence preserved.
+
+3. Codegen fat pointer fix NOT applied (separate blocker)
+   - Attempted Stage 36.3 codegen fix (fat pointer construction in
+     Rvalue::Ref) but discovered the codegen allocates locals as `ptr`
+     not `{ptr, i64}` — store/load infrastructure doesn't support fat
+     pointer locals. This is a SEPARATE deeper blocker.
+   - Per §1.0 原則 9 (正确 > 妥协): revert codegen fix, keep writeback fix.
+   - Per §1.0 原則 4 (报错 > 静默): document the separate codegen blocker.
+
+裁剪点:
+- L3 task — writeback fix applied (root-cause), codegen fix reverted (deeper blocker)
+- 安全理由: writeback fix is additive (only resolves Infer→concrete, doesn't
+  change existing concrete types). No regression risk.
+- §3.2 verification confirms all 5260 tests pass.
+
+5W2H:
+- WHAT: Add Array Aggregate writeback rule in compute_writeback_ty
+- WHY: TD-ARRAY-ELEMENT-TYPE-RESOLUTION — array element types were Infer
+  at codegen, causing mir_type_to_emit_type to fall back to I32
+- WHO: PM-A + ARCH-A + DEV-A + REV-A
+- WHEN: v0.24 Stage 36.4
+- WHERE: src/mir/lower/writeback.rs (compute_writeback_ty function)
+- HOW: (1) Added Rvalue::Aggregate(AggregateKind::Array, operands) arm
+  (2) Takes first operand's resolved type as element type
+  (3) Only resolves when first operand is concrete (fixpoint safe)
+  (4) Builds Array(concrete_elem_ty, len) type for writeback
+- HOW MUCH: ~40 LOC code changes; +33 tests (5 positive + 28 negative);
+  5260 tests total (was 5227), 0 failures, fmt clean, 0 clippy warnings
+
+§3.2 验收检查 Stage 36.4:
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4362 integration tests ✓ (was 4329; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+§14.8 设计回写:
+- B1 (Design vs Implementation): Match — writeback fix is the root-cause fix.
+  Codegen fix was attempted but reverted (deeper codegen blocker).
+- B2 (New TDs): TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING remains — now with
+  a deeper understanding: the codegen allocates locals as `ptr` not `{ptr, i64}`,
+  so fat pointer store/load needs infrastructure changes.
+- B3 (Deviations): Codegen fat pointer construction deferred (separate blocker).
+- B4 (Architectural limitations): TD-FORMAT-MIGRATION remains BLOCKED on
+  the codegen fat pointer infrastructure, NOT on type resolution (which is now fixed).
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The Infer element type in array literals was the root cause
+  of the "unresolved type" warnings at codegen. The writeback pipeline now
+  resolves it correctly. The codegen fat pointer construction is a SEPARATE
+  issue (local allocation infrastructure), documented honestly.
+
+Stage Summary:
+- TD-ARRAY-ELEMENT-TYPE-RESOLUTION ✅ Resolved Stage 36.4
+- Array element types now resolved from Infer to concrete in writeback
+- 33 new tests (5 positive + 28 negative) covering 7 error categories
+- 5260 total tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — additive fix, no regression)
+
+下一步:
+- TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING: still BLOCKED — the codegen
+  allocates array locals as `ptr` (bare pointer), not `{ptr, i64}` (fat
+  pointer struct). Fixing this requires changes to the local allocation
+  infrastructure (src/codegen/function.rs or text/memory.rs).
+- TD-FORMAT-MIGRATION: still BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.

@@ -885,3 +885,8 @@ mod stage35_3_typeck_param_return_mismatch_tests;
 // `&[T; N]` to coerce to `&[T]` at any unification site.
 #[path = "v0/stage36/plan/slice_features_tests.rs"]
 mod stage36_1_slice_features_tests;
+
+// === Stage 36.4 (v0.24): TD-ARRAY-ELEMENT-TYPE-RESOLUTION ===
+// Writeback pipeline now resolves array element types from Infer to concrete.
+#[path = "v0/stage36/plan/array_element_type_resolution_tests.rs"]
+mod stage36_4_array_element_type_resolution_tests;

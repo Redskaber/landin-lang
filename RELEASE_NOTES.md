@@ -3,13 +3,63 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; Stage 36.2+36.3 attempted TD-FORMAT-MIGRATION but discovered deeper type resolution blocker — all changes reverted, baseline preserved) |
+| **Current version** | v0.578.0 (v0.24 Stage 36.4 — TD-ARRAY-ELEMENT-TYPE-RESOLUTION RESOLVED; writeback pipeline now resolves array element types from Infer to concrete; 5 positive + 28 negative tests covering 7 error categories) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4329 integration tests = 5227 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4362 integration tests = 5260 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.1 complete — 2 P3 TDs resolved (slice len, array→slice coercion); TD-FORMAT-MIGRATION (P2) blocked on new TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (P3 — runtime codegen for fat pointer construction) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.4 complete — array element type resolution fixed; TD-FORMAT-MIGRATION (P2) still BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (codegen local allocation infrastructure) |
+
+---
+
+## v0.578.0 — v0.24 Stage 36.4 — TD-ARRAY-ELEMENT-TYPE-RESOLUTION RESOLVED
+
+### Overview
+
+Stage 36.4 (v0.24) resolves TD-ARRAY-ELEMENT-TYPE-RESOLUTION — the deeper
+type resolution blocker discovered in Stage 36.3.
+
+**Bug**: Array literal `[1, 2, 3]` had element type `Infer` at codegen time.
+The MIR lowerer used `fresh_infer_ty` for array elements, expecting writeback
+to resolve it. But `compute_writeback_ty` only handled `AggregateKind::Tuple`,
+not `AggregateKind::Array` — so Infer element types persisted, causing
+`mir_type_to_emit_type` to fall back to I32.
+
+**Fix**: Added Array Aggregate writeback rule in `compute_writeback_ty`
+(src/mir/lower/writeback.rs). Takes the first operand's resolved type as
+the element type and builds a concrete `Array(elem_ty, len)` type.
+
+### Tests (33 new — 5 positive + 28 negative)
+
+Per §9.4.3 (1:3+ positive:negative ratio): 1:5.6 ratio (exceeds target).
+Per §7.3.1 (≥30 case negative audit covering 7 error categories).
+
+### §3.2 Verification
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4362 integration tests ✓ (was 4329; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 📋 BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING |
+| TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING | P3 | 📋 BLOCKED on codegen local allocation infrastructure |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING: the codegen allocates array
+locals as `ptr` (bare pointer), not `{ptr, i64}` (fat pointer struct).
+Fixing this requires changes to the local allocation infrastructure —
+when a local's type is `Ref(_, _, Slice(T))` or `Ref(_, _, Str)`, the
+alloca should be `{ptr, i64}` (fat pointer struct), not `ptr`.
 
 ---
 

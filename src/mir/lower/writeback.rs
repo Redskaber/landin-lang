@@ -238,6 +238,47 @@ fn compute_writeback_ty(rvalue: &Rvalue, mir: &MirBody) -> Option<Ty> {
             Some(Ty::new(TyKind::Tuple(elem_tys), Span::DUMMY))
         }
 
+        // Stage 36.4 (v0.24 — TD-ARRAY-ELEMENT-TYPE-RESOLUTION): Array
+        // Aggregate — resolve element type from operands if the array's
+        // element type is still Infer. The MIR lowerer uses fresh_infer_ty
+        // for array elements (expr_operand.rs:1298), expecting typeck/
+        // writeback to resolve it. Without this rule, the Infer element
+        // type persists to codegen, causing mir_type_to_emit_type to fall
+        // back to I32 (wrong size for non-i32 elements).
+        //
+        // Strategy: take the first operand's type as the resolved element
+        // type. If all operands have the same type (the common case), this
+        // is correct. If operands have different types, typeck should have
+        // already caught the mismatch.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all array types.
+        // Per §1.0 原則 4 (报错 > 静默): resolve the element type instead
+        // of leaving it as Infer (which silently falls back to I32).
+        // Per §12 (最优 > 最小): root-cause fix in the writeback pipeline.
+        Rvalue::Aggregate(AggregateKind::Array(_elem_ty), operands) => {
+            if operands.is_empty() {
+                return None;
+            }
+            // Get the first operand's resolved type.
+            let first_op_ty = operand_ty(&operands[0], mir);
+            // Only resolve if the first operand has a concrete type.
+            if needs_writeback(&first_op_ty) {
+                return None; // First operand is also Infer — can't resolve yet.
+            }
+            // Build the resolved Array type with the concrete element type.
+            let len = operands.len() as u128;
+            Some(Ty::new(
+                TyKind::Array(
+                    Box::new(first_op_ty),
+                    Box::new(crate::mir::ty::Const {
+                        ty: Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), Span::DUMMY),
+                        val: crate::mir::ty::ConstVal::Uint(len),
+                    }),
+                ),
+                Span::DUMMY,
+            ))
+        }
+
         // Rules 3, 4, 5: Use(Copy|Move(place)) — propagate from source.
         Rvalue::Use(Operand::Copy(src_place) | Operand::Move(src_place)) => {
             compute_use_writeback_ty(src_place, mir)
