@@ -306,6 +306,49 @@ pub(super) fn lower_method_call_expr(
         }
     }
 
+    // Stage 36.1 (v0.24 — TD-SLICE-LEN-MISSING): Early interception for
+    // `slice::len()`. Slices (`&[T]`, `[T]`) don't have a prelude impl
+    // block (Landin parser doesn't support `impl [T]` syntax yet), so
+    // we intercept the `len` method call directly here when the receiver
+    // is a slice-typed value. The MIR is identical to `str::len` — both
+    // are fat pointers `{ ptr, len: usize }`, and `len()` projects Field(1).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one early-interception for all slice
+    // types (regardless of element type T). Also handles sized arrays
+    // (`[T; N]`) — they coerce to `&[T]` via the receiver being a reference.
+    // Per §1.0 原則 4 (报错 > 静默): the early-interception only fires when
+    // the receiver is actually a slice — other `len` calls fall through to
+    // normal method resolution.
+    // Per §12 (最优 > 最小): root-cause fix = primitive intrinsic dispatch
+    // (mirrors `str::len` pattern, centralizes in primitive_intrinsics.rs).
+    {
+        let early_method_name = cx.interner.resolve(&method.name);
+        if early_method_name == "len" && args.is_empty() {
+            let early_recv_ty = cx.mir.local(recv_local).ty.clone();
+            // Detect slice receiver: `&[T]` (Ref to Slice) or `[T]` (Slice directly)
+            // or `&[T; N]` (Ref to Array — sized arrays also support .len()).
+            let is_slice_receiver = match &early_recv_ty.kind {
+                crate::mir::ty::TyKind::Ref(_, _, inner) => matches!(
+                    inner.kind,
+                    crate::mir::ty::TyKind::Slice(_)
+                        | crate::mir::ty::TyKind::Array(_, _)
+                        | crate::mir::ty::TyKind::Str
+                ),
+                crate::mir::ty::TyKind::Slice(_) | crate::mir::ty::TyKind::Array(_, _) => true,
+                _ => false,
+            };
+            if is_slice_receiver {
+                // Emit slice::len intrinsic (same MIR as str::len).
+                return super::primitive_intrinsics::emit_primitive_intrinsic(
+                    cx,
+                    super::primitive_intrinsics::PrimitiveIntrinsic::SliceLen,
+                    recv_local,
+                    expr,
+                );
+            }
+        }
+    }
+
     // Try to resolve the method to a DefId via HIR impl lookup.
     // Stage 13.17: We try multiple strategies to find the receiver's ADT type:
     //   1. Check the MIR local's type (works if typeck has resolved it)

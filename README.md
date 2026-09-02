@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.576.0 (v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; Stage 36 design doc created documenting v0.5+ path for TD-FORMAT-MIGRATION; 3 new prerequisite TDs registered: TD-SLICE-LEN-MISSING, TD-ARRAY-SLICE-COERCION-MISSING, TD-DISPLAY-TRAIT-MISSING — Architecture health 9.85/10) |
+| **Version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; new `SliceLen` primitive intrinsic + array→slice coercion rules in typeck unify + types_match_loose; unblocks TD-FORMAT-MIGRATION Stage 36.2 — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.23 Stage 35 Series COMPLETE + Stage 36 Design**. 5194 tests (898 lib + 4296 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. v0.23 Stage 35 series resolved all 3 P3 typeck TDs: Stage 35.1 (Self outside impl context), 35.2 (trait arg count validation), 35.3 (return type mismatch). Stage 36 (design-only) documents the v0.5+ implementation path for the last remaining TD: TD-FORMAT-MIGRATION (P2, BLOCKED on v0.5+). Analysis: the 598-LOC MIR walker for `format!` is a 特解 (special case); migrating to prelude impl (通解) requires slice `.len()` method + array→slice coercion (Stage 36.1) + Display trait (v0.6+). §6.2 upgrade criteria: TD does NOT upgrade (correct results, no next-stage dependency). 3 new prerequisite TDs registered. Architecture health: 9.85/10 (stable). Next: v0.24 Stage 36.1 (slice len + array→slice coercion). |
+| **Status** | ✅ **v0.24 Stage 36.1 COMPLETE**. 5227 tests (898 lib + 4329 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 36.1 resolves 2 P3 TDs that are prerequisites for TD-FORMAT-MIGRATION: TD-SLICE-LEN-MISSING (added `SliceLen` primitive intrinsic mirroring `str::len` fat pointer Field(1) projection) + TD-ARRAY-SLICE-COERCION-MISSING (added array→slice coercion in typeck unify + types_match_loose, both directions, mirrors Rust unsizing coercion). TD-FORMAT-MIGRATION (P2) is now UNBLOCKED — Stage 36.2 will replace the 598-LOC MIR walker with a slice-based prelude impl (net -368 LOC, 特解 → 通解). 2 TDs remaining: TD-FORMAT-MIGRATION (P2, now unblocked) + TD-DISPLAY-TRAIT-MISSING (P3, v0.6+). Architecture health: 9.85/10 (stable). Next: Stage 36.2 (slice-based prelude format impl). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -423,9 +423,33 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | `Self` keyword outside any impl/trait context silently defaulted to `HirSelfKind::Impl` via `unwrap_or` | ✅ Resolved (Stage 35.1) | New `ResolveErrorKind::SelfOutsideImplContext` error kind + `resolve_self_ty` helper + propagated parent SelfKind to method fn owners in `owner_self_kind` + set `current_self_kind` before fn sig resolution + extended `resolve_ast_ty_paths` to check Self in generic args |
 | TD-TYPECK-PARAM-ARG-COUNT | typeck didn't validate arg count for trait method calls when the trait method had no body (declaration only) — silent accept of wrong arg counts | ✅ Resolved (Stage 35.2) | New `populate_trait_decl_fn_sigs` in `src/driver/driver_codegen_prep.rs` registers ALL trait declaration methods (with or without body) in fn_sig_table. For decl-only methods, uses `TyKind::Error` as self_ty placeholder. typeck's existing `check_terminator` Call handler now validates arg count uniformly. Wired up in `compile_inner.rs` AFTER `populate_trait_default_fn_sigs`. |
 | TD-TYPECK-PARAM-RETURN-MISMATCH | typeck didn't unify Param(N) body with concrete return type for generic impl methods — silent accept of `fn f<T>(x: T) -> T { true }` | ✅ Resolved (Stage 35.3) | New `should_check_concrete_vs_param` check in `post_check_statement` (`src/typeck/check.rs`). Boundary: place is the RETURN LOCAL (LocalId(0)) with Param type AND rvalue is concrete non-Param. Narrowed from original design (which proposed all Param-typed places) after discovering false positives in match arm deconstruction. |
-| TD-SLICE-LEN-MISSING (NEW) | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.1 (v0.24). Add `len()` to prelude impl for slices (similar to `str::len`). |
-| TD-ARRAY-SLICE-COERCION-MISSING (NEW) | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.1 (v0.24). Add coercion in typeck unify (similar to existing Str→Ref coercion). |
+| TD-SLICE-LEN-MISSING (NEW) | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | ✅ Resolved (Stage 36.1) | New `SliceLen` variant in `PrimitiveIntrinsic` enum + early interception in `method_call_lower.rs` for `len` on slice/array receivers. Reuses `emit_str_len` MIR (same fat pointer Field(1) projection). |
+| TD-ARRAY-SLICE-COERCION-MISSING (NEW) | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | ✅ Resolved (Stage 36.1) | Array→slice coercion rules in `typeck/unify.rs` `unify_resolved` (both directions: Ref(Array)↔Ref(Slice), direct Array↔Slice, Ref(Array)↔Slice, Slice↔Ref(Array)). Extended `types_match_loose` with Array↔Slice loose match. Mirrors Rust unsizing coercion. |
 | TD-DISPLAY-TRAIT-MISSING (NEW) | No `Display` trait for type-dispatched formatting — blocks `%s`-style string args | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.3 (v0.6+). Requires trait dispatch + monomorphization. |
+
+---
+
+## v0.24 Stage 36.1 — Slice Len + Array→Slice Coercion RESOLVED
+
+**Stage 36.1** (v0.24) resolves 2 P3 TDs that are prerequisites for
+TD-FORMAT-MIGRATION (Stage 36.2):
+
+1. **TD-SLICE-LEN-MISSING**: Added `SliceLen` variant to `PrimitiveIntrinsic`
+   enum. Added early interception in `method_call_lower.rs` for `len` on
+   slice/array receivers. Reuses `emit_str_len` MIR (same fat pointer
+   Field(1) projection — both `&str` and `&[T]` have layout `{ ptr, len }`).
+
+2. **TD-ARRAY-SLICE-COERCION-MISSING**: Added array→slice coercion rules in
+   `typeck/unify.rs` `unify_resolved` (both directions: Ref(Array)↔Ref(Slice),
+   direct Array↔Slice, Ref(Array)↔Slice, Slice↔Ref(Array)). Extended
+   `types_match_loose` with Array↔Slice loose match. Mirrors Rust unsizing
+   coercion.
+
+**Verification**: 5227 tests (898 lib + 4329 integration), 0 failures, 4
+ignored. fmt clean, 0 clippy warnings. §3.2 verification passed.
+
+**TD-FORMAT-MIGRATION (P2) is now UNBLOCKED** — Stage 36.2 will replace the
+598-LOC MIR walker with a slice-based prelude impl (net -368 LOC, 特解 → 通解).
 
 ---
 

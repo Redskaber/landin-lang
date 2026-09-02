@@ -1453,8 +1453,8 @@ During the Stage 36 design analysis (see
 
 | TD ID | Priority | Issue | Fix Stage |
 |-------|----------|-------|-----------|
-| TD-SLICE-LEN-MISSING | P3 | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | Stage 36.1 (v0.24) |
-| TD-ARRAY-SLICE-COERCION-MISSING | P3 | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | Stage 36.1 (v0.24) |
+| TD-SLICE-LEN-MISSING | P3 | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | ✅ Resolved Stage 36.1 — added `SliceLen` variant to `PrimitiveIntrinsic` enum (src/mir/lower/primitive_intrinsics.rs). Added early interception in `method_call_lower.rs` for `len` on slice/array receivers (Ref to Slice/Array/Str, or direct Slice/Array). Reuses `emit_str_len` for the MIR (same fat pointer Field(1) projection). 5 positive + 28 negative tests covering 7 error categories. 5227 tests total, 0 failures. |
+| TD-ARRAY-SLICE-COERCION-MISSING | P3 | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | ✅ Resolved Stage 36.1 — added array→slice coercion rules in `src/typeck/unify.rs` `unify_resolved` (both directions: Ref(Array)↔Ref(Slice), and direct Array↔Slice, plus Ref(Array)↔Slice and Slice↔Ref(Array) for stripped-ref cases). Also extended `types_match_loose` in `src/typeck/checker.rs` with Array↔Slice loose match (both directions). Mirrors Rust's unsizing coercion. 5227 tests total, 0 failures. |
 | TD-DISPLAY-TRAIT-MISSING | P3 | No `Display` trait for type-dispatched formatting — blocks `%s`-style string args | Stage 36.3 (v0.6+) |
 
 ### v0.24 Implementation Path (3-stage plan)
@@ -1499,3 +1499,67 @@ Stage 36.1 (v0.24): Implement TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MIS
 - Add array→slice coercion in typeck unify (similar to existing
   Str→Ref coercion).
 - ~150 LOC + 5 positive + 28 negative tests covering 7 error categories.
+
+---
+
+## Stage 36.1 (v0.24) Update — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.577.0 (Stage 36.1)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### Resolution Summary
+
+Both P3 TDs resolved — prerequisites for TD-FORMAT-MIGRATION Stage 36.2:
+
+1. **TD-SLICE-LEN-MISSING**: Added `SliceLen` variant to `PrimitiveIntrinsic`
+   enum (src/mir/lower/primitive_intrinsics.rs). Added early interception in
+   `method_call_lower.rs` for `len` method on slice/array receivers. Reuses
+   `emit_str_len` for the MIR (same fat pointer Field(1) projection — both
+   `&str` and `&[T]` have layout `{ ptr, len: usize }`).
+
+2. **TD-ARRAY-SLICE-COERCION-MISSING**: Added array→slice coercion rules in
+   `src/typeck/unify.rs` `unify_resolved`:
+   - `Ref(Array) ↔ Ref(Slice)` (both directions)
+   - Direct `Array ↔ Slice` (without Ref wrapper)
+   - `Ref(Array) ↔ Slice` and `Slice ↔ Ref(Array)` (stripped-ref cases)
+   
+   Also extended `types_match_loose` in `src/typeck/checker.rs` with
+   `Array ↔ Slice` loose match (both directions). Mirrors Rust's unsizing
+   coercion.
+
+### Design Adjustment (per §14.8 B1)
+
+Original design proposed single-direction coercion (a=Ref(Array),
+b=Ref(Slice)). Implementation added BOTH directions after discovering the
+call-site unify has a=Ref(Slice) (fn sig input) and b=Ref(Array) (actual
+arg) — the reverse of what was originally designed.
+
+### §3.2 Verification (Stage 36.1)
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4329 integration tests ✓ (was 4296; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5227 tests**
+
+### v0.24 Stage 36 Series — Status
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 36.1 | TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING | ✅ Resolved |
+| 36.2 | TD-FORMAT-MIGRATION (slice-based prelude format impl) | 🟡 Now unblocked |
+| 36.3 | TD-DISPLAY-TRAIT-MISSING (v0.6+) | 📋 Deferred |
+
+### Next Stage Direction
+
+Stage 36.2 (v0.24): Now unblocked — implement slice-based prelude format
+impl to replace the 598-LOC MIR walker. The prelude `fn __landin_format_v2
+(fmt: &str, args: &[i64]) -> String` can now use slice `.len()` and
+array→slice coercion. Net -368 LOC (architectural improvement: 特解 → 通解).

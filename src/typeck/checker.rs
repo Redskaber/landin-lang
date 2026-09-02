@@ -597,6 +597,14 @@ pub(super) fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) 
         (TyKind::Ref(_, _, a_inner), TyKind::Ref(_, _, b_inner)) => {
             types_match_loose(a_inner, b_inner)
         }
+        // Stage 36.1 (TD-ARRAY-SLICE-COERCION-MISSING): Array ↔ Slice
+        // loose match — mirrors the unify coercion. `[T; N]` loosely
+        // matches `[T]` (element types must match, length ignored).
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all element types T.
+        (TyKind::Array(a_inner, _), TyKind::Slice(b_inner))
+        | (TyKind::Slice(a_inner), TyKind::Array(b_inner, _)) => {
+            types_match_loose(a_inner, b_inner)
+        }
         // Array with matching element type (count may be Infer vs concrete)
         (TyKind::Array(a_inner, _), TyKind::Array(b_inner, _)) => {
             types_match_loose(a_inner, b_inner)

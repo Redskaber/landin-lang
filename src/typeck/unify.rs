@@ -612,6 +612,73 @@ impl UnificationTable {
                 Ok(())
             }
 
+            // Stage 36.1 (v0.24 — TD-ARRAY-SLICE-COERCION-MISSING):
+            // Array → Slice coercion (unsizing coercion, mirrors Rust).
+            // `&[T; N]` coerces to `&[T]` at any type unification site.
+            // MUST be before the general `Ref vs Ref` rule (which would
+            // try to unify `Array` with `Slice` directly and fail).
+            // Handles BOTH directions: a=Ref(Array) b=Ref(Slice) AND
+            // a=Ref(Slice) b=Ref(Array) — unify is symmetric.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one rule for all element types T
+            // AND both directions.
+            // Per §1.0 原則 4 (报错 > 静默): coercion is now explicit (was silent
+            // type mismatch before — `&[i64]` vs `&[i64; 3]` failed).
+            // Per §12 (最优 > 最小): root-cause fix = unsizing coercion rule.
+            (TyKind::Ref(_, _, a_inner), TyKind::Ref(_, _, b_inner))
+                if matches!(a_inner.kind, TyKind::Array(..))
+                    && matches!(b_inner.kind, TyKind::Slice(_)) =>
+            {
+                let a_elem = match &a_inner.kind {
+                    TyKind::Array(elem, _) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                let b_elem = match &b_inner.kind {
+                    TyKind::Slice(elem) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                self.unify_resolved(a_elem, b_elem, span)
+            }
+            // Reverse direction: a=Ref(Slice) b=Ref(Array).
+            (TyKind::Ref(_, _, a_inner), TyKind::Ref(_, _, b_inner))
+                if matches!(a_inner.kind, TyKind::Slice(_))
+                    && matches!(b_inner.kind, TyKind::Array(..)) =>
+            {
+                let a_elem = match &a_inner.kind {
+                    TyKind::Slice(elem) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                let b_elem = match &b_inner.kind {
+                    TyKind::Array(elem, _) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                self.unify_resolved(a_elem, b_elem, span)
+            }
+
+            // Direct Array vs Slice (without Ref wrapper) — also coerce.
+            (TyKind::Array(a_t, _), TyKind::Slice(b_t)) => self.unify_resolved(a_t, b_t, span),
+            // Stage 36.1: Also handle Ref(Array) vs Slice (MIR lower may
+            // strip the & on argument passing — see check.rs:610).
+            (TyKind::Ref(_, _, a_inner), TyKind::Slice(b_t))
+                if matches!(a_inner.kind, TyKind::Array(..)) =>
+            {
+                let a_elem = match &a_inner.kind {
+                    TyKind::Array(elem, _) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                self.unify_resolved(a_elem, b_t, span)
+            }
+            // Stage 36.1: And Slice vs Ref(Array) (reverse direction).
+            (TyKind::Slice(a_t), TyKind::Ref(_, _, b_inner))
+                if matches!(b_inner.kind, TyKind::Array(..)) =>
+            {
+                let b_elem = match &b_inner.kind {
+                    TyKind::Array(elem, _) => elem,
+                    _ => unreachable!("checked by matches! above"),
+                };
+                self.unify_resolved(a_t, b_elem, span)
+            }
+
             // Ref with Ref: unify region + mutability + inner
             // Stage 14.74: &mut T can be coerced to &T (immutable reborrow).
             // When unifying Ref(Immut, T) with Ref(Mut, T), allow it by

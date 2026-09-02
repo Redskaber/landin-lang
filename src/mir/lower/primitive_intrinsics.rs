@@ -68,6 +68,13 @@ pub(crate) enum PrimitiveIntrinsic {
     StrIsEmpty,
     /// `str::as_bytes()` → no-op (return receiver, same fat pointer layout).
     StrAsBytes,
+    /// Stage 36.1 (v0.24): `slice::len()` → Field(1) projection of the
+    /// fat pointer (returns usize). Same MIR as `str::len` — both are
+    /// fat pointers `{ ptr, len: usize }`.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one intrinsic for all slice types
+    /// (regardless of element type T).
+    SliceLen,
 }
 
 impl PrimitiveIntrinsic {
@@ -81,6 +88,7 @@ impl PrimitiveIntrinsic {
             PrimitiveIntrinsic::StrLen => 0,
             PrimitiveIntrinsic::StrIsEmpty => 0,
             PrimitiveIntrinsic::StrAsBytes => 0,
+            PrimitiveIntrinsic::SliceLen => 0,
         }
     }
 }
@@ -191,6 +199,10 @@ pub(crate) fn emit_primitive_intrinsic(
         PrimitiveIntrinsic::StrLen => emit_str_len(cx, recv_local, expr.span),
         PrimitiveIntrinsic::StrIsEmpty => emit_str_is_empty(cx, recv_local, expr.span),
         PrimitiveIntrinsic::StrAsBytes => emit_str_as_bytes(cx, recv_local, expr.span),
+        // Stage 36.1: slice::len() has the SAME MIR as str::len() — both are
+        // fat pointers `{ ptr, len: usize }`, and len() projects Field(1).
+        // Per §1.0 原則 6 (通解 > 特解): one emit function for both.
+        PrimitiveIntrinsic::SliceLen => emit_str_len(cx, recv_local, expr.span),
     }
 }
 

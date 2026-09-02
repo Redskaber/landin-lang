@@ -3,13 +3,83 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.576.0 (v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; Stage 36 design doc created documenting v0.5+ path for TD-FORMAT-MIGRATION; 3 new prerequisite TDs registered: TD-SLICE-LEN-MISSING, TD-ARRAY-SLICE-COERCION-MISSING, TD-DISPLAY-TRAIT-MISSING) |
+| **Current version** | v0.577.0 (v0.24 Stage 36.1 — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; new `SliceLen` primitive intrinsic + array→slice coercion rules in typeck unify + types_match_loose; 5 positive + 28 negative tests covering 7 error categories) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4296 integration tests = 5194 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4329 integration tests = 5227 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35 series complete — 3 P3 typeck TDs resolved (Self outside impl, trait arg count, return type mismatch); 1 TD remaining BLOCKED on v0.5+ (TD-FORMAT-MIGRATION P2 — needs AST-level macro expansion or variadic args language feature) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.1 complete — 2 P3 TDs resolved (slice len, array→slice coercion); 2 TDs remaining: TD-FORMAT-MIGRATION (P2, now unblocked) + TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) |
+
+---
+
+## v0.577.0 — v0.24 Stage 36.1 — Slice Len + Array→Slice Coercion RESOLVED
+
+### Overview
+
+Stage 36.1 (v0.24) resolves 2 P3 TDs that are prerequisites for
+TD-FORMAT-MIGRATION (Stage 36.2):
+
+1. **TD-SLICE-LEN-MISSING**: Slices (`&[T]`) didn't have `.len()` method.
+   `arr.len()` on `&[i64]` failed with "no method `len` found".
+2. **TD-ARRAY-SLICE-COERCION-MISSING**: `[T; N]` → `&[T]` coercion not
+   implemented. `&[1, 2, 3]` to slice ref failed with type mismatch.
+
+### Fix Components
+
+1. **New `SliceLen` variant** in `PrimitiveIntrinsic` enum
+   (src/mir/lower/primitive_intrinsics.rs) — mirrors `str::len` pattern.
+2. **Early interception in `method_call_lower.rs`** for `len` on
+   slice/array receivers (Ref to Slice/Array/Str, or direct Slice/Array).
+3. **Reuses `emit_str_len`** for the MIR (same fat pointer Field(1)
+   projection — both `&str` and `&[T]` have layout `{ ptr, len: usize }`).
+4. **Array→slice coercion rules** in `src/typeck/unify.rs` `unify_resolved`:
+   - `Ref(Array) ↔ Ref(Slice)` (both directions)
+   - Direct `Array ↔ Slice` (without Ref wrapper)
+   - `Ref(Array) ↔ Slice` and `Slice ↔ Ref(Array)` (stripped-ref cases)
+5. **Array↔Slice loose match** in `types_match_loose` (src/typeck/checker.rs).
+
+### Tests (33 new — 5 positive + 28 negative)
+
+Per §9.4.3 (1:3+ positive:negative ratio): 1:5.6 ratio (exceeds target).
+Per §7.3.1 (≥30 case negative audit covering 7 error categories):
+- Typeck (16): len on non-array, elem mismatch, return mismatch, let
+  mismatch, arg count, method not found, undefined type, trait impl wrong
+  sig, Self outside impl (35.1 regression), trait method arg count (35.2
+  regression), generic return mismatch (35.3 regression)
+- Lex (3): invalid binary, unterminated comment, unclosed string
+- Parse (3): missing semicolon, unbalanced braces, missing arrow
+- Borrowck (1): double mut borrow
+- Resolve (2): undefined type, undefined value
+- Trait (2): undefined trait, trait bound
+- Codegen (1): extern "C" call exercises codegen path
+
+### §3.2 Verification
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4329 integration tests ✓ (was 4296; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 🟡 Now unblocked — Stage 36.2 (slice-based prelude format impl, net -368 LOC) |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+Stage 36.2 (v0.24): Now unblocked — implement slice-based prelude format
+impl to replace the 598-LOC MIR walker. The prelude `fn __landin_format_v2
+(fmt: &str, args: &[i64]) -> String` can now use slice `.len()` and
+array→slice coercion. Net -368 LOC (architectural improvement: 特解 → 通解).
 
 ---
 

@@ -877,3 +877,11 @@ mod stage35_2_typeck_param_arg_count_tests;
 // concrete type that doesn't match the declared T-typed return.
 #[path = "v0/stage35/plan/typeck_param_return_mismatch_tests.rs"]
 mod stage35_3_typeck_param_return_mismatch_tests;
+
+// === Stage 36.1 (v0.24): TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING ===
+// New `SliceLen` primitive intrinsic dispatches `slice::len()` via the
+// existing `str::len` MIR pattern (Field(1) projection). New array→slice
+// coercion rules in `typeck/unify.rs` and `types_match_loose` allow
+// `&[T; N]` to coerce to `&[T]` at any unification site.
+#[path = "v0/stage36/plan/slice_features_tests.rs"]
+mod stage36_1_slice_features_tests;
