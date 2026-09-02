@@ -4,6 +4,49 @@
 
 ---
 
+## 0. `Self` 关键词语义（Stage 35.1 — v0.23）
+
+### 0.1 定义
+
+`Self` 是一个特殊类型别名，引用"当前 impl 或 trait 上下文中的实现类型"。
+
+- 在 **trait 声明** 内部：`Self` 指代实现该 trait 的类型。
+- 在 **impl 块** 内部（inherent 或 trait impl）：`Self` 指代 impl 头部声明的类型。
+- 在 **impl 方法的 fn signature** 中：`Self` 等同于上述规则。
+- 在 **impl 方法的 fn body** 中：`Self` 等同于上述规则（继承自父 impl 上下文）。
+- 在 **任何其他上下文**（free fn、let binding、struct field outside impl、enum
+  variant 等）：`Self` **不可用**，编译器必须报错。
+
+### 0.2 报错行为
+
+参考 [Rust Reference §Paths — Self](https://doc.rust-lang.org/reference/paths.html#self)
+和 rustc `E0411: cannot find type 'Self' in this scope`：
+
+```text
+fn foo() -> Self::Item { 0 }   // ❌ Self outside impl/trait context
+fn main() { let x: Self = 0; } // ❌ Self outside impl/trait context
+```
+
+Landin 在 `ResolveErrorKind::SelfOutsideImplContext` 中显式报错。
+
+### 0.3 实现细节
+
+- **`current_self_kind: Option<HirSelfKind>`** — Resolver 字段，记录当前是否
+  在 impl/trait 上下文内。`None` 表示当前在 free fn / let binding 等上下文。
+- **`owner_self_kind: HashMap<DefId, HirSelfKind>`** — 从 owner DefId 映射到
+  SelfKind。包括 Trait/Impl 本身的 DefId，**以及** Trait/Impl 内每个方法 fn 的
+  DefId（继承自父 owner）。
+- **`resolve_self_ty(span)` helper** — 在 `resolve_path` 中检测到 `Self` 关键
+  字时调用。若 `current_self_kind` 为 `None`，emit `SelfOutsideImplContext` 错
+  误并返回 `Res::Err`。
+
+### 0.4 限制与未来扩展
+
+- 当前 `Self` 仅在 trait 声明和 impl 块内可用。未来 v0.5+ 可能扩展到
+  `enum`/`struct` 声明内部（如 Rust 的 `Self` 在 enum variant 中）。
+
+---
+
 ## 1. 类型分类
 
 ### 1.1 类型层次

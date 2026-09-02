@@ -3,13 +3,86 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.570.0 (v0.20 COMPLETE — Stage 32.3 TD-PRELUDE-MONO-ORDER RESOLVED; Stage 32.5 TD-FORMAT-ARGS RESOLVED as stale duplicate; v0.5+ method monomorphization blockers documented) |
+| **Current version** | v0.574.0 (v0.23 Stage 35.1 — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED; new `ResolveErrorKind::SelfOutsideImplContext` error kind; deeper `owner_self_kind` propagation bug discovered and fixed; 5 positive + 28 negative tests covering 7 error categories) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4197 integration tests = 5095 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4230 integration tests = 5128 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.20 complete — all v0.20-scoped TDs resolved; 5 TDs BLOCKED on v0.5+ method monomorphization (architectural) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.1 complete — TD-SELF-OUTSIDE-IMPL-CONTEXT resolved; 3 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH, TD-TYPECK-PARAM-ARG-COUNT) |
+
+---
+
+## v0.574.0 — v0.23 Stage 35.1 — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED
+
+### Overview
+
+Stage 35.1 (v0.23) resolves TD-SELF-OUTSIDE-IMPL-CONTEXT — a P3 tech-debt
+that had been BLOCKED on v0.5+ architecture since Stage 32.3.
+
+**Bug**: The `Self` keyword silently resolved to `HirSelfKind::Impl` via
+`unwrap_or(...)` when used outside any impl/trait context (free fn return
+type, free fn param, let binding, struct field, enum variant, etc.). This
+violated §1.0 原則 4 (报错 > 静默).
+
+**Root cause**: Two `unwrap_or(HirSelfKind::Impl)` sites in
+`src/resolve/path_resolve.rs` silently defaulted to `Impl` when
+`current_self_kind` was `None`.
+
+**Deeper bug discovered during implementation**: `owner_self_kind` map was
+keyed by Trait/Impl DefId only, but `body.hir_id.owner` for a method body
+is the METHOD's DefId. So `current_self_kind` was `None` for ALL impl method
+bodies — the OLD `unwrap_or(Impl)` masked this. The proper fix propagates
+the parent Trait/Impl's SelfKind to each method fn owner in `owner_self_kind`.
+
+### Fix Components
+
+1. **New error kind**: `ResolveErrorKind::SelfOutsideImplContext`
+   (src/resolve/error.rs)
+2. **`resolve_self_ty` helper**: emits error if `current_self_kind` is `None`
+   (src/resolve/path_resolve.rs)
+3. **Replaced 2 `unwrap_or` sites**: single-segment + multi-segment Self paths
+4. **New `owner_self_kind` field**: stored as Resolver field for cross-method
+   access (src/resolve/resolver.rs)
+5. **Propagated SelfKind to method fn owners**: each method fn inside
+   Trait/Impl inherits the parent's SelfKind (src/resolve/path_resolve.rs)
+6. **Set `current_self_kind` before fn sig resolution**: covers the `&self`
+   placeholder Self type (parser/generics.rs:114)
+7. **Extended `resolve_ast_ty_paths`**: now checks Self in generic args
+   (`Vec<Self>`, `Box<Self>`)
+
+### Tests (33 new — 5 positive + 28 negative)
+
+Per §9.4.3 (1:3+ positive:negative ratio): 1:5.6 ratio (exceeds target).
+Per §7.3.1 (≥30 case negative audit covering 7 error categories):
+- Lex (3): unclosed string, unterminated block comment, invalid binary literal
+- Parse (3): missing semicolon, unbalanced braces, missing arrow in fn sig
+- Typeck (3): type mismatch, undefined type, arg count mismatch
+- Borrowck (1): double mut borrow
+- Resolve (16): Self in free fn return/param/let/struct-field/enum-variant/etc.
+- Trait (1): undefined trait reference
+- Codegen (1): extern "C" call exercises codegen path
+
+### §3.2 Verification
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4230 integration tests ✓ (was 4197; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### Remaining BLOCKED TDs (all v0.5+ architectural)
+
+| TD ID | Priority | Blocker |
+|-------|----------|---------|
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl — needs AST-level macro expansion or variadic args language feature |
+| TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods |
+| TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers |
 
 ---
 

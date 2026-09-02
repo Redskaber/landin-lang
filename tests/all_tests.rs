@@ -855,3 +855,11 @@ mod stage31_7_intrinsic_cleanup_tests;
 // method resolution + impl-block generics for self param type.
 #[path = "v0/stage32/plan/stage32_3_prelude_mono_order_fix_tests.rs"]
 mod stage32_3_prelude_mono_order_fix_tests;
+
+// === Stage 35.1 (v0.23): TD-SELF-OUTSIDE-IMPL-CONTEXT fix ===
+// New `ResolveErrorKind::SelfOutsideImplContext` error kind. `Self` keyword
+// outside any impl/trait context now errors explicitly instead of silently
+// defaulting to `HirSelfKind::Impl`. Also propagates Trait/Impl SelfKind
+// to method fn owners + sets `current_self_kind` before fn sig resolution.
+#[path = "v0/stage35/plan/self_outside_impl_tests.rs"]
+mod stage35_1_self_outside_impl_context_tests;

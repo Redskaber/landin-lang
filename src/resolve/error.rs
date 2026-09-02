@@ -28,6 +28,18 @@ pub enum ResolveErrorKind {
     AssocTypeNotFound,
     /// `cannot find trait in qualified path` — undefined trait in `<T as Trait>::Item`.
     UndefinedTraitInQualified,
+    /// Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): `Self cannot be
+    /// used outside of an impl or trait context` — `Self` keyword referenced
+    /// in a free fn, let binding, struct field outside impl, or any other
+    /// context where `current_self_kind` is `None`.
+    ///
+    /// Per §1.0 原則 4 (报错 > 静默): previously silently defaulted to
+    /// `HirSelfKind::Impl` via `unwrap_or(...)`, masking the error.
+    /// Per §1.0 原則 3 (显式 > 隐式): dedicated kind for machine-readable
+    /// classification, not a `Generic` error.
+    /// Per Rust Reference §Paths: `Self` is only valid inside an impl block,
+    /// trait declaration, or trait impl block (mirrors rustc E0411).
+    SelfOutsideImplContext,
 }
 
 /// An error encountered during name resolution.

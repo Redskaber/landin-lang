@@ -61,6 +61,17 @@ pub struct Resolver {
     /// `Some(Impl)` inside an impl block. Used by `resolve_path` to produce
     /// accurate `Res::SelfTy(HirSelfKind)`.
     pub(super) current_self_kind: Option<crate::hir::HirSelfKind>,
+    /// Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): Map from owner
+    /// DefId → HirSelfKind, propagated to method fn owners inside trait/impl
+    /// blocks. Used by `resolve_item_paths(HirItem::Fn)` to set
+    /// `current_self_kind` BEFORE resolving the fn signature (which may
+    /// contain `Self` references via the `&self` placeholder type).
+    ///
+    /// Per §1.0 原則 10 (唯一可信数据源): single source of truth for
+    /// SelfKind by owner DefId, including method-level propagation.
+    /// Per §1.0 原則 3 (显式 > 隐式): owner SelfKind is explicitly tracked,
+    /// not implicitly inferred from call site.
+    pub(super) owner_self_kind: std::collections::HashMap<DefId, crate::hir::HirSelfKind>,
     /// Stage 4.12: Current module name for visibility enforcement.
     /// `None` at crate root; `Some(module_name)` when resolving inside a
     /// nested module. Used by `check_visibility` to determine if the caller
@@ -146,6 +157,7 @@ impl Resolver {
             def_span: HashMap::new(),
             scopes: None,
             current_self_kind: None,
+            owner_self_kind: HashMap::new(),
             current_module: None,
             impl_method_index: HashMap::new(),
             impl_method_def_ids: std::collections::HashSet::new(),

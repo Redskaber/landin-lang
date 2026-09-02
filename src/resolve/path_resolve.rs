@@ -34,6 +34,12 @@ impl Resolver {
     pub(super) fn resolve_all_paths(&mut self, hir: &mut HirCrate, interner: &Rodeo) {
         // Stage 3.67: Build a map from owner DefId → HirSelfKind so that
         // body resolution can know whether it's inside a trait or impl.
+        //
+        // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): this map is
+        // now also stored as a Resolver field (`self.owner_self_kind`) so
+        // `resolve_item_paths(HirItem::Fn)` can set `current_self_kind`
+        // BEFORE resolving the fn signature (which contains the `&self`
+        // placeholder Self type).
         let mut owner_self_kind: HashMap<crate::hir::DefId, crate::hir::HirSelfKind> =
             HashMap::new();
         // Stage 18.54: Build a map from owner DefId → generic type params,
@@ -66,6 +72,43 @@ impl Resolver {
                     _ => None,
                 } {
                     owner_self_kind.insert(owner_def_id, kind);
+
+                    // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT):
+                    // Propagate the Trait/Impl owner's SelfKind to all method
+                    // fn owners inside the block. Without this, `body.hir_id.owner`
+                    // for a method body is the method's DefId (NOT the
+                    // Trait/Impl's DefId), so `owner_self_kind.get(method_def_id)`
+                    // returns None — causing `Self` references inside method
+                    // bodies (e.g., the `&self` receiver's placeholder Self
+                    // type, or `Self::Item` in a return type) to error
+                    // incorrectly as "Self outside impl context".
+                    //
+                    // The previous fix used `unwrap_or(HirSelfKind::Impl)`
+                    // to mask this — silently defaulting to Impl. The proper
+                    // fix (per §1.0 原則 6 通解 > 特解) is to propagate the
+                    // parent's SelfKind explicitly to each method body.
+                    //
+                    // Per §1.0 原則 3 (显式 > 隐式): method bodies inherit
+                    // SelfKind from their parent impl/trait, explicitly.
+                    // Per §1.0 原則 10 (唯一可信数据源): owner_self_kind is the
+                    // single source of truth for SelfKind by owner DefId.
+                    match item {
+                        HirItem::Trait(t) => {
+                            for trait_item in &t.items {
+                                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                                    owner_self_kind.insert(f.hir_id.owner, kind);
+                                }
+                            }
+                        }
+                        HirItem::Impl(i) => {
+                            for impl_item in &i.items {
+                                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                                    owner_self_kind.insert(f.hir_id.owner, kind);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
 
                 // Stage 18.56: Build trait_assoc_types map.
@@ -119,13 +162,22 @@ impl Resolver {
             }
         }
 
+        // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): Store the
+        // built owner_self_kind map (including method-level propagation)
+        // into the Resolver field so `resolve_item_paths(HirItem::Fn)` can
+        // set `current_self_kind` before signature resolution.
+        //
+        // Per §1.0 原則 10 (唯一可信数据源): one map, accessible from both
+        // the body loop and the owner loop.
+        self.owner_self_kind = owner_self_kind.clone();
+
         // Walk all owners.
         for (_, node) in hir.owners.iter_mut() {
             self.resolve_owner_paths(node, interner);
         }
         // Walk all bodies — set owner context from the map.
         for (_, body) in hir.bodies.iter_mut() {
-            self.current_self_kind = owner_self_kind.get(&body.hir_id.owner).copied();
+            self.current_self_kind = self.owner_self_kind.get(&body.hir_id.owner).copied();
             // Stage 18.54: Enter the owner's generic scope so type params
             // in param types and body annotations resolve correctly.
             if let Some(params) = owner_generic_params.get(&body.hir_id.owner) {
@@ -183,6 +235,26 @@ impl Resolver {
                 // Per §1.0 原則 6 (通解>特例): check impl_method_def_ids to
                 // determine if this fn needs impl-level generics.
                 let is_impl_method = self.impl_method_def_ids.contains(&f.hir_id.owner);
+
+                // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): set
+                // `current_self_kind` BEFORE resolving the fn signature,
+                // because the signature may contain `Self` references via
+                // the `&self` placeholder type (parser/generics.rs:114 creates
+                // a `Self` path for `&self` shorthand). Without this, the
+                // `Self` placeholder would error as "SelfOutsideImplContext".
+                //
+                // The `owner_self_kind` map (built in `resolve_all_paths`)
+                // propagates the parent Trait/Impl's SelfKind to each method
+                // fn owner, so this lookup returns `Some(Impl)` for impl
+                // methods and `Some(Trait)` for trait method bodies.
+                //
+                // Per §1.0 原則 10 (唯一可信数据源): owner_self_kind is the
+                // single source of truth for SelfKind by owner DefId.
+                // Per §1.0 原則 4 (报错 > 静默): saved_kind is None for free
+                // fns (correctly errors when Self is used in their sigs).
+                let saved_self_kind = self.current_self_kind;
+                self.current_self_kind = self.owner_self_kind.get(&f.hir_id.owner).copied();
+
                 self.enter_generic_scope(&f.generics);
                 // Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION):
                 // For impl method owner copies, also enter the impl block's
@@ -219,6 +291,9 @@ impl Resolver {
                     self.generic_param_scope.pop();
                 }
                 self.exit_generic_scope();
+                // Stage 35.1: restore the saved SelfKind (was None at owner
+                // level — we only set it temporarily for the fn sig).
+                self.current_self_kind = saved_self_kind;
             }
             HirItem::Const(c) => {
                 self.resolve_ty_paths(&mut c.ty, interner);
@@ -594,6 +669,24 @@ impl Resolver {
                     self.resolve_ast_ty_paths(inner_ty, interner);
                 }
                 for seg in &path.segments {
+                    // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT):
+                    // Check if the segment is `Self` keyword. AST paths can't
+                    // store `Res`, so we just emit the error (if outside impl
+                    // context) without setting res.
+                    //
+                    // Per §1.0 原則 4 (报错 > 静默): `Self` in generic args
+                    // like `Vec<Self>` or `Box<Self>` must error when used
+                    // outside impl context.
+                    // Per §1.0 原則 6 (通解 > 特解): one check at this site
+                    // covers all AST Ty paths, including generic arg types
+                    // and qualified-path inner types.
+                    if let Some(self_spur) = interner.get("Self") {
+                        if seg.ident.name == self_spur {
+                            // Emit error via the helper (which checks current_self_kind).
+                            // The result is discarded since AST paths can't store res.
+                            let _ = self.resolve_self_ty(path.span);
+                        }
+                    }
                     if let Some(crate::ast::GenericArgs::AngleBracketed(arg_list)) = &seg.args {
                         for arg in arg_list.iter() {
                             if let crate::ast::GenericArg::Type(t) = arg {
@@ -632,8 +725,38 @@ impl Resolver {
         path.res = self.resolve_path(path, interner);
     }
 
+    /// Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): Resolve the `Self`
+    /// keyword to `Res::SelfTy(kind)`. When outside any impl/trait owner
+    /// context (`current_self_kind` is `None`), emit a
+    /// `ResolveErrorKind::SelfOutsideImplContext` error and return `Res::Err`.
+    ///
+    /// Replaces the previous `unwrap_or(HirSelfKind::Impl)` silent-default
+    /// behavior that masked the error (§1.0 原則 4 报错 > 静默).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one helper for both single-segment
+    /// (`Self`) and multi-segment (`Self::Item`) paths.
+    /// Per §1.0 原則 3 (显式 > 隐式): dedicated `SelfOutsideImplContext` kind.
+    /// Per §1.0 原則 11 (确定性边界): boundary is "Self valid only in
+    /// impl/trait context" — explicit and unambiguous.
+    /// Per Rust Reference §Paths: `Self` is only valid inside an impl block,
+    /// trait declaration, or trait impl block (mirrors rustc E0411).
+    fn resolve_self_ty(&mut self, span: crate::session::Span) -> Res {
+        match self.current_self_kind {
+            Some(kind) => Res::SelfTy(kind),
+            None => {
+                self.errors
+                    .push(crate::resolve::error::ResolveError::with_kind(
+                        crate::resolve::error::ResolveErrorKind::SelfOutsideImplContext,
+                        "Self cannot be used outside of an impl or trait context",
+                        span,
+                    ));
+                Res::Err
+            }
+        }
+    }
+
     /// Core path resolution: look up a HirPath in the module tree + scope chain.
-    pub(super) fn resolve_path(&self, path: &HirPath, interner: &Rodeo) -> Res {
+    pub(super) fn resolve_path(&mut self, path: &HirPath, interner: &Rodeo) -> Res {
         if path.segments.is_empty() {
             return Res::Err;
         }
@@ -728,22 +851,23 @@ impl Resolver {
             // from impl-Self.
             // Stage 3.66: uses `current_self_kind` context (set by
             // `resolve_item_paths` when entering Trait/Impl items) to
-            // produce the accurate variant. Defaults to `Impl` when no
-            // owner context is active (e.g., body-level resolution —
-            // threading owner context into body resolution is Stage 4).
+            // produce the accurate variant.
+            // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): when
+            // `current_self_kind` is `None` (outside any impl/trait owner),
+            // emit a `SelfOutsideImplContext` error and return `Res::Err`.
+            // Previously this silently defaulted to `HirSelfKind::Impl` via
+            // `unwrap_or(...)`, masking the error (§1.0 原則 4 报错>静默).
+            // Per Rust Reference §Paths: `Self` is only valid inside an
+            // impl block, trait declaration, or trait impl block (rustc E0411).
+            // Per §1.0 原則 6 (通解 > 特解): one `resolve_self_ty` helper for
+            // both single-segment and multi-segment Self paths.
             if let Some(self_spur) = interner.get("Self") {
                 if seg.ident.name == self_spur {
-                    return Res::SelfTy(
-                        self.current_self_kind
-                            .unwrap_or(crate::hir::HirSelfKind::Impl),
-                    );
+                    return self.resolve_self_ty(path.span);
                 }
             }
             if name == "Self" {
-                return Res::SelfTy(
-                    self.current_self_kind
-                        .unwrap_or(crate::hir::HirSelfKind::Impl),
-                );
+                return self.resolve_self_ty(path.span);
             }
 
             // Value namespace (fn, const, static).
@@ -805,15 +929,16 @@ impl Resolver {
         // not a type in the module tree), resulting in `Res::Err` — causing
         // `Self::Item` to be lowered to `TyKind::Error`.
         //
+        // Stage 35.1 (v0.23 — TD-SELF-OUTSIDE-IMPL-CONTEXT): when
+        // `current_self_kind` is `None`, emit a `SelfOutsideImplContext`
+        // error (previously silently defaulted to `HirSelfKind::Impl`).
+        //
         // Per §1.0 原則 4 (报错 > 静默): Self::Item should not silently become Error.
         // Per §1.0 原則 9 (正确 > 妥协): resolve Self in multi-segment paths.
-        // Per §1.0 原則 6 (通解 > 特解): one check for all Self-prefixed paths.
+        // Per §1.0 原則 6 (通解 > 特解): one `resolve_self_ty` helper for all Self-prefixed paths.
         if let Some(self_spur) = interner.get("Self") {
             if first.ident.name == self_spur {
-                return Res::SelfTy(
-                    self.current_self_kind
-                        .unwrap_or(crate::hir::HirSelfKind::Impl),
-                );
+                return self.resolve_self_ty(path.span);
             }
         }
 

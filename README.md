@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.572.0 (v0.21 Stage 33.1 COMPLETE — Vec::push/get migrated to prelude impl, 6/7 TD-INTRINSIC-OVERUSE intrinsics resolved, TD-VEC-PUSH-GET-MIGRATION + TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION RESOLVED — Architecture health 9.85/10) |
+| **Version** | v0.574.0 (v0.23 Stage 35.1 COMPLETE — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED; new `ResolveErrorKind::SelfOutsideImplContext` error kind; deeper `owner_self_kind` propagation bug discovered and fixed; 5 positive + 28 negative tests covering 7 error categories — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.21 Stage 33.1 COMPLETE**. 5095 tests (898 lib + 4197 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §14.5 D1-D8 PASSED. Stage 33.1 implements Vec::push/get migration to prelude impl (replaces 647 LOC intrinsic). 7 infrastructure fixes: recursive collect_param_bindings + type_name_by_def_id threading + substitute Load/GEP/Store + resolver impl generic scope + Constant operand codegen FnDef substs + collect_param_bindings binding guard + second writeback_type_propagation pass. Also: Rvalue::SizeOf deferred evaluation + query_method_return_type with generics + method call ref_ty fix. TD-VEC-PUSH-GET-MIGRATION + TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION RESOLVED. 6/7 TD-INTRINSIC-OVERUSE intrinsics migrated (only format! remains, BLOCKED on v0.5+ variadic args). Architecture health: 9.85/10 (stable). Next: v0.22 format! migration or v0.5+ architectural planning. |
+| **Status** | ✅ **v0.23 Stage 35.1 COMPLETE**. 5128 tests (898 lib + 4230 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 35.1 resolves TD-SELF-OUTSIDE-IMPL-CONTEXT — the `Self` keyword outside any impl/trait context now errors explicitly via the new `ResolveErrorKind::SelfOutsideImplContext` (previously silently defaulted to `HirSelfKind::Impl` via `unwrap_or`, violating §1.0 原則 4 报错>静默). Deeper bug discovered and fixed: `owner_self_kind` map was keyed by Trait/Impl DefId only, missing method fn owners — propagated parent SelfKind to each method fn owner. Also set `current_self_kind` before fn sig resolution (covers `&self` placeholder Self type) and extended `resolve_ast_ty_paths` to check Self in generic args (`Vec<Self>`, `Box<Self>`). 3 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH, TD-TYPECK-PARAM-ARG-COUNT). Architecture health: 9.85/10 (stable). Next: Stage 35.2 (TD-TYPECK-PARAM-ARG-COUNT, smallest remaining P3). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -420,6 +420,23 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-VISIBILITY-NOOP | Private items accessible from outside module | ✅ Resolved (Stage 26.1) | `def_owner_module` + `check_visibility` enforces |
 | TD-BREAK-CONTINUE-CONTEXT | `break`/`continue` outside loop | ✅ Resolved (Stage 27.1) | `loop_stack` empty → TypeError |
 | TD-ENUM-EXHAUSTIVENESS | `match` on enum without all variants | ✅ Resolved (Stage 28.1) | `enum_variants` map + `lower_match` checks |
+| TD-SELF-OUTSIDE-IMPL-CONTEXT | `Self` keyword outside any impl/trait context silently defaulted to `HirSelfKind::Impl` via `unwrap_or` | ✅ Resolved (Stage 35.1) | New `ResolveErrorKind::SelfOutsideImplContext` error kind + `resolve_self_ty` helper + propagated parent SelfKind to method fn owners in `owner_self_kind` + set `current_self_kind` before fn sig resolution + extended `resolve_ast_ty_paths` to check Self in generic args |
+
+---
+
+## v0.23 Stage 35.1 — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED
+
+**Bug**: The `Self` keyword silently resolved to `HirSelfKind::Impl` via
+`unwrap_or(...)` when used outside any impl/trait context (free fn return
+type, free fn param, let binding, struct field, enum variant, etc.).
+This violated §1.0 原則 4 (报错 > 静默).
+
+**Deeper bug discovered**: `owner_self_kind` map was keyed by Trait/Impl
+DefId only, missing method fn owners — propagated parent SelfKind to each
+method fn owner. The OLD `unwrap_or(Impl)` masked this deeper bug.
+
+**Verification**: 5128 tests (898 lib + 4230 integration), 0 failures, 4
+ignored. fmt clean, 0 clippy warnings. §3.2 verification passed.
 
 ---
 

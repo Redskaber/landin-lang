@@ -1057,7 +1057,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | TD-VEC-PUSH-GET-MIGRATION | P2 | Vec::push/get migration to prelude impl blocked on method monomorphization — codegen doesn't substitute Param(N) in generic fn bodies | ✅ Resolved Stage 33.1 — 7 infrastructure fixes enabled full migration: recursive collect_param_bindings + type_name_by_def_id threading + substitute Load/GEP/Store + resolver impl generic scope + Constant operand codegen FnDef substs + collect_param_bindings binding guard + second writeback_type_propagation pass. vec_intrinsics.rs (647 LOC) deleted. |
 | TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION | P2 | Resolver doesn't resolve `value: T` (impl generic param) in fn signature of impl method — sig input becomes Error instead of Param(0), preventing writeback_fndef_substs from inferring T at call sites | ✅ Resolved Stage 33.1 — resolver now enters impl generic scope for fn owner copies (resolve_item_paths(HirItem::Fn) pushes impl_method_parent_generics). Also fixed query_method_return_type_uncached to use lower_hir_ty_to_mir_ty_with_hir_and_generics. |
 | TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl blocked on method monomorphization — same root cause as TD-VEC-PUSH-GET-MIGRATION | BLOCKED (v0.5+ — needs per-instantiation fn body codegen with Param(N) substitution). Note: TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION is now RESOLVED, so the remaining blocker is the format_variadic_intrinsic's variadic args handling. |
-| TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | Documented (Stage 32.3) — v0.5+ architectural fix |
+| TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | ✅ Resolved Stage 35.1 — added `ResolveErrorKind::SelfOutsideImplContext` error kind. Replaced silent `unwrap_or(HirSelfKind::Impl)` with explicit error via `resolve_self_ty` helper at both single-segment and multi-segment Self-resolution sites. Also discovered and fixed deeper bug: `owner_self_kind` was keyed by Trait/Impl DefId only, missing method fn owners — propagated parent SelfKind to each method fn owner. Also added `current_self_kind` setting before fn sig resolution (covers `&self` placeholder Self type). Also extended `resolve_ast_ty_paths` to check Self in generic args (Vec<Self>, Box<Self>). 5 positive + 28 negative tests covering 7 error categories. 5128 tests total, 0 failures. |
 | TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | Documented (Stage 32.3) — pre-existing limitation |
 | TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers | Documented (Stage 32.3) — pre-existing limitation |
 
@@ -1117,3 +1117,107 @@ Per §12 (最优 > 最小): the root-cause fix requires architectural changes, n
 Per §6.2 升级判据: NOT UPGRADED — intrinsics work correctly, no soundness risk.
 
 **The v0.19 Stage 31 series is COMPLETE.** All achievable tech-debt items have been resolved within the current architecture. The project is ready for v0.20 planning, which should focus on prelude monomorphization (unblocks Vec::push/get) and format args (unblocks format!).
+
+---
+
+## Stage 35.1 (v0.23) Update — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.574.0 (Stage 35.1)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### TD-SELF-OUTSIDE-IMPL-CONTEXT — Resolution Summary
+
+**Bug**: The `Self` keyword silently resolved to `HirSelfKind::Impl` via
+`unwrap_or(...)` when used outside any impl/trait context (free fn return
+type, free fn param, let binding, struct field, enum variant, etc.).
+
+**Root cause**: Two `unwrap_or(HirSelfKind::Impl)` sites in
+`src/resolve/path_resolve.rs` (single-segment at line 734, multi-segment at
+line 811) silently defaulted to `Impl` when `current_self_kind` was `None`.
+
+**Deeper bug discovered during implementation**: `owner_self_kind` map was
+keyed by Trait/Impl DefId only, but `body.hir_id.owner` for a method body is
+the METHOD's DefId (not the impl's). So `current_self_kind` was `None` for
+ALL impl method bodies — the OLD `unwrap_or(Impl)` masked this. The proper
+fix propagates the parent Trait/Impl's SelfKind to each method fn owner in
+`owner_self_kind`.
+
+**Additional bug**: The `&self` receiver's placeholder type is `Self`
+(parser/generics.rs:114), which gets resolved via `resolve_fn_sig_paths`
+during `resolve_item_paths(HirItem::Fn)`. This happens BEFORE the body loop
+sets `current_self_kind`. Fixed by setting `current_self_kind` from the
+`owner_self_kind` field before fn sig resolution.
+
+**Additional bug**: `Self` inside generic args (`Vec<Self>`, `Box<Self>`)
+was not caught by the main `resolve_path` check — generic args are stored
+as AST Ty (not HIR), and `resolve_ast_ty_paths` only walked them without
+resolving. Extended to call `resolve_self_ty` when a segment is `Self`.
+
+### Fix Components
+
+| # | Component | File | LOC |
+|---|-----------|------|-----|
+| 1 | New error kind | `src/resolve/error.rs` | +12 |
+| 2 | `resolve_self_ty` helper | `src/resolve/path_resolve.rs` | +20 |
+| 3 | Replace `unwrap_or` at 2 sites | `src/resolve/path_resolve.rs` | -8 |
+| 4 | New `owner_self_kind` field | `src/resolve/resolver.rs` | +14 |
+| 5 | Propagate SelfKind to method fn owners | `src/resolve/path_resolve.rs` | +25 |
+| 6 | Set `current_self_kind` before fn sig resolution | `src/resolve/path_resolve.rs` | +15 |
+| 7 | Check `Self` in `resolve_ast_ty_paths` | `src/resolve/path_resolve.rs` | +15 |
+| 8 | Test file | `tests/v0/stage35/plan/self_outside_impl_tests.rs` | +415 |
+| 9 | Test entry in `all_tests.rs` | `tests/all_tests.rs` | +5 |
+| 10 | Design doc | `docs/develop/v0/stage-35/stage-35.1-self-outside-impl-context-design.md` | +200 |
+
+**Total**: ~120 LOC code changes + ~415 LOC tests + ~200 LOC design doc.
+
+### Tests
+
+| Category | Count |
+|----------|-------|
+| Positive (Self in valid trait/impl context) | 5 |
+| Negative — SelfOutsideImplContext errors | 16 |
+| Negative — Lex errors | 3 |
+| Negative — Parse errors | 3 |
+| Negative — Typeck errors | 3 |
+| Negative — Borrowck errors | 1 |
+| Negative — Trait errors | 1 |
+| Negative — Codegen path audit | 1 |
+| **Total new tests** | **33** |
+
+### §3.2 Verification (Stage 35.1)
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓ (unchanged)
+  - 4230 integration tests ✓ (was 4197; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5128 tests**
+
+### §14.8 Design Writeback
+
+| Phase | Status |
+|-------|--------|
+| B1 (Design vs Implementation) | ✅ Match — fix matches design doc exactly |
+| B2 (New TDs created) | ✅ None — root cause addressed, no architectural blockers |
+| B3 (Deviations requiring design doc update) | ✅ None — Rust Reference §Paths Self semantics matched |
+| B4 (Architectural limitations) | ✅ None — deeper bug (owner_self_kind propagation) discovered and fixed in same stage |
+
+### v0.23 Stage 35 Series — Status
+
+- Stage 35.1: TD-SELF-OUTSIDE-IMPL-CONTEXT ✅ Resolved
+- Remaining BLOCKED TDs (all v0.5+ architectural):
+  - TD-FORMAT-MIGRATION (P2): variadic args / AST-level macro expansion
+  - TD-TYPECK-PARAM-RETURN-MISMATCH (P3): typeck Param(N) unification
+  - TD-TYPECK-PARAM-ARG-COUNT (P3): typeck arg count validation
+
+### Next Stage Direction
+
+Stage 35.2 should tackle TD-TYPECK-PARAM-ARG-COUNT (smallest remaining P3):
+typeck doesn't validate arg count for trait method calls on Param(N) receivers.
+This is a typeck-level fix (similar complexity to Stage 35.1).
