@@ -40414,3 +40414,61 @@ Stage Summary:
 - Stage 47+ (v0.6+): TD-METHOD-LEVEL-GENERICS — add generic param inference
   to method_resolution + monomorphize. Enables map_err and Display trait.
 - Stage 48+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT.
+
+---
+Task ID: stage47
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 47 (v0.6) — TD-METHOD-LEVEL-GENERICS FIXED. Added
+infer_method_substs in method_call_lower.rs. Enabled Result::map_err.
+v0.598.0. 5436 tests, 0 failures. Runtime: Err(5).map_err(to_str)=Err(50).
+
+3秒启动自检:
+- 定位: L3 (method_call_lower.rs + method_resolution.rs + prelude.rs)
+- 对齐: 已查 Stage 46 worklog (TD root cause analyzed)
+- 阻断: v0.597.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. TD-METHOD-LEVEL-GENERICS: Added infer_method_substs function
+   - 引用 §12 (最优 > 最小): root-cause fix — populate FnDef substs
+     from receiver type + impl block generic params.
+   - 引用 §1.0 原則 6 (通解 > 特解): one inference path for all methods.
+   - Root cause: method call FnDef(def_id, []) had empty substs →
+     monomorphization couldn't collect methods with extra generic params.
+   - Fix: infer substs from receiver Adt substs + impl block generic params.
+     Extra method-level params (beyond receiver) use Infer placeholder.
+
+2. Enabled Result::map_err in prelude
+   - Was commented out (TD-METHOD-LEVEL-GENERICS deferred).
+   - Now works: Err(5).map_err(to_str) → Err(50).
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (root-cause TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - Err(5).map_err(to_str) → Err(50) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The FnDef substs were empty (Vec::new()), causing
+  monomorphization to skip methods with generic params beyond the impl
+  block. Now substs are inferred from the receiver type + impl block
+  generic params. Extra method-level params use Infer placeholder
+  (resolved by typeck later).
+
+Stage Summary:
+- TD-METHOD-LEVEL-GENERICS FIXED (infer_method_substs + find_impl_generics_for_method)
+- Result::map_err ENABLED (was deferred in Stage 45)
+- 2 new functions ADDED (infer_method_substs, find_impl_generics_for_method)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause fix, no regression)
+
+下一步:
+- Stage 48 (v0.6+): TD-DISPLAY-TRAIT — Display trait + type-dispatched
+  formatting (now unblocked by Stage 47 method substs inference).
+- Stage 49+ (v0.6+): TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.

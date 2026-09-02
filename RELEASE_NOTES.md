@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.597.0 (v0.6 Stage 46 — Result::ok/err added; 5436 tests) |
+| **Current version** | v0.598.0 (v0.6 Stage 47 — TD-METHOD-LEVEL-GENERICS FIXED: map_err enabled via method substs inference; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

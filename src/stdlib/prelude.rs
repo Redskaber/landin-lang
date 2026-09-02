@@ -475,14 +475,16 @@ impl<T, E> Result<T, E> {
     }
 }
 // Stage 45 (v0.6): Result::map_err — needs separate impl block with <T, E, F>
-// but Landin's monomorphization doesn't support 3-param impl blocks yet.
-// Deferred to v0.6+ when method-level generics are fully supported.
-// Per §1.0 原則 9 (正确 > 妥协): documented as TD-METHOD-LEVEL-GENERICS.
-// impl<T, E, F> Result<T, E> {
-//     fn map_err(self, f: fn(E) -> F) -> Result<T, F> {
-//         match self { Ok(v) => Ok(v), Err(e) => Err(f(e)) }
-//     }
-// }
+// Stage 47 (v0.6 — TD-METHOD-LEVEL-GENERICS): NOW ENABLED — method substs
+// inference added to method_call_lower.rs (infer_method_substs function).
+impl<T, E, F> Result<T, E> {
+    fn map_err(self, f: fn(E) -> F) -> Result<T, F> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(f(e)),
+        }
+    }
+}
 // Stage 18.179 (TD-HEAP-ALLOC): Box<T> — owned heap pointer wrapper.
 //
 // MVP: Box<T> is a tuple struct wrapping a *mut T. Users construct it via

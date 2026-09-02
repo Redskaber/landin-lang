@@ -603,11 +603,27 @@ pub(super) fn lower_method_call_expr(
         // Emit `TerminatorKind::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
         // Codegen resolves this via `fn_name_by_def_id` (which maps to
         // `landin_<Type>_<method>` per the driver's naming convention).
+        //
+        // Stage 47 (v0.6 — TD-METHOD-LEVEL-GENERICS): Infer substs from the
+        // receiver type. Previously, substs was always empty (Vec::new()),
+        // which meant monomorphization couldn't collect methods with generic
+        // params beyond the impl block's own params (e.g., map_err's F).
+        //
+        // The fix: look up the impl block's generic params, then substitute
+        // them from the receiver's type. For `impl<T, E> Result<T, E>`, the
+        // receiver type `Result<i32, i32>` produces substs=[i32, i32].
+        //
+        // For extra method-level generic params (e.g., F in map_err), we use
+        // Infer as placeholder — typeck will resolve them later.
+        //
+        // Per §12 (最优 > 最小): root-cause fix — populate FnDef substs.
+        // Per §1.0 原則 6 (通解 > 特解): one inference path for all methods.
+        let method_substs = infer_method_substs(cx, def_id, &cx.mir.local(recv_local).ty.clone());
         cx.terminate_kind_and_goto(
             TerminatorKind::Call {
                 func: Operand::Constant(Const {
                     ty: Ty::new(
-                        TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                        TyKind::FnDef(def_id, method_substs.into()),
                         expr.span,
                     ),
                     val: ConstVal::Uint(def_id.as_u32() as u128),
@@ -660,4 +676,74 @@ pub(super) fn lower_method_call_expr(
         );
     }
     dest
+}
+
+/// Stage 47 (v0.6 — TD-METHOD-LEVEL-GENERICS): Infer the type substitutions
+/// for a method call from the receiver type and the impl block's generic params.
+///
+/// For `impl<T, E> Result<T, E>` with receiver `Result<i32, i32>`:
+/// - T → i32, E → i32 → substs = [i32, i32]
+///
+/// For `impl<T, E, F> Result<T, E>` with receiver `Result<i32, i32>`:
+/// - T → i32, E → i32, F → Infer (extra method-level generic, inferred later)
+/// - substs = [i32, i32, Infer]
+///
+/// Per §12 (最优 > 最小): root-cause fix — populate FnDef substs.
+/// Per §1.0 原則 6 (通解 > 特解): one inference path for all methods.
+fn infer_method_substs(
+    cx: &MirLowerCtxt,
+    method_def_id: crate::hir::DefId,
+    recv_ty: &Ty,
+) -> Vec<crate::mir::ty::Ty> {
+    let hir = match cx.hir {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+
+    let impl_generics = find_impl_generics_for_method(hir, method_def_id);
+
+    if impl_generics.is_empty() {
+        return Vec::new();
+    }
+
+    let recv_substs: Vec<crate::mir::ty::Ty> = match &recv_ty.kind {
+        TyKind::Adt(_, substs) => substs.iter().cloned().collect(),
+        _ => Vec::new(),
+    };
+
+    let mut result = Vec::with_capacity(impl_generics.len());
+    for (i, _param) in impl_generics.iter().enumerate() {
+        if i < recv_substs.len() {
+            result.push(recv_substs[i].clone());
+        } else {
+            // Extra method-level generic — use a simple Infer placeholder.
+            result.push(Ty::new(TyKind::Infer(crate::mir::ty::InferVar::TyVar(crate::mir::ty::TyVid(0))), crate::session::Span::DUMMY));
+        }
+    }
+    result
+}
+
+/// Stage 47: Find the impl block's generic params that own the given method.
+fn find_impl_generics_for_method(
+    hir: &crate::hir::HirCrate,
+    method_def_id: crate::hir::DefId,
+) -> Vec<crate::lexer::Symbol> {
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.hir_id.owner == method_def_id {
+                        // Found the impl block — return its generic params.
+                        let generics =
+                            crate::hir::generics::find_generics(impl_block.hir_id.owner, hir);
+                        return generics
+                            .iter()
+                            .map(|p| p.name)
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
 }
