@@ -459,7 +459,44 @@ pub(crate) fn detect_place_type(
             ProjectionElem::Deref => {
                 let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
                 if base_ty.is_ptr() {
-                    base_ty.pointee()
+                    // Stage 39.3 (TD-TEXT-IR-DEREF-ADT): When the base is a
+                    // `Ref` to an `Adt` (e.g., `&Option<T>`), `mir_type_to_emit_type`
+                    // maps it to `OpaquePtr` (Stage 18.337 — to break recursive
+                    // struct cycles). But `OpaquePtr.pointee() == OpaquePtr`
+                    // (Stage 14.58), so `detect_place_type` for `(*self).0`
+                    // returns `OpaquePtr` instead of the Adt's struct type.
+                    // This causes the load `*self` to use type `ptr` instead of
+                    // `{i32, i32}` — invalid LLVM IR (rejected by `llvm-as`).
+                    //
+                    // Fix: When the resolved EmitType is `OpaquePtr`, fall back
+                    // to the MIR type. We use `resolve_base_ty_for_substs` which
+                    // correctly extracts the pointee from `Ref(_, _, inner)`.
+                    // Then we convert it to EmitType via `mir_type_to_emit_type_*`.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one fix for ALL Adt
+                    // deref-projection cases (Option, Result, user-defined enums
+                    // and structs).
+                    // Per §2.2 根因思维: fix at the EmitType resolution layer
+                    // (where the OpaquePtr was introduced), not at each call site.
+                    // Per §12 (最优 > 最小): root-cause fix, not a workaround.
+                    if matches!(base_ty, EmitType::OpaquePtr) {
+                        let mir_inner_ty = resolve_base_ty_for_substs(mir, base);
+                        match &mir_inner_ty.kind {
+                            // If the MIR type is itself a Ref/RawPtr (i.e., the
+                            // base was a Ref and Deref unwraps it), the inner Ty
+                            // is the pointee — convert that to EmitType.
+                            TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
+                                mir_type_to_emit_type_with_layouts_and_mono(
+                                    inner,
+                                    layouts,
+                                    mono_layouts,
+                                )
+                            }
+                            _ => base_ty.pointee(),
+                        }
+                    } else {
+                        base_ty.pointee()
+                    }
                 } else {
                     base_ty
                 }

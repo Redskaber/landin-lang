@@ -498,13 +498,30 @@ pub(crate) fn lower_match(
             // handle in otherwise where inner sub-patterns can be checked.
             // This prevents duplicate switch cases AND ensures the correct
             // arm body runs (was: first arm with matching variant always won).
+            //
+            // Stage 39.3 (TD-PAT-IDENT-VARIANT continuation): Bindings
+            // (HirPatKind::Ident) are NOT differentiating — they always
+            // match. Only Lit / Range / TupleStruct / Struct / Or
+            // sub-patterns differentiate. Treating a binding like `Some(v)`
+            // as differentiating caused `has_inner_subpatterns = true`,
+            // which prevented the variant from being added as a switch
+            // target. This made the otherwise block unreachable for
+            // `match self { Some(v) => v, None => default }` in the prelude
+            // (segfault at runtime). Now we correctly identify bindings
+            // as non-differentiating.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one fix for all variant
+            // payload bindings (Some(v), Ok(v), Err(e), TupleStruct(a, b)).
+            // Per §2.2 根因思维: fix at the pattern classification layer
+            // (where sub-pattern kind is determined), not at the switch
+            // target generation layer.
             let has_inner_subpatterns = match &arm.pat.kind {
                 HirPatKind::TupleStruct(_, sub_pats) => sub_pats
                     .iter()
-                    .any(|sp| !matches!(&sp.kind, HirPatKind::Wild)),
+                    .any(|sp| !matches!(&sp.kind, HirPatKind::Wild | HirPatKind::Ident(..))),
                 HirPatKind::Struct(_, fields, _) => fields
                     .iter()
-                    .any(|f| !matches!(&f.pat.kind, HirPatKind::Wild)),
+                    .any(|f| !matches!(&f.pat.kind, HirPatKind::Wild | HirPatKind::Ident(..))),
                 HirPatKind::Path(_) => false, // Unit variant — no payload
                 _ => false,
             };

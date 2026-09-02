@@ -911,3 +911,15 @@ mod stage37_2_hex_format_tests;
 // === Stage 38.1 (v0.26): format! {:o} octal + {:b} binary ===
 #[path = "v0/stage38/plan/octal_binary_format_tests.rs"]
 mod stage38_1_octal_binary_format_tests;
+
+// === Stage 39.3 (v0.27): TD-LEXER-UNDERSCORE + TD-PAT-IDENT-VARIANT +
+// TD-TEXT-IR-DEREF-ADT ===
+// Three root-cause fixes that unblock the prelude's `Option::is_some`/
+// `is_none`/`unwrap_or` methods (and any prelude method using
+// `match *self { Some(_) => ..., None => ... }` patterns):
+// 1. Lexer produces `TokenKind::Underscore` for `_` (not `Ident("_")`).
+// 2. Resolver converts unit-variant-named Ident patterns to Path patterns.
+// 3. `detect_place_type` for Deref uses MIR type fallback when EmitType is
+//    OpaquePtr (fixes TextEmitter IR validity for `match *self { ... }`).
+#[path = "v0/stage39/plan/stage39_3_tests.rs"]
+mod stage39_3_tests;

@@ -460,9 +460,12 @@ fn test_ident_basic() {
 
 #[test]
 fn test_ident_underscore() {
+    // Stage 39.3: `_` (lone underscore) is now `TokenKind::Underscore`,
+    // not `TokenKind::Ident("_")`. Identifier-prefix underscores like
+    // `_foo` and `_bar` remain `TokenKind::Ident`.
     let tokens = lex("_foo _ _bar");
     assert!(matches!(tokens[0], TokenKind::Ident(_)));
-    assert!(matches!(tokens[1], TokenKind::Ident(_)));
+    assert!(matches!(tokens[1], TokenKind::Underscore));
     assert!(matches!(tokens[2], TokenKind::Ident(_)));
 }
 
@@ -627,7 +630,8 @@ fn test_punct_hash() {
 
 #[test]
 fn test_punct_underscore_token() {
-    assert!(matches!(lex("_")[0], TokenKind::Ident(_)));
+    // Stage 39.3: `_` is `TokenKind::Underscore`, not `TokenKind::Ident`.
+    assert!(matches!(lex("_")[0], TokenKind::Underscore));
 }
 
 // === P0 REGRESSION TESTS (3) ===

@@ -1148,9 +1148,54 @@ impl Resolver {
     /// Collect all identifier bindings from a pattern into the current scope.
     /// Stage 3.40 (L-ENUM-MATCH): also resolve pattern paths (e.g.,
     /// `Color::Red` in `match c { Color::Red => ... }`).
+    /// Stage 39.3 (TD-PAT-IDENT-VARIANT): also detect unit-variant-named
+    /// Ident patterns (e.g., `None`, `Ok`, `Err`) and convert them to
+    /// Path patterns. Without this, `match v { None => ... }` would
+    /// treat `None` as a binding (catch-all), causing wrong match results.
     pub(super) fn collect_pat_bindings(&mut self, pat: &mut HirPat, interner: &Rodeo) {
         match &mut pat.kind {
             HirPatKind::Ident(_mode, ident, sub) => {
+                // Stage 39.3: If `ident.name` is a known enum unit variant
+                // (registered in `variant_index`), AND there's no sub-pattern
+                // (`None` not `n @ pat`), convert this Ident pattern to a
+                // Path pattern that resolves to the enum variant.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one resolver fix for ALL
+                // unit-variant-named patterns (None, Ok, Err, user-defined).
+                // Per §2.2 根因思维: disambiguate at resolve time (where we
+                // have `variant_index` access), not at parse time (where we
+                // don't) nor at MIR-lower time (where it's too late).
+                // Per Rust semantics: bare identifier in pattern position is
+                // a binding UNLESS it refers to a unit variant in scope.
+                if sub.is_none() {
+                    if let Some((enum_def_id, _variant_idx)) =
+                        self.variant_index.get(&ident.name).copied()
+                    {
+                        // Convert Ident → Path. The path has a single segment
+                        // with the variant name; resolver will set
+                        // `path.res = Res::Def(enum_def_id, DefKind::Enum)`.
+                        let new_path = crate::hir::HirPath {
+                            hir_id: pat.hir_id,
+                            segments: std::iter::once(crate::hir::HirPathSegment {
+                                ident: *ident,
+                                args: None,
+                            })
+                            .collect(),
+                            leading: crate::ast::PathLeading::None,
+                            res: crate::hir::Res::Def(enum_def_id, crate::resolve::DefKind::Enum),
+                            span: pat.span,
+                        };
+                        pat.kind = HirPatKind::Path(new_path);
+                        // Re-dispatch as Path to resolve_hir_path (which
+                        // fills in any remaining path metadata). Note:
+                        // `res` is already set, but `resolve_hir_path` is
+                        // idempotent for already-resolved paths.
+                        if let HirPatKind::Path(p) = &mut pat.kind {
+                            self.resolve_hir_path(p, interner);
+                        }
+                        return;
+                    }
+                }
                 if let Some(scopes) = &mut self.scopes {
                     scopes.insert(ident.name, pat.hir_id);
                 }

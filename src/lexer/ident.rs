@@ -88,6 +88,30 @@ impl<'a> Lexer<'a> {
         let text = &self.src[start as usize..self.pos as usize];
         let span = self.span_from(start);
 
+        // Stage 39.3 (TD-LEXER-UNDERSCORE): A lone `_` (single underscore)
+        // must be tokenized as `TokenKind::Underscore`, NOT as
+        // `TokenKind::Ident("_")`. The parser branches on `TokenKind::Underscore`
+        // to produce `Pat::Wild` (in pattern position) and `Ty::Infer` (in
+        // type position). Without this fix, `_` was incorrectly parsed as a
+        // binding pattern (e.g., `Some(_)` became `Some(<ident "_">)` instead
+        // of `Some(<wild>)`), causing `has_inner_subpatterns=true` in the
+        // MIR lowerer, which prevented the variant from being added as a
+        // switch target — and the prelude's `Option::is_some` returned wrong
+        // results (always `false`).
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one lexer fix for ALL `_` usages
+        // (patterns, types, function params, slice rest, etc.).
+        // Per §2.2 根因思维: fix at the lexer (source) rather than patching
+        // each downstream consumer.
+        // Per §12 (最优 > 最小): root-cause fix, not a workaround.
+        if text == "_" {
+            self.interner.get_or_intern(text);
+            return Token {
+                kind: TokenKind::Underscore,
+                span,
+            };
+        }
+
         // Check for keywords
         if let Some(kw) = keyword_from_str(text) {
             // Stage 3.67: intern the keyword string so downstream passes

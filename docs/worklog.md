@@ -39676,3 +39676,99 @@ Stage Summary:
   (the targets list at pattern_lower.rs:230-475 is built using the
   original scrut_ty, not the resolved one). Need to move the type
   resolution BEFORE the target-building loop.
+
+---
+Task ID: stage39.3
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 39.3 (v0.27) — Three root-cause fixes that unblock prelude
+Option::is_some/is_none/unwrap_or. TD-LEXER-UNDERSCORE + TD-PAT-IDENT-VARIANT
++ TD-TEXT-IR-DEREF-ADT + binding sub-pattern classification fix.
+v0.588.0. 5415 tests, 0 failures. Runtime: Some(42).is_some()=true,
+None.is_some()=false, Some(42).unwrap_or(99)=42, None.unwrap_or(99)=99.
+
+3秒启动自检:
+- 定位: L3 (cross-module: lexer + resolver + codegen + pattern_lower)
+- 对齐: 已查 Stage 39.2 worklog + IR analysis of prelude Option::is_some
+- 阻断: v0.587.0 全绿 (5392 tests), 0 P0/P1
+
+决策点:
+1. Layered root-cause fixes (not single patch)
+   - 引用 §2.2 根因思维: each bug fixed at the layer where it originates
+     (lexer for `_`, resolver for `None`, codegen for `*self`,
+     pattern_lower for `Some(v)` binding classification).
+   - 引用 §1.0 原則 6 (通解 > 特解): each fix is generic — applies to ALL
+     enum types (Option, Result, user-defined), not just the prelude's Option.
+   - 引用 §12 (最优 > 最小): no call-site patches; each fix targets the
+     root architectural layer.
+
+2. TD-LEXER-UNDERSCORE: lex_ident checks `text == "_"` after collecting
+   - Before: `_` was `TokenKind::Ident("_")` (treated as binding).
+   - After: `_` is `TokenKind::Underscore` (parser produces Pat::Wild / Ty::Infer).
+   - This unblocked `Some(_)` parsing — `has_inner_subpatterns` is now false
+     for `Some(_)`, so the variant is added as a switch target.
+
+3. TD-PAT-IDENT-VARIANT: resolver checks `variant_index` for Ident patterns
+   - Before: `match v { None => ... }` treated `None` as a binding (catch-all).
+   - After: resolver detects `None` in `variant_index` and converts the Ident
+     pattern to a Path pattern with `res = Res::Def(enum_def_id, DefKind::Enum)`.
+   - Per Rust semantics: bare identifier in pattern position is a binding
+     UNLESS it refers to a unit variant in scope.
+
+4. TD-TEXT-IR-DEREF-ADT: detect_place_type Deref uses MIR fallback for OpaquePtr
+   - Before: `*self` for `&Option<T>` returned `OpaquePtr` (Stage 18.337 mapping
+     for `&Adt`), causing TextEmitter IR `store {i32, i32} %v3, ptr %loc_2`
+     where `%v3` was `ptr`-typed (llvm-as rejected).
+   - After: when EmitType is `OpaquePtr`, fall back to MIR type via
+     `resolve_base_ty_for_substs` and convert `Ref(_, _, inner)` to its
+     proper EmitType (`{i32, i32}` for Option<i32>).
+
+5. Binding sub-pattern classification fix
+   - Before: Stage 14.89 (Bug 4 fix) classified any non-Wild sub-pattern as
+     differentiating. `Some(v)` (with binding `v`) had
+     `has_inner_subpatterns = true`, preventing the variant from being added
+     as a switch target — causing otherwise block to be unreachable (segfault).
+   - After: `HirPatKind::Ident(..)` is treated as non-differentiating (same
+     as `HirPatKind::Wild`) because bindings always match.
+   - 引用 §1.0 原則 6 (通解 > 特解): one fix for all variant payload bindings.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P3 bug fixes, no soundness impact, §1.2.1)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for P3 bugs
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5415 tests, 0 failures)
+  - 898 lib tests + 4517 integration tests = 5415 total
+  - 4 ignored (single-thread, ulimit -s unlimited)
+- Runtime verified:
+  - Some(42).is_some() == true ✓
+  - None.is_some() == false ✓
+  - Some(42).unwrap_or(99) == 42 ✓
+  - None.unwrap_or(99) == 99 ✓
+- TextEmitter IR verified: llvm-as accepts the IR (no type mismatches) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Four layered fixes at the architecture's natural layers:
+  - Lexer (source of token classification)
+  - Resolver (where pattern disambiguation happens with variant_index access)
+  - Codegen (where OpaquePtr was introduced for cycle-breaking)
+  - Pattern lowerer (where sub-pattern differentiability is classified)
+  No call-site patches, no special-case handling.
+
+Stage Summary:
+- Three root-cause bugs FIXED (TD-LEXER-UNDERSCORE + TD-PAT-IDENT-VARIANT
+  + TD-TEXT-IR-DEREF-ADT) + one binding classification fix
+- Prelude Option::is_some/is_none/unwrap_or all work at runtime
+- TextEmitter IR validity restored (llvm-as accepts the IR)
+- 5415 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — three root-cause fixes, no regression)
+- 23 new tests added (8 positive + 24 negative - 9 updated lexer tests)
+
+下一步:
+- Stage 40 MUV-1: Add Option::map / Option::and_then to prelude (now
+  unblocked — Option construction and match dispatch both work).
+- Stage 40 MUV-2: Add Result::map / Result::and_then to prelude.
+- v0.6+ Display trait for type-dispatched formatting (TD-DISPLAY-TRAIT-MISSING).
