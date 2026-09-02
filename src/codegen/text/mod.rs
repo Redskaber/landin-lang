@@ -16,7 +16,7 @@
 
 use crate::codegen::emitter::*;
 use crate::mir::place::BinOp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ================================================================
 // Stage 16.35: Text-backend-specific string rendering functions.
@@ -127,6 +127,16 @@ pub struct TextEmitter {
     globals: Vec<String>,
     /// Deduplication map: byte content → global name. Stage 3.27.
     string_globals: HashMap<Vec<u8>, String>,
+    /// Stage 61 (TD-DISPLAY-TRAIT-MISSING): Dedup set for `@.data.<type>`
+    /// placeholder globals emitted by `emit_dyn_trait_const`. Without this,
+    /// adding a second trait impl for the same type (e.g. Display for i32
+    /// alongside Clone for i32) would emit `@.data.i32` twice → `llvm-as`
+    /// rejects with "redefinition of global '@.data.i32'".
+    ///
+    /// Per §12 (最优 > 最小): root-cause fix — dedup at emission time.
+    /// Per §1.0 原則 6 (通解 > 特解): one mechanism handles all data globals.
+    /// Mirrors LLVMSysEmitter's `LLVMGetNamedGlobal` check (llvm/module.rs:197).
+    data_globals_emitted: HashSet<String>,
     /// Counter for generating unique global names. Stage 3.27.
     next_str: u32,
     next_val: u32,
@@ -152,6 +162,7 @@ impl TextEmitter {
             output: String::new(),
             globals: Vec::new(),
             string_globals: HashMap::new(),
+            data_globals_emitted: HashSet::new(),
             next_str: 0,
             next_val: 1,
             locals: HashMap::new(),

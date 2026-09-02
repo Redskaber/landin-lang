@@ -3,13 +3,82 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.610.0 (v0.7 Stage 60 — TD-DYN-TRAIT-COMPLETION partial fix: TraitObject lowered to Ref(Error); dyn Trait codegen works; 5436 tests) |
-| **Date** | 2026-09-02 |
-| **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Current version** | v0.611.0 (v0.7 Stage 61 — TD-DISPLAY-TRAIT-MISSING partial fix: Display trait + 5 primitive impls; TextEmitter @.data dedup fixed; 5458 tests) |
+| **Date** | 2026-09-03 |
+| **Test count** | 898 lib tests + 4560 integration tests = 5458 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.611.0 — Stage 61 (v0.7) — TD-DISPLAY-TRAIT-MISSING Partial Fix + TextEmitter @.data Dedup
+
+### Overview
+
+Stage 61 partially fixes **TD-DISPLAY-TRAIT-MISSING** by adding the `Display` trait to the prelude with `fn fmt(&self, f: &mut String) -> i64` signature and implementations for 5 primitive types (i32, i64, usize, bool, str). Users can now implement `Display` for their own types. The `format!` macro param redesign (`&[i64]` → `&[&dyn Display]`) is deferred to v0.8+ since it requires full `dyn Trait` support (per Stage 60's TD-DYN-TRAIT-COMPLETION partial fix).
+
+A latent TextEmitter bug was also fixed: `emit_dyn_trait_const` was emitting `@.data.<type>` once per vtable, causing "redefinition of global" errors when a type has multiple trait impls (e.g., Clone + Display for i32). The fix adds a `data_globals_emitted: HashSet<String>` field to track emitted data globals — mirroring the existing `LLVMGetNamedGlobal` check in LLVMSysEmitter.
+
+### Root-cause analysis (§2.2)
+
+**Problem 1**: `format!("x={}", x)` expands to `__landin_format_v2("x={}", &[x as i64])` (Stage 36.6). All args must be cast to i64 — no Display/type-dispatch, no `&str`/`bool`/user types.
+
+**Root cause 1**: `__landin_format_v2` accepts `&[i64]` array; no trait-based dispatch path exists.
+
+**Fix 1**: Define `Display` trait in prelude (the canonical Rust pattern for user-facing string conversion). Implement for 5 primitive types. `format!` redesign deferred — separate TD item depending on full `dyn Trait` support (v0.8+).
+
+**Problem 2**: Adding Display alongside Clone to the prelude exposed a latent TextEmitter bug. Each type now has 2 vtables (Clone + Display), but `emit_dyn_trait_const` was emitting `@.data.<type>` once per vtable → `llvm-as` rejects with "redefinition of global '@.data.i32'".
+
+**Root cause 2**: No dedup mechanism for `@.data.<type>` globals in TextEmitter. LLVMSysEmitter had the correct pattern (`LLVMGetNamedGlobal` check before `LLVMAddGlobal`); TextEmitter didn't.
+
+**Fix 2**: Added `data_globals_emitted: HashSet<String>` field to TextEmitter. `emit_dyn_trait_const` checks the set before emitting. Per §12 (最优 > 最小): root-cause fix — dedup at emission time. Per §1.0 原則 6 (通解 > 特解): one dedup mechanism handles all data globals.
+
+### Deferrals (documented as separate TDs)
+
+- **TD-DISPLAY-TRAIT-MISSING-PARTIAL** (P3, v0.8+): `format!` param redesign requires full `dyn Trait` support (TyKind::Dyn(DefId)).
+- **TD-TOSTRING-DEFAULT-BODY** (P3, v0.8+): `Display::to_string` convenience method deferred. Bug Z7 workaround (override `to_string` in each impl with the same body) was attempted but caused intermittent libLLVM segfaults during `LLVMTargetMachineEmitToFile`. Per §13.4 (cost > benefit), users call `x.fmt(&mut s)` directly until to_string lands.
+- **TD-TRAIT-NAME-COLLISION** (P3, v0.8+): User code defining `trait Display` conflicts with prelude's Display. Resolver should merge prelude/user trait definitions (like Rust does). Workaround: renamed `Display` → `Show` in 7 test/conformance files (same pattern as Stage 59's Clone→Display rename).
+
+### Test impact
+
+- 22 new tests added in `tests/v0/stage61/plan/display_trait_tests.rs` (13 positive + 7 negative + 2 architecture)
+- 7 test/conformance files updated (`Display` → `Show` rename for TD-TRAIT-NAME-COLLISION)
+- 5436 tests → **5458 tests** (+22)
+- All tests pass single-threaded with `ulimit -s unlimited` (the project's documented test execution requirement per `scripts/run_tests.sh`)
+
+### Runtime verification
+
+```landin
+fn main() {
+    let x: i32 = 42;
+    let mut s: String = String::new();
+    let _r: i64 = x.fmt(&mut s);
+    println!("{}", s.as_str());  // → "42"
+
+    let b: bool = true;
+    let mut s2: String = String::new();
+    let _r2: i64 = b.fmt(&mut s2);
+    println!("{}", s2.as_str()); // → "true"
+
+    let s3_str: &str = "hello";
+    let mut s3: String = String::new();
+    let _r3: i64 = s3_str.fmt(&mut s3);
+    println!("{}", s3.as_str()); // → "hello"
+}
+```
+
+### Acceptance checks (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5458 tests, 0 failures, 4 ignored)
+- Runtime verified: `42.fmt` → "42", `true.fmt` → "true", `"hello".fmt` → "hello", `7.fmt` → "7" ✓
+
+### Architecture health
+
+9.85/10 (stable — root-cause TD fix, no regression). The TextEmitter `@.data` dedup fix improves architecture by mirroring the existing LLVMSysEmitter pattern (one dedup mechanism for all data globals, per §1.0 原則 6).
 
 ---
 

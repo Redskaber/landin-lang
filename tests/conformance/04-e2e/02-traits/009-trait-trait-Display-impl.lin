@@ -1,8 +1,8 @@
 // CATEGORY: e2e
-// DESCRIPTION: trait Display impl
+// DESCRIPTION: trait Show impl
 // EXPECTED: compile_ok
 // STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.4 e2e expansion
 
-trait Display{fn fmt(&self)->i32;} struct S{x:i32} impl Display for S{fn fmt(&self)->i32{self.x}}
+trait Show{fn fmt(&self)->i32;} struct S{x:i32} impl Show for S{fn fmt(&self)->i32{self.x}}
 fn main(){ let _ = S{x: 0}; }

@@ -46,9 +46,9 @@ fn stage18_50_generic_function_all_phases() {
 #[test]
 fn stage18_50_trait_impl_method_call() {
     let src = r#"
-        trait Display { fn show(&self) -> i32; }
+        trait Show { fn show(&self) -> i32; }
         struct Foo { v: i32 }
-        impl Display for Foo {
+        impl Show for Foo {
             fn show(&self) -> i32 { self.v }
         }
         fn main() {

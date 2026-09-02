@@ -4,5 +4,5 @@
 // STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
-trait Display { fn fmt(&self) -> i32; } struct Point { x: i32, y: i32 } impl Display for Point { fn fmt(&self) -> i32 { self.x } }
+trait Show { fn fmt(&self) -> i32; } struct Point { x: i32, y: i32 } impl Show for Point { fn fmt(&self) -> i32 { self.x } }
 fn main(){ let _ = Point{x: 0,y: 0}; }

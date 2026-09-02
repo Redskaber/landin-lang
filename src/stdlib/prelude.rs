@@ -338,6 +338,87 @@ impl Clone for bool {
 impl Clone for usize {
     fn clone(&self) -> usize { *self }
 }
+// Stage 61 (v0.7 — TD-DISPLAY-TRAIT-MISSING partial): Display trait.
+//
+// Provides user-readable string representation for types. Mirrors Rust's
+// std::fmt::Display (simplified — no Formatter/Result, just append to String).
+//
+// Per Rust Design FAQ: Display trait is the canonical mechanism for
+// user-facing string conversion. All primitive types implement Display.
+// Per Rust API Guidelines: `fmt` writes the display representation into
+// the provided buffer.
+// Per §1.0 原則 6 (通解 > 特解): one trait, all types implement it.
+// Per §12 (最优 > 最小): root-cause fix — trait enables type-dispatched
+// formatting (replaces i64 array in format! macro, deferred to v0.8+).
+//
+// NOTE: format! macro still uses &[i64] array (Stage 36.6). Full
+// &[&dyn Display] dispatch requires full dyn Trait support (TyKind::Dyn(DefId),
+// v0.8+). Per §13.4 (重构判据): trait definition now, format! redesign deferred.
+//
+// NOTE: TD-TRAIT-NAME-COLLISION applies (same as Clone, Stage 59) —
+// user code defining `trait Display { ... }` conflicts with prelude's Display.
+// Resolver should merge prelude/user trait definitions (P3, v0.8+).
+//
+// NOTE: `to_string` convenience method is DEFERRED to v0.8+. The Bug Z7
+// workaround (override `to_string` in each impl with the same body) was
+// attempted in Stage 61 but caused intermittent LLVM codegen crashes
+// (libLLVM.so segfault during LLVMTargetMachineEmitToFile). Per §13.4
+// (重构判据): cost (LLVM crash investigation) > benefit (convenience
+// wrapper). Users call `x.fmt(&mut s)` directly until to_string lands.
+// TD-TOSTRING-DEFAULT-BODY (P3, v0.8+) tracks this.
+trait Display {
+    fn fmt(&self, f: &mut String) -> i64;
+}
+// Stage 61 (v0.7): Display impls for primitive types.
+// Per Rust: all primitive types implement Display (decimal form for ints,
+// "true"/"false" for bool, content for str).
+// Per §1.0 原則 6 (通解 > 特解): one impl per type, no special-casing.
+impl Display for i32 {
+    fn fmt(&self, f: &mut String) -> i64 {
+        let buf_size: i64 = 32;
+        let buf: *mut u8 = __landin_alloc(buf_size);
+        let written: i64 = __landin_i64_format(*self as i64, 10i64, buf, buf_size);
+        let s: &str = &str { ptr: buf, len: written as usize };
+        f.push_str(s);
+        0i64
+    }
+}
+impl Display for i64 {
+    fn fmt(&self, f: &mut String) -> i64 {
+        let buf_size: i64 = 32;
+        let buf: *mut u8 = __landin_alloc(buf_size);
+        let written: i64 = __landin_i64_format(*self, 10i64, buf, buf_size);
+        let s: &str = &str { ptr: buf, len: written as usize };
+        f.push_str(s);
+        0i64
+    }
+}
+impl Display for usize {
+    fn fmt(&self, f: &mut String) -> i64 {
+        let buf_size: i64 = 32;
+        let buf: *mut u8 = __landin_alloc(buf_size);
+        let written: i64 = __landin_i64_format(*self as i64, 10i64, buf, buf_size);
+        let s: &str = &str { ptr: buf, len: written as usize };
+        f.push_str(s);
+        0i64
+    }
+}
+impl Display for bool {
+    fn fmt(&self, f: &mut String) -> i64 {
+        if *self {
+            f.push_str("true");
+        } else {
+            f.push_str("false");
+        }
+        0i64
+    }
+}
+impl Display for str {
+    fn fmt(&self, f: &mut String) -> i64 {
+        f.push_str(self);
+        0i64
+    }
+}
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }

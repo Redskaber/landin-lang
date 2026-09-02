@@ -162,3 +162,24 @@ impl_by_trait_and_type:              impls_by_def_ids:
   - Requires &Rodeo to use             - No interner needed
   - Not type-safe                      - Ready for generic SubstsRef
 ```
+
+---
+
+## Stage 61 (v0.611.0) — Display trait addition
+
+**Added**: `Display` trait in prelude with `fn fmt(&self, f: &mut String) -> i64` signature.
+**Impls**: i32, i64, usize (call `__landin_i64_format`), bool (push_str "true"/"false"), str (push_str self).
+
+**TextEmitter @.data.<type> dedup fix** (Stage 61):
+- Before: `emit_dyn_trait_const` emitted `@.data.<type>` once per vtable. With Clone + Display per type, `@.data.i32` was emitted twice → `llvm-as` error: "redefinition of global".
+- After: `data_globals_emitted: HashSet<String>` field tracks emitted data globals. `emit_dyn_trait_const` checks the set before emitting.
+- Mirrors LLVMSysEmitter's `LLVMGetNamedGlobal` check (llvm/module.rs:197).
+- Per §12 (最优 > 最小): root-cause fix — dedup at emission time.
+- Per §1.0 原則 6 (通解 > 特解): one mechanism handles all data globals.
+
+**Deferred** (documented as separate TDs):
+- `format!` param redesign (`&[i64]` → `&[&dyn Display]`) — needs full `dyn Trait` support (v0.8+)
+- `to_string` convenience method — Bug Z7 workaround triggers intermittent LLVM codegen crash (TD-TOSTRING-DEFAULT-BODY, P3, v0.8+)
+- TD-TRAIT-NAME-COLLISION — resolver should merge prelude/user trait definitions (P3, v0.8+)
+
+**Test impact**: 7 test/conformance files renamed `Display` → `Show` (TD-TRAIT-NAME-COLLISION workaround, same pattern as Stage 59 Clone→Display rename).

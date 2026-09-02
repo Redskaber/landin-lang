@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.610.0 (v0.7 Stage 60 — TD-DYN-TRAIT-COMPLETION partial fix: TraitObject lowered to Ref(Error); dyn Trait codegen works; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.611.0 (v0.7 Stage 61 — TD-DISPLAY-TRAIT-MISSING partial fix: Display trait + 5 primitive impls (i32/i64/usize/bool/str) added to prelude; TextEmitter @.data.<type> dedup fixed; 5458 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 60 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 60 partially fixes TD-DYN-TRAIT-COMPLETION — `HirTyKind::TraitObject` is now lowered to `Ref(Error)` instead of `Error`, allowing dyn Trait type annotations to pass through typeck. Method resolution handles trait method dispatch via HIR lookup (resolve_trait_method). Full dyn Trait type tracking requires TyKind::Dyn(DefId) (v0.8+). Runtime verified: trait method dispatch works correctly (`f.hello()` → 42). Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
+| **Status** | ✅ **v0.7 Stage 61 COMPLETE**. 5458 tests (898 lib + 4560 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 61 partially fixes TD-DISPLAY-TRAIT-MISSING — `trait Display { fn fmt(&self, f: &mut String) -> i64; }` is now defined in prelude with impls for i32/i64/usize/bool/str. Users can implement Display for custom types. The `format!` param redesign (`&[i64]` → `&[&dyn Display]`) is deferred to v0.8+ (requires full dyn Trait support). TextEmitter `@.data.<type>` dedup fixed (data_globals_emitted HashSet) — adding Display alongside Clone exposed a latent duplicate-global bug. Runtime verified: `42.fmt(&mut s)` → "42", `true.fmt(&mut s)` → "true", `"hello".fmt(&mut s)` → "hello". Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

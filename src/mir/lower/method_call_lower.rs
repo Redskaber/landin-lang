@@ -635,10 +635,7 @@ pub(super) fn lower_method_call_expr(
         cx.terminate_kind_and_goto(
             TerminatorKind::Call {
                 func: Operand::Constant(Const {
-                    ty: Ty::new(
-                        TyKind::FnDef(def_id, method_substs.into()),
-                        expr.span,
-                    ),
+                    ty: Ty::new(TyKind::FnDef(def_id, method_substs.into()), expr.span),
                     val: ConstVal::Uint(def_id.as_u32() as u128),
                 }),
                 args: arg_operands,
@@ -730,7 +727,10 @@ fn infer_method_substs(
             result.push(recv_substs[i].clone());
         } else {
             // Extra method-level generic — use a simple Infer placeholder.
-            result.push(Ty::new(TyKind::Infer(crate::mir::ty::InferVar::TyVar(crate::mir::ty::TyVid(0))), crate::session::Span::DUMMY));
+            result.push(Ty::new(
+                TyKind::Infer(crate::mir::ty::InferVar::TyVar(crate::mir::ty::TyVid(0))),
+                crate::session::Span::DUMMY,
+            ));
         }
     }
     result
@@ -749,10 +749,7 @@ fn find_impl_generics_for_method(
                         // Found the impl block — return its generic params.
                         let generics =
                             crate::hir::generics::find_generics(impl_block.hir_id.owner, hir);
-                        return generics
-                            .iter()
-                            .map(|p| p.name)
-                            .collect();
+                        return generics.iter().map(|p| p.name).collect();
                     }
                 }
             }

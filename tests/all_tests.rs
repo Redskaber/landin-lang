@@ -931,3 +931,12 @@ mod stage39_3_tests;
 // resolver variant disambiguation, codegen `*self` for `&Adt`).
 #[path = "v0/stage40/plan/stage40_1_tests.rs"]
 mod stage40_1_tests;
+
+// === Stage 61 (v0.7 — TD-DISPLAY-TRAIT-MISSING partial): Display trait +
+// 5 primitive impls (i32/i64/usize/bool/str) + TextEmitter @.data dedup. ===
+// Per §1.0 原則 6 (通解 > 特解): one Display trait, all primitive types impl it.
+// Per §12 (最优 > 最小): root-cause fix — trait enables type-dispatched
+// formatting (replaces i64 array in format! macro, deferred to v0.8+).
+// Per §9.4.3 (1:3+ 正负比例): 13 positive + 7 negative + 2 arch tests.
+#[path = "v0/stage61/plan/display_trait_tests.rs"]
+mod stage61_display_trait_tests;

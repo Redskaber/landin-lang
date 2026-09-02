@@ -105,8 +105,20 @@ impl ModuleEmitter for TextEmitter {
         // as placeholder for the data symbol.
         // Per §1.0 原則 6 (通解 > 特解): same data placeholder pattern across both backends.
         // Per §20 (iterative audit): found via §20 audit while validating TextEmitter IR.
-        let data_global_def = format!("@{} = internal global i8 0", data_symbol);
-        self.globals.push(data_global_def);
+        //
+        // Stage 61 (TD-DISPLAY-TRAIT-MISSING): DEDUP the @.data.<type> global.
+        // When a type has multiple trait impls (e.g. i32 has both Clone AND
+        // Display), `emit_dyn_trait_const` is called once per (trait, type)
+        // pair — without dedup, `@.data.i32` would be emitted twice →
+        // `llvm-as` rejects with "redefinition of global '@.data.i32'".
+        // Per §12 (最优 > 最小): root-cause fix — track emitted data globals.
+        // Per §1.0 原則 6 (通解 > 特解): one dedup mechanism for all data globals.
+        // Mirrors LLVMSysEmitter's `LLVMGetNamedGlobal` check (llvm/module.rs:197).
+        if !self.data_globals_emitted.contains(data_symbol) {
+            let data_global_def = format!("@{} = internal global i8 0", data_symbol);
+            self.globals.push(data_global_def);
+            self.data_globals_emitted.insert(data_symbol.to_string());
+        }
 
         let global_def =
             crate::codegen::emit_dynptr_global_text(global_name, data_symbol, vtable_symbol);
