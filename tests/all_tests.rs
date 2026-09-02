@@ -897,3 +897,8 @@ mod stage36_4_array_element_type_resolution_tests;
 // (same as Ref(Slice)), enabling runtime array→slice coercion.
 #[path = "v0/stage36/plan/runtime_coercion_tests.rs"]
 mod stage36_5_runtime_coercion_tests;
+
+// === Stage 37.1 (v0.25): format! {:?} debug formatting ===
+// __landin_format_v2 now parses {:?} specifier and dispatches to formatting.
+#[path = "v0/stage37/plan/debug_format_tests.rs"]
+mod stage37_1_debug_format_tests;

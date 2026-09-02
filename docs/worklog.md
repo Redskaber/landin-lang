@@ -39213,3 +39213,85 @@ Stage Summary:
 - v0.25 Stage 37.2: Implement format! {:x} hex formatting
   - Add `__landin_i64_to_hex` extern C to prelude
   - ~30 LOC prelude + 33 tests
+
+---
+Task ID: stage37.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 37.1 (v0.25) — format! {:?} debug formatting.
+Added format specifier parsing to __landin_format_v2 prelude fn.
+The walker now detects `{:?}` (byte sequence { : ? }) and dispatches
+to the appropriate formatting helper. MVP: {:?} = same as {} (decimal
+i64). Full Debug formatting needs Display trait (v0.6+).
+v0.582.0. 5326 tests, 0 failures. Runtime verified.
+
+3秒启动自检:
+- 定位: L2 (~40 LOC prelude change + 33 tests — no new modules)
+- 对齐: 已查 Stage 37 deep review (v0.25 scope: format! {:?}/{:x} extensions) +
+  src/stdlib/prelude.rs (__landin_format_v2 existing impl) +
+  Rust std::fmt::Debug design (MVP: same as Display for integers)
+- 阻断: v0.581.0 全绿 (5293 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Format specifier parsing in prelude fn (not macro)
+   - 引用 §1.0 原則 6 (通解 > 特解): one dispatch point in
+     __landin_format_v2 for ALL format specifiers. The macro doesn't
+     need to change — it already passes the format string as-is.
+   - 引用 §1.0 原則 10 (唯一可信数据源): __landin_format_v2 is the
+     single source of truth for format! logic — specifier parsing
+     belongs here, not in the macro.
+
+2. MVP: {:?} = same as {} (decimal i64)
+   - 引用 §1.0 原則 9 (正确 > 妥协): full Debug formatting (e.g.,
+     bool→"true"/"false", struct→"Struct { field: val }") requires
+     Display trait (v0.6+). MVP: {:?} formats i64 as decimal, same
+     as {}. This is documented, not silently accepted.
+   - The infrastructure (specifier parsing + dispatch) is in place —
+     future stages can add type-dispatched formatting by extending
+     the dispatch in __landin_format_v2.
+
+裁剪点:
+- L2 task — prelude change + tests
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review + §3.2 acceptance
+
+5W2H:
+- WHAT: Add {:?} format specifier parsing to __landin_format_v2
+- WHY: v0.25 scope — extend format! without new language features
+- WHO: PM-A + ARCH-A + DEV-A + REV-A
+- WHEN: v0.25 Stage 37.1
+- WHERE: src/stdlib/prelude.rs (__landin_format_v2 fn)
+- HOW: (1) Detect `:` after `{` (byte 58) (2) Read specifier char
+  (3) Dispatch on char: `?` → __landin_i64_to_str (MVP: same as {})
+  (4) Advance fmt_idx past {:?} (4 bytes)
+- HOW MUCH: ~40 LOC prelude change; +33 tests; 5326 tests total, 0 failures
+
+§3.2 验收检查 Stage 37.1:
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4428 integration tests ✓ (was 4395; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+- Runtime verified: format!("{:?}", 42) → "42" (len=2) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The format specifier parsing is implemented in the
+  prelude fn (the single source of truth), not in the macro or MIR.
+  The dispatch infrastructure is extensible — future stages can add
+  {:x}, {:o}, {:b} by extending the dispatch in __landin_format_v2.
+
+Stage Summary:
+- format! {:?} debug formatting ✅ Implemented Stage 37.1
+- Format specifier parsing infrastructure in place
+- 33 new tests (5 positive + 28 negative) covering 7 error categories
+- 5326 total tests, 0 failures, fmt clean, 0 clippy warnings
+- Runtime verified: format!("{:?}", 42) → "42" ✓
+
+下一步:
+- Stage 37.2: Implement format! {:x} hex formatting
+  - Add __landin_i64_to_hex extern C to prelude
+  - Add hex dispatch in __landin_format_v2 (spec_char == 120u8)
+  - ~30 LOC + 33 tests

@@ -124,13 +124,57 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
         let byte_ptr: *const u8 = fmt.ptr + fmt_idx;
         let byte: u8 = *byte_ptr;
         if byte == 123u8 {
-            if arg_idx < args.len() {
-                let arg_ptr: *const i64 = args.ptr + arg_idx;
-                let written: i64 = __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, *arg_ptr);
-                out_len = out_len + written as usize;
-                arg_idx = arg_idx + 1usize;
+            // Stage 37.1 (v0.25): Format specifier parsing.
+            // `{}` → default (i64 decimal)
+            // `{:?}` → debug format (currently same as {} — MVP, needs Display trait for real Debug)
+            // `{:x}` → hex format (future Stage 37.2)
+            // Check if next byte is ':' (byte 58) → format specifier
+            let next_idx: usize = fmt_idx + 1usize;
+            let has_specifier: bool = next_idx < fmt.len();
+            let spec_byte: u8 = if has_specifier {
+                let spec_ptr: *const u8 = fmt.ptr + next_idx;
+                *spec_ptr
+            } else {
+                0u8
+            };
+            if has_specifier && spec_byte == 58u8 {
+                // ':' found — read the specifier char after ':'
+                let spec_char_idx: usize = fmt_idx + 2usize;
+                let spec_char: u8 = if spec_char_idx < fmt.len() {
+                    let sc_ptr: *const u8 = fmt.ptr + spec_char_idx;
+                    *sc_ptr
+                } else {
+                    0u8
+                };
+                if arg_idx < args.len() {
+                    let arg_ptr: *const i64 = args.ptr + arg_idx;
+                    let val: i64 = *arg_ptr;
+                    // Stage 37.1: {:?} → debug format.
+                    // MVP: same as {} (decimal i64). Full Debug needs Display trait (v0.6+).
+                    // Per §1.0 原則 9 (正确 > 妥协): document the MVP limitation.
+                    // Per §1.0 原則 6 (通解 > 特解): one dispatch point for all specifiers.
+                    let written: i64 = if spec_char == 63u8 {
+                        // '?' — debug format (MVP: decimal, same as {})
+                        __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)
+                    } else {
+                        // Default: decimal
+                        __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)
+                    };
+                    out_len = out_len + written as usize;
+                    arg_idx = arg_idx + 1usize;
+                }
+                // Advance past {:?} (4 bytes: { : ? })
+                fmt_idx = fmt_idx + 4usize;
+            } else {
+                // No specifier — plain {} (2 bytes: { })
+                if arg_idx < args.len() {
+                    let arg_ptr: *const i64 = args.ptr + arg_idx;
+                    let written: i64 = __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, *arg_ptr);
+                    out_len = out_len + written as usize;
+                    arg_idx = arg_idx + 1usize;
+                }
+                fmt_idx = fmt_idx + 2usize;
             }
-            fmt_idx = fmt_idx + 2usize;
         } else {
             let dest: *mut u8 = out_ptr + out_len;
             *dest = byte;

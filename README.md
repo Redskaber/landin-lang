@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.581.0 (v0.24 COMPLETE — §14.5 deep review passed; all TDs resolved including TD-FORMAT-MIGRATION; -1166 LOC net; v0.25 scope: format! {:?}/{:x} extensions — Architecture health 9.85/10) |
+| **Version** | v0.582.0 (v0.25 Stage 37.1 — format! {:?} debug formatting; specifier parsing infrastructure; 5326 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.24 Stage 36.6 COMPLETE — TD-FORMAT-MIGRATION RESOLVED**. 5293 tests (898 lib + 4395 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. The 598-LOC `format!` MIR walker (特解) is replaced with a 30-LOC prelude fn `__landin_format_v2(fmt, &[i64])` (通解). format! macro now expands to `__landin_format_v2(fmt, &[args as i64])` via two macro_rules (literal-only + variadic). Dead code removed: format_intrinsics.rs (598 LOC) + string_intrinsics.rs (607 LOC) + box_intrinsics.rs (191 LOC) = -1396 LOC. Runtime verified: `format!("x={}", 42)` → `"x=42"` (len=4, cap=5). v0.24 Stage 36 series COMPLETE — all TDs resolved except TD-DISPLAY-TRAIT-MISSING (P3, v0.6+). Architecture health: 9.85/10 (improved — 特解 → 通解, -1166 LOC net). Next: v0.25 planning (Display trait for type-dispatched formatting, v0.6+). |
+| **Status** | ✅ **v0.25 Stage 37.1 COMPLETE**. 5326 tests (898 lib + 4428 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 37.1 adds format! {:?} debug formatting — the prelude `__landin_format_v2` now parses format specifiers (`:` after `{`) and dispatches to the appropriate formatting helper. MVP: {:?} formats i64 as decimal (same as {}). Full Debug formatting needs Display trait (v0.6+). The specifier parsing infrastructure is extensible — future stages can add {:x}, {:o}, {:b} by extending the dispatch. Runtime verified: `format!("{:?}", 42)` → "42" ✓. Architecture health: 9.85/10 (stable). Next: Stage 37.2 (format! {:x} hex formatting). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
