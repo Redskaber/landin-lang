@@ -222,6 +222,26 @@ long long __landin_i64_to_str(char* buf, long long buf_cap, long long val) {
 long long __landin_i64_to_hex(char* buf, long long buf_cap, long long val) {
     return (long long)snprintf(buf, (size_t)buf_cap, "%lx", (unsigned long)val);
 }
+/* Stage 38.1 (v0.26): i64→octal string helper for format! {:o}.
+   Per §1.0 原則 6 (通解 > 特解): one octal helper for all {:o} formatting. */
+long long __landin_i64_to_octal(char* buf, long long buf_cap, long long val) {
+    return (long long)snprintf(buf, (size_t)buf_cap, "%lo", (unsigned long)val);
+}
+/* Stage 38.1 (v0.26): i64→binary string helper for format! {:b}.
+   Uses manual conversion since C printf doesn't support %b.
+   Per §1.0 原則 6 (通解 > 特解): one binary helper for all {:b} formatting. */
+long long __landin_i64_to_binary(char* buf, long long buf_cap, long long val) {
+    if (buf_cap <= 0) return 0;
+    unsigned long uv = (unsigned long)val;
+    if (uv == 0) { buf[0] = '0'; return 1; }
+    char tmp[65];
+    int pos = 0;
+    while (uv > 0) { tmp[pos++] = '0' + (uv & 1); uv >>= 1; }
+    int len = pos < buf_cap ? pos : (int)buf_cap - 1;
+    for (int i = 0; i < len; i++) buf[i] = tmp[pos - 1 - i];
+    buf[len] = '\0';
+    return (long long)len;
+}
 /* Stage 18.232 (v0.2 Phase 2 cleanup): The 4 compound C helpers below have
    been MIGRATED to MIR intrinsics (Stages 18.228-18.231) and are NO LONGER
    called from MIR. They have been REMOVED from this file.
@@ -279,6 +299,9 @@ mod tests {
             "__landin_i64_to_str",
             // Stage 37.2: i64_to_hex primitive (used by format! {:x}).
             "__landin_i64_to_hex",
+            // Stage 38.1: i64_to_octal + i64_to_binary primitives.
+            "__landin_i64_to_octal",
+            "__landin_i64_to_binary",
         ];
         for sym in &required {
             assert!(

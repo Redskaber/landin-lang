@@ -103,6 +103,12 @@ extern "C" {
     //
     // Per §1.0 原則 6 (通解 > 特解): one C helper for all hex formatting.
     fn __landin_i64_to_hex(buf: *mut u8, cap: i64, val: i64) -> i64;
+    // Stage 38.1 (v0.26): i64→octal string conversion helper.
+    // Writes the octal representation of `val` to `buf`.
+    fn __landin_i64_to_octal(buf: *mut u8, cap: i64, val: i64) -> i64;
+    // Stage 38.1 (v0.26): i64→binary string conversion helper.
+    // Writes the binary representation of `val` to `buf`.
+    fn __landin_i64_to_binary(buf: *mut u8, cap: i64, val: i64) -> i64;
 }
 // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): format! prelude impl.
 //
@@ -158,6 +164,7 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
                     let val: i64 = *arg_ptr;
                     // Stage 37.1: {:?} → debug format.
                     // Stage 37.2: {:x} → hex format (lowercase).
+                    // Stage 38.1: {:o} → octal format, {:b} → binary format.
                     // MVP for {:?}: same as {} (decimal i64). Full Debug needs Display trait (v0.6+).
                     // Per §1.0 原則 9 (正确 > 妥协): document the MVP limitation.
                     // Per §1.0 原則 6 (通解 > 特解): one dispatch point for all specifiers.
@@ -167,6 +174,12 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
                     } else if spec_char == 120u8 {
                         // 'x' — lowercase hex format
                         __landin_i64_to_hex(out_ptr + out_len, buf_size - out_len as i64, val)
+                    } else if spec_char == 111u8 {
+                        // 'o' — octal format
+                        __landin_i64_to_octal(out_ptr + out_len, buf_size - out_len as i64, val)
+                    } else if spec_char == 98u8 {
+                        // 'b' — binary format
+                        __landin_i64_to_binary(out_ptr + out_len, buf_size - out_len as i64, val)
                     } else {
                         // Default: decimal
                         __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)

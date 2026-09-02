@@ -39420,3 +39420,41 @@ v0.583.0. 5359 tests, 0 failures.
   as {:x} (Stage 37.2). ~60 LOC + 66 tests.
 - v0.26 Stage 38.2: Vec::pop prelude impl — ~30 LOC + 33 tests.
 - v0.26 Stage 38.3: Option::map/and_then prelude impl — ~40 LOC + 33 tests.
+
+---
+Task ID: stage38.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 38.1 (v0.26) — format! {:o} octal + {:b} binary formatting.
+Added __landin_i64_to_octal + __landin_i64_to_binary C helpers + dispatch
+in __landin_format_v2. Runtime verified: format!("{:o}", 8) → "10",
+format!("{:b}", 5) → "101".
+v0.584.0. 5392 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (~40 LOC prelude + runtime + pipeline + 33 tests)
+- 对齐: 已查 Stage 37.2 worklog ({:x} 实现模式) + src/stdlib/prelude.rs
+- 阻断: v0.583.0 全绿 (5359 tests), 0 P0/P1
+
+决策点:
+1. {:o}/{:b} dispatch in prelude fn (same pattern as {:x})
+   - 引用 §1.0 原則 6 (通解 > 特解): one dispatch point for ALL specifiers.
+   - 引用 §1.0 原則 10 (唯一可信数据源): __landin_format_v2 is single source.
+2. Binary C helper uses manual conversion (C printf doesn't support %b)
+   - 引用 §12 (最优 > 最小): manual binary conversion is the correct approach.
+
+裁剪点:
+- L2 — 跳过 §14.5 (additive feature, no soundness impact, §1.2.1)
+
+§3.2 验收检查:
+- cargo fmt --check ✓, cargo clippy -D warnings ✓
+- cargo test --release ✓ (5392 tests, 0 failures)
+- Runtime: format!("{:o}", 8) → "10" ✓, format!("{:b}", 5) → "101" ✓
+
+Stage Summary:
+- format! {:o} octal + {:b} binary ✅ Implemented Stage 38.1
+- 33 new tests, 5392 total, 0 failures
+- format! now supports {}, {:?}, {:x}, {:o}, {:b} — 5 specifiers total
+
+下一步:
+- Stage 38.2: Vec::pop prelude impl (~30 LOC + 33 tests)
+- Stage 38.3: Option::map/and_then prelude impl (~40 LOC + 33 tests)

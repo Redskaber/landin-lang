@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.583.0 (v0.25 COMPLETE — format! {:?} debug + {:x} hex formatting; specifier parsing infrastructure; 5359 tests; v0.25→v0.26 transition — Architecture health 9.85/10) |
+| **Version** | v0.584.0 (v0.26 Stage 38.1 — format! {:o} octal + {:b} binary; 5 specifiers total: {}, {:?}, {:x}, {:o}, {:b}; 5392 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.25 Stage 37 Series COMPLETE**. 5359 tests (898 lib + 4461 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. v0.25 Stage 37 series adds format specifier support: `{:?}` (debug, MVP: decimal i64 — full Debug needs Display trait v0.6+) and `{:x}` (lowercase hex via `__landin_i64_to_hex` C helper). The specifier parsing infrastructure in `__landin_format_v2` is extensible — future stages can add `{:o}`, `{:b}` by extending the dispatch. Runtime verified: `format!("{:x}", 255)` → "ff" ✓. Architecture health: 9.85/10 (stable). Next: v0.26 planning (additional format specifiers or stdlib improvements). |
+| **Status** | ✅ **v0.26 Stage 38.1 COMPLETE**. 5392 tests (898 lib + 4494 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 38.1 adds `{:o}` (octal via `__landin_i64_to_octal` C helper) and `{:b}` (binary via `__landin_i64_to_binary` manual C conversion). format! now supports 5 specifiers: `{}`, `{:?}`, `{:x}`, `{:o}`, `{:b}`. Runtime verified: `format!("{:o}", 8)` → "10" ✓, `format!("{:b}", 5)` → "101" ✓. Architecture health: 9.85/10 (stable). Next: Stage 38.2 (Vec::pop) + 38.3 (Option::map). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

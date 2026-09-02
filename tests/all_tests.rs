@@ -907,3 +907,7 @@ mod stage37_1_debug_format_tests;
 // __landin_format_v2 dispatches {:x} to __landin_i64_to_hex C helper.
 #[path = "v0/stage37/plan/hex_format_tests.rs"]
 mod stage37_2_hex_format_tests;
+
+// === Stage 38.1 (v0.26): format! {:o} octal + {:b} binary ===
+#[path = "v0/stage38/plan/octal_binary_format_tests.rs"]
+mod stage38_1_octal_binary_format_tests;

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.583.0 (v0.25 COMPLETE — format! {:?} debug + {:x} hex formatting; v0.25→v0.26 transition; 5359 tests; only TD-DISPLAY-TRAIT-MISSING P3 v0.6+ remains) |
+| **Current version** | v0.584.0 (v0.26 Stage 38.1 — format! {:o} octal + {:b} binary; 5 specifiers total: {}, {:?}, {:x}, {:o}, {:b}; runtime verified) |
 | **Date** | 2026-09-02 |
-| **Test count** | 898 lib tests + 4461 integration tests = 5359 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4494 integration tests = 5392 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
