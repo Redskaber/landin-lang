@@ -870,3 +870,10 @@ mod stage35_1_self_outside_impl_context_tests;
 // now validates arg count for trait method calls on Param(N) receivers.
 #[path = "v0/stage35/plan/typeck_param_arg_count_tests.rs"]
 mod stage35_2_typeck_param_arg_count_tests;
+
+// === Stage 35.3 (v0.23): TD-TYPECK-PARAM-RETURN-MISMATCH fix ===
+// New `should_check_concrete_vs_param` check in `post_check_statement`
+// catches return-type mismatch when generic fn/method body returns a
+// concrete type that doesn't match the declared T-typed return.
+#[path = "v0/stage35/plan/typeck_param_return_mismatch_tests.rs"]
+mod stage35_3_typeck_param_return_mismatch_tests;

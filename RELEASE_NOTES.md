@@ -3,13 +3,87 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.575.0 (v0.23 Stage 35.2 — TD-TYPECK-PARAM-ARG-COUNT RESOLVED; new `populate_trait_decl_fn_sigs` registers ALL trait declaration methods (with or without body) in fn_sig_table; typeck now uniformly validates arg count for trait method calls on Param(N) receivers; 5 positive + 28 negative tests covering 7 error categories) |
+| **Current version** | v0.576.0 (v0.23 Stage 35.3 — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED; new `should_check_concrete_vs_param` check in `post_check_statement` catches return-type mismatch in generic fns/methods; v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; 5 positive + 28 negative tests covering 7 error categories) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4263 integration tests = 5161 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4296 integration tests = 5194 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.2 complete — TD-TYPECK-PARAM-ARG-COUNT resolved; 2 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.3 complete — TD-TYPECK-PARAM-RETURN-MISMATCH resolved; only 1 TD remaining BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION) |
+
+---
+
+## v0.576.0 — v0.23 Stage 35.3 — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED
+
+### Overview
+
+Stage 35.3 (v0.23) resolves TD-TYPECK-PARAM-RETURN-MISMATCH — a P3 tech-debt
+documented since Stage 32.3.
+
+**Bug**: typeck silently accepted type mismatches when a generic fn/method
+body returned a concrete type that didn't match the declared T-typed return.
+For example:
+```rust
+fn f<T>(x: T) -> T { true }  // ❌ returns bool, sig says T — silent accept
+```
+
+**Root cause**: `src/typeck/check.rs:80` had a `place_has_param` skip (per
+Stage 18.351 "defer to writeback" rationale). Writeback only substitutes
+Param via Field projection — it does NOT validate concrete-vs-Param
+assignments to direct locals (return value or let-binding).
+
+### Fix Components
+
+1. **New check** `should_check_concrete_vs_param` in `post_check_statement`
+   (`src/typeck/check.rs`) — catches return-type mismatch.
+2. **Narrowed boundary** to RETURN LOCAL (`LocalId(0)`) only — avoids false
+   positives on legitimate Param-vs-concrete cases (match arm deconstruction,
+   generic field access via projection with substitution).
+3. **Track `rvalue_has_param`** — skip when rvalue is Param (writeback will
+   substitute via Field projection at the call site — legitimate).
+
+### Tests (33 new — 5 positive + 28 negative)
+
+Per §9.4.3 (1:3+ positive:negative ratio): 1:5.6 ratio (exceeds target).
+Per §7.3.1 (≥30 case negative audit covering 7 error categories):
+- Typeck (16): return-type mismatch (generic fn & impl), let binding, method
+  not found, undefined type, trait impl wrong sig, Self outside impl
+  (Stage 35.1 regression), trait method arg count (Stage 35.2 regression)
+- Lex (3): invalid binary, unterminated comment, unclosed string
+- Parse (3): missing semicolon, unbalanced braces, missing arrow
+- Borrowck (1): double mut borrow
+- Resolve (2): undefined type, undefined value
+- Trait (2): undefined trait, trait bound not satisfied
+- Codegen (1): extern "C" call exercises codegen path
+
+### §3.2 Verification
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4296 integration tests ✓ (was 4263; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### v0.23 Stage 35 Series — COMPLETE
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+All 3 P3 typeck TDs resolved in v0.23.
+
+### Remaining BLOCKED TDs
+
+| TD ID | Priority | Blocker |
+|-------|----------|---------|
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl — needs AST-level macro expansion or variadic args language feature |
 
 ---
 

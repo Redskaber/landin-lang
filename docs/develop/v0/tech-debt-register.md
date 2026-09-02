@@ -1058,7 +1058,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION | P2 | Resolver doesn't resolve `value: T` (impl generic param) in fn signature of impl method — sig input becomes Error instead of Param(0), preventing writeback_fndef_substs from inferring T at call sites | ✅ Resolved Stage 33.1 — resolver now enters impl generic scope for fn owner copies (resolve_item_paths(HirItem::Fn) pushes impl_method_parent_generics). Also fixed query_method_return_type_uncached to use lower_hir_ty_to_mir_ty_with_hir_and_generics. |
 | TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl blocked on method monomorphization — same root cause as TD-VEC-PUSH-GET-MIGRATION | BLOCKED (v0.5+ — needs per-instantiation fn body codegen with Param(N) substitution). Note: TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION is now RESOLVED, so the remaining blocker is the format_variadic_intrinsic's variadic args handling. |
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | ✅ Resolved Stage 35.1 — added `ResolveErrorKind::SelfOutsideImplContext` error kind. Replaced silent `unwrap_or(HirSelfKind::Impl)` with explicit error via `resolve_self_ty` helper at both single-segment and multi-segment Self-resolution sites. Also discovered and fixed deeper bug: `owner_self_kind` was keyed by Trait/Impl DefId only, missing method fn owners — propagated parent SelfKind to each method fn owner. Also added `current_self_kind` setting before fn sig resolution (covers `&self` placeholder Self type). Also extended `resolve_ast_ty_paths` to check Self in generic args (Vec<Self>, Box<Self>). 5 positive + 28 negative tests covering 7 error categories. 5128 tests total, 0 failures. |
-| TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | Documented (Stage 32.3) — pre-existing limitation |
+| TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | ✅ Resolved Stage 35.3 — added new `should_check_concrete_vs_param` check in `post_check_statement` (src/typeck/check.rs) that catches return-type mismatch when a generic fn/method body returns a concrete type that doesn't match the declared T-typed return. Boundary: place is the RETURN LOCAL (LocalId(0)) with Param type AND rvalue is concrete non-Param. Narrowed from original design (which proposed all Param-typed places) after discovering false positives in match arm deconstruction. 5 positive + 28 negative tests covering 7 error categories. 5194 tests total, 0 failures. |
 | TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers | ✅ Resolved Stage 35.2 — added new `populate_trait_decl_fn_sigs` in `src/driver/driver_codegen_prep.rs` that registers ALL trait declaration methods (with or without body) in fn_sig_table. typeck's existing `check_terminator` Call handler (src/typeck/check.rs:495-581) now validates arg count uniformly for all trait method calls. Root cause: existing `populate_trait_default_fn_sigs` skipped methods without body (line 412: `if f.body.is_none() { continue; }`), so trait decl-only methods (e.g., `trait T { fn f(&self, a: i32, b: i32) -> i32; }`) were NOT registered → typeck silently accepted wrong arg counts at call sites (violating §1.0 原則 4 报错>静默). Fix registers decl methods with `TyKind::Error` as self_ty placeholder (no impl exists to provide real self type). 5 positive + 28 negative tests covering 7 error categories. 5161 tests total, 0 failures. |
 
 #### B3: Deviations Requiring Design Doc Update
@@ -1328,3 +1328,92 @@ with Error (no false positive).
 Stage 35.3 should tackle TD-TYPECK-PARAM-RETURN-MISMATCH (last remaining
 typeck-area P3): typeck doesn't unify Param(N) body with concrete return
 type for generic impl methods.
+
+---
+
+## Stage 35.3 (v0.23) Update — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.576.0 (Stage 35.3)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### TD-TYPECK-PARAM-RETURN-MISMATCH — Resolution Summary
+
+**Bug**: typeck silently accepted type mismatches when a generic fn/method
+body returned a concrete type that didn't match the declared T-typed return.
+For example:
+```rust
+fn f<T>(x: T) -> T { true }  // ❌ returns bool, sig says T — silent accept
+```
+
+**Root cause**: `src/typeck/check.rs:80` had `let place_has_param =
+type_contains_param_recursive(&resolved_place);` and the check at line 93
+**skipped** the mismatch check when `place_has_param` was true (per Stage
+18.351 "defer to writeback" rationale). Writeback only substitutes Param
+via Field projection — it does NOT validate concrete-vs-Param assignments
+to direct locals (return value or let-binding).
+
+**Fix**: Added new `should_check_concrete_vs_param` check in
+`post_check_statement`. The boundary is narrowly scoped to the RETURN LOCAL
+(`LocalId(0)`) — this catches the documented bug without false positives on
+legitimate Param-vs-concrete cases (match arm deconstruction, generic field
+access via projection with substitution).
+
+### Design Adjustment (per §14.8 B1)
+
+The original design proposed catching ALL Param-typed places (return local,
+let bindings, field assignments). Implementation narrowed to RETURN LOCAL
+ONLY after discovering false positives in match arm deconstruction (6 tests
+failed: stage16_52/53/60, stage32_3). The narrow boundary is:
+- place is `PlaceKind::Local(LocalId(0))` (return local)
+- place has Param type
+- rvalue is concrete (not Infer/Param/Error)
+- `can_coerce(place, rvalue)` returns false
+
+### Fix Components
+
+| # | Component | File | LOC |
+|---|-----------|------|-----|
+| 1 | New `should_check_concrete_vs_param` check | `src/typeck/check.rs` | +30 |
+| 2 | Track `rvalue_has_param` to skip rvalue-Param cases | `src/typeck/check.rs` | +5 |
+| 3 | Add `place_is_return_local` boundary check | `src/typeck/check.rs` | +5 |
+| 4 | Test file | `tests/v0/stage35/plan/typeck_param_return_mismatch_tests.rs` | +323 |
+| 5 | Test entry in `all_tests.rs` | `tests/all_tests.rs` | +5 |
+| 6 | Design doc | `docs/develop/v0/stage-35/stage-35.3-typeck-param-return-mismatch-design.md` | +200 |
+
+**Total**: ~50 LOC code changes + ~323 LOC tests + ~200 LOC design doc.
+
+### §3.2 Verification (Stage 35.3)
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4296 integration tests ✓ (was 4263; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5194 tests**
+
+### v0.23 Stage 35 Series — COMPLETE
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+All 3 P3 typeck TDs resolved in v0.23. Architecture health stable at 9.85/10.
+
+### Remaining BLOCKED TDs
+
+| TD ID | Priority | Blocker |
+|-------|----------|---------|
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl — needs AST-level macro expansion or variadic args language feature |
+
+### Next Stage Direction
+
+v0.24 planning should focus on TD-FORMAT-MIGRATION (P2 — needs AST-level
+macro expansion or variadic args language feature — v0.5+ architectural).

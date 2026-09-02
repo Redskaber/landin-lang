@@ -636,6 +636,21 @@ pub(super) fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) 
             .all(|(a, b)| types_match_loose(a, b)),
         // Param ↔ concrete: generic type param vs concrete type in monomorphized code.
         // Per §1.0 原則 9: Stage 0 doesn't fully monomorphize before typeck.
+        //
+        // Stage 35.3 (v0.23 — TD-TYPECK-PARAM-RETURN-MISMATCH): This rule
+        // loosely matches Param with any type, which silently accepts
+        // concrete-vs-Param mismatches (e.g., `fn f<T>(x: T) -> T { true }`).
+        // Stage 35.3 introduces a separate `should_check_concrete_vs_param`
+        // check in `post_check_statement` (check.rs) that catches real
+        // mismatches BEFORE this loose-match rule fires. The loose-match
+        // rule remains for the legitimate cases (match arm deconstruction,
+        // generic let-binding with same-T rvalue, etc.).
+        //
+        // Per §1.0 原則 4 (报错 > 静默): real mismatches now caught by
+        // should_check_concrete_vs_param (check.rs:139-143).
+        // Per §1.0 原則 9 (正确 > 妥协): keep loose-match for legitimate
+        // Param-vs-concrete cases that writeback will resolve.
+        // Per §1.0 原則 6 (通解 > 特解): one rule covers all Param loose-match.
         (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true,
         // Stage 18.99 (TD-13 fix): FnDef ↔ FnPtr loose-matches to route
         // through unify (which now checks sig compatibility via

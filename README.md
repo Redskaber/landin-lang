@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.575.0 (v0.23 Stage 35.2 COMPLETE — TD-TYPECK-PARAM-ARG-COUNT RESOLVED; new `populate_trait_decl_fn_sigs` registers ALL trait declaration methods (with or without body) in fn_sig_table; typeck now uniformly validates arg count for trait method calls on Param(N) receivers — Architecture health 9.85/10) |
+| **Version** | v0.576.0 (v0.23 Stage 35.3 COMPLETE — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED; new `should_check_concrete_vs_param` check catches return-type mismatch in generic fns/methods; v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.23 Stage 35.2 COMPLETE**. 5161 tests (898 lib + 4263 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 35.2 resolves TD-TYPECK-PARAM-ARG-COUNT — typeck did not validate arg count for trait method calls when the trait method had no body (declaration only). Root cause: `populate_trait_default_fn_sigs` skipped methods without body (`if f.body.is_none() { continue; }`), so trait decl-only methods were NOT registered in fn_sig_table → typeck silently accepted wrong arg counts (violating §1.0 原則 4 报错>静默). Fix: added new `populate_trait_decl_fn_sigs` that registers ALL trait decl methods (with or without body), using `TyKind::Error` as self_ty placeholder for decl-only methods. typeck's existing `check_terminator` now validates arg count uniformly for all trait method calls. 2 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH). Architecture health: 9.85/10 (stable). Next: Stage 35.3 (TD-TYPECK-PARAM-RETURN-MISMATCH, last remaining typeck-area P3). |
+| **Status** | ✅ **v0.23 Stage 35.3 COMPLETE**. 5194 tests (898 lib + 4296 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 35.3 resolves TD-TYPECK-PARAM-RETURN-MISMATCH — typeck silently accepted concrete rvalue assigned to Param-typed return local (e.g., `fn f<T>(x: T) -> T { true }`). Root cause: `place_has_param` skip in `post_check_statement` (Stage 18.351 "defer to writeback") was over-broad — writeback only substitutes Param via Field projection, doesn't validate types. Fix: new `should_check_concrete_vs_param` check narrowed to RETURN LOCAL (LocalId(0)) boundary — avoids false positives on legitimate Param-vs-concrete cases (match arm deconstruction, generic field access). v0.23 Stage 35 series COMPLETE: Stage 35.1 (Self outside impl), 35.2 (trait arg count), 35.3 (return type mismatch) all resolved. Only 1 TD remaining BLOCKED on v0.5+ (TD-FORMAT-MIGRATION P2 — needs AST-level macro expansion). Architecture health: 9.85/10 (stable). Next: v0.24 planning for TD-FORMAT-MIGRATION. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -422,6 +422,41 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-ENUM-EXHAUSTIVENESS | `match` on enum without all variants | ✅ Resolved (Stage 28.1) | `enum_variants` map + `lower_match` checks |
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | `Self` keyword outside any impl/trait context silently defaulted to `HirSelfKind::Impl` via `unwrap_or` | ✅ Resolved (Stage 35.1) | New `ResolveErrorKind::SelfOutsideImplContext` error kind + `resolve_self_ty` helper + propagated parent SelfKind to method fn owners in `owner_self_kind` + set `current_self_kind` before fn sig resolution + extended `resolve_ast_ty_paths` to check Self in generic args |
 | TD-TYPECK-PARAM-ARG-COUNT | typeck didn't validate arg count for trait method calls when the trait method had no body (declaration only) — silent accept of wrong arg counts | ✅ Resolved (Stage 35.2) | New `populate_trait_decl_fn_sigs` in `src/driver/driver_codegen_prep.rs` registers ALL trait declaration methods (with or without body) in fn_sig_table. For decl-only methods, uses `TyKind::Error` as self_ty placeholder. typeck's existing `check_terminator` Call handler now validates arg count uniformly. Wired up in `compile_inner.rs` AFTER `populate_trait_default_fn_sigs`. |
+| TD-TYPECK-PARAM-RETURN-MISMATCH | typeck didn't unify Param(N) body with concrete return type for generic impl methods — silent accept of `fn f<T>(x: T) -> T { true }` | ✅ Resolved (Stage 35.3) | New `should_check_concrete_vs_param` check in `post_check_statement` (`src/typeck/check.rs`). Boundary: place is the RETURN LOCAL (LocalId(0)) with Param type AND rvalue is concrete non-Param. Narrowed from original design (which proposed all Param-typed places) after discovering false positives in match arm deconstruction. |
+
+---
+
+## v0.23 Stage 35.3 — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED
+
+**Bug**: typeck silently accepted type mismatches when a generic fn/method
+body returned a concrete type that didn't match the declared T-typed return:
+```rust
+fn f<T>(x: T) -> T { true }  // ❌ returns bool, sig says T — silent accept
+```
+
+**Root cause**: `src/typeck/check.rs:80` had a `place_has_param` skip (per
+Stage 18.351 "defer to writeback" rationale). Writeback only substitutes
+Param via Field projection — it does NOT validate concrete-vs-Param
+assignments to direct locals (return value or let-binding).
+
+**Fix**: New `should_check_concrete_vs_param` check in `post_check_statement`.
+Boundary: place is the RETURN LOCAL (`LocalId(0)`) with Param type AND rvalue
+is concrete non-Param. Narrowed from original design (which proposed all
+Param-typed places) after discovering false positives in match arm
+deconstruction.
+
+**Verification**: 5194 tests (898 lib + 4296 integration), 0 failures, 4
+ignored. fmt clean, 0 clippy warnings. §3.2 verification passed.
+
+### v0.23 Stage 35 Series — COMPLETE
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+All 3 P3 typeck TDs resolved in v0.23.
 
 ---
 

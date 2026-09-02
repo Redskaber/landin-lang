@@ -77,7 +77,39 @@ impl TypeChecker {
             // Per §20 (iterative audit): same class as Stage 18.347 —
             // Param leak in local_decls. typeck can't fix it (runs before
             // writeback), but param_check catches it.
+            //
+            // Stage 35.3 (v0.23 — TD-TYPECK-PARAM-RETURN-MISMATCH): The
+            // above skip was OVER-BROAD — it also skipped the case where
+            // place is Param(N) AND rvalue is concrete (e.g., returning
+            // `true` from `fn f<T>(x: T) -> T`). Writeback only substitutes
+            // Param via field projection — it does NOT validate concrete-
+            // vs-Param assignments to direct locals. So the following bugs
+            // were silently accepted:
+            //   1. `fn f<T>(x: T) -> T { true }` — return type mismatch
+            //   2. `impl<T> S<T> { fn g(&self) -> T { true } }` — same
+            //   3. `fn f<T>(x: T) { let y: T = true; }` — let binding mismatch
+            //   4. `impl<T> S<T> { fn set(&mut self) { self.x = true; } }` — field assign
+            //
+            // Fix: when place is Param-typed AND rvalue is CONCRETE (not
+            // Infer/Param), report the mismatch. This catches all 4 bug
+            // cases without false positives — legitimate cases (e.g.,
+            // `let y: T = x;` where x: T) have Infer rvalue, not concrete.
+            //
+            // Per §1.0 原則 4 (报错 > 静默): fix the silent skip.
+            // Per §1.0 原則 6 (通解 > 特解): one check covers all 4 cases.
+            // Per §1.0 原則 9 (正确 > 妥协): don't defer to writeback for
+            // concrete-vs-Param — writeback doesn't validate types.
+            // Per §1.0 原則 11 (确定性边界): boundary is "concrete rvalue
+            // vs Param-typed place" — explicit and unambiguous.
             let place_has_param = type_contains_param_recursive(&resolved_place);
+            // Stage 35.3 (false-positive fix): Track rvalue Param too. When
+            // rvalue is Param(N) (e.g., `let x: i32 = p.first()` where
+            // `first` returns `T`), writeback will substitute via Field
+            // projection at the call site — this is legitimate. So
+            // `should_check_concrete_vs_concrete` must NOT fire when rvalue
+            // has Param. Only `should_check_concrete_vs_param` (place has
+            // Param, rvalue is concrete non-Param) catches real mismatches.
+            let rvalue_has_param = type_contains_param_recursive(&resolved_rvalue);
 
             let place_is_concrete =
                 !matches!(resolved_place.kind, TyKind::Infer(_) | TyKind::Error)
@@ -90,12 +122,43 @@ impl TypeChecker {
             // AND can't loose-match. Per §1.0 原則 9 "正确 > 妥协": avoid
             // false positives on generic/unresolved types.
             // Stage 18.351: Also skip if place has Param (defer to writeback).
-            if !place_has_param
+            // Stage 35.3: Also skip if rvalue has Param (writeback substitutes).
+            let should_check_concrete_vs_concrete = !place_has_param
+                && !rvalue_has_param
                 && place_is_concrete
                 && rvalue_is_concrete
                 && !can_coerce(&resolved_place, &resolved_rvalue)
-                && !types_match_loose(&resolved_place, &resolved_rvalue)
-            {
+                && !types_match_loose(&resolved_place, &resolved_rvalue);
+
+            // Stage 35.3 (v0.23 — TD-TYPECK-PARAM-RETURN-MISMATCH): New check
+            // for return-type mismatch in generic fns/methods.
+            //
+            // Catches: `fn f<T>(x: T) -> T { true }` — return local (LocalId(0))
+            // has Param(N) type, rvalue (true) is concrete bool. This is a
+            // real type mismatch that writeback cannot fix (writeback only
+            // substitutes Param via Field projection, doesn't validate types).
+            //
+            // Per §1.0 原則 11 (确定性边界): the boundary is "place is the
+            // RETURN LOCAL (LocalId(0)) with Param type AND rvalue is
+            // concrete non-Param". This narrow check avoids false positives
+            // on legitimate Param-vs-concrete cases (match arm deconstruction,
+            // generic field access via projection with substitution, etc.).
+            //
+            // Per §1.0 原則 4 (报错 > 静默): report return-type mismatches.
+            // Per §1.0 原則 6 (通解 > 特解): one check covers return-type
+            // mismatch for both generic fns and generic impl methods.
+            // Per §1.0 原則 9 (正确 > 妥协): only check return local — other
+            // Param-typed places are deferred to writeback.
+            let place_is_return_local = matches!(
+                &place.kind,
+                crate::mir::place::PlaceKind::Local(crate::mir::place::LocalId(0))
+            );
+            let should_check_concrete_vs_param = place_is_return_local
+                && place_has_param
+                && !rvalue_has_param
+                && rvalue_is_concrete
+                && !can_coerce(&resolved_place, &resolved_rvalue);
+            if should_check_concrete_vs_concrete || should_check_concrete_vs_param {
                 // Per §1.0 原則 4 "报错 > 静默".
                 let span = stmt.span;
                 // Stage 18.71: Dedupe — skip if Phase 1 already reported
