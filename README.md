@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; Stage 36.2 attempted TD-FORMAT-MIGRATION but discovered runtime blocker TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING — all changes reverted, baseline preserved — Architecture health 9.85/10) |
+| **Version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; Stage 36.2+36.3 attempted TD-FORMAT-MIGRATION but discovered deeper type resolution blocker — all changes reverted, baseline preserved — Architecture health 9.85/10) |
 | **License** | MIT |
 | **Status** | ✅ **v0.24 Stage 36.1 COMPLETE + Stage 36.2 Design Analysis**. 5227 tests (898 lib + 4329 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. v0.24 Stage 36.1 resolved 2 P3 TDs (slice len + array→slice coercion). Stage 36.2 attempted TD-FORMAT-MIGRATION (slice-based prelude format impl replacing 598-LOC MIR walker) but discovered runtime blocker: `Rvalue::Ref` codegen returns bare pointer instead of fat pointer `{ptr, len}` for `&[T; N]` → `&[T]` coercion. All Stage 36.2 changes REVERTED (per §1.0 原則 9 正确 > 妥协 — don't ship broken code). New TD registered: TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (P3). 598-LOC MIR walker retained as working 特解. Architecture health: 9.85/10 (stable). Next: Stage 36.3 (implement runtime array→slice coercion codegen, then retry TD-FORMAT-MIGRATION). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |

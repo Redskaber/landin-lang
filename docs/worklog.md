@@ -38748,3 +38748,88 @@ Stage Summary:
 - Stage 36.3 (v0.24 or v0.5+): Implement TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
   Modify Rvalue::Ref codegen to detect array referent and construct fat
   pointer {ptr, len=N}. Then retry TD-FORMAT-MIGRATION.
+
+---
+Task ID: stage36.3
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 36.3 (v0.24) — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING attempt.
+Attempted to implement runtime array→slice fat pointer construction
+in Rvalue::Ref codegen. Discovered deeper type resolution issues
+(unresolved Infer types in array literals). Reverted codegen changes.
+Baseline preserved (5227 tests, 0 failures).
+
+3秒启动自检:
+- 定位: L3 (codegen cross-module: src/codegen/rvalue.rs + type resolution)
+- 对齐: 已查 docs/develop/v0/stage-36/stage-36.2-slice-based-format-prelude-design.md
+  (Stage 36.2 blocker analysis) + src/codegen/rvalue.rs:250-257 (Rvalue::Ref codegen) +
+  src/mir/lower/expr_operand.rs:860-899 (AddrOf lowering) +
+  src/mir/lower/expr_operand.rs:1974-2063 (FatPtrLit lowering pattern)
+- 阻断: v0.577.0 全绿 (5227 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Codegen fix vs MIR-level fix
+   - 引用 §1.0 原則 6 (通解 > 特解): codegen fix is the 通解 — one rule in
+     Rvalue::Ref handler for all array→slice coercions.
+   - 引用 §12 (最优 > 最小): root-cause fix at codegen boundary (where
+     the fat pointer should be constructed).
+   - Attempted: Added array detection + fat pointer construction in
+     Rvalue::Ref codegen (src/codegen/rvalue.rs:250-323).
+
+2. Discovery: deeper type resolution issues
+   - The codegen fix compiled successfully but produced wrong runtime
+     output — `s.len()` returned garbage instead of 3.
+   - Root cause: array literal `[1, 2, 3]` has element type `Infer`
+     at codegen time (typeck doesn't fully resolve array element types
+     before writeback). This causes `mir_type_to_emit_type` to fall back
+     to I32 for the array elements, producing wrong GEP offsets.
+   - Per §1.0 原則 9 (正确 > 妥协): don't ship broken code.
+   - Per §1.6 终极检验: forcing incomplete fix = minimum patch.
+
+3. Revert vs keep partial changes
+   - 引用 §1.0 原則 5 (去除兼容思维): don't keep broken codegen.
+   - Decision: REVERT all codegen changes. Keep the 598-LOC MIR walker
+     as the working 特解. Document the deeper blocker.
+
+裁剪点:
+- L3 task — reverted to design-only (no code changes in final delivery)
+- 安全理由: §1.0 原則 9 (正确 > 妥协) — don't ship broken code
+- §3.2 verification confirms baseline preserved (5227 tests, 0 failures)
+
+5W2H:
+- WHAT: Attempted TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING fix
+- WHY: Unblocks TD-FORMAT-MIGRATION (Stage 36.2)
+- WHO: PM-A + ARCH-A + DEV-A
+- WHEN: v0.24 Stage 36.3
+- WHERE: src/codegen/rvalue.rs (Rvalue::Ref codegen)
+- HOW: (1) Added array detection in Rvalue::Ref codegen
+  (2) Constructed fat pointer {ptr, len=N} via emit_insertvalue
+  (3) DISCOVERED: array element types are Infer at codegen time
+  (4) REVERTED all changes, documented deeper blocker
+- HOW MUCH: 0 LOC code changes (reverted); 5227 tests preserved
+
+§3.2 验收检查 Stage 36.3 (design-only, reverted):
+- cargo build --release --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5227 tests, 0 failures)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Neither — this is a DESIGN ANALYSIS + BLOCKER DISCOVERY. The codegen
+  fix is architecturally correct but exposes deeper type resolution
+  issues (unresolved Infer types in array literals). The root-cause
+  fix requires fixing the type resolution pipeline, which is a separate
+  larger architectural change.
+
+Stage Summary:
+- TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING: 📋 Still BLOCKED — deeper
+  type resolution issue discovered (array element types are Infer at
+  codegen time). Needs separate fix in typeck/writeback pipeline.
+- 598-LOC MIR walker RETAINED as working 特解
+- 5227 tests preserved (0 failures, fmt clean, 0 clippy warnings)
+
+下一步:
+- The deeper blocker is type resolution: array literal `[1, 2, 3]` has
+  element type Infer at codegen time. This needs a fix in the typeck
+  writeback pipeline (similar to Stage 18.351 Param resolution).
+- This is a v0.5+ architectural change — deferred to future stage.
+- TD-FORMAT-MIGRATION remains BLOCKED on this deeper issue.

@@ -1646,3 +1646,54 @@ Stage 36.3 (v0.24 or v0.5+): Implement TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
 Modify `Rvalue::Ref` codegen (src/codegen/rvalue.rs:250-257) to detect
 when the referent is an array and construct a fat pointer `{ptr, len=N}`
 instead of returning the bare pointer. Then retry TD-FORMAT-MIGRATION.
+
+---
+
+## Stage 36.3 Design Attempt (v0.24) — Deeper Type Resolution Blocker
+
+**Date**: 2026-09-01
+**Version**: v0.577.0 (baseline preserved — no code changes)
+**Status**: 📋 BLOCKED on deeper type resolution issue
+
+### Attempt Summary
+
+Stage 36.3 attempted to implement TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING
+by modifying `Rvalue::Ref` codegen (src/codegen/rvalue.rs) to construct
+a fat pointer `{ptr, len=N}` when the place type is `Array(T, N)`.
+
+**Result**: The codegen fix compiled successfully but produced wrong
+runtime output — `s.len()` returned garbage instead of 3.
+
+### Root Cause (per §2.2 根因思维)
+
+The deeper issue is that array literal `[1, 2, 3]` has element type
+`Infer` at codegen time. The typeck writeback pipeline doesn't fully
+resolve array element types before codegen. This causes
+`mir_type_to_emit_type` to fall back to I32 for the array elements,
+producing wrong GEP offsets and garbage fat pointer values.
+
+This is the same class of issue as Stage 18.351 (Param resolution) —
+the typeck/writeback pipeline doesn't fully resolve all types before
+codegen. Fixing this requires a deeper architectural change in the
+type resolution pipeline, which is v0.5+ scope.
+
+### Decision (per §1.6 终极检验)
+
+REVERTED all codegen changes. The 598-LOC MIR walker is retained as
+the working 特解. TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING remains
+BLOCKED on the deeper type resolution issue.
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 📋 BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING |
+| TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING | P3 | 📋 BLOCKED on deeper type resolution (array element Infer at codegen time) |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+The deeper blocker (array element type Infer at codegen) needs a fix in
+the typeck writeback pipeline — similar to Stage 18.351 Param resolution.
+This is v0.5+ architectural scope. TD-FORMAT-MIGRATION remains BLOCKED
+until this is resolved.

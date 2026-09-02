@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; Stage 36.2 attempted TD-FORMAT-MIGRATION but discovered runtime blocker TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING — all Stage 36.2 changes reverted, baseline preserved) |
+| **Current version** | v0.577.0 (v0.24 Stage 36.1 COMPLETE — TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING RESOLVED; Stage 36.2+36.3 attempted TD-FORMAT-MIGRATION but discovered deeper type resolution blocker — all changes reverted, baseline preserved) |
 | **Date** | 2026-09-01 |
 | **Test count** | 898 lib tests + 4329 integration tests = 5227 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
