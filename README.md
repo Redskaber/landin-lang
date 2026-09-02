@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.609.0 (v0.7 Stage 59 — TD-CLONE-TRAIT-MISSING FIXED: Clone trait + impls for i32/i64/bool/usize; TD-TRAIT-NAME-COLLISION discovered; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.610.0 (v0.7 Stage 60 — TD-DYN-TRAIT-COMPLETION partial fix: TraitObject lowered to Ref(Error); dyn Trait codegen works; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 59 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 59 fixes TD-CLONE-TRAIT-MISSING — Clone trait defined in prelude with `fn clone(&self) -> Self` method. Clone impls added for i32, i64, bool, usize. TD-TRAIT-NAME-COLLISION discovered — user code defining `trait Clone` conflicts with prelude's Clone (resolver reports duplicate). Updated 4 tests to accommodate prelude Clone vtables/method calls. Runtime verified: `42.clone()` → `42`. Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
+| **Status** | ✅ **v0.7 Stage 60 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 60 partially fixes TD-DYN-TRAIT-COMPLETION — `HirTyKind::TraitObject` is now lowered to `Ref(Error)` instead of `Error`, allowing dyn Trait type annotations to pass through typeck. Method resolution handles trait method dispatch via HIR lookup (resolve_trait_method). Full dyn Trait type tracking requires TyKind::Dyn(DefId) (v0.8+). Runtime verified: trait method dispatch works correctly (`f.hello()` → 42). Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

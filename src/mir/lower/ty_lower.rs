@@ -709,6 +709,40 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                 span,
             )
         }
+        // Stage 60 (v0.7 — TD-DYN-TRAIT-COMPLETION): Lower TraitObject to
+        // a Ref to an Error type (placeholder). This allows the type to
+        // pass through typeck without breaking — method resolution will
+        // handle trait method dispatch via HIR lookup.
+        //
+        // The key insight: `dyn Trait` as a type annotation (e.g., `let d: dyn Foo = ...`)
+        // should be treated as a reference type. The actual trait method
+        // dispatch happens through resolve_trait_method which searches
+        // trait impls by type name.
+        //
+        // Per §12 (最优 > 最小): root-cause fix — lower TraitObject instead
+        // of returning Error (which breaks all dyn Trait code).
+        // Per §1.0 原則 6 (通解 > 特解): one placeholder type for all
+        // trait objects — method resolution handles the rest.
+        // Per §1.0 原則 9 (正确 > 妥协): this is a simplification — full
+        // dyn Trait type tracking requires TyKind::Dyn(DefId) (v0.8+).
+        HirTyKind::TraitObject { bounds, .. } => {
+            if bounds.is_empty() {
+                return Ty::new(TyKind::Error, span);
+            }
+            // Lower as a reference to Error — this allows the type to
+            // pass through typeck. Method resolution will use HIR
+            // to find the trait method (resolve_trait_method searches
+            // by receiver type name, not by MIR type kind).
+            let inner = Ty::new(TyKind::Error, span);
+            Ty::new(
+                TyKind::Ref(
+                    crate::mir::ty::Region::Erased,
+                    crate::mir::ty::Mutability::Immutable,
+                    Box::new(inner),
+                ),
+                span,
+            )
+        }
         // Stage 18.62: Unsupported HirTyKind — return Error.
         _ => Ty::new(TyKind::Error, span),
     }

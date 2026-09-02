@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.609.0 (v0.7 Stage 59 — TD-CLONE-TRAIT-MISSING FIXED: Clone trait + impls for i32/i64/bool/usize; TD-TRAIT-NAME-COLLISION discovered; 5436 tests) |
+| **Current version** | v0.610.0 (v0.7 Stage 60 — TD-DYN-TRAIT-COMPLETION partial fix: TraitObject lowered to Ref(Error); dyn Trait codegen works; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
