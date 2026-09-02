@@ -779,7 +779,18 @@ impl str {
     // reports "internal error: entered unreachable code: str intrinsic not intercepted".
     // Per §12 (最优 > 最小): root-cause improvement — if the interception
     // path ever breaks, the user gets a clear error message instead of a hang.
-    fn len(&self) -> usize { __landin_unreachable("str::len intrinsic not intercepted".ptr) }
+    // Stage 56 (v0.7 — TD-STR-INTRINSIC-MARKER-BODIES): Test if &str
+    // field access works. If it does, the intrinsic interception can be
+    // removed (the body will be lowered normally).
+    //
+    // &str is a fat pointer {ptr, len}. `self.len` accesses field 1.
+    // If typeck supports this as a fat pointer field projection, the body
+    // works without intrinsic interception.
+    //
+    // Per §12 (最优 > 最小): if real body works, remove intrinsic interception
+    // entirely — the method is just a regular field access.
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+    fn len(&self) -> usize { self.len }
     fn is_empty(&self) -> bool { __landin_unreachable("str::is_empty intrinsic not intercepted".ptr) }
     fn as_bytes(&self) -> &[u8] { __landin_unreachable("str::as_bytes intrinsic not intercepted".ptr) }
 }

@@ -416,29 +416,40 @@ pub(super) fn lower_method_call_expr(
             .hir
             .and_then(|hir| lookup_primitive_intrinsic(hir, cx.interner, def_id));
         if let Some(intrinsic) = intrinsic {
-            // Stage 18.284: Validate arg count before dispatching.
-            // Per §1.0 原則 4 (报错>静默): if the user passed wrong number
-            // of args, report an error instead of silently ignoring extras
-            // or missing required ones. Fall through to the error placeholder
-            // path below (which emits an Error terminator).
-            if args.len() == intrinsic.expected_arg_count() {
-                return emit_primitive_intrinsic(cx, intrinsic, recv_local, expr);
-            } else {
-                cx.type_errors.push(crate::typeck::TypeError::new(
-                    format!(
-                        "method `{}` expects {} argument{}, got {}",
-                        cx.interner.resolve(&method.name),
-                        intrinsic.expected_arg_count(),
-                        if intrinsic.expected_arg_count() == 1 {
-                            ""
-                        } else {
-                            "s"
-                        },
-                        args.len()
-                    ),
-                    expr.span,
-                ));
-                // Fall through to emit Error placeholder (below).
+            // Stage 56 (v0.7 — TD-STR-INTRINSIC-MARKER-BODIES): str::len
+            // now has a real body (`self.len`). Skip intrinsic interception
+            // for StrLen — let the real body be lowered normally via
+            // fat pointer field access.
+            //
+            // Per §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, no intrinsic.
+            //
+            // NOTE: StrIsEmpty and StrAsBytes still have marker bodies —
+            // they keep using intrinsic interception until migrated to real bodies.
+            let skip_interception = matches!(
+                intrinsic,
+                super::primitive_intrinsics::PrimitiveIntrinsic::StrLen
+            );
+            if !skip_interception {
+                if args.len() == intrinsic.expected_arg_count() {
+                    return emit_primitive_intrinsic(cx, intrinsic, recv_local, expr);
+                } else {
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        format!(
+                            "method `{}` expects {} argument{}, got {}",
+                            cx.interner.resolve(&method.name),
+                            intrinsic.expected_arg_count(),
+                            if intrinsic.expected_arg_count() == 1 {
+                                ""
+                            } else {
+                                "s"
+                            },
+                            args.len()
+                        ),
+                        expr.span,
+                    ));
+                    // Fall through to emit Error placeholder (below).
+                }
             }
         }
     }

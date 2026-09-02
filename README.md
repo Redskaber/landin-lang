@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.605.0 (v0.7 Stage 55 — TD-OPTION-TAKE-INCOMPLETE FIXED: take(&mut self) correct semantics; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.606.0 (v0.7 Stage 56 — TD-STR-INTRINSIC-MARKER-BODIES partial fix: str::len real body replaces intrinsic; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 55 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 55 fixes TD-OPTION-TAKE-INCOMPLETE — `Option::take` now uses `&mut self` (correct Rust semantics: replaces self with None, returns old value). Previously consumed self (simplified version). Runtime verified: `Some(42).take()` → old=Some(42), x.is_some()=false after take. Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
+| **Status** | ✅ **v0.7 Stage 56 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 56 partially fixes TD-STR-INTRINSIC-MARKER-BODIES — `str::len` now has a real body (`self.len`) instead of `__landin_unreachable` marker. Intrinsic interception for StrLen is skipped — the method is lowered through standard field access (fat pointer field 1). str::is_empty and str::as_bytes still use marker bodies (to be migrated in future stage). Runtime verified: `"hello".len()` → `5` via real body. Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

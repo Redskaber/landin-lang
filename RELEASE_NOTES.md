@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.605.0 (v0.7 Stage 55 — TD-OPTION-TAKE-INCOMPLETE FIXED: take(&mut self) correct semantics; 5436 tests) |
+| **Current version** | v0.606.0 (v0.7 Stage 56 — TD-STR-INTRINSIC-MARKER-BODIES partial fix: str::len real body replaces intrinsic; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

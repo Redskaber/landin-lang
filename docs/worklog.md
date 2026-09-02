@@ -40933,3 +40933,61 @@ Stage Summary:
 - Stage 56: TD-STR-INTRINSIC-MARKER-BODIES — typeck fat pointer field access
   (str::len/is_empty/as_bytes should have real bodies, not __landin_unreachable).
 - Stage 57+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
+
+---
+Task ID: stage56
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 56 (v0.7) — TD-STR-INTRINSIC-MARKER-BODIES partial fix:
+str::len now has real body (self.len), intrinsic interception skipped.
+v0.606.0. 5436 tests, 0 failures. Runtime: "hello".len()=5 via real body.
+
+3秒启动自检:
+- 定位: L3 (prelude + method_call_lower.rs + typeck fat pointer field access)
+- 对齐: 已查 Stage 55 worklog (next: TD-STR-INTRINSIC-MARKER-BODIES)
+- 阻断: v0.605.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. str::len real body: `fn len(&self) -> usize { self.len }`
+   - 引用 §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
+   - 引用 §1.0 原則 6 (通解 > 特解): standard method resolution + field access.
+   - 引用 §1.0 原則 4 (报错 > 静默): if body lowering fails, typeck reports error.
+   - Fat pointer field access works: &str is {ptr, len}, self.len accesses field 1.
+
+2. Skip intrinsic interception for StrLen
+   - Added `skip_interception` check in method_call_lower.rs.
+   - StrIsEmpty and StrAsBytes still use intrinsic (marker bodies remain).
+   - Future stages: migrate is_empty (`self.len == 0usize`) and as_bytes.
+
+3. Verified &str field access works without intrinsic
+   - "hello".len() → 5 ✓ (via real body, not intrinsic interception)
+   - All 5436 tests pass — no regression.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: "hello".len() → 5 ✓ (via real body, not intrinsic)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. str::len now has a real body that accesses the fat
+  pointer's len field directly. The intrinsic interception is bypassed
+  for StrLen — standard method resolution + body lowering handles it.
+  This is the 通解 (standard method resolution) replacing the 特解
+  (intrinsic interception).
+
+Stage Summary:
+- TD-STR-INTRINSIC-MARKER-BODIES PARTIALLY FIXED (str::len migrated to real body)
+- str::is_empty and str::as_bytes still use markers (deferred to future stage)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause TD fix, no regression)
+
+下一步:
+- Stage 57: Migrate str::is_empty to real body (`self.len == 0usize`).
+- Stage 58: Migrate str::as_bytes to real body (fat pointer cast).
+- Stage 59+: Trait system (TD-DYN-TRAIT → TD-CLONE → TD-DISPLAY → TD-FN-TRAITS).
