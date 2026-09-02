@@ -58,8 +58,28 @@ pub fn expand_macro_calls_with_errors(
             let call_span = tokens[i].span;
 
             if let Some((input, after_close)) = collect_delimited(tokens, i + 2) {
-                // Try to expand.
-                if let Some(expanded) = expand_macro(def, &input, interner) {
+                // Stage 42 (v0.5 — TD-COMPILE-TIME-MACROS): Compile-time
+                // macros (stringify!, concat!) are evaluated directly to
+                // literal tokens here, bypassing the runtime __landin_*
+                // function call expansion. This is the 通解 — these macros
+                // should NEVER produce runtime calls; they're compile-time
+                // constants per Rust semantics.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one compile-time evaluation
+                // path for all literal-producing macros.
+                // Per §12 (最优 > 最小): root-cause fix — evaluate at
+                // expansion time, not patch with runtime stubs.
+                let name = interner.resolve(&name_sym).to_string();
+                let compile_time_result = expand_compile_time_macro(&name, &input, interner);
+
+                if let Some(expanded) = compile_time_result {
+                    let call_span = tokens[i].span;
+                    let mut expanded = expanded;
+                    for tok in &mut expanded {
+                        tok.span = call_span;
+                    }
+                    out.extend(expanded);
+                } else if let Some(expanded) = expand_macro(def, &input, interner) {
                     // Stage 18.10: Rewrite expanded token spans to the call
                     // site span. Built-in macro rule bodies use Span::DUMMY,
                     // which would conflict with real source spans (lo > hi
@@ -99,7 +119,130 @@ pub fn expand_macro_calls_with_errors(
     out
 }
 
-/// Stage 18.04: Top-level macro expansion pass — driver entry point.
+/// Stage 42 (v0.5 — TD-COMPILE-TIME-MACROS): Evaluate compile-time macros
+/// directly to literal tokens, bypassing runtime function calls.
+///
+/// Currently supported:
+/// - `stringify!(tokens)` → string literal of the token source text
+/// - `concat!("a", "b", ...)` → string literal concatenation
+///
+/// Returns `None` if the macro is not a compile-time macro or if evaluation
+/// fails (caller falls back to runtime expansion).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one compile-time evaluation path for all
+/// literal-producing macros.
+/// Per §12 (最优 > 最小): root-cause fix — evaluate at expansion time.
+/// Per Rust semantics: `stringify!` and `concat!` are compile-time constants.
+fn expand_compile_time_macro(
+    name: &str,
+    input: &[Token],
+    interner: &mut Rodeo,
+) -> Option<Vec<Token>> {
+    match name {
+        "stringify" => Some(expand_stringify_macro(input, interner)),
+        "concat" => Some(expand_concat_macro(input, interner)),
+        _ => None,
+    }
+}
+
+/// Stage 42: `stringify!(tokens)` → string literal containing the source text
+/// of the tokens.
+///
+/// Example: `stringify!(1 + 2)` → `"1 + 2"`
+///
+/// Per Rust: `stringify!` converts the token stream to its string
+/// representation. Whitespace between tokens is normalized to single spaces.
+fn expand_stringify_macro(input: &[Token], interner: &mut Rodeo) -> Vec<Token> {
+    // Collect all token strings first (immutable borrow of interner).
+    let parts: Vec<String> = input
+        .iter()
+        .map(|tok| token_to_source_string(tok, interner))
+        .collect();
+    // Now do the mutable borrow for get_or_intern.
+    let result = parts.join(" ");
+    let sym = interner.get_or_intern(result);
+    vec![Token {
+        kind: TokenKind::StrLit(sym),
+        span: crate::session::Span::DUMMY,
+    }]
+}
+
+/// Stage 42: `concat!("a", "b", ...)` → string literal concatenation.
+///
+/// Example: `concat!("hello", " ", "world")` → `"hello world"`
+///
+/// Per Rust: `concat!` concatenates comma-separated string literals at
+/// compile time.
+fn expand_concat_macro(input: &[Token], interner: &mut Rodeo) -> Vec<Token> {
+    // Collect all string literal values first (immutable borrow of interner).
+    let parts: Vec<&str> = input
+        .iter()
+        .filter_map(|tok| {
+            if let TokenKind::StrLit(sym) = &tok.kind {
+                Some(interner.resolve(sym))
+            } else {
+                None
+            }
+        })
+        .collect();
+    // Now do the mutable borrow for get_or_intern.
+    let result = parts.join("");
+    let sym = interner.get_or_intern(result);
+    vec![Token {
+        kind: TokenKind::StrLit(sym),
+        span: crate::session::Span::DUMMY,
+    }]
+}
+
+/// Stage 42: Convert a token to its source string representation.
+/// Used by `stringify!` to reconstruct the source text from tokens.
+fn token_to_source_string(tok: &Token, interner: &Rodeo) -> String {
+    use crate::lexer::TokenKind;
+    match &tok.kind {
+        TokenKind::Ident(sym) => interner.resolve(sym).to_string(),
+        TokenKind::StrLit(sym) => {
+            format!("\"{}\"", interner.resolve(sym))
+        }
+        TokenKind::IntLit(n, _) => n.to_string(),
+        TokenKind::FloatLit(n, _) => n.to_string(),
+        TokenKind::CharLit(c) => format!("'{c}'"),
+        TokenKind::LParen => "(".to_string(),
+        TokenKind::RParen => ")".to_string(),
+        TokenKind::LBrace => "{".to_string(),
+        TokenKind::RBrace => "}".to_string(),
+        TokenKind::LBracket => "[".to_string(),
+        TokenKind::RBracket => "]".to_string(),
+        TokenKind::Comma => ",".to_string(),
+        TokenKind::Semicolon => ";".to_string(),
+        TokenKind::Colon => ":".to_string(),
+        TokenKind::PathSep => "::".to_string(),
+        TokenKind::Not => "!".to_string(),
+        TokenKind::Plus => "+".to_string(),
+        TokenKind::Minus => "-".to_string(),
+        TokenKind::Star => "*".to_string(),
+        TokenKind::Slash => "/".to_string(),
+        TokenKind::Percent => "%".to_string(),
+        TokenKind::And => "&".to_string(),
+        TokenKind::Or => "|".to_string(),
+        TokenKind::Caret => "^".to_string(),
+        TokenKind::Eq => "=".to_string(),
+        TokenKind::EqEq => "==".to_string(),
+        TokenKind::NotEq => "!=".to_string(),
+        TokenKind::Lt => "<".to_string(),
+        TokenKind::Gt => ">".to_string(),
+        TokenKind::LtEq => "<=".to_string(),
+        TokenKind::GtEq => ">=".to_string(),
+        TokenKind::Arrow => "->".to_string(),
+        TokenKind::FatArrow => "=>".to_string(),
+        TokenKind::Dollar => "$".to_string(),
+        TokenKind::Hash => "#".to_string(),
+        TokenKind::Underscore => "_".to_string(),
+        TokenKind::Dot => ".".to_string(),
+        TokenKind::DotDot => "..".to_string(),
+        TokenKind::DotDotEq => "..=".to_string(),
+        kw => format!("{kw}"),
+    }
+}
 ///
 /// 1. Collect all `macro_rules!` definitions into a `MacroTable`.
 /// 2. If the table is empty, return `tokens` unchanged (zero-overhead

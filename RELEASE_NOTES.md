@@ -3,13 +3,95 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.592.0 (v0.5 Stage 41 — TD-SPECIAL-2 Never type completion + TD-SPECIAL-4 i64 format consolidation; 5436 tests) |
+| **Current version** | v0.593.0 (v0.5 Stage 42 — TD-COMPILE-TIME-MACROS: stringify!/concat! compile-time evaluation; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.593.0 — Stage 42 (v0.5) — TD-COMPILE-TIME-MACROS: stringify!/concat! Compile-Time Evaluation
+
+### Overview
+
+Stage 42 (v0.5) implements TD-COMPILE-TIME-MACROS — the first 2 of 8
+compile-time macros are now evaluated at macro expansion time, producing
+string literal tokens directly. This bypasses the broken runtime `__landin_*`
+function call expansion path.
+
+**Implemented**: `stringify!`, `concat!`
+**Remaining** (future stages): `env!`, `file!`, `line!`, `module_path!`,
+`include_str!`, `option_env!` — these need span info or I/O infrastructure.
+
+### Root Causes Fixed
+
+#### TD-COMPILE-TIME-MACROS (P2 — Macro expansion layer)
+
+**Symptom**: `stringify!("test")` and `concat!("a", "b")` compiled but
+produced no output at runtime — the macros expanded to
+`__landin_stringify(...)` / `__landin_concat(...)` calls, but these runtime
+functions were never declared or implemented.
+
+**Root cause**: Compile-time macros (`stringify!`, `concat!`, `file!`,
+`line!`, etc.) should be evaluated at macro expansion time, producing
+literal tokens directly. Instead, they were defined with macro_rules!
+bodies that expand to runtime function calls (`__landin_<name>(...)`),
+which were never declared.
+
+**Fix**: Added `expand_compile_time_macro` function in
+`src/parser/macro_expand/expansion.rs` that intercepts `stringify!` and
+`concat!` calls BEFORE the normal `expand_macro` path. These macros now
+produce string literal tokens directly:
+
+- `stringify!(1 + 2)` → `"1 + 2"` (token stream to source string)
+- `concat!("hello", " ", "world")` → `"hello world"` (literal concatenation)
+
+**Per §1.0 原則 6 (通解 > 特解)**: one compile-time evaluation path for
+all literal-producing macros.
+**Per §12 (最优 > 最小)**: root-cause fix — evaluate at expansion time,
+not patch with runtime stubs.
+**Per Rust semantics**: `stringify!` and `concat!` are compile-time
+constants, never runtime calls.
+
+### Implementation Details
+
+New functions in `src/parser/macro_expand/expansion.rs`:
+
+1. `expand_compile_time_macro(name, input, interner)` — dispatches to
+   specific compile-time macro handlers. Returns `None` for non-compile-time
+   macros (caller falls back to `expand_macro`).
+
+2. `expand_stringify_macro(input, interner)` — converts token stream to
+   source string, produces `StrLit` token.
+
+3. `expand_concat_macro(input, interner)` — concatenates string literal
+   args, produces `StrLit` token.
+
+4. `token_to_source_string(tok, interner)` — converts a single token to
+   its source representation (handles 35+ token variants).
+
+### Runtime Verified
+
+- `stringify!(1 + 2)` → `"1 + 2"` ✓
+- `concat!("hello", " ", "world")` → `"hello world"` ✓
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+
+### Known Limitations
+
+- `file!`, `line!`, `module_path!` need span information (not yet available
+  in macro_expand — requires driver pipeline change to thread source spans).
+- `env!`, `option_env!`, `include_str!` need compile-time I/O (deferred to
+  v0.6+ with proper build system integration).
+- TD-PRELUDE-MACRO-TIMING (prelude injection before macro_expand) deferred
+  to Stage 43+ — it's a driver pipeline refactor requiring careful testing.
 
 ---
 
