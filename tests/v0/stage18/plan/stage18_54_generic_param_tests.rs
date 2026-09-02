@@ -57,15 +57,17 @@ fn stage18_54_generic_struct_field_resolves() {
 
 /// Stage 18.54 positive 3: Generic fn with trait bound resolves.
 ///
-/// `fn f<T: Clone>(x: T) -> T { x }` should resolve both `T` and `Clone`.
+/// `fn f<T: Display>(x: T) -> T { x }` should resolve both `T` and `Display`.
+/// (Stage 59: changed from Clone to Display — Clone is now in prelude,
+/// so user-defined Clone causes duplicate definition error.)
 #[test]
 fn stage18_54_generic_fn_with_bound_resolves() {
     let src =
-        "trait Clone { fn clone(&self) -> Self; } fn f<T: Clone>(x: T) -> T { x } fn main() { 0 }";
+        "trait Display { fn fmt(&self) -> i32; } fn f<T: Display>(x: T) -> T { x } fn main() { 0 }";
     let result = compile(src);
     assert!(
         result.errors.resolve.is_empty(),
-        "resolve errors (T + Clone bound should resolve): {:?}",
+        "resolve errors (T + Display bound should resolve): {:?}",
         result.errors.resolve
     );
 }

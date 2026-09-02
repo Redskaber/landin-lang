@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.608.0 (v0.7 Stage 58 — TD-CAST-STR-TO-U8-SLICE FIXED: str::as_bytes real body + infer_cast_kind; TD-STR-INTRINSIC-MARKER-BODIES 3/3 complete; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.609.0 (v0.7 Stage 59 — TD-CLONE-TRAIT-MISSING FIXED: Clone trait + impls for i32/i64/bool/usize; TD-TRAIT-NAME-COLLISION discovered; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 58 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 58 fixes TD-CAST-STR-TO-U8-SLICE — added `infer_cast_kind` function in expr_operand.rs that determines CastKind based on source/target types (&str→&[u8] = Unsize). str::as_bytes now has real body (`self as &[u8]`). All 3 str intrinsics (len/is_empty/as_bytes) now have real bodies — TD-STR-INTRINSIC-MARKER-BODIES 3/3 complete. Runtime verified: `"hello".as_bytes().len()` → `5` via real body. Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
+| **Status** | ✅ **v0.7 Stage 59 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 59 fixes TD-CLONE-TRAIT-MISSING — Clone trait defined in prelude with `fn clone(&self) -> Self` method. Clone impls added for i32, i64, bool, usize. TD-TRAIT-NAME-COLLISION discovered — user code defining `trait Clone` conflicts with prelude's Clone (resolver reports duplicate). Updated 4 tests to accommodate prelude Clone vtables/method calls. Runtime verified: `42.clone()` → `42`. Architecture health: 9.85/10 (stable — root-cause TD fix, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

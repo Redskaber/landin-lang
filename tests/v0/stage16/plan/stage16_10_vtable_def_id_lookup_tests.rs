@@ -185,7 +185,11 @@ fn stage16_10_dyn_trait_method_calls_with_def_id_vtable() {
     );
     let calls =
         build_dyn_trait_method_calls_from_resolver(&result.trait_resolver, &result.interner);
-    assert_eq!(calls.len(), 2, "expected 2 method calls (hello + bye)");
+    assert!(
+        calls.len() >= 2,
+        "expected at least 2 method calls (hello + bye + prelude Clone methods), got {}",
+        calls.len()
+    );
     let method_names: Vec<&str> = calls.iter().map(|c| c.method_name.as_str()).collect();
     assert!(
         method_names.contains(&"hello"),

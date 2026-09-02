@@ -305,8 +305,39 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
 enum Option<T> { None, Some(T) }
 enum Result<T, E> { Ok(T), Err(E) }
 trait Copy {}
+// Stage 59 (v0.7 — TD-CLONE-TRAIT-MISSING): Clone trait.
+// Per Rust: Clone has a single method `fn clone(&self) -> Self`.
+// Types that implement Clone can be explicitly duplicated.
+// Per §1.0 原則 6 (通解 > 特解): one trait, all types implement it.
+// Per §12 (最优 > 最小): root-cause fix — trait enables cloned/copied methods.
+//
+// NOTE: User code may also define `trait Clone { ... }` — the resolver
+// should merge them. If duplicate definition error occurs, user code
+// takes precedence (same as Rust — user can shadow prelude traits).
+// TD-TRAIT-NAME-COLLISION: resolver needs to handle prelude/user trait
+// name collisions. For now, renamed to `Clone` (kept as-is) — if user
+// defines their own Clone trait, the resolver reports duplicate. This
+// is a known limitation (TD-TRAIT-NAME-COLLISION, P3, v0.8+).
+trait Clone {
+    fn clone(&self) -> Self;
+}
 impl<T> Copy for Option<T> {}
 impl<T, E> Copy for Result<T, E> {}
+// Stage 59 (v0.7): Clone impls for basic types.
+// Per Rust: all primitive types are Clone (bitwise copy).
+// Per §1.0 原則 6 (通解 > 特解): one impl per type, no special-casing.
+impl Clone for i32 {
+    fn clone(&self) -> i32 { *self }
+}
+impl Clone for i64 {
+    fn clone(&self) -> i64 { *self }
+}
+impl Clone for bool {
+    fn clone(&self) -> bool { *self }
+}
+impl Clone for usize {
+    fn clone(&self) -> usize { *self }
+}
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }
