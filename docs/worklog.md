@@ -38664,3 +38664,87 @@ Stage Summary:
   MIR walker). Now unblocked — slice .len() + array→slice coercion work.
   Net -368 LOC (architectural improvement: 特解 → 通解).
 - Stage 36.3 (v0.6+): Display trait for type-dispatched formatting.
+
+---
+Task ID: stage36.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 36.2 (v0.24) — TD-FORMAT-MIGRATION attempt. Attempted to
+migrate 598-LOC MIR walker to slice-based prelude impl. Discovered
+runtime blocker: array→slice coercion codegen not implemented.
+Reverted all changes. Baseline preserved (5227 tests, 0 failures).
+Registered new TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
+
+3秒启动自检:
+- 定位: L3 (attempted cross-module migration: prelude + macro + MIR walker removal)
+- 对齐: 已查 docs/develop/v0/stage-36/stage-36.2-slice-based-format-prelude-design.md +
+  src/mir/lower/format_intrinsics.rs (598-LOC MIR walker) +
+  src/parser/builtin_macros/print_macros.rs (format! macro) +
+  src/codegen/rvalue.rs (Rvalue::Ref codegen) +
+  src/typeck/unify.rs (Stage 36.1 coercion rules)
+- 阻断: v0.577.0 全绿 (5227 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Attempt full migration vs partial migration
+   - 引用 §1.0 原則 6 (通解 > 特解): full migration = prelude fn + macro
+     expansion + MIR walker deletion. This is the 通解 approach.
+   - 引用 §12 (最优 > 最小): root-cause fix = prelude impl, not more
+     MIR walker workarounds.
+   - Decision: ATTEMPTED full migration. Discovered runtime blocker.
+
+2. Runtime blocker discovery
+   - The `&[1, 2, 3]` expression creates an array literal. When passed
+     as `&[i64]` (slice ref), codegen must construct fat pointer
+     `{ptr, len}`. But `Rvalue::Ref` codegen returns only bare pointer.
+   - Per §1.0 原則 9 (正确 > 妥协): don't force incomplete migration
+     that produces wrong results (args.len() returns 0, format! output
+     truncated).
+   - Per §1.0 原則 4 (报错 > 静默): honestly document the blocker.
+
+3. Revert vs keep partial changes
+   - 引用 §1.0 原則 5 (去除兼容思维): don't keep dead code (old MIR walker
+     would be dead if new prelude fn is used).
+   - 引用 §1.6 终极检验: forcing incomplete migration = minimum patch.
+   - Decision: REVERT all changes. Keep the 598-LOC MIR walker as the
+     working 特解. Register TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
+
+裁剪点:
+- L3 task — reverted to design-only (no code changes in final delivery)
+- 安全理由: §1.0 原則 9 (正确 > 妥协) — don't ship broken code
+- §3.2 verification confirms baseline preserved (5227 tests, 0 failures)
+
+5W2H:
+- WHAT: Attempted TD-FORMAT-MIGRATION (slice-based prelude format impl)
+- WHY: Last remaining P2 TD — migrate 特解 MIR walker to 通解 prelude impl
+- WHO: PM-A + ARCH-A + DEV-A
+- WHEN: v0.24 Stage 36.2
+- WHERE: docs/develop/v0/stage-36/ + docs/develop/v0/tech-debt-register.md
+- HOW: (1) Add prelude __landin_format_v2 fn + __landin_i64_to_str extern C
+  (2) Modify format! macro to expand to __landin_format_v2(fmt, &[args])
+  (3) Delete 598-LOC MIR walker
+  (4) DISCOVERED: runtime array→slice coercion codegen missing
+  (5) REVERTED all changes, documented blocker
+- HOW MUCH: 0 LOC code changes (reverted); +1 design doc +1 new TD registered;
+  5227 tests preserved (0 failures)
+
+§3.2 验收检查 Stage 36.2 (design-only, reverted):
+- cargo build --release --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5227 tests, 0 failures)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Neither — this is a DESIGN ANALYSIS + BLOCKER DISCOVERY. The root-cause
+  fix requires implementing TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING
+  (runtime codegen for fat pointer construction). Forcing the migration
+  without this would be a minimum patch that produces wrong results.
+
+Stage Summary:
+- TD-FORMAT-MIGRATION: 📋 BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING
+- New TD registered: TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (P3)
+- 598-LOC MIR walker RETAINED as working 特解
+- 5227 tests preserved (0 failures, fmt clean, 0 clippy warnings)
+
+下一步:
+- Stage 36.3 (v0.24 or v0.5+): Implement TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
+  Modify Rvalue::Ref codegen to detect array referent and construct fat
+  pointer {ptr, len=N}. Then retry TD-FORMAT-MIGRATION.

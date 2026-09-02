@@ -1563,3 +1563,86 @@ Stage 36.2 (v0.24): Now unblocked — implement slice-based prelude format
 impl to replace the 598-LOC MIR walker. The prelude `fn __landin_format_v2
 (fmt: &str, args: &[i64]) -> String` can now use slice `.len()` and
 array→slice coercion. Net -368 LOC (architectural improvement: 特解 → 通解).
+
+---
+
+## Stage 36.2 Design Attempt (v0.24) — TD-FORMAT-MIGRATION Runtime Blocker
+
+**Date**: 2026-09-01
+**Version**: v0.577.0 (baseline preserved — no code changes)
+**Status**: 📋 BLOCKED on runtime array→slice coercion codegen
+
+### Attempt Summary
+
+Stage 36.2 attempted to migrate `format!` from the 598-LOC MIR walker
+(特解) to a slice-based prelude impl (通解). The approach:
+
+1. Add `__landin_i64_to_str` extern "C" to prelude
+2. Add `__landin_format_v2(fmt: &str, args: &[i64]) -> String` to prelude
+   with a real body that walks fmt + args using standard Landin features
+3. Modify format! macro to expand to `__landin_format_v2("x={}", &[x as i64])`
+4. Delete the 598-LOC MIR walker
+
+**Result**: Typeck-level changes worked (macro expanded correctly,
+prelude fn resolved, typeck passed). But runtime tests failed —
+`args.len()` returned 0 because the runtime array→slice coercion
+codegen is NOT implemented.
+
+### Root Cause (per §2.2 根因思维)
+
+The `&[1, 2, 3]` expression creates an array literal. When passed as
+`&[i64]` (a slice reference), the codegen must construct a fat pointer
+`{ptr=array_addr, len=3}`. But `Rvalue::Ref` codegen (src/codegen/rvalue.rs:250-257)
+returns only the bare pointer to the array data — it does NOT construct
+the fat pointer with the length field.
+
+The Stage 36.1 coercion rules (in typeck/unify.rs) are COMPILE-TIME type
+checks only. They don't generate runtime coercion code. The runtime
+coercion (unsizing) requires codegen-level support that doesn't exist.
+
+### New TD Registered
+
+**TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING** (P3): The runtime codegen
+for array→slice coercion (`&[T; N]` → `&[T]` fat pointer construction)
+is not implemented. The `Rvalue::Ref` codegen returns only the bare
+pointer, not a fat pointer `{ptr, len}`. This blocks TD-FORMAT-MIGRATION
+Stage 36.2.
+
+### §6.2 Upgrade Criteria Re-application
+
+Per §6.2 规则 2:
+- **Test (1)**: Does next-stage correctness depend on this TD's output?
+  No — format! works correctly today via the MIR walker.
+- **Test (2)**: Does simplified impl produce wrong results?
+  No — the MIR walker produces correct output.
+
+TD-FORMAT-MIGRATION does NOT upgrade. It remains P2, BLOCKED on
+TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (P3).
+
+### Decision (per §1.6 终极检验)
+
+**Q**: Is this a root-cause fix or a minimum patch?
+**A**: Neither — this is a DESIGN ANALYSIS documenting the runtime
+codegen blocker. Forcing the migration without runtime coercion
+codegen would produce wrong results (args.len() returns 0, format!
+output is truncated). Per §1.0 原則 9 (正确 > 妥协): the honest answer
+is that TD-FORMAT-MIGRATION is BLOCKED on a new prerequisite TD.
+
+Per §1.0 原則 4 (报错 > 静默): the BLOCKED status is explicitly
+documented, not silently accepted. The 598-LOC MIR walker is retained
+as the working 特解 until the runtime coercion codegen is implemented.
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 📋 BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING |
+| TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (NEW) | P3 | 📋 Registered — codegen for `&[T; N]` → `&[T]` fat pointer |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+Stage 36.3 (v0.24 or v0.5+): Implement TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
+Modify `Rvalue::Ref` codegen (src/codegen/rvalue.rs:250-257) to detect
+when the referent is an array and construct a fat pointer `{ptr, len=N}`
+instead of returning the bare pointer. Then retry TD-FORMAT-MIGRATION.
