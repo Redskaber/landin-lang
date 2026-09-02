@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.599.0 (v0.6 Stage 48 — Vec::is_empty/capacity added + TD-DISPLAY-TRAIT design analysis; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.600.0 (v0.6 Stage 49 — Architecture audit: primitive_intrinsics data-driven + 10 special-case TDs documented; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.6 Stage 48 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 48 adds `Vec::is_empty` / `Vec::capacity` methods to prelude. TD-DISPLAY-TRAIT design analysis completed — requires format! parameter passing redesign (`&[i64]` → `&[&dyn Display]`), deferred to v0.7+ as L3 architecture task. Runtime verified: `Vec::new().is_empty()` → `true`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
+| **Status** | ✅ **v0.6 Stage 49 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 49 performs architecture audit: (1) primitive_intrinsics.rs `identify_intrinsic` converted from hardcoded match to data-driven `INTRINSIC_TABLE` lookup (TD-SPECIAL-7); (2) 10 special-case solutions identified across the codebase (TD-SPECIAL-7 to TD-SPECIAL-16) with priority matrix; (3) type system completeness assessed — basic types complete, dyn Trait/impl Trait/fat pointer field access are main gaps for v0.7+. Audit report in `docs/develop/v0/stage-49/`. Architecture health: 9.85/10 (stable — audit-driven improvement, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

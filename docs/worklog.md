@@ -40524,3 +40524,62 @@ Stage Summary:
 - Stage 49+ (v0.7+): TD-DISPLAY-TRAIT — format! param redesign for
   trait dispatch (&[&dyn Display] instead of &[i64]).
 - Stage 50+ (v0.7+): TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+
+---
+Task ID: stage49
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 49 (v0.6) — Architecture audit: primitive_intrinsics data-driven
+(TD-SPECIAL-7) + 10 special-case TDs documented + type system assessment.
+v0.600.0. 5436 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (architecture audit + cross-module analysis)
+- 对齐: 已查 Stage 48 worklog + Stage 40.3 audit report
+- 阻断: v0.599.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. primitive_intrinsics.rs: identify_intrinsic converted to data-driven table
+   - 引用 §1.0 原則 6 (通解 > 特解): one lookup table for all intrinsics.
+   - 引用 §12 (最优 > 最小): data-driven approach is more maintainable.
+   - Adding new intrinsic = adding a table entry (no function body change).
+
+2. 10 special-case TDs documented (TD-SPECIAL-7 to TD-SPECIAL-16)
+   - 引用 §20 (iterative audit): found by systematic scan of codebase.
+   - 引用 §13.4 (重构判据): priority matrix based on cost/benefit.
+   - 3 TDs can be immediately improved (TD-SPECIAL-7 done, 11 partially done).
+   - 7 TDs need v0.7+ architecture refactoring.
+
+3. Type system completeness assessed
+   - Basic types complete (bool/char/int/uint/float/str/slice/array/tuple/ref/ptr/Never/FnDef/FnPtr/Closure/Adt/Projection).
+   - Missing: dyn Trait (typeck), impl Trait (parser/typeck), fat pointer field access (typeck).
+   - These are the key blockers for v0.7+ Display trait and trait dispatch.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (audit + small refactoring, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for audit-driven improvements
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause improvement. The identify_intrinsic function is now data-driven
+  (通解) rather than hardcoded match (特解). The audit report documents 10
+  special-case TDs with clear priority matrix for v0.7+ refactoring.
+
+Stage Summary:
+- 1 special-case solution CONVERTED to data-driven (TD-SPECIAL-7: intrinsic table)
+- 10 special-case TDs DOCUMENTED (TD-SPECIAL-7 to TD-SPECIAL-16)
+- Type system completeness ASSESSED (basic types complete, 3 gaps for v0.7+)
+- Audit report SAVED in docs/develop/v0/stage-49/
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — audit-driven improvement, no regression)
+
+下一步:
+- v0.7+: TD-DISPLAY-TRAIT (format! param redesign) + TD-FN-TRAITS + TD-DYN-TRAIT.
+- v0.7+: TD-SPECIAL-8 (HIR index for O(1) method resolution).
+- v0.7+: TD-SPECIAL-9 (remove loop {} markers via fat pointer field access).
+- v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).

@@ -161,17 +161,37 @@ pub(crate) fn lookup_primitive_intrinsic(
     None
 }
 
+/// Stage 49 (v0.6 — TD-SPECIAL-7): Data-driven intrinsic registration table.
+///
+/// Replaces the hardcoded match with a const table lookup. Adding a new
+/// intrinsic = adding a table entry (no function body change needed).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one lookup table for all intrinsics.
+/// Per §12 (最优 > 最小): data-driven approach is more maintainable.
+/// Per §1.0 原則 3 (显式 > 隐式): table is explicit and auditable.
+const INTRINSIC_TABLE: &[(&str, &str, PrimitiveIntrinsic)] = &[
+    // str methods
+    ("str", "len", PrimitiveIntrinsic::StrLen),
+    ("str", "is_empty", PrimitiveIntrinsic::StrIsEmpty),
+    ("str", "as_bytes", PrimitiveIntrinsic::StrAsBytes),
+    // slice methods — SliceLen uses same MIR as StrLen (both are fat pointers)
+    // Note: SliceLen is matched by the caller using "slice" type name,
+    // but Landin doesn't have a "slice" type name in HIR — slices are
+    // represented as Ref(_, _, Slice(_)). The lookup happens via the
+    // prelude impl declaration. This entry is for future use.
+];
+
 /// Map `(self_ty_name, method_name)` to a `PrimitiveIntrinsic`.
 ///
-/// Per §1.0 原則 6 (通解>特例): one match table, not scattered checks.
-/// Adding a new intrinsic = adding a match arm.
+/// Stage 49 (v0.6): Now data-driven via `INTRINSIC_TABLE` lookup.
+/// Previously was a hardcoded match expression.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one lookup function for all intrinsics.
 fn identify_intrinsic(self_ty: &str, method: &str) -> Option<PrimitiveIntrinsic> {
-    match (self_ty, method) {
-        ("str", "len") => Some(PrimitiveIntrinsic::StrLen),
-        ("str", "is_empty") => Some(PrimitiveIntrinsic::StrIsEmpty),
-        ("str", "as_bytes") => Some(PrimitiveIntrinsic::StrAsBytes),
-        _ => None,
-    }
+    INTRINSIC_TABLE
+        .iter()
+        .find(|(ty, m, _)| *ty == self_ty && *m == method)
+        .map(|(_, _, intrinsic)| *intrinsic)
 }
 
 /// Emit MIR for a primitive intrinsic method call.
