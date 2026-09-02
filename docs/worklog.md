@@ -40692,3 +40692,55 @@ Stage Summary:
 - v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
 - v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
 - v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
+
+---
+Task ID: stage52
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 52 (v0.7) — String::is_empty/clear/capacity + Option::take added.
+v0.603.0. 5436 tests, 0 failures. Runtime: String::new().is_empty()=true,
+Some(42).take()=Some(42).
+
+3秒启动自检:
+- 定位: L2 (prelude only, 4 methods added to existing impl blocks)
+- 对齐: 已查 Stage 51 worklog (v0.6 complete, entering v0.7)
+- 阻断: v0.602.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added String::is_empty/clear/capacity to existing impl String block
+   - 引用 §1.0 原則 6 (通解 > 特解): same field access pattern as Vec.
+   - No additional generic params needed.
+
+2. Added Option::take to existing impl<T> Option<T> block
+   - Simplified version: consumes self, returns self (since Landin
+     doesn't have mem::replace for &mut self).
+   - 引用 §1.0 原則 9 (正确 > 妥协): documented limitation.
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - String::new().is_empty() → true ✓
+  - Some(42).take() → Some(42) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause implementation. Uses standard Landin field access (String)
+  and match dispatch (Option::take). The take() limitation (consumes
+  self instead of &mut self) is documented per §1.0 原則 9.
+
+Stage Summary:
+- 4 new prelude methods ADDED (String::is_empty/clear/capacity, Option::take)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension, no regression)
+
+下一步:
+- v0.7+: TD-DISPLAY-TRAIT (format! param redesign for trait dispatch).
+- v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+- v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
+- v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).

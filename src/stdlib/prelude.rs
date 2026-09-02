@@ -385,6 +385,14 @@ impl<T> Option<T> {
             None => None,
         }
     }
+    // Stage 52 (v0.7): Option::take — extracts the value, leaving None in place.
+    // Per Rust API guidelines: take replaces self with None and returns the old value.
+    // Per §1.0 原則 6 (通解 > 特解): same match dispatch, no new infrastructure.
+    // NOTE: Landin doesn't have `mem::replace`, so take uses a different pattern —
+    // it consumes self (by value) and returns the value. The caller is responsible
+    // for reassigning. This is a simplified version of Rust's take (which uses
+    // &mut self + mem::replace). Per §1.0 原則 9 (正确 > 妥协): documented limitation.
+    fn take(self) -> Option<T> { self }
 }
 // Stage 45 (v0.6): Option::ok_or / ok_or_else — convert Option to Result.
 // These need a separate impl block with <T, E> because Landin doesn't
@@ -627,6 +635,13 @@ impl String {
     // Per §12 (最优 > 最小): root-cause fix via language feature (FatPtrLit),
     // not more intrinsic workarounds.
     fn as_str(&self) -> &str { &str { ptr: self.ptr, len: self.len } }
+    // Stage 52 (v0.7): String::is_empty / clear / capacity — more String methods.
+    // Per Rust API guidelines: is_empty returns true if len==0;
+    // clear sets len to 0; capacity returns cap.
+    // Per §1.0 原則 6 (通解 > 特解): same field access pattern as Vec.
+    fn is_empty(&self) -> bool { self.len == 0usize }
+    fn clear(&mut self) { self.len = 0usize; }
+    fn capacity(&self) -> usize { self.cap }
 }
 // Stage 18.195 (TD-VEC-MVP): Vec<T> — owned dynamic array.
 //

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.602.0 (v0.6 Stage 51 — Vec::clear/truncate added + TD-SPECIAL-8/11 analysis; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.603.0 (v0.7 Stage 52 — String::is_empty/clear/capacity + Option::take added; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.6 Stage 51 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 51 adds `Vec::clear` and `Vec::truncate` methods to prelude. TD-SPECIAL-8 (HIR index for O(1) method resolution) analyzed — `find_owner` already O(1) via cached index; remaining O(N) scans are "find impl block containing method DefId" (needs reverse index). TD-SPECIAL-11 (variadic detection) already 通解 (signature_is_variadic from Stage 18.334). Runtime verified: `Vec::truncate(2)` + `Vec::clear()` → correct len tracking. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
+| **Status** | ✅ **v0.7 Stage 52 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 52 adds `String::is_empty`/`clear`/`capacity` and `Option::take` to prelude. Runtime verified: `String::new().is_empty()` → `true`, `Some(42).take()` → `Some(42)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
