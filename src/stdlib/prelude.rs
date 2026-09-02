@@ -413,6 +413,18 @@ impl<T> Vec<T> {
         let elem_ptr: *mut T = self.ptr + idx;
         *elem_ptr
     }
+    // Stage 38.2 (v0.26): Vec::pop — BLOCKED on Option<T> codegen.
+    // The prelude impl body constructs Option::None/Some from a generic
+    // context, which triggers a pre-existing codegen bug: enum variant
+    // constants (e.g., None = discriminant 1) are emitted as integer
+    // constants with `store {i32, i32} 11` instead of proper struct
+    // constants. This produces invalid LLVM IR rejected by llvm-as.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): don't ship broken code.
+    // Per §1.0 原則 4 (报错 > 静默): limitation explicitly documented.
+    // Per §6.2: does NOT upgrade (no soundness issue — just codegen bug).
+    // Fix: requires enum variant codegen fix (tracked as future TD).
+    // fn pop(&mut self) -> Option<T> { ... }  // BLOCKED
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //

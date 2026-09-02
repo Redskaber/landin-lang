@@ -39458,3 +39458,46 @@ Stage Summary:
 下一步:
 - Stage 38.2: Vec::pop prelude impl (~30 LOC + 33 tests)
 - Stage 38.3: Option::map/and_then prelude impl (~40 LOC + 33 tests)
+
+---
+Task ID: stage38.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 38.2 (v0.26) — Vec::pop prelude impl attempt.
+Discovered pre-existing Option<T> codegen bug: enum variant constants
+(None discriminant) emitted as integer constants with wrong type.
+Reverted Vec::pop. Documented as design analysis.
+v0.584.0 (unchanged). 5392 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (attempted prelude change, reverted due to codegen bug)
+- 对齐: 已查 src/stdlib/prelude.rs (Vec impl) + Rust Vec::pop design
+- 阻断: v0.584.0 全绿 (5392 tests), 0 P0/P1
+
+决策点:
+1. Vec::pop blocked on Option<T> codegen
+   - 引用 §1.0 原則 9 (正确 > 妥协): don't ship broken code.
+   - 引用 §1.0 原則 4 (报错 > 静默): document the limitation.
+   - The root cause is in enum variant codegen: None variant from
+     generic context produces `store {i32, i32} 11` (integer constant
+     with struct type) — invalid LLVM IR.
+   - Fix: requires enum variant codegen fix (proper struct constant
+     emission). This is a separate TD, not v0.26 scope.
+
+裁剪点:
+- L2 — reverted, no code changes, design analysis only
+
+§3.2 验收检查:
+- cargo fmt --check ✓, cargo clippy -D warnings ✓
+- cargo test --release ✓ (5392 tests, 0 failures — baseline preserved)
+
+Stage Summary:
+- Vec::pop: 📋 BLOCKED on Option<T> enum variant codegen
+- No code changes (reverted)
+- 5392 tests preserved (0 failures)
+
+下一步:
+- v0.26 alternative scope: Option::map (doesn't construct Option —
+  takes Option<T> as input, returns Option<U> — may also be blocked
+  by same codegen issue). Or: String::pop (returns Option<u8> — same).
+- v0.27 scope: fix enum variant codegen (proper struct constant
+  emission for None/Some from generic context).
