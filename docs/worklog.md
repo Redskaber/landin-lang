@@ -40744,3 +40744,55 @@ Stage Summary:
 - v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
 - v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
 - v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
+
+---
+Task ID: stage53
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 53 (v0.7) — Vec::first/last added.
+v0.604.0. 5436 tests, 0 failures. Runtime: Vec::first()=Some(10), Vec::last()=Some(30).
+
+3秒启动自检:
+- 定位: L2 (prelude only, 2 methods added to existing impl block)
+- 对齐: 已查 Stage 52 worklog
+- 阻断: v0.603.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added Vec::first / last to existing impl<T> Vec<T> block
+   - 引用 §1.0 原則 6 (通解 > 特解): same ptr arithmetic as get(), returns Option.
+   - No additional generic params needed.
+   - Per Rust API guidelines: first/last return Option<T> (Some if non-empty, None if empty).
+
+2. Assessed missing prelude methods for future stages:
+   - Option: cloned, copied, get_or_insert, zip (need Clone trait or &mut self)
+   - String: push_char, pop, starts_with, ends_with (need more impl)
+   - Vec: first_mut, last_mut, extend_from_slice (need &mut self + slice)
+   - TD-CLONE-TRAIT-MISSING: cloned/copied need Clone trait (v0.7+)
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: Vec::first() → Some(10), Vec::last() → Some(30) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause implementation. Uses standard Landin ptr arithmetic + Option
+  construction. No special-case handling.
+
+Stage Summary:
+- 2 new prelude methods ADDED (Vec::first, Vec::last)
+- Missing prelude methods assessed for future stages (TD-CLONE-TRAIT-MISSING)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension, no regression)
+
+下一步:
+- v0.7+: TD-DISPLAY-TRAIT (format! param redesign for trait dispatch).
+- v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+- v0.7+: TD-CLONE-TRAIT-MISSING (Clone trait for cloned/copied methods).
+- v0.7+: TD-SPECIAL-8 (reverse index for O(1) impl block lookup).
+- v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).

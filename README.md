@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.603.0 (v0.7 Stage 52 — String::is_empty/clear/capacity + Option::take added; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.604.0 (v0.7 Stage 53 — Vec::first/last added; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 52 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 52 adds `String::is_empty`/`clear`/`capacity` and `Option::take` to prelude. Runtime verified: `String::new().is_empty()` → `true`, `Some(42).take()` → `Some(42)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
+| **Status** | ✅ **v0.7 Stage 53 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 53 adds `Vec::first` and `Vec::last` methods to prelude — return `Option<T>` of first/last element. Runtime verified: `Vec::first()` → `Some(10)`, `Vec::last()` → `Some(30)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

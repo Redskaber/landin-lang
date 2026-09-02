@@ -720,6 +720,21 @@ impl<T> Vec<T> {
     fn truncate(&mut self, new_len: usize) {
         if new_len < self.len { self.len = new_len; }
     }
+    // Stage 53 (v0.7): Vec::first / last — return Option<T> of first/last element.
+    // Per Rust API guidelines: first returns Some(&T) if non-empty, None if empty.
+    // Per §1.0 原則 6 (通解 > 特解): same ptr arithmetic as get(), returns Option.
+    fn first(&self) -> Option<T> {
+        if self.len == 0usize { None } else {
+            let elem_ptr: *const T = self.ptr;
+            Some(*elem_ptr)
+        }
+    }
+    fn last(&self) -> Option<T> {
+        if self.len == 0usize { None } else {
+            let elem_ptr: *const T = self.ptr + (self.len - 1usize);
+            Some(*elem_ptr)
+        }
+    }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //
