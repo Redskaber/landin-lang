@@ -65,6 +65,10 @@ pub fn run_codegen_pipeline(
     // Stage 18.29: Declare non-print built-in macro runtime functions.
     emitter.emit_declare("void @__landin_assert(i1)");
     emitter.emit_declare("void @__landin_panic_msg(ptr)");
+    // Stage 50 (v0.6 — TD-SPECIAL-9): Pre-declare __landin_unreachable
+    // (now used in prelude str intrinsic bodies instead of loop {}).
+    // Per §1.0 原則 4 (报错 > 静默): explicit declaration for TextEmitter IR validity.
+    emitter.emit_declare("void @__landin_unreachable(ptr)");
 
     // Stage 18.334 (P1 soundness fix): Pre-declare the heap-alloc runtime
     // functions. Without these declarations, the TextEmitter IR would emit

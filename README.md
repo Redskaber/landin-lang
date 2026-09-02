@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.600.0 (v0.6 Stage 49 — Architecture audit: primitive_intrinsics data-driven + 10 special-case TDs documented; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.601.0 (v0.6 Stage 50 — TD-SPECIAL-9: replaced 3 loop {} markers with __landin_unreachable in str intrinsics; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.6 Stage 49 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 49 performs architecture audit: (1) primitive_intrinsics.rs `identify_intrinsic` converted from hardcoded match to data-driven `INTRINSIC_TABLE` lookup (TD-SPECIAL-7); (2) 10 special-case solutions identified across the codebase (TD-SPECIAL-7 to TD-SPECIAL-16) with priority matrix; (3) type system completeness assessed — basic types complete, dyn Trait/impl Trait/fat pointer field access are main gaps for v0.7+. Audit report in `docs/develop/v0/stage-49/`. Architecture health: 9.85/10 (stable — audit-driven improvement, no regression). |
+| **Status** | ✅ **v0.6 Stage 50 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 50 replaces 3 `loop {}` marker bodies in `impl str` (len/is_empty/as_bytes) with `__landin_unreachable` calls. These bodies are never executed (intercepted by `lookup_primitive_intrinsic`), but if interception ever fails, the user gets a diagnostic message instead of a silent hang. Per §1.0 原則 4 (报错 > 静默). Runtime verified: `str::len()` still works correctly via intrinsic interception. Architecture health: 9.85/10 (stable — improvement, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

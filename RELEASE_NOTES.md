@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.600.0 (v0.6 Stage 49 — Architecture audit: primitive_intrinsics data-driven + 10 special-case TDs documented; 5436 tests) |
+| **Current version** | v0.601.0 (v0.6 Stage 50 — TD-SPECIAL-9: replaced 3 loop {} markers with __landin_unreachable in str intrinsics; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

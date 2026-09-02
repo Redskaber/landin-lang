@@ -726,9 +726,20 @@ impl<T> Vec<T> {
 // checker.rs (KNOWN_INTRINSIC_METHODS) — typeck works naturally with
 // the real prelude signatures.
 impl str {
-    fn len(&self) -> usize { loop {} }
-    fn is_empty(&self) -> bool { loop {} }
-    fn as_bytes(&self) -> &[u8] { loop {} }
+    // Stage 50 (v0.6 — TD-SPECIAL-9): Replaced `loop {}` markers with
+    // `__landin_unreachable` calls. These bodies are NEVER executed —
+    // `lookup_primitive_intrinsic` intercepts before body lowering.
+    // But if interception ever fails, `__landin_unreachable` prints a
+    // diagnostic message and exits, instead of `loop {}` which silently
+    // hangs forever.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): `loop {}` silently hangs; `__landin_unreachable`
+    // reports "internal error: entered unreachable code: str intrinsic not intercepted".
+    // Per §12 (最优 > 最小): root-cause improvement — if the interception
+    // path ever breaks, the user gets a clear error message instead of a hang.
+    fn len(&self) -> usize { __landin_unreachable("str::len intrinsic not intercepted".ptr) }
+    fn is_empty(&self) -> bool { __landin_unreachable("str::is_empty intrinsic not intercepted".ptr) }
+    fn as_bytes(&self) -> &[u8] { __landin_unreachable("str::as_bytes intrinsic not intercepted".ptr) }
 }
 // Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Primitive type
 // impls with REAL bodies (not markers). These verify the architecture is

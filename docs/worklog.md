@@ -40583,3 +40583,57 @@ Stage Summary:
 - v0.7+: TD-SPECIAL-8 (HIR index for O(1) method resolution).
 - v0.7+: TD-SPECIAL-9 (remove loop {} markers via fat pointer field access).
 - v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
+
+---
+Task ID: stage50
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 50 (v0.6) — TD-SPECIAL-9: replaced 3 loop {} markers in str
+intrinsics with __landin_unreachable calls. Added pre-declare in pipeline.rs.
+v0.601.0. 5436 tests, 0 failures. Runtime: str::len()=5 (interception works).
+
+3秒启动自检:
+- 定位: L2 (prelude + pipeline.rs, 3 lines changed + 1 pre-declare)
+- 对齐: 已查 Stage 49 audit report (TD-SPECIAL-9 identified)
+- 阻断: v0.600.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Replaced loop {} with __landin_unreachable in str intrinsics
+   - 引用 §1.0 原則 4 (报错 > 静默): loop {} silently hangs;
+     __landin_unreachable reports "internal error: entered unreachable code".
+   - 引用 §12 (最优 > 最小): if interception path ever breaks, user gets
+     clear error message instead of infinite loop.
+   - These bodies are NEVER executed — lookup_primitive_intrinsic
+     intercepts before body lowering. The unreachable call is a safety net.
+
+2. Added __landin_unreachable pre-declare in pipeline.rs
+   - TextEmitter IR needs the declaration for llvm-as validity.
+   - Same pattern as __landin_panic_msg pre-declare.
+
+裁剪点:
+- L2 — prelude + pipeline.rs only, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (safety improvement, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for safety improvements
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: str::len() → 5 ✓ (interception still works)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause improvement. loop {} markers silently hang if interception
+  fails; __landin_unreachable reports a diagnostic message. This aligns
+  with §1.0 原則 4 (报错 > 静默) — errors must be explicit, not silent.
+
+Stage Summary:
+- 3 loop {} markers REPLACED with __landin_unreachable (TD-SPECIAL-9)
+- 1 pre-declare ADDED in pipeline.rs (__landin_unreachable)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — safety improvement, no regression)
+
+下一步:
+- v0.7+: TD-DISPLAY-TRAIT (format! param redesign for trait dispatch).
+- v0.7+: TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+- v0.7+: TD-SPECIAL-8 (HIR index for O(1) method resolution).
+- v0.7+: TD-SPECIAL-10 (unify TextEmitter + LLVMSysEmitter).
