@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.593.0 (v0.5 Stage 42 — TD-COMPILE-TIME-MACROS: stringify!/concat! compile-time evaluation; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.594.0 (v0.5 Stage 43 — TD-PANIC-CONSOLIDATION + file!/line!/module_path! compile-time evaluation; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 Stage 42 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 42 implements TD-COMPILE-TIME-MACROS — `stringify!` and `concat!` are now evaluated at macro expansion time, producing string literal tokens directly (bypassing the broken runtime `__landin_*` function call path). Added `expand_compile_time_macro` dispatcher in macro_expand/expansion.rs with 4 new functions. Runtime verified: `stringify!(1 + 2)` → `"1 + 2"`, `concat!("hello", " ", "world")` → `"hello world"`. Architecture health: 9.85/10 (stable — compile-time macro evaluation, no regression). |
+| **Status** | ✅ **v0.5 Stage 43 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 43 implements two P2 TDs: (1) **TD-PANIC-CONSOLIDATION** — added unified `__landin_panic_fmt(msg) -> !` C wrapper; 3 special-case panic wrappers now format messages locally and call the unified function. (2) **file!/line!/module_path!** — extended `expand_compile_time_macro_with_source` to handle 3 more compile-time macros needing span info; added `expand_macros_with_errors_and_source` that threads SourceMap + file_name from driver to macro_expand. Runtime verified: `file!()` → file name, `line!()` → correct line number, `module_path!()` → empty string (MVP). 5 of 8 compile-time macros now work. Architecture health: 9.85/10 (stable — 2 root-cause TD fixes, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

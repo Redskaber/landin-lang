@@ -36,8 +36,18 @@ pub(crate) fn compile_inner(
 
     // Stage 18.141 §13.4 J2: extracted to driver_codegen_prep.rs
     driver_codegen_prep::pre_intern_macro_symbols(&mut interner);
-    let (tokens, macro_errs) =
-        crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
+    // Stage 43 (v0.5): Pass source_map + file_name for file!/line! macros.
+    // Per §1.0 原則 6 (通解 > 特解): one expansion path with optional source info.
+    let source_map = crate::session::SourceMap::new(src);
+    let file_name: String = entry_path
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<input>".to_string());
+    let (tokens, macro_errs) = crate::parser::macro_expand::expand_macros_with_errors_and_source(
+        tokens,
+        &mut interner,
+        Some(&source_map),
+        &file_name,
+    );
     errors.macro_errors = macro_errs;
 
     // === Stage 0: Parse ===

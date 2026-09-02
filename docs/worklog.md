@@ -40161,3 +40161,72 @@ Stage Summary:
 - Stage 44 (v0.5): TD-PRELUDE-MACRO-TIMING (prelude injection before
   macro_expand) + TD-PANIC-CONSOLIDATION (3 panic_* → 1).
 - Stage 45+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT.
+
+---
+Task ID: stage43
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 43 (v0.5) — TD-PANIC-CONSOLIDATION (unified __landin_panic_fmt)
++ file!/line!/module_path! compile-time evaluation (5 of 8 macros now work).
+v0.594.0. 5436 tests, 0 failures. Runtime: file!()=filename, line!()=lineno.
+
+3秒启动自检:
+- 定位: L3 (runtime.rs + macro_expand + driver pipeline + prelude)
+- 对齐: 已查 Stage 42 worklog (next MUV: file!/line! + panic consolidation)
+- 阻断: v0.593.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. TD-PANIC-CONSOLIDATION: Added __landin_panic_fmt(msg) -> ! as 通解
+   - 引用 §1.0 原則 6 (通解 > 特解): one panic function for all paths.
+   - 引用 §12 (最优 > 最小): root-cause consolidation — 3 panic_* wrappers
+     now format messages locally and call the unified function.
+   - Kept 3 wrappers for backward compat (codegen call sites unchanged).
+
+2. file!/line!/module_path!: Threaded SourceMap + file_name to macro_expand
+   - 引用 §1.0 原則 6 (通解 > 特解): one compile-time evaluation path
+     with optional source info.
+   - 引用 §12 (最优 > 最小): root-cause fix — thread span info to
+     macro_expand, not patch with runtime stubs.
+   - Added expand_macros_with_errors_and_source + expand_macro_calls_with_errors_and_source
+   - Added expand_compile_time_macro_with_source (handles file/line/module_path)
+   - Updated compile_inner.rs to construct SourceMap and pass file_name
+
+3. module_path! MVP returns empty string (module system not yet implemented)
+   - Per §1.0 原則 9 (正确 > 妥协): document the MVP limitation.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD fixes, additive features)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for P2 TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - file!() → "<input>" ✓
+  - line!() → 2 ✓ (correct line number)
+  - module_path!() → "" ✓ (MVP)
+  - stringify!/concat!/panic!/unreachable! all still work ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Two P2 TDs resolved at the architecture layer:
+  - Panic consolidation: unified __landin_panic_fmt for all panic paths
+  - Compile-time macros: span info threaded from driver to macro_expand
+  No runtime stubs, no special-case handling. 5 of 8 compile-time macros
+  now work; remaining 3 (env/option_env/include_str) need I/O (v0.6+).
+
+Stage Summary:
+- 2 P2 root-cause TDs FIXED (TD-PANIC-CONSOLIDATION + file!/line!/module_path!)
+- 1 unified C wrapper ADDED (__landin_panic_fmt)
+- 3 compile-time macros IMPLEMENTED (file!, line!, module_path!)
+- 2 new expansion functions ADDED (with_source variants)
+- 5 of 8 compile-time macros now work (stringify/concat/file/line/module_path)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — 2 root-cause TD fixes, no regression)
+
+下一步:
+- Stage 44 (v0.5): TD-PRELUDE-MACRO-TIMING (prelude injection before
+  macro_expand) — driver pipeline refactor.
+- Stage 45+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT +
+  env!/option_env!/include_str! (need compile-time I/O).

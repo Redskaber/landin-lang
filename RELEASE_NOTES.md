@@ -3,13 +3,103 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.593.0 (v0.5 Stage 42 — TD-COMPILE-TIME-MACROS: stringify!/concat! compile-time evaluation; 5436 tests) |
+| **Current version** | v0.594.0 (v0.5 Stage 43 — TD-PANIC-CONSOLIDATION + file!/line!/module_path! compile-time evaluation; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.594.0 — Stage 43 (v0.5) — TD-PANIC-CONSOLIDATION + file!/line!/module_path! Compile-Time Evaluation
+
+### Overview
+
+Stage 43 (v0.5) implements two P2 TDs:
+
+1. **TD-PANIC-CONSOLIDATION**: Added unified `__landin_panic_fmt(msg) -> !`
+   C wrapper. The 3 special-case panic wrappers (`__landin_panic_overflow`,
+   `__landin_panic_bounds_check`, `__landin_panic_div_by_zero`) now format
+   their messages into a local buffer and call `__landin_panic_fmt`,
+   reducing code duplication.
+
+2. **file!/line!/module_path! compile-time evaluation**: Extended
+   `expand_compile_time_macro_with_source` to handle 3 more compile-time
+   macros that need span info:
+   - `file!()` → string literal of the current file name
+   - `line!()` → integer literal of the current line number
+   - `module_path!()` → string literal (MVP: empty string, module system TBD)
+
+### Root Causes Fixed
+
+#### TD-PANIC-CONSOLIDATION (P2 — runtime.rs layer)
+
+**Symptom**: 3 separate C wrappers (`__landin_panic_overflow`,
+`__landin_panic_bounds_check`, `__landin_panic_div_by_zero`) each
+duplicated the `fprintf(stderr, "panic: ...") + exit(1)` pattern.
+
+**Root cause**: Each panic path had its own C function with hardcoded
+fprintf format string — a special-case solution (特解).
+
+**Fix**: Added `__landin_panic_fmt(msg)` as the 通解 — a single function
+that prints "panic: {msg}\n" and exits. The 3 special-case wrappers now
+format their messages locally and call `__landin_panic_fmt`.
+
+**Per §1.0 原則 6 (通解 > 特解)**: one panic function for all paths.
+**Per §12 (最优 > 最小)**: root-cause consolidation — format at call site,
+panic via single function.
+
+#### file!/line!/module_path! (P2 — macro expansion layer)
+
+**Symptom**: `file!()`, `line!()`, `module_path!()` expanded to
+`__landin_file(...)`, `__landin_line(...)`, `__landin_module_path(...)`
+calls, but these runtime functions were never declared.
+
+**Root cause**: These macros need span info (file name, line number) which
+wasn't available in `expand_macros_with_errors`.
+
+**Fix**: Added `expand_macros_with_errors_and_source` that accepts
+`Option<&SourceMap>` and `&str` file name. Updated `compile_inner.rs` to
+construct SourceMap and pass it through. Added
+`expand_compile_time_macro_with_source` that handles file!/line!/module_path!
+
+**Per §1.0 原則 6 (通解 > 特解)**: one compile-time evaluation path with
+optional source info.
+**Per §12 (最优 > 最小)**: root-cause fix — thread span info to macro_expand.
+
+### Runtime Verified
+
+- `file!()` → `"<input>"` ✓ (file name from compile_inner)
+- `line!()` → `2` ✓ (correct line number from SourceMap)
+- `module_path!()` → `""` ✓ (MVP: empty string)
+- `stringify!(1 + 2)` → `"1 + 2"` ✓ (Stage 42, still works)
+- `concat!("a", "b")` → `"ab"` ✓ (Stage 42, still works)
+- `panic!("msg")` → `panic: msg` ✓ (Stage 40.2, still works)
+- `unreachable!("msg")` → `internal error: ...` ✓ (Stage 40.3, still works)
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+
+### Compile-Time Macros Progress
+
+| Macro | Stage | Status |
+|-------|-------|--------|
+| `stringify!` | 42 | ✓ Working |
+| `concat!` | 42 | ✓ Working |
+| `file!` | 43 | ✓ Working |
+| `line!` | 43 | ✓ Working |
+| `module_path!` | 43 | ✓ Working (MVP: empty) |
+| `env!` | — | Deferred (needs I/O) |
+| `option_env!` | — | Deferred (needs I/O) |
+| `include_str!` | — | Deferred (needs I/O) |
+
+**5 of 8 compile-time macros now work.** Remaining 3 need compile-time I/O
+(deferred to v0.6+ with build system integration).
 
 ---
 

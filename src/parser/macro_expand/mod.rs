@@ -1170,5 +1170,6 @@ pub use collection::{collect_macro_defs, collect_macro_defs_with_errors};
 // Stage 18.247: Expansion extracted to expansion.rs
 mod expansion;
 pub use expansion::{
-    expand_macro_calls, expand_macro_calls_with_errors, expand_macros, expand_macros_with_errors,
+    expand_macro_calls, expand_macro_calls_with_errors, expand_macro_calls_with_errors_and_source,
+    expand_macros, expand_macros_with_errors, expand_macros_with_errors_and_source,
 };

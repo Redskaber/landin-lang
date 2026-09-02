@@ -44,6 +44,9 @@ pub fn run_codegen_pipeline(
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
+    // Stage 43 (v0.5 — TD-PANIC-CONSOLIDATION): Unified panic function.
+    // Per §1.0 原則 6 (通解 > 特解): one panic function for all paths.
+    emitter.emit_declare("void @__landin_panic_fmt(ptr) noreturn");
     // Stage 14.69: __landin_str_eq is NOT pre-declared (emit_declare treats
     // all args as i32; this function needs ptr, i64 args). emit_call creates
     // the declaration with correct types on first use.

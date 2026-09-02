@@ -127,6 +127,11 @@ extern "C" {
     // Stage 41 (v0.5 — TD-SPECIAL-2): return type `!` (Never) — same
     // rationale as __landin_panic_msg.
     fn __landin_unreachable(msg: *const u8) -> !;
+    // Stage 43 (v0.5 — TD-PANIC-CONSOLIDATION): Unified panic with message.
+    // Per §1.0 原則 6 (通解 > 特解): one panic function for all paths.
+    // Per §12 (最优 > 最小): root-cause consolidation — 3 panic_* wrappers
+    // now call this internally.
+    fn __landin_panic_fmt(msg: *const u8) -> !;
     // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): i64→str conversion helper
     // for the prelude format! impl. Writes the decimal representation of
     // `val` to `buf`, returning the number of bytes written.

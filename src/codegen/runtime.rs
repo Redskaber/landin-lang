@@ -54,17 +54,34 @@ pub const LANDIN_C_WRAPPER: &str = r#"#include <stdio.h>
 #include <stdarg.h>
 extern int landin_main(void);
 /* Runtime stubs — codegen declares these as extern */
-void __landin_panic_overflow(int op, int lhs, int rhs) {
-    fprintf(stderr, "panic: arithmetic overflow (op=%d lhs=%d rhs=%d)\n", op, lhs, rhs);
+/* Stage 43 (v0.5 — TD-PANIC-CONSOLIDATION): Unified panic with message.
+   This is the 通解 for all panic paths — a single function that takes
+   a pre-formatted message string and calls exit(1).
+
+   The 3 special-case panic_* functions (overflow/bounds_check/div_by_zero)
+   now format their messages into a local buffer and call this function,
+   reducing code duplication. Future panic paths should use this directly.
+
+   Per §1.0 原則 6 (通解 > 特解): one panic function for all paths.
+   Per §12 (最优 > 最小): root-cause consolidation — format at call site,
+   panic via single function.
+   Per §1.0 原則 4 (报错 > 静默): prints message to stderr before exit. */
+void __landin_panic_fmt(const char* msg) {
+    fprintf(stderr, "panic: %s\n", msg);
     exit(1);
+}
+void __landin_panic_overflow(int op, int lhs, int rhs) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "arithmetic overflow (op=%d lhs=%d rhs=%d)", op, lhs, rhs);
+    __landin_panic_fmt(buf);
 }
 void __landin_panic_bounds_check(long long index, long long len) {
-    fprintf(stderr, "panic: index out of bounds (index=%lld len=%lld)\n", index, len);
-    exit(1);
+    char buf[128];
+    snprintf(buf, sizeof(buf), "index out of bounds (index=%lld len=%lld)", index, len);
+    __landin_panic_fmt(buf);
 }
 void __landin_panic_div_by_zero(void) {
-    fprintf(stderr, "panic: divide by zero\n");
-    exit(1);
+    __landin_panic_fmt("divide by zero");
 }
 /* Stage 13.14/18.27: eprint!/eprintln! helpers.
    Stage 18.27 unified the legacy single-arg `__landin_eprint(const char* s)`

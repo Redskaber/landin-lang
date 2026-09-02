@@ -18,6 +18,83 @@ pub fn expand_macro_calls(
     expand_macro_calls_with_errors(tokens, table, interner, &mut Vec::new())
 }
 
+/// Stage 43 (v0.5): Like expand_macro_calls_with_errors but with source_map
+/// and file_name for compile-time macros (file!, line!).
+pub fn expand_macro_calls_with_errors_and_source(
+    tokens: &[Token],
+    table: &MacroTable,
+    interner: &mut Rodeo,
+    errors: &mut Vec<MacroError>,
+    source_map: Option<&crate::session::SourceMap>,
+    file_name: &str,
+) -> Vec<Token> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+
+    while i < tokens.len() {
+        let is_macro_call = matches!(
+            (tokens.get(i).map(|t| &t.kind), tokens.get(i + 1).map(|t| &t.kind), tokens.get(i + 2).map(|t| &t.kind)),
+            (
+                Some(TokenKind::Ident(name_sym)),
+                Some(TokenKind::Not),
+                Some(TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket),
+            ) if table.contains_key(name_sym)
+        );
+
+        if is_macro_call {
+            let name_sym = if let TokenKind::Ident(s) = &tokens[i].kind {
+                *s
+            } else {
+                unreachable!("checked above")
+            };
+            let def = table.get(&name_sym).expect("checked above");
+            let name_str = interner.resolve(&name_sym).to_string();
+            let call_span = tokens[i].span;
+
+            if let Some((input, after_close)) = collect_delimited(tokens, i + 2) {
+                let name = interner.resolve(&name_sym).to_string();
+                let compile_time_result = expand_compile_time_macro_with_source(
+                    &name, &input, interner, source_map, file_name, call_span,
+                );
+
+                if let Some(expanded) = compile_time_result {
+                    let call_span = tokens[i].span;
+                    let mut expanded = expanded;
+                    for tok in &mut expanded {
+                        tok.span = call_span;
+                    }
+                    out.extend(expanded);
+                } else if let Some(expanded) = expand_macro(def, &input, interner) {
+                    let call_span = tokens[i].span;
+                    let mut expanded = expanded;
+                    for tok in &mut expanded {
+                        tok.span = call_span;
+                    }
+                    out.extend(expanded);
+                } else {
+                    errors.push(MacroError::new(
+                        format!("no matching rule for macro '{name_str}'"),
+                        call_span,
+                    ));
+                    out.push(tokens[i].clone());
+                    out.push(tokens[i + 1].clone());
+                    out.push(tokens[i + 2].clone());
+                    out.extend(input.iter().cloned());
+                    if let Some(close) = tokens.get(after_close.saturating_sub(1)) {
+                        out.push(close.clone());
+                    }
+                }
+                i = after_close;
+                continue;
+            }
+        }
+
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    out
+}
+
 /// Stage 18.08: Like `expand_macro_calls` but also collects errors.
 ///
 /// When a `name!(...)` call site matches a known macro but no rule
@@ -141,6 +218,55 @@ fn expand_compile_time_macro(
     match name {
         "stringify" => Some(expand_stringify_macro(input, interner)),
         "concat" => Some(expand_concat_macro(input, interner)),
+        _ => None,
+    }
+}
+
+/// Stage 43 (v0.5): Compile-time macro evaluation with source info.
+/// Handles file!, line!, module_path! in addition to stringify!/concat!.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one compile-time evaluation path with
+/// optional source info for span-dependent macros.
+fn expand_compile_time_macro_with_source(
+    name: &str,
+    input: &[Token],
+    interner: &mut Rodeo,
+    source_map: Option<&crate::session::SourceMap>,
+    file_name: &str,
+    call_span: crate::session::Span,
+) -> Option<Vec<Token>> {
+    match name {
+        "stringify" => Some(expand_stringify_macro(input, interner)),
+        "concat" => Some(expand_concat_macro(input, interner)),
+        "file" => {
+            // file!() → string literal of the current file name.
+            let sym = interner.get_or_intern(file_name);
+            Some(vec![Token {
+                kind: TokenKind::StrLit(sym),
+                span: crate::session::Span::DUMMY,
+            }])
+        }
+        "line" => {
+            // line!() → integer literal of the current line number.
+            let line = if let Some(sm) = source_map {
+                sm.line_col(call_span.lo).line
+            } else {
+                0
+            };
+            Some(vec![Token {
+                kind: TokenKind::IntLit(line as u128, None),
+                span: crate::session::Span::DUMMY,
+            }])
+        }
+        "module_path" => {
+            // module_path!() → string literal of the module path.
+            // MVP: returns empty string (module system not yet implemented).
+            let sym = interner.get_or_intern("");
+            Some(vec![Token {
+                kind: TokenKind::StrLit(sym),
+                span: crate::session::Span::DUMMY,
+            }])
+        }
         _ => None,
     }
 }
@@ -279,13 +405,22 @@ pub fn expand_macros_with_errors(
     tokens: Vec<Token>,
     interner: &mut Rodeo,
 ) -> (Vec<Token>, Vec<MacroError>) {
+    expand_macros_with_errors_and_source(tokens, interner, None, "")
+}
+
+/// Stage 43 (v0.5): Like expand_macros_with_errors but with source_map
+/// and file_name for compile-time macros that need span info (file!, line!).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one expansion path for all macros,
+/// with optional source info for compile-time span-dependent macros.
+pub fn expand_macros_with_errors_and_source(
+    tokens: Vec<Token>,
+    interner: &mut Rodeo,
+    source_map: Option<&crate::session::SourceMap>,
+    file_name: &str,
+) -> (Vec<Token>, Vec<MacroError>) {
     let mut errors = Vec::new();
-    // Stage 18.10: Register built-in macros first (println/print/eprintln/eprint).
-    // Built-in macros have no-op rule bodies in Phase 1, so they pass through
-    // unchanged and the parser's existing special-case path still handles them.
     let mut table = build_builtin_macro_table(interner);
-    // Then collect user-defined macros. User macros override built-ins
-    // (extend() overwrites existing keys with the user's version).
     let user_table = collect_macro_defs_with_errors(&tokens, interner, &mut errors);
     table.extend(user_table);
     if table.is_empty() {
@@ -295,18 +430,20 @@ pub fn expand_macros_with_errors(
     let mut current = tokens;
     for round in 0..MAX_EXPANSION_ROUNDS {
         let mut round_errors = Vec::new();
-        let next = expand_macro_calls_with_errors(&current, &table, interner, &mut round_errors);
+        let next = expand_macro_calls_with_errors_and_source(
+            &current,
+            &table,
+            interner,
+            &mut round_errors,
+            source_map,
+            file_name,
+        );
         errors.extend(round_errors);
-        // Termination check: if the token stream didn't change at all
-        // (by structural equality), no more expansions are possible.
         if tokens_eq(&next, &current) {
             return (next, errors);
         }
         current = next;
-        // Stage 18.08: if this was the last round, emit a recursion error.
         if round + 1 == MAX_EXPANSION_ROUNDS {
-            // Stage 18.80 P2-D: Use first token's span instead of Span::DUMMY
-            // for better error location. If no tokens, fall back to DUMMY.
             let err_span = current
                 .first()
                 .map(|t| t.span)
