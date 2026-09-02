@@ -39375,3 +39375,48 @@ v0.25 Stage 37 Series — COMPLETE:
 - v0.26 planning: consider {:o} (octal), {:b} (binary) formatting,
   or other stdlib improvements (Vec::pop, Option::map, etc.).
 - TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains deferred.
+
+---
+Task ID: stage37-transition
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: v0.25→v0.26 stage transition. v0.25 Stage 37 series COMPLETE
+(format! {:?} debug + {:x} hex formatting). No remaining fixable TDs
+(TD-DISPLAY-TRAIT-MISSING is v0.6+ scope). Transitioning to v0.26.
+v0.583.0. 5359 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (stage transition — no code changes, docs + planning only)
+- 对齐: 已查 tech-debt-register.md (only TD-DISPLAY-TRAIT-MISSING P3 v0.6+
+  remains) + Stage 37.2 worklog (v0.26 planning: {:o}/{:b} or stdlib)
+- 阻断: v0.583.0 全绿 (5359 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. v0.25 COMPLETE — no remaining fixable TDs
+   - 引用 §6.2 升级判据: TD-DISPLAY-TRAIT-MISSING does NOT upgrade —
+     format! works correctly today (i64-only, {:?}/{:x} supported).
+     Display trait is v0.6+ scope per v0.6-roadmap.
+   - 引用 §1.0 原則 9 (正确 > 妥协): don't force v0.6+ work in v0.25.
+   - Decision: v0.25 COMPLETE. Transition to v0.26.
+
+2. v0.26 scope: format! {:o}/{:b} + stdlib improvements
+   - 引用 §1.0 原則 1 (长期 > 短期): invest in stdlib improvements now.
+   - 引用 §12 (最优 > 最小): {:o}/{:b} follow the same pattern as {:x}
+     — one C helper + one dispatch arm each. Stdl improvements (Vec::pop,
+     Option::map) add user value without new language features.
+   - Decision: v0.26 = format! {:o}/{:b} + Vec::pop + Option::map.
+
+裁剪点:
+- L2 — stage transition, no code changes
+- 安全理由: §1.2.1 — L2 can skip §14.5 deep review (design-only)
+
+§3.2 验收检查 (baseline verification):
+- cargo fmt --check ✓
+- cargo clippy -- -D warnings ✓
+- cargo test --release ✓ (5359 tests, 0 failures)
+
+下一步:
+- v0.26 Stage 38.1: format! {:o} (octal) + {:b} (binary) — same pattern
+  as {:x} (Stage 37.2). ~60 LOC + 66 tests.
+- v0.26 Stage 38.2: Vec::pop prelude impl — ~30 LOC + 33 tests.
+- v0.26 Stage 38.3: Option::map/and_then prelude impl — ~40 LOC + 33 tests.

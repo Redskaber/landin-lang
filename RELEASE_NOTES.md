@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.583.0 (v0.25 Stage 37.2 — format! {:x} hex formatting; __landin_i64_to_hex C helper + dispatch in prelude; 5 positive + 28 negative tests; runtime verified: format!("{:x}", 255) → "ff") |
+| **Current version** | v0.583.0 (v0.25 COMPLETE — format! {:?} debug + {:x} hex formatting; v0.25→v0.26 transition; 5359 tests; only TD-DISPLAY-TRAIT-MISSING P3 v0.6+ remains) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4461 integration tests = 5359 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
