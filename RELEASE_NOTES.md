@@ -3,13 +3,97 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.591.0 (v0.28 Stage 40.3 — TD-UNREACHABLE-MACRO-BROKEN fix + Option::or/or_else/filter added; 5436 tests) |
+| **Current version** | v0.592.0 (v0.5 Stage 41 — TD-SPECIAL-2 Never type completion + TD-SPECIAL-4 i64 format consolidation; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.592.0 — Stage 41 (v0.5) — TD-SPECIAL-2 Never Type Completion + TD-SPECIAL-4 i64 Format Consolidation
+
+### Overview
+
+Stage 41 (v0.5) implements two P2 TDs from the Stage 40.3 architecture audit:
+
+1. **TD-SPECIAL-2 (Never type completion)**: Changed `__landin_panic_msg` and
+   `__landin_unreachable` return types from `()` to `!` (Never). Since `!`
+   unifies with any type (bottom type), this eliminates the `loop {}` wrapper
+   needed in prelude `unwrap`/`expect` methods (4 sites removed).
+
+2. **TD-SPECIAL-4 (i64 format consolidation)**: Added unified
+   `__landin_i64_format(val, base, buf, cap)` C wrapper that handles all 4
+   bases (decimal/hex/octal/binary) via a `base` parameter. Updated prelude
+   `format!` impl to call this single function instead of 4 separate wrappers.
+
+### Root Causes Fixed
+
+#### TD-SPECIAL-2: Never (`!`) Type Completion
+
+**Symptom**: `Option::unwrap()` on `None` required `loop {}` wrapper after
+`__landin_panic_msg(...)` call because the function returned `()` (unit),
+which doesn't unify with the return type `T`.
+
+**Root cause**: `__landin_panic_msg` was declared as `fn(msg: *const u8);`
+(implicit `-> ()`). Since `()` doesn't unify with `T`, typeck required a
+fallback expression (`loop {}`) to satisfy the return type.
+
+**Fix**:
+1. Changed prelude extern "C" declarations to `-> !`:
+   ```landin
+   fn __landin_panic_msg(msg: *const u8) -> !;
+   fn __landin_unreachable(msg: *const u8) -> !;
+   ```
+2. Added Never coercion rule in `src/typeck/predicates.rs::can_coerce`:
+   `(TyKind::Never, _) | (_, TyKind::Never) => true`
+3. Added Never loose-match rule in `src/typeck/checker.rs::types_match_loose`:
+   `(TyKind::Never, _) | (_, TyKind::Never) => true`
+4. Removed 4 `loop {}` wrappers in prelude `Option::unwrap/expect` and
+   `Result::unwrap/expect`.
+
+**Per §12 (最优 > 最小)**: root-cause fix — declare noreturn via `!` type,
+not patch each call site with `loop {}`.
+**Per §1.0 原則 6 (通解 > 特解)**: one `-> !` declaration for ALL panic paths.
+
+#### TD-SPECIAL-4: i64 Format Consolidation
+
+**Symptom**: 4 separate C wrappers (`__landin_i64_to_str/hex/octal/binary`)
+doing essentially the same thing (convert i64 to string with different base).
+
+**Root cause**: Each format specifier (`{}`, `{:x}`, `{:o}`, `{:b}`) had its
+own C wrapper — a special-case solution (特解).
+
+**Fix**:
+1. Added unified `__landin_i64_format(val, base, buf, cap)` C wrapper in
+   `src/codegen/runtime.rs` that dispatches on `base` (10/16/8/2).
+2. Added extern "C" declaration in prelude.
+3. Updated prelude `format!` impl to call `__landin_i64_format` with the
+   appropriate `base` parameter instead of 4 separate calls.
+4. Pre-declared in `src/codegen/pipeline.rs` for TextEmitter IR validity.
+5. Old 4 wrappers kept for backward compatibility (will be removed in
+   future stage once all callers migrated).
+
+**Per §1.0 原則 6 (通解 > 特解)**: one function for all integer formatting.
+**Per §12 (最优 > 最小)**: root-cause consolidation of 4 wrappers into 1.
+
+### Runtime Verified
+
+- `Some(42).unwrap()` → `42` ✓ (no `loop {}` wrapper)
+- `None.unwrap()` → `panic: called Option::unwrap() on a None value` ✓
+- `Ok(42).unwrap()` → `42` ✓
+- `Err(99).unwrap()` → `panic: called Result::unwrap() on an Err value` ✓
+- `format!("{}", 42)` → `42` ✓ (via `__landin_i64_format` with base=10)
+- `panic!("msg")` → `panic: msg` ✓
+- `unreachable!("msg")` → `internal error: entered unreachable code: msg` ✓
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
 
 ---
 

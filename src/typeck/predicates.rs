@@ -83,6 +83,13 @@ pub(super) fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         // Infer/Error: always coercible
         (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
         (TyKind::Error, _) | (_, TyKind::Error) => true,
+        // Stage 41 (v0.5 — TD-SPECIAL-2): Never (`!`) coerces to any type.
+        // This is the bottom type — a `!`-typed expression (e.g.,
+        // `panic!(...)`, `unreachable!(...)`, `loop {}`) can unify with
+        // any expected type because it never produces a value.
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all noreturn paths.
+        // Per §12 (最优 > 最小): root-cause fix — `!` is bottom type.
+        (TyKind::Never, _) | (_, TyKind::Never) => true,
         // Stage 18.71: REMOVED `(Int(_)|Uint(_), Bool) => true` rule.
         // Per §1.0 原则 9 "正确 > 妥协": Rust does NOT allow implicit
         // Bool→Int/Uint coercion. `let x: i32 = true;` is a type error

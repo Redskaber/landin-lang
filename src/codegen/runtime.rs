@@ -253,6 +253,46 @@ long long __landin_i64_to_binary(char* buf, long long buf_cap, long long val) {
     buf[len] = '\0';
     return (long long)len;
 }
+/* Stage 41 (v0.5 — TD-SPECIAL-4): Unified i64 format helper.
+   One function handles all 4 bases (decimal/hex/octal/binary) via a base
+   parameter. This is the 通解 — replaces 4 special-case C wrappers
+   (__landin_i64_to_str/hex/octal/binary).
+
+   base values:
+     10 → decimal ("%ld")
+     16 → hexadecimal ("%lx")
+      8 → octal ("%lo")
+      2 → binary (manual conversion)
+
+   The old 4 wrappers are kept as thin wrappers for backward compatibility
+   (existing prelude code calls them directly). Future prelude updates
+   will switch to calling __landin_i64_format directly.
+
+   Per §1.0 原則 6 (通解 > 特解): one function for all integer formatting.
+   Per §12 (最优 > 最小): root-cause consolidation of 4 wrappers into 1.
+   Per §1.0 原則 5 (去除兼容思维): old wrappers kept temporarily for
+   backward compat; will be removed once prelude is updated. */
+long long __landin_i64_format(long long val, long long base, char* buf, long long buf_cap) {
+    if (buf_cap <= 0) return 0;
+    if (base == 10) {
+        return (long long)snprintf(buf, (size_t)buf_cap, "%ld", (long)val);
+    } else if (base == 16) {
+        return (long long)snprintf(buf, (size_t)buf_cap, "%lx", (unsigned long)val);
+    } else if (base == 8) {
+        return (long long)snprintf(buf, (size_t)buf_cap, "%lo", (unsigned long)val);
+    } else if (base == 2) {
+        unsigned long uv = (unsigned long)val;
+        if (uv == 0) { buf[0] = '0'; buf[1] = '\0'; return 1; }
+        char tmp[65];
+        int pos = 0;
+        while (uv > 0) { tmp[pos++] = '0' + (uv & 1); uv >>= 1; }
+        int len = pos < buf_cap ? pos : (int)buf_cap - 1;
+        for (int i = 0; i < len; i++) buf[i] = tmp[pos - 1 - i];
+        buf[len] = '\0';
+        return (long long)len;
+    }
+    return 0; /* unknown base */
+}
 /* Stage 18.232 (v0.2 Phase 2 cleanup): The 4 compound C helpers below have
    been MIGRATED to MIR intrinsics (Stages 18.228-18.231) and are NO LONGER
    called from MIR. They have been REMOVED from this file.

@@ -88,6 +88,10 @@ pub fn run_codegen_pipeline(
     // Stage 38.1: Pre-declare __landin_i64_to_octal + __landin_i64_to_binary.
     emitter.emit_declare("i64 @__landin_i64_to_octal(ptr, i64, i64)");
     emitter.emit_declare("i64 @__landin_i64_to_binary(ptr, i64, i64)");
+    // Stage 41 (v0.5 — TD-SPECIAL-4): Pre-declare __landin_i64_format
+    // (unified i64 formatting — replaces 4 special-case wrappers).
+    // Per §1.0 原則 6 (通解 > 特解): one declaration for all integer formatting.
+    emitter.emit_declare("i64 @__landin_i64_format(i64, i64, ptr, i64)");
     emitter.emit_declare("i32 @__landin_str_eq(ptr, i64, ptr, i64)");
     // Stage 18.334: Pre-declare printf (libc variadic) — called directly from
     // codegen for println!/print! macros. Without this, TextEmitter IR is

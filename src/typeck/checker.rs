@@ -559,6 +559,9 @@ pub(super) fn type_has_unresolved_substs(ty: &crate::mir::ty::Ty) -> bool {
 pub(super) fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
     use crate::mir::ty::TyKind;
     match (&a.kind, &b.kind) {
+        // Stage 41 (v0.5 — TD-SPECIAL-2): Never (`!`) matches any type.
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all noreturn paths.
+        (TyKind::Never, _) | (_, TyKind::Never) => true,
         // Str ↔ Ref(_, _, Str): string literal vs &str reference
         (TyKind::Str, TyKind::Ref(_, _, inner)) if matches!(inner.kind, TyKind::Str) => true,
         (TyKind::Ref(_, _, inner), TyKind::Str) if matches!(inner.kind, TyKind::Str) => true,
@@ -634,9 +637,9 @@ pub(super) fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) 
         // is bound to... hmm, actually Bool literals have type Bool directly,
         // not Infer. So this case shouldn't be needed. But adding it for safety.
         (TyKind::Bool, TyKind::Bool) => true,
-        // Never (!) type is compatible with everything (divergence)
-        // Per §1.0 原則 9: Never type unifies with all types (like Rust).
-        (TyKind::Never, _) | (_, TyKind::Never) => true,
+        // Stage 41 (v0.5 — TD-SPECIAL-2): Never handling moved to line 564
+        // (top of match) to ensure it's checked first. The duplicate here
+        // was removed to eliminate the unreachable-pattern warning.
         // Tuple(()) ↔ Tuple(): unit type match (also handles general tuple matching)
         (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) if a_tys.len() == b_tys.len() => a_tys
             .iter()

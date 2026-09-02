@@ -106,12 +106,27 @@ extern "C" {
     // not patch each panic! call site.
     // Per §2.2 根因思维: fix the missing declaration, not the symptom
     // (resolver error).
-    fn __landin_panic_msg(msg: *const u8);
+    //
+    // Stage 41 (v0.5 — TD-SPECIAL-2): return type changed from `()` to `!`
+    // (Never type). Since C `exit(1)` never returns, the Landin-side
+    // declaration should reflect this via `-> !`. This lets typeck unify
+    // `!` with any type (unify.rs:749 — Never unifies with anything),
+    // eliminating the `loop {}` wrapper needed in prelude unwrap/expect
+    // methods (4 sites removed).
+    //
+    // Per §12 (最优 > 最小): root-cause fix — declare noreturn via `!`
+    // type, not patch each call site with `loop {}`.
+    // Per §1.0 原則 6 (通解 > 特解): one `-> !` declaration for ALL
+    // panic paths (panic!, unreachable!, unwrap, expect).
+    fn __landin_panic_msg(msg: *const u8) -> !;
     // Stage 40.2 (v0.28 — TD-PANIC-MACRO-BROKEN): unreachable! macro
     // runtime helper. Like __landin_panic_msg, this was missing from the
     // prelude extern "C" block, making unreachable! macro unusable.
     // Per §1.0 原則 6 (通解 > 特解): one declaration for all panic paths.
-    fn __landin_unreachable(msg: *const u8);
+    //
+    // Stage 41 (v0.5 — TD-SPECIAL-2): return type `!` (Never) — same
+    // rationale as __landin_panic_msg.
+    fn __landin_unreachable(msg: *const u8) -> !;
     // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): i64→str conversion helper
     // for the prelude format! impl. Writes the decimal representation of
     // `val` to `buf`, returning the number of bytes written.
@@ -132,6 +147,14 @@ extern "C" {
     // Stage 38.1 (v0.26): i64→binary string conversion helper.
     // Writes the binary representation of `val` to `buf`.
     fn __landin_i64_to_binary(buf: *mut u8, cap: i64, val: i64) -> i64;
+    // Stage 41 (v0.5 — TD-SPECIAL-4): Unified i64 format helper.
+    // One function handles all 4 bases (decimal/hex/octal/binary) via a
+    // `base` parameter (10/16/8/2). This is the 通解 that replaces the 4
+    // special-case wrappers above.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one function for all integer formatting.
+    // Per §12 (最优 > 最小): root-cause consolidation of 4 wrappers into 1.
+    fn __landin_i64_format(val: i64, base: i64, buf: *mut u8, cap: i64) -> i64;
 }
 // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): format! prelude impl.
 //
@@ -190,23 +213,25 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
                     // Stage 38.1: {:o} → octal format, {:b} → binary format.
                     // MVP for {:?}: same as {} (decimal i64). Full Debug needs Display trait (v0.6+).
                     // Per §1.0 原則 9 (正确 > 妥协): document the MVP limitation.
-                    // Per §1.0 原則 6 (通解 > 特解): one dispatch point for all specifiers.
-                    let written: i64 = if spec_char == 63u8 {
-                        // '?' — debug format (MVP: decimal, same as {})
-                        __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)
-                    } else if spec_char == 120u8 {
-                        // 'x' — lowercase hex format
-                        __landin_i64_to_hex(out_ptr + out_len, buf_size - out_len as i64, val)
+                    // Stage 41 (v0.5 — TD-SPECIAL-4): unified __landin_i64_format
+                    // call with base parameter (10/16/8/2). Replaces 4 separate
+                    // C wrapper calls — one 通解 for all integer formatting.
+                    // Per §1.0 原則 6 (通解 > 特解): one dispatch, one function.
+                    let base: i64 = if spec_char == 120u8 {
+                        16i64  // 'x' — hex
                     } else if spec_char == 111u8 {
-                        // 'o' — octal format
-                        __landin_i64_to_octal(out_ptr + out_len, buf_size - out_len as i64, val)
+                        8i64   // 'o' — octal
                     } else if spec_char == 98u8 {
-                        // 'b' — binary format
-                        __landin_i64_to_binary(out_ptr + out_len, buf_size - out_len as i64, val)
+                        2i64   // 'b' — binary
                     } else {
-                        // Default: decimal
-                        __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, val)
+                        10i64  // default (incl. '?' debug, no specifier)
                     };
+                    let written: i64 = __landin_i64_format(
+                        val,
+                        base,
+                        out_ptr + out_len,
+                        buf_size - out_len as i64,
+                    );
                     out_len = out_len + written as usize;
                     arg_idx = arg_idx + 1usize;
                 }
@@ -216,7 +241,9 @@ fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
                 // No specifier — plain {} (2 bytes: { })
                 if arg_idx < args.len() {
                     let arg_ptr: *const i64 = args.ptr + arg_idx;
-                    let written: i64 = __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, *arg_ptr);
+                    // Stage 41 (v0.5 — TD-SPECIAL-4): unified __landin_i64_format
+                    // with base=10 for decimal (default).
+                    let written: i64 = __landin_i64_format(*arg_ptr, 10i64, out_ptr + out_len, buf_size - out_len as i64);
                     out_len = out_len + written as usize;
                     arg_idx = arg_idx + 1usize;
                 }
@@ -280,19 +307,13 @@ impl<T> Option<T> {
     fn unwrap(self) -> T {
         match self {
             Some(v) => v,
-            None => {
-                __landin_panic_msg("called `Option::unwrap()` on a `None` value".ptr);
-                loop {}
-            }
+            None => __landin_panic_msg("called `Option::unwrap()` on a `None` value".ptr),
         }
     }
     fn expect(self, msg: &str) -> T {
         match self {
             Some(v) => v,
-            None => {
-                __landin_panic_msg(msg.ptr);
-                loop {}
-            }
+            None => __landin_panic_msg(msg.ptr),
         }
     }
     // Stage 40.3 (v0.28): Option::or / or_else / filter — more combinators.
@@ -350,19 +371,13 @@ impl<T, E> Result<T, E> {
     fn unwrap(self) -> T {
         match self {
             Ok(v) => v,
-            Err(_) => {
-                __landin_panic_msg("called `Result::unwrap()` on an `Err` value".ptr);
-                loop {}
-            }
+            Err(_) => __landin_panic_msg("called `Result::unwrap()` on an `Err` value".ptr),
         }
     }
     fn expect(self, msg: &str) -> T {
         match self {
             Ok(v) => v,
-            Err(_) => {
-                __landin_panic_msg(msg.ptr);
-                loop {}
-            }
+            Err(_) => __landin_panic_msg(msg.ptr),
         }
     }
 }
@@ -380,7 +395,7 @@ impl<T, E> Result<T, E> {
 // Per §1.0 原則 6 (通解>特例): one Box type for all T — no per-type special cases.
 // Per §2 原則 9 (正确>妥协): the MVP is a temporary compromise; real Box with
 // auto-drop is the correct design (recorded as TD-BOX-AUTO-DROP).
-struct Box<T>(*mut T)
+struct Box<T>(*mut T);
 // Stage 31.6f (v0.19): Box::new migrated from MIR intrinsic to prelude impl.
 //
 // `Box::new(x)` now uses `sizeof(T)` (Stage 31.6e) + `extern "C"` __landin_alloc

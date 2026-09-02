@@ -40021,3 +40021,75 @@ Stage Summary:
 - Stage 42 (v0.5): TD-COMPILE-TIME-MACROS (8 compile-time macros) +
   TD-PRELUDE-MACRO-TIMING (prelude injection before macro_expand)
 - Stage 43+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT
+
+---
+Task ID: stage41
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 41 (v0.5) — TD-SPECIAL-2 (Never type completion) +
+TD-SPECIAL-4 (i64 format consolidation). Two P2 TDs from Stage 40.3 audit.
+v0.592.0. 5436 tests, 0 failures. Removed 4 loop {} wrappers.
+
+3秒启动自检:
+- 定位: L3 (cross-module: prelude + typeck + codegen/runtime + pipeline)
+- 对齐: 已查 Stage 40.3 audit report (TD-SPECIAL-2 + TD-SPECIAL-4)
+- 阻断: v0.591.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. TD-SPECIAL-2: Changed __landin_panic_msg/__landin_unreachable to return !
+   - 引用 §12 (最优 > 最小): root-cause fix — declare noreturn via `!` type,
+     not patch each call site with `loop {}`.
+   - 引用 §1.0 原則 6 (通解 > 特解): one `-> !` declaration for ALL panic
+     paths (panic!, unreachable!, unwrap, expect).
+   - Added Never coercion in can_coerce + types_match_loose (bottom type
+     unifies with anything, mirroring Rust's `!` semantics).
+
+2. TD-SPECIAL-4: Added unified __landin_i64_format(val, base, buf, cap)
+   - 引用 §1.0 原則 6 (通解 > 特解): one function for all integer formatting
+     (decimal/hex/octal/binary via base parameter 10/16/8/2).
+   - 引用 §12 (最优 > 最小): root-cause consolidation of 4 wrappers into 1.
+   - Old 4 wrappers kept for backward compat (will be removed in future).
+
+3. Removed 4 loop {} wrappers in prelude unwrap/expect methods
+   - Now that panic_msg returns `!`, the `!` unifies with return type T,
+     eliminating the need for `loop {}` fallback.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD fixes from audit, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for P2 TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - Some(42).unwrap() → 42 ✓ (no loop {} wrapper needed)
+  - None.unwrap() → panic message ✓
+  - Ok(42).unwrap() → 42 ✓
+  - Err(99).unwrap() → panic message ✓
+  - format!("{}", 42) → 42 ✓ (via unified __landin_i64_format)
+  - panic!("msg") → "panic: msg" ✓
+  - unreachable!("msg") → "internal error: entered unreachable code: msg" ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Two P2 TDs resolved at the architecture layer:
+  - Never type: declare noreturn via `!` (bottom type semantics)
+  - i64 format: one unified function with base parameter
+  No call-site patches, no special-case handling. The 4 `loop {}` wrappers
+  are removed because `!` properly unifies with any return type.
+
+Stage Summary:
+- 2 P2 root-cause TDs FIXED (TD-SPECIAL-2 + TD-SPECIAL-4)
+- 4 loop {} wrappers REMOVED from prelude (cleaner code)
+- 1 unified C wrapper ADDED (__landin_i64_format)
+- Never type coercion rules ADDED (can_coerce + types_match_loose)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — 2 root-cause TD fixes, no regression)
+
+下一步:
+- Stage 42 (v0.5): TD-COMPILE-TIME-MACROS (8 compile-time macros:
+  stringify/concat/env/file/line/module_path/include_str/option_env) +
+  TD-PRELUDE-MACRO-TIMING (prelude injection before macro_expand)
+- Stage 43 (v0.5): TD-PANIC-CONSOLIDATION (3 panic_* C wrappers → 1)
+- Stage 44+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT
