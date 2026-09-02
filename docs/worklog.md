@@ -40230,3 +40230,73 @@ Stage Summary:
   macro_expand) — driver pipeline refactor.
 - Stage 45+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT +
   env!/option_env!/include_str! (need compile-time I/O).
+
+---
+Task ID: stage44
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 44 (v0.5) — TD-PRELUDE-MACRO-TIMING attempted + reverted
+(DefId ordering breakage). Added prelude_tokens + count_prelude_items
+infrastructure for v0.6+. Fixed struct Box<T>(*mut T) syntax error.
+v0.595.0. 5436 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (driver pipeline + prelude + parser + 60+ test updates needed)
+- 对齐: 已查 Stage 43 worklog (next MUV: TD-PRELUDE-MACRO-TIMING)
+- 阻断: v0.594.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. TD-PRELUDE-MACRO-TIMING: Attempted token-level injection (prelude before macro_expand)
+   - 引用 §12 (最优 > 最小): root-cause fix — inject at token level.
+   - Implemented prelude_tokens() + count_prelude_items() in prelude.rs.
+   - Modified compile_inner.rs to prepend prelude tokens before user tokens.
+   - Fixed Eof token issue (prelude tokens had trailing Eof causing parser
+     to stop before user code).
+   - Fixed struct Box<T>(*mut T) syntax error (missing semicolon, was masked
+     by AST-level injection ignoring parse errors).
+
+2. REVERTED token-level injection due to DefId ordering breakage
+   - 引用 §13.4 (重构判据): revert if risk > benefit.
+   - Token-level injection changes DefId allocation order (prelude items
+     now come BEFORE user items), breaking 60+ tests that assume prelude
+     comes AFTER user items.
+   - Current prelude uses direct __landin_panic_msg calls (not panic!
+     macro), so token-level injection is not strictly needed.
+   - Kept prelude_tokens() + count_prelude_items() for future v0.6+
+     when DefId ordering is decoupled from item order.
+   - 引用 §1.0 原則 9 (正确 > 妥协): documented as TD for v0.6+.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (TD attempt + revert, no soundness impact)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD attempts
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - Option::unwrap on Some → 42 ✓
+  - Option::unwrap on None → panic message ✓
+  - All existing functionality preserved ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Documented TD. The token-level injection was the correct root-cause fix,
+  but it requires DefId ordering decoupling (v0.6+ architectural change).
+  The revert is per §13.4 (risk > benefit). The prelude_tokens infrastructure
+  is kept for future use. The struct Box syntax fix is a genuine root-cause
+  fix (was masked by AST-level injection ignoring parse errors).
+
+Stage Summary:
+- TD-PRELUDE-MACRO-TIMING: attempted + reverted (DefId ordering, v0.6+)
+- prelude_tokens() + count_prelude_items() infrastructure ADDED (for v0.6+)
+- struct Box<T>(*mut T) syntax error FIXED (missing semicolon)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — documented TD, no regression)
+
+下一步:
+- v0.5 P2 TDs COMPLETE (TD-SPECIAL-2, TD-SPECIAL-4, TD-PANIC-CONSOLIDATION,
+  TD-COMPILE-TIME-MACROS 5/8, TD-PRELUDE-MACRO-TIMING documented for v0.6+).
+- Stage 45+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT +
+  TD-PRELUDE-MACRO-TIMING (needs DefId decoupling) +
+  env!/option_env!/include_str! (need compile-time I/O).

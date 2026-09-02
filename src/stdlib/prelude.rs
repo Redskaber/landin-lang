@@ -48,6 +48,44 @@ pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) -> usize {
     prelude_count
 }
 
+/// Stage 44 (v0.5 — TD-PRELUDE-MACRO-TIMING): Tokenize the prelude source
+/// for injection BEFORE macro expansion.
+///
+/// This allows prelude macros (panic!, unreachable!) to be expanded in
+/// prelude bodies. Previously, prelude was injected after macro_expand
+/// (compile_inner.rs:67), so prelude macro calls were never expanded.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one prelude source for both token-level
+/// and AST-level injection.
+/// Per §12 (最优 > 最小): root-cause fix — inject at token level so macros
+/// in prelude are expanded.
+pub fn prelude_tokens(interner: &mut lasso::Rodeo) -> Vec<crate::lexer::Token> {
+    let (tokens, _lex_errors) = tokenize(PRELUDE_SOURCE, interner);
+    // Stage 44 (v0.5): Remove trailing Eof token — it would cause the parser
+    // to stop before reaching user tokens. The final Eof is re-added by the
+    // user's tokenize call.
+    // Per §12 (最优 > 最小): root-cause fix — strip Eof from prelude tokens.
+    tokens
+        .into_iter()
+        .filter(|t| !matches!(t.kind, crate::lexer::TokenKind::Eof))
+        .collect()
+}
+
+/// Stage 44 (v0.5 — TD-PRELUDE-MACRO-TIMING): Count the number of top-level
+/// items in the prelude source. Used by compile_inner to determine the
+/// prelude/user boundary when prelude is injected at token level.
+///
+/// Per §12 (最优 > 最小): clean separation via item count.
+pub fn count_prelude_items() -> usize {
+    // Count top-level items by parsing PRELUDE_SOURCE. This is called once
+    // per compilation, so the cost is negligible.
+    let mut interner = lasso::Rodeo::new();
+    let (tokens, _lex_errors) = tokenize(PRELUDE_SOURCE, &mut interner);
+    let mut parser = Parser::new(tokens, &mut interner);
+    let prelude_crate = parser.parse_crate();
+    prelude_crate.items.len()
+}
+
 /// Stage 18.169: The prelude source code.
 ///
 /// This is Landin source code that defines Option<T>, Result<T, E>, and

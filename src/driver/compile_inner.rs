@@ -36,6 +36,7 @@ pub(crate) fn compile_inner(
 
     // Stage 18.141 §13.4 J2: extracted to driver_codegen_prep.rs
     driver_codegen_prep::pre_intern_macro_symbols(&mut interner);
+
     // Stage 43 (v0.5): Pass source_map + file_name for file!/line! macros.
     // Per §1.0 原則 6 (通解 > 特解): one expansion path with optional source info.
     let source_map = crate::session::SourceMap::new(src);
@@ -63,6 +64,18 @@ pub(crate) fn compile_inner(
     // before HIR lower). Per §1.0 原則 6 (通解>特例): one injection
     // mechanism for all built-in types.
     // Stage 18.293: Record user_item_count for prelude/user boundary detection.
+    //
+    // Stage 44 (v0.5 — TD-PRELUDE-MACRO-TIMING): Token-level injection was
+    // attempted (prelude_tokens before macro_expand) but reverted because it
+    // changes DefId allocation order, breaking 60+ tests that assume prelude
+    // items come AFTER user items. The token-level injection code
+    // (prelude_tokens + count_prelude_items) is kept in prelude.rs for
+    // future v0.6+ when DefId ordering is decoupled from item order.
+    //
+    // Per §13.4 (重构判据): revert if risk > benefit. Current prelude uses
+    // direct __landin_panic_msg calls (not panic! macro), so token-level
+    // injection is not strictly needed for current functionality.
+    // Per §1.0 原則 9 (正确 > 妥协): documented as TD for v0.6+.
     let user_item_count = krate.items.len();
     let _prelude_item_count = crate::stdlib::prelude::inject_prelude(&mut krate, &mut interner);
     // user_item_count = number of items from user code (before prelude appended).
