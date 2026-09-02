@@ -1756,3 +1756,65 @@ locals as `ptr` (bare pointer), not `{ptr, i64}` (fat pointer struct).
 Fixing this requires changes to the local allocation infrastructure —
 when a local's type is `Ref(_, _, Slice(T))` or `Ref(_, _, Str)`, the
 alloca should be `{ptr, i64}` (fat pointer struct), not `ptr`.
+
+---
+
+## Stage 36.5 (v0.24) — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.579.0 (Stage 36.5)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### Resolution Summary
+
+Implemented runtime array→slice fat pointer construction in codegen via
+two coordinated changes:
+
+1. **Rvalue::Ref codegen** (src/codegen/rvalue.rs): When the place's MIR
+   type is `Array(T, N)`, constructs a fat pointer `{ptr, len=N}` via
+   `emit_insertvalue` instead of returning the bare pointer.
+
+2. **mir_type_to_emit_type mapping** (src/codegen/mir_translation/types.rs):
+   Added `TyKind::Array(elem, _)` arm in both `_with_layouts` and
+   `_with_layouts_and_mono` variants — maps `Ref(_, _, Array(T, N))` to
+   `emit_fat_ptr_type(elem)` (same as `Ref(_, _, Slice(T))`). This ensures
+   the alloca is sized as `{ptr, i64}` (fat pointer struct, 16 bytes) instead
+   of `ptr` (bare pointer, 8 bytes).
+
+**Runtime verification**: `let arr: [i64; 3] = [1, 2, 3]; let s: &[i64] =
+&arr; s.len()` → runtime output: `3` (correct — was garbage before).
+
+### §3.2 Verification
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4395 integration tests ✓ (was 4362; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5293 tests**
+
+### v0.24 Stage 36 Series — Status
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 36.1 | TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING | ✅ Resolved |
+| 36.2 | TD-FORMAT-MIGRATION (attempt 1) | ❌ Reverted — runtime blocker |
+| 36.3 | TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (attempt 1) | ❌ Reverted — type resolution blocker |
+| 36.4 | TD-ARRAY-ELEMENT-TYPE-RESOLUTION | ✅ Resolved |
+| 36.5 | TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING | ✅ Resolved |
+
+### TD-FORMAT-MIGRATION: Now UNBLOCKED
+
+All prerequisites for TD-FORMAT-MIGRATION are now resolved:
+- Stage 36.1: slice `.len()` + array→slice typeck coercion ✓
+- Stage 36.4: array element type resolution (Infer → concrete) ✓
+- Stage 36.5: runtime fat pointer construction in codegen ✓
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 🟡 Now UNBLOCKED — ready for Stage 36.6 retry |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |

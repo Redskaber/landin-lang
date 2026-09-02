@@ -890,3 +890,10 @@ mod stage36_1_slice_features_tests;
 // Writeback pipeline now resolves array element types from Infer to concrete.
 #[path = "v0/stage36/plan/array_element_type_resolution_tests.rs"]
 mod stage36_4_array_element_type_resolution_tests;
+
+// === Stage 36.5 (v0.24): TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING ===
+// Rvalue::Ref codegen constructs fat pointer {ptr, len=N} for Array-typed
+// places. mir_type_to_emit_type maps Ref(Array) to fat pointer struct
+// (same as Ref(Slice)), enabling runtime array→slice coercion.
+#[path = "v0/stage36/plan/runtime_coercion_tests.rs"]
+mod stage36_5_runtime_coercion_tests;

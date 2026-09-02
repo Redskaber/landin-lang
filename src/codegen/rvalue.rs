@@ -248,7 +248,62 @@ pub(crate) fn codegen_rvalue(
             emitter.emit_unop(*op, &ty, &val)
         }
         Rvalue::Ref(_, _borrow_kind, lv) => {
+            // Stage 36.5 (v0.24 — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING):
+            // When the place's type is `Array(T, N)`, construct a fat pointer
+            // `{ptr, len=N}` instead of returning the bare pointer. This
+            // implements the runtime unsizing coercion for array→slice.
+            //
+            // The fat pointer type is `Struct{ptr, i64}` — matches
+            // `emit_fat_ptr_type` used by `mir_type_to_emit_type_with_layouts_and_mono`
+            // for `Ref(_, _, Slice(T))` and `Ref(_, _, Str)`. The codegen
+            // allocas for fat-pointer-typed locals use this same struct type,
+            // so the store/load will be type-correct.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one rule for all array types.
+            // Per §1.0 原則 4 (报错 > 静默): explicitly construct fat pointer.
+            // Per §12 (最优 > 最小): root-cause fix at codegen boundary.
             if let PlaceKind::Local(id) = &lv.kind {
+                let place_mir_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
+                if let Some(place_ty) = place_mir_ty {
+                    if let crate::mir::ty::TyKind::Array(_, len_const) = &place_ty.kind {
+                        let array_len: u64 = match &len_const.val {
+                            crate::mir::ty::ConstVal::Uint(n) => *n as u64,
+                            crate::mir::ty::ConstVal::Int(n) => *n as u64,
+                            _ => 0,
+                        };
+                        if array_len > 0 {
+                            let bare_ptr = if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
+                                ptr
+                            } else {
+                                "0".to_string()
+                            };
+                            // Construct fat pointer: {ptr, len} as a struct.
+                            // Field 0 = OpaquePtr (data pointer to array buffer).
+                            // Field 1 = I64 (array length).
+                            let fat_ptr_ty =
+                                EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::I64]);
+                            let mut fat_ptr = "undef".to_string();
+                            fat_ptr = emitter.emit_insertvalue(
+                                &fat_ptr_ty,
+                                &fat_ptr,
+                                &EmitType::OpaquePtr,
+                                &bare_ptr,
+                                0,
+                            );
+                            let len_val =
+                                emitter.emit_const_typed(array_len as i64, &EmitType::I64);
+                            fat_ptr = emitter.emit_insertvalue(
+                                &fat_ptr_ty,
+                                &fat_ptr,
+                                &EmitType::I64,
+                                &len_val,
+                                1,
+                            );
+                            return Ok(fat_ptr);
+                        }
+                    }
+                }
+                // Default: return bare pointer (non-array case).
                 if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                     return Ok(ptr);
                 }

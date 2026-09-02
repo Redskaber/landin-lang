@@ -188,12 +188,17 @@ pub fn mir_type_to_emit_type_with_layouts(
                 TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
                     mir_type_to_emit_type_with_layouts(elem, layouts),
                 ),
+                // Stage 36.5: `&[T; N]` → fat pointer (same as `&[T]`).
+                // See _with_layouts_and_mono variant for full comment.
+                TyKind::Array(elem, _) => crate::codegen::emit_fat_ptr_type(
+                    mir_type_to_emit_type_with_layouts(elem, layouts),
+                ),
                 // Stage 18.337: For Adt pointee, use opaque ptr — do NOT
                 // recurse into the Adt's layout (would infinite-loop on
                 // recursive types like `struct Node { next: *mut Node }`).
                 TyKind::Adt(_, _) => EmitType::OpaquePtr,
                 // For non-Adt, non-Slice, non-Str pointee (primitives, tuples,
-                // arrays, closures): recurse is safe (no cycle possible).
+                // closures): recurse is safe (no cycle possible).
                 _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
             }
         }
@@ -327,6 +332,19 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
             match &inner.kind {
                 TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
                 TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
+                    mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
+                ),
+                // Stage 36.5 (v0.24 — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING):
+                // `&[T; N]` coerces to `&[T]` (unsizing coercion, per Stage 36.1
+                // typeck rules). At codegen time, both must use the same fat
+                // pointer layout `{ptr, i64}` so the fat pointer constructed by
+                // `Rvalue::Ref` (rvalue.rs) can be stored to the alloca.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one fat pointer type for all
+                // unsized references (Slice, Str, Array-coerced-to-Slice).
+                // Per §12 (最优 > 最小): root-cause fix — treat Array inner
+                // like Slice for codegen allocation purposes.
+                TyKind::Array(elem, _) => crate::codegen::emit_fat_ptr_type(
                     mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
                 ),
                 // Stage 18.337: For Adt pointee, use opaque ptr — do NOT recurse.

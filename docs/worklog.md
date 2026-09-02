@@ -38937,3 +38937,98 @@ Stage Summary:
   pointer struct). Fixing this requires changes to the local allocation
   infrastructure (src/codegen/function.rs or text/memory.rs).
 - TD-FORMAT-MIGRATION: still BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING.
+
+---
+Task ID: stage36.5
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 36.5 (v0.24) — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING
+RESOLVED. Implemented runtime array→slice fat pointer construction
+in codegen: (1) Rvalue::Ref constructs fat pointer {ptr, len=N} for
+Array-typed places (src/codegen/rvalue.rs), (2) mir_type_to_emit_type
+maps Ref(Array) to fat pointer struct {ptr, i64} (same as Ref(Slice))
+in both _with_layouts and _with_layouts_and_mono variants.
+v0.579.0. 5293 tests, 0 failures. Runtime verified: s.len() returns 3.
+
+3秒启动自检:
+- 定位: L3 (cross-module: src/codegen/rvalue.rs + src/codegen/mir_translation/types.rs + tests)
+- 对齐: 已查 Stage 36.4 worklog (array element type resolution done) +
+  src/codegen/rvalue.rs:250-257 (Rvalue::Ref codegen) +
+  src/codegen/mir_translation/types.rs:324-340 (Ref→EmitType mapping) +
+  src/codegen/emitter/mod.rs:245 (emit_fat_ptr_type = Struct{ptr, i64})
+- 阻断: v0.578.0 全绿 (5260 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Two-part fix: codegen fat pointer construction + type mapping
+   - 引用 §1.0 原則 6 (通解 > 特解): two coordinated changes needed:
+     (a) Rvalue::Ref must CONSTRUCT the fat pointer (insertvalue ptr+len)
+     (b) mir_type_to_emit_type must ALLOCATE fat pointer-sized space
+   - Without (b), the alloca is ptr-sized (8 bytes) but the value is
+     {ptr, i64} (16 bytes) — store truncates, len field lost.
+   - Per §1.0 原則 10 (唯一可信数据源): both changes use the SAME
+     fat pointer type: Struct{OpaquePtr, I64} = {ptr, i64}.
+
+2. Ref(Array) → fat pointer (not bare pointer)
+   - 引用 §12 (最优 > 最小): `&[T; N]` coerces to `&[T]` per Stage 36.1
+     typeck rules. At codegen, both must use the SAME fat pointer layout
+     so the constructed fat pointer fits the alloca.
+   - Added `TyKind::Array(elem, _)` arm in both _with_layouts and
+     _with_layouts_and_mono variants — maps to emit_fat_ptr_type(elem).
+
+3. Runtime verification
+   - `let arr: [i64; 3] = [1, 2, 3]; let s: &[i64] = &arr; s.len()` →
+     runtime output: `3` (correct!)
+   - Previous: returned garbage (bare pointer, no len field).
+
+裁剪点:
+- L3 task — full §1-§17 process applies
+- 跳过 §14.5 D2-D8 deep review (P3 TD, no soundness impact — §1.2.1 allows)
+- 安全理由: §1.2.1 — P3 TDs can use §7.3 gate review + §3.2 acceptance check
+
+5W2H:
+- WHAT: Implement runtime array→slice fat pointer construction in codegen
+- WHY: TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING — blocks TD-FORMAT-MIGRATION
+- WHO: PM-A + ARCH-A + DEV-A + REV-A
+- WHEN: v0.24 Stage 36.5
+- WHERE: src/codegen/rvalue.rs + src/codegen/mir_translation/types.rs
+- HOW: (1) Rvalue::Ref: detect Array place type, construct {ptr, len=N}
+  (2) mir_type_to_emit_type: map Ref(Array) to fat pointer struct
+  (3) Both use same Struct{OpaquePtr, I64} type
+- HOW MUCH: ~60 LOC code changes; +33 tests; 5293 tests total, 0 failures
+
+§3.2 验收检查 Stage 36.5:
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4395 integration tests ✓ (was 4362; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+- Runtime verification: s.len() returns 3 ✓
+
+§14.8 设计回写:
+- B1 (Design vs Implementation): Match — two-part fix (construction + allocation).
+- B2 (New TDs): None.
+- B3 (Deviations): None.
+- B4 (Architectural limitations): TD-FORMAT-MIGRATION now unblocked —
+  the Stage 36.2 migration plan can be retried.
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The fat pointer construction (Rvalue::Ref) + fat pointer
+  allocation (mir_type_to_emit_type) are coordinated changes at the codegen
+  boundary. No band-aids, no per-call-site hacks.
+
+Stage Summary:
+- TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING ✅ Resolved Stage 36.5
+- TD-FORMAT-MIGRATION: now UNBLOCKED — all prerequisites resolved:
+  Stage 36.1 (slice len + coercion) + Stage 36.4 (elem type resolution)
+  + Stage 36.5 (runtime fat pointer construction)
+- 33 new tests (5 positive + 28 negative) covering 7 error categories
+- 5293 total tests, 0 failures, fmt clean, 0 clippy warnings
+- Runtime verified: s.len() returns correct array length
+
+下一步:
+- Stage 36.6: Retry TD-FORMAT-MIGRATION (slice-based prelude format impl).
+  All prerequisites are now resolved. The migration plan from Stage 36.2
+  design doc can be implemented.

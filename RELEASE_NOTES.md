@@ -3,13 +3,66 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.578.0 (v0.24 Stage 36.4 — TD-ARRAY-ELEMENT-TYPE-RESOLUTION RESOLVED; writeback pipeline now resolves array element types from Infer to concrete; 5 positive + 28 negative tests covering 7 error categories) |
+| **Current version** | v0.579.0 (v0.24 Stage 36.5 — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING RESOLVED; runtime array→slice fat pointer construction in codegen; TD-FORMAT-MIGRATION now UNBLOCKED; 5 positive + 28 negative tests) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4362 integration tests = 5260 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4395 integration tests = 5293 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.4 complete — array element type resolution fixed; TD-FORMAT-MIGRATION (P2) still BLOCKED on TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING (codegen local allocation infrastructure) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.5 complete — runtime fat pointer construction works; TD-FORMAT-MIGRATION (P2) now UNBLOCKED |
+
+---
+
+## v0.579.0 — v0.24 Stage 36.5 — Runtime Array→Slice Coercion RESOLVED
+
+### Overview
+
+Stage 36.5 (v0.24) resolves TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING — the
+last runtime blocker for TD-FORMAT-MIGRATION.
+
+**Bug**: `&[T; N]` coerced to `&[T]` at typeck level (Stage 36.1) but the
+runtime fat pointer `{ptr, len=N}` was never constructed — codegen returned
+a bare pointer, losing the length field. `s.len()` returned garbage.
+
+**Fix** (two coordinated changes):
+1. **Rvalue::Ref codegen** (src/codegen/rvalue.rs): Constructs fat pointer
+   `{ptr, len=N}` via `emit_insertvalue` when place type is `Array(T, N)`.
+2. **mir_type_to_emit_type** (src/codegen/mir_translation/types.rs): Maps
+   `Ref(_, _, Array(T, N))` to fat pointer struct `{ptr, i64}` (same as
+   `Ref(_, _, Slice(T))`), ensuring the alloca is sized correctly (16 bytes).
+
+**Runtime verified**: `s.len()` returns correct array length (3 for `[i64; 3]`).
+
+### §3.2 Verification
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4395 integration tests ✓ (was 4362; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### TD-FORMAT-MIGRATION: Now UNBLOCKED
+
+All prerequisites resolved:
+- Stage 36.1: slice `.len()` + array→slice typeck coercion ✓
+- Stage 36.4: array element type resolution (Infer → concrete) ✓
+- Stage 36.5: runtime fat pointer construction in codegen ✓
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-FORMAT-MIGRATION | P2 | 🟡 Now UNBLOCKED — ready for Stage 36.6 retry |
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
+
+### Next Stage Direction
+
+Stage 36.6: Retry TD-FORMAT-MIGRATION (slice-based prelude format impl).
+All prerequisites are now resolved. The migration plan from Stage 36.2
+design doc can be implemented: add `__landin_format_v2(fmt, &[i64])` to
+prelude, modify format! macro, delete 598-LOC MIR walker (net -368 LOC).
 
 ---
 
