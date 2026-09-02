@@ -183,11 +183,66 @@ pub(crate) fn lower_match(
         matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
     }));
     // Also check: if any arm pattern is an enum variant path, treat as enum.
+    // Stage 39.2: Also check variant_index for single-segment paths like
+    // `Some` / `None` — these resolve to Res::Def(enum_def_id, DefKind::Enum)
+    // via the variant_index in the resolver (path_resolve.rs:911).
+    // The previous `has_enum_pat` check already handles this because
+    // Res::Def(_, DefKind::Enum) is returned for single-segment variant
+    // paths. The issue was that `is_enum` was false (scrut_ty is Infer)
+    // AND `has_enum_pat` was false — but `has_enum_pat` SHOULD be true
+    // because `Some` and `None` patterns resolve to DefKind::Enum.
+    //
+    // Root cause: the `has_enum_pat` check at line 186-189 uses
+    // `matches!(p.res, Res::Def(_, DefKind::Enum))` — this IS true for
+    // single-segment variant paths. The issue is that `is_enum` is
+    // determined but the discriminant extraction at line 193-227 fails
+    // because `scrut_ty` is Infer (not Adt), so the GEP for field 0
+    // doesn't work. The fix: when `has_enum_pat` is true but `scrut_ty`
+    // is Infer, we need to resolve the enum type from the pattern's
+    // resolved DefId.
     let has_enum_pat = arms.iter().any(|arm| {
         matches!(&arm.pat.kind, HirPatKind::Path(p) | HirPatKind::TupleStruct(p, _) | HirPatKind::Struct(p, _, _)
             if matches!(p.res, Res::Def(_, crate::resolve::DefKind::Enum)))
     });
     let is_enum = is_enum || has_enum_pat;
+
+    // Stage 39.2: If is_enum is true but scrut_ty is Infer (typeck hasn't
+    // resolved the enum type yet), resolve the enum DefId from the first
+    // arm pattern that has Res::Def(_, DefKind::Enum). This allows the
+    // discriminant extraction to work (GEP field 0 on the enum's struct
+    // layout).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one fix for all single-segment enum
+    // variant patterns (Some, None, Ok, Err, etc.).
+    // Per §12 (最优 > 最小): root-cause fix — resolve the type from the
+    // pattern path, not from the scrutinee local (which may be Infer).
+    if is_enum && matches!(scrut_ty.kind, TyKind::Infer(_) | TyKind::Error) {
+        // Find the enum DefId from the first arm pattern.
+        for arm in arms.iter() {
+            let pat_def_id = match &arm.pat.kind {
+                HirPatKind::Path(p)
+                | HirPatKind::TupleStruct(p, _)
+                | HirPatKind::Struct(p, _, _) => {
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = p.res {
+                        Some(def_id)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(enum_def_id) = pat_def_id {
+                // Found the enum DefId — construct the Adt type and
+                // update the scrutinee local's type so the discriminant
+                // extraction works.
+                let resolved_ty = Ty::new(TyKind::Adt(enum_def_id, Vec::new().into()), span);
+                if let Some(ld) = cx.mir.local_decls.get_mut(scrut_local.0 as usize) {
+                    ld.ty = resolved_ty;
+                }
+                break;
+            }
+        }
+    }
 
     // If enum, extract discriminant: discr = scrut.0 (field 0 of the struct).
     let switch_discr = if is_enum {

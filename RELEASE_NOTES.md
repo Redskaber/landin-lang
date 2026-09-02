@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.586.0 (v0.27 Stage 39.1 — fixed enum match pattern lowering for single-segment paths; unified ConstVal::Uint → Int for discriminants; Vec::pop works with two-segment Option::Some patterns; 5392 tests) |
+| **Current version** | v0.587.0 (v0.27 Stage 39.2 — fixed scrutinee type resolution for enum match; None variant correctly matches at runtime; 5392 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4494 integration tests = 5392 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

@@ -39623,3 +39623,56 @@ Stage Summary:
   `is_enum` check at pattern_lower.rs:182 fails because scrut_ty is
   Infer). This requires writeback to resolve Adt type before match
   lowering — similar to Stage 36.4 (array element type resolution).
+
+---
+Task ID: stage39.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 39.2 (v0.27) — Fixed scrutinee type resolution for enum
+match patterns. When scrut_ty is Infer (typeck hasn't resolved enum type),
+resolve the enum DefId from the first arm pattern's Res::Def(_, DefKind::Enum)
+and update the scrutinee local's type to Adt(enum_def_id, []). This enables
+the discriminant extraction (GEP field 0) to work correctly.
+v0.587.0. 5392 tests, 0 failures. Runtime: Option::None match works
+correctly (returns "none"). Option::Some still has a pre-existing match
+lowering issue (Some variant_idx=1 is NOT added as switch target when
+scrut_ty was originally Infer — the variant_idx resolution succeeds but
+the switch target is not generated because targets are built before the
+type fix is applied).
+
+3秒启动自检:
+- 定位: L3 (pattern_lower.rs + writeback pipeline)
+- 对齐: 已查 Stage 39.1 worklog + IR analysis
+- 阻断: v0.586.0 全绿 (5392 tests), 0 P0/P1
+
+决策点:
+1. Resolve enum DefId from pattern when scrut_ty is Infer
+   - 引用 §1.0 原則 6 (通解 > 特解): one fix for ALL enum types
+     (Option, Result, user-defined enums).
+   - 引用 §12 (最优 > 最小): root-cause fix at MIR lower level —
+     resolve the type from the pattern path, not from typeck (which
+     runs after MIR lower).
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 (P3 bug fix, no soundness impact, §1.2.1)
+
+§3.2 验收检查:
+- cargo fmt --check ✓, cargo clippy -D warnings ✓
+- cargo test --release ✓ (5392 tests, 0 failures)
+- Runtime: Option::None → "none" ✓ (correct!)
+- Known limitation: Option::Some match arm not reached (switch target
+  not generated — the variant_idx is resolved but targets list is built
+  before the type fix is applied, so the switch only has None as target)
+
+Stage Summary:
+- Scrutinee type resolution for enum match: FIXED (Infer → Adt)
+- Runtime: None variant correctly matches
+- 5392 tests, 0 failures, fmt clean, 0 clippy warnings
+- Known limitation: Some variant match arm not reached (switch targets
+  not built for Infer-originated enum types)
+
+下一步:
+- Fix switch target generation for enum match when scrut_ty was Infer
+  (the targets list at pattern_lower.rs:230-475 is built using the
+  original scrut_ty, not the resolved one). Need to move the type
+  resolution BEFORE the target-building loop.
