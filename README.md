@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.595.0 (v0.5 Stage 44 — TD-PRELUDE-MACRO-TIMING attempted + reverted (DefId ordering), prelude_tokens infra for v0.6+; 5436 tests — Architecture health 9.85/10) |
+| **Version** | v0.596.0 (v0.6 Stage 45 — prelude extension: Option::ok_or/ok_or_else, Result::or/or_else; 5436 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.5 Stage 44 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 44 attempted TD-PRELUDE-MACRO-TIMING (inject prelude before macro_expand for panic! macro in prelude body) but reverted because token-level injection changes DefId allocation order, breaking 60+ tests that assume prelude items come after user items. Per §13.4 (重构判据): reverted if risk > benefit — current prelude uses direct `__landin_panic_msg` calls (not `panic!` macro), so token-level injection not strictly needed. Added `prelude_tokens()` + `count_prelude_items()` infrastructure for future v0.6+ when DefId ordering is decoupled from item order. Fixed `struct Box<T>(*mut T)` syntax error (missing semicolon, was masked by AST-level injection ignoring parse errors). Architecture health: 9.85/10 (stable — documented TD for v0.6+, no regression). |
+| **Status** | ✅ **v0.6 Stage 45 COMPLETE**. 5436 tests (898 lib + 4538 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. Stage 45 adds 4 new prelude combinators: `Option::ok_or`/`ok_or_else` (Option→Result conversion) and `Result::or`/`or_else` (fallback combinators). `Result::map_err` deferred as TD-METHOD-LEVEL-GENERICS (3-param impl block not supported by monomorphization yet). Runtime verified: `Some(42).ok_or(99)` → `Ok(42)`, `Err(99).or(Ok(42))` → `Ok(42)`. Architecture health: 9.85/10 (stable — prelude extension, no regression). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

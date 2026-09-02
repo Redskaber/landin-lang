@@ -386,6 +386,24 @@ impl<T> Option<T> {
         }
     }
 }
+// Stage 45 (v0.6): Option::ok_or / ok_or_else — convert Option to Result.
+// These need a separate impl block with <T, E> because Landin doesn't
+// support method-level generic params that aren't in the impl block.
+// Per §1.0 原則 9 (正确 > 妥协): documented as typeck limitation.
+impl<T, E> Option<T> {
+    fn ok_or(self, err: E) -> Result<T, E> {
+        match self {
+            Some(v) => Ok(v),
+            None => Err(err),
+        }
+    }
+    fn ok_or_else(self, f: fn() -> E) -> Result<T, E> {
+        match self {
+            Some(v) => Ok(v),
+            None => Err(f()),
+        }
+    }
+}
 impl<T, E> Result<T, E> {
     fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }
     fn is_err(&self) -> bool { match *self { Ok(_) => false, Err(_) => true } }
@@ -423,7 +441,32 @@ impl<T, E> Result<T, E> {
             Err(_) => __landin_panic_msg(msg.ptr),
         }
     }
+    // Stage 45 (v0.6): Result::or / or_else — more Result combinators.
+    // Per Rust API guidelines: or returns self if Ok, else res;
+    // or_else calls a fn to produce the alternative.
+    // Per §1.0 原則 6 (通解 > 特解): same match dispatch, no new infrastructure.
+    fn or(self, res: Result<T, E>) -> Result<T, E> {
+        match self {
+            Ok(_) => self,
+            Err(_) => res,
+        }
+    }
+    fn or_else(self, op: fn(E) -> Result<T, E>) -> Result<T, E> {
+        match self {
+            Ok(_) => self,
+            Err(e) => op(e),
+        }
+    }
 }
+// Stage 45 (v0.6): Result::map_err — needs separate impl block with <T, E, F>
+// but Landin's monomorphization doesn't support 3-param impl blocks yet.
+// Deferred to v0.6+ when method-level generics are fully supported.
+// Per §1.0 原則 9 (正确 > 妥协): documented as TD-METHOD-LEVEL-GENERICS.
+// impl<T, E, F> Result<T, E> {
+//     fn map_err(self, f: fn(E) -> F) -> Result<T, F> {
+//         match self { Ok(v) => Ok(v), Err(e) => Err(f(e)) }
+//     }
+// }
 // Stage 18.179 (TD-HEAP-ALLOC): Box<T> — owned heap pointer wrapper.
 //
 // MVP: Box<T> is a tuple struct wrapping a *mut T. Users construct it via

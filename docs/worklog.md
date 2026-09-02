@@ -40300,3 +40300,60 @@ Stage Summary:
 - Stage 45+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT +
   TD-PRELUDE-MACRO-TIMING (needs DefId decoupling) +
   env!/option_env!/include_str! (need compile-time I/O).
+
+---
+Task ID: stage45
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 45 (v0.6) — prelude extension: Option::ok_or/ok_or_else,
+Result::or/or_else. map_err deferred (TD-METHOD-LEVEL-GENERICS).
+v0.596.0. 5436 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L2 (prelude only, 2 impl blocks added)
+- 对齐: 已查 Stage 44 worklog (v0.5 complete, entering v0.6)
+- 阻断: v0.595.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added Option::ok_or/ok_or_else in separate impl<T, E> Option<T> block
+   - 引用 §1.0 原則 6 (通解 > 特解): same match dispatch, no new infrastructure.
+   - 引用 §1.0 原則 9 (正确 > 妥协): Landin doesn't support method-level
+     generic params that aren't in the impl block, so separate impl block
+     with <T, E> is needed.
+
+2. Added Result::or/or_else in existing impl<T, E> Result<T, E> block
+   - No new generic params needed (or and or_else use same T, E).
+
+3. Result::map_err deferred as TD-METHOD-LEVEL-GENERICS
+   - Requires 3-param impl block <T, E, F> — monomorphization doesn't
+     support this yet (linker error: undefined reference to monomorphized fn).
+   - 引用 §13.4 (重构判据): defer if cost > benefit for current stage.
+   - 引用 §1.0 原則 9 (正确 > 妥协): documented as TD for v0.6+.
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified:
+  - Some(42).ok_or(99) → Ok(42) ✓
+  - Err(99).or(Ok(42)) → Ok(42) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Uses standard Landin match dispatch (Stage 39.3 fixed).
+  The map_err deferral is per §13.4 (cost > benefit for current stage).
+
+Stage Summary:
+- 4 new prelude combinators ADDED (ok_or, ok_or_else, or, or_else)
+- 1 TD documented (TD-METHOD-LEVEL-GENERICS for map_err)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension, no regression)
+
+下一步:
+- Stage 46 (v0.6): TD-METHOD-LEVEL-GENERICS — support method-level
+  generic params beyond impl block (enables map_err and Display trait).
+- Stage 47+ (v0.6+): TD-DISPLAY-TRAIT + TD-FN-TRAITS + TD-DYN-TRAIT.
