@@ -1057,7 +1057,31 @@ fn apply_hygiene(
             // must NOT be renamed — they're the expansion target for
             // built-in print macros.
             let is_runtime = name.starts_with("__landin_");
-            if !is_keyword && !is_builtin && !is_runtime {
+            // Stage 36.6: Primitive type names (i8..i128, u8..u128, isize,
+            // usize, f32, f64, bool, char, str) must NOT be renamed —
+            // they're used in cast expressions (e.g., `x as i64`) inside
+            // macro bodies. Renaming them would break type resolution.
+            // Per §1.0 原則 6 (通解 > 特解): one set for all primitive types.
+            let is_primitive_type = matches!(
+                name,
+                "i8" | "i16"
+                    | "i32"
+                    | "i64"
+                    | "i128"
+                    | "isize"
+                    | "u8"
+                    | "u16"
+                    | "u32"
+                    | "u64"
+                    | "u128"
+                    | "usize"
+                    | "f32"
+                    | "f64"
+                    | "bool"
+                    | "char"
+                    | "str"
+            );
+            if !is_keyword && !is_builtin && !is_runtime && !is_primitive_type {
                 // Rename to unique name.
                 let new_name = hygiene.gen_unique_name(name);
                 let new_sym = interner.get_or_intern(new_name);

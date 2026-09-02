@@ -3,17 +3,60 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.579.0 (v0.24 Stage 36.5 — TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING RESOLVED; runtime array→slice fat pointer construction in codegen; TD-FORMAT-MIGRATION now UNBLOCKED; 5 positive + 28 negative tests) |
+| **Current version** | v0.580.0 (v0.24 Stage 36.6 — TD-FORMAT-MIGRATION RESOLVED; 598-LOC MIR walker replaced by 30-LOC prelude fn; -1396 LOC dead intrinsics removed; runtime verified: format!("x={}", 42) → "x=42") |
 | **Date** | 2026-09-01 |
 | **Test count** | 898 lib tests + 4395 integration tests = 5293 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.24 Stage 36.5 complete — runtime fat pointer construction works; TD-FORMAT-MIGRATION (P2) now UNBLOCKED |
+| **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
 
 ---
 
-## v0.579.0 — v0.24 Stage 36.5 — Runtime Array→Slice Coercion RESOLVED
+## v0.580.0 — v0.24 Stage 36.6 — TD-FORMAT-MIGRATION RESOLVED
+
+### Overview
+
+Stage 36.6 (v0.24) resolves TD-FORMAT-MIGRATION — the last major tech-debt
+from v0.19. The 598-LOC `format!` MIR walker (特解) is replaced with a
+30-LOC prelude fn (通解) that uses standard Landin language features.
+
+**Migration**: format! now expands to `__landin_format_v2(fmt, &[args as i64])`
+via macro_rules. The prelude fn walks the format string byte-by-byte, calling
+`__landin_i64_to_str` for `{}` placeholders. Standard method resolution
+handles the call — no MIR-level weaving, no special-case interception.
+
+**Dead code removed**: -1396 LOC:
+- `format_intrinsics.rs` (598 LOC) — the MIR walker
+- `string_intrinsics.rs` (607 LOC) — dead since Stage 31.6b/c
+- `box_intrinsics.rs` (191 LOC) — dead since Stage 31.6f
+
+**Runtime verified**: `format!("x={}", 42)` → `"x=42"` (len=4, cap=5). ✓
+
+### §3.2 Verification
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4395 integration tests ✓
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### v0.24 Stage 36 Series — COMPLETE
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 36.1 | TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING | ✅ Resolved |
+| 36.4 | TD-ARRAY-ELEMENT-TYPE-RESOLUTION | ✅ Resolved |
+| 36.5 | TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING | ✅ Resolved |
+| 36.6 | TD-FORMAT-MIGRATION | ✅ Resolved |
+
+### Remaining TDs
+
+| TD ID | Priority | Status |
+|-------|----------|--------|
+| TD-DISPLAY-TRAIT-MISSING | P3 | 📋 Deferred (v0.6+) |
 
 ### Overview
 

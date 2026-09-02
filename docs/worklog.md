@@ -39032,3 +39032,115 @@ Stage Summary:
 - Stage 36.6: Retry TD-FORMAT-MIGRATION (slice-based prelude format impl).
   All prerequisites are now resolved. The migration plan from Stage 36.2
   design doc can be implemented.
+
+---
+Task ID: stage36.6
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 36.6 (v0.24) — TD-FORMAT-MIGRATION RESOLVED.
+Migrated 598-LOC MIR walker (特解) to slice-based prelude impl (通解).
+format! now expands to __landin_format_v2(fmt, &[args as i64]) via macro_rules.
+Deleted format_intrinsics.rs (598 LOC), string_intrinsics.rs (607 LOC),
+box_intrinsics.rs (191 LOC) = -1396 LOC dead code removed.
+Net: +200 prelude +30 macro -1396 dead intrinsics = -1166 LOC.
+v0.580.0. 5293 tests, 0 failures. Runtime verified: format!("x={}", 42) → "x=42".
+
+3秒启动自检:
+- 定位: L3 (cross-module: prelude + macro + MIR walker deletion + codegen test fix)
+- 对齐: 已查 Stage 36.5 worklog (all prerequisites resolved) +
+  Stage 36.2 design doc (full migration plan) +
+  src/mir/lower/format_intrinsics.rs (598-LOC MIR walker) +
+  src/parser/builtin_macros/print_macros.rs (format! macro) +
+  src/stdlib/prelude.rs (existing prelude impls)
+- 阻断: v0.579.0 全绿 (5293 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Two-rule macro approach (literal-only + variadic)
+   - 引用 §1.0 原則 6 (通解 > 特解): one prelude fn __landin_format_v2
+     handles ALL format! calls. The macro just builds the call.
+   - 引用 §12 (最优 > 最小): two rules needed because token-level macros
+     can't distinguish "first arg is fmt string" from "rest are args"
+     in a single $args:tt pattern.
+   - Rule 1: format!("literal") → __landin_format_v2("literal", &[])
+   - Rule 2: format!("x={}", x, y) → __landin_format_v2("x={}", &[x as i64, y as i64])
+
+2. Primitive type hygiene skip
+   - 引用 §1.0 原則 4 (报错 > 静默): `i64` in `x as i64` was being
+     renamed by hygiene → "cannot find type" error. Added primitive type
+     names (i8-i128, u8-u128, isize, usize, f32, f64, bool, char, str)
+     to the skip list in apply_hygiene.
+
+3. cap = out_len + 1 (not buf_size)
+   - Test expected cap=5 for format!("x={}", 42) → "x=42" (len=4).
+   - Old MIR walker set cap = out_len + 1. Prelude impl matches.
+
+4. Dead code removal (string_intrinsics.rs + box_intrinsics.rs)
+   - 引用 §1.0 原則 5 (去除兼容思维): string_intrinsics (607 LOC) and
+     box_intrinsics (191 LOC) were dead code — String::from_str/push_str
+     migrated to prelude (Stage 31.6b/c), Box::new migrated (Stage 31.6f).
+   - Deleted all three intrinsic files: -1396 LOC.
+
+5. codegen test fix (codegen_overflow_no_check_for_comparison)
+   - Prelude __landin_format_v2 uses arithmetic (add/sub) which generates
+     overflow checks. The test was checking the WHOLE IR (including prelude).
+   - Fixed: extract only the user function's IR for the assertion.
+   - Per §1.0 原則 9 (正确 > 妥协): test assertion should check user code,
+     not prelude code.
+
+裁剪点:
+- L3 task — full §1-§17 process applies
+- 跳过 §14.5 D2-D8 deep review (P2 TD, soundness preserved — all 5293
+  tests pass including runtime tests)
+- 安全理由: §1.2.1 — P2 TDs can use §7.3 gate review + §3.2 acceptance check
+
+5W2H:
+- WHAT: Migrate format! from 598-LOC MIR walker to slice-based prelude impl
+- WHY: TD-FORMAT-MIGRATION (P2) — the LAST major tech-debt from v0.19
+- WHO: PM-A + ARCH-A + DEV-A + REV-A
+- WHEN: v0.24 Stage 36.6
+- WHERE: src/stdlib/prelude.rs + src/parser/builtin_macros/ + src/mir/lower/
+- HOW: (1) Add __landin_i64_to_str extern C + __landin_format_v2 prelude fn
+  (2) Modify format! macro: 2 rules (literal + variadic with `as i64` cast)
+  (3) Add primitive type hygiene skip
+  (4) Delete format_intrinsics.rs + string_intrinsics.rs + box_intrinsics.rs
+  (5) Remove __landin_format interception in expr_variants.rs
+  (6) Fix codegen test assertion (prelude has overflow checks)
+- HOW MUCH: +200 prelude +30 macro -1396 dead intrinsics = -1166 LOC net;
+  5293 tests, 0 failures, fmt clean, 0 clippy warnings
+
+§3.2 验收检查 Stage 36.6:
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4395 integration tests ✓ (unchanged — all existing format! tests pass)
+  - 4 ignored ✓
+  - 0 failed ✓
+- Runtime verified: format!("x={}", 42) → "x=42" (len=4, cap=5) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The 598-LOC MIR walker (特解) is replaced with a 30-LOC
+  prelude fn (通解) that uses standard Landin language features. The macro
+  expansion builds an array literal — no MIR-level weaving, no special-case
+  interception. This is the architectural 通解 that §1.0 原則 6 demands.
+
+Stage Summary:
+- TD-FORMAT-MIGRATION ✅ RESOLVED Stage 36.6
+- 598-LOC MIR walker DELETED (replaced by 30-LOC prelude fn)
+- 1396 LOC dead intrinsic code removed (format + string + box intrinsics)
+- Runtime verified: format!("x={}", 42) → "x=42" ✓
+- 5293 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (improved — 特解 → 通解, -1166 LOC)
+
+v0.24 Stage 36 Series — COMPLETE:
+- Stage 36.1: TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING ✅
+- Stage 36.2: TD-FORMAT-MIGRATION attempt 1 (reverted — runtime blocker)
+- Stage 36.3: Runtime coercion attempt 1 (reverted — type resolution blocker)
+- Stage 36.4: TD-ARRAY-ELEMENT-TYPE-RESOLUTION ✅
+- Stage 36.5: TD-ARRAY-SLICE-RUNTIME-COERCION-MISSING ✅
+- Stage 36.6: TD-FORMAT-MIGRATION ✅ RESOLVED
+
+下一步:
+- v0.24 complete — all TDs resolved (except TD-DISPLAY-TRAIT-MISSING v0.6+)
+- v0.25 planning: Display trait for type-dispatched formatting (v0.6+)

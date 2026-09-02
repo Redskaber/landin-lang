@@ -35,8 +35,8 @@ use super::{control_flow, field_resolution, pattern_bindings};
 // Stage 18.273+18.305 (TD-LOC-EXPR-VARIANTS): intrinsic lowering functions
 // extracted to 4 sub-modules per type. Per §13.4 J2 (单一职责).
 // Stage 31.6f: lower_box_new_intrinsic import removed — Box::new now in prelude.
-use super::format_intrinsics::lower_format_variadic_intrinsic;
-use super::string_intrinsics::lower_string_from_str_intrinsic;
+// Stage 36.6: lower_string_from_str_intrinsic + lower_format_variadic_intrinsic
+// imports removed — format! now uses prelude __landin_format_v2.
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): primitive intrinsic dispatch
 // (post-resolution). Per §13.4 J2 (单一职责).
 
@@ -544,40 +544,15 @@ pub(super) fn lower_call_expr(
 
     // Stage 31.7 (v0.19): from_str + Box::new intrinsic dispatch REMOVED.
     // Both are now handled by prelude impls (Stage 31.6b + 31.6f).
-    // The dead `if path.segments.len() == 2` block that checked for
-    // `type_name == "String" && method_name == "from_str"` and
-    // `type_name == "Box" && method_name == "new"` has been removed.
     // Per §1.0 原則 5 (去除兼容思维): dead dispatch code removed.
     // Per §1.0 原則 6 (通解 > 特解): standard method resolution handles all calls.
 
-    // Stage 18.186 (TD-FORMAT-MACRO): Intercept __landin_format(fmt, ...) calls.
-    //
-    // format!("hello") expands to __landin_format("hello"), which we
-    // intercept here and lower to String::from_str(fmt) — reusing the
-    // Stage 18.185 intrinsic (alloc + memcpy + construct).
-    //
-    // MVP limitation: only format! with a single literal string (no {})
-    // is supported. format!("x={}", x) requires variadic arg type handling
-    // (TD-FORMAT-VARIADIC, deferred to Stage 18.187+).
-    //
-    // Per §1.0 原則 6 (通解>特例): reuse String::from_str intrinsic.
-    // Per §2 原則 9 (正确>妥协): MVP is a temporary compromise for literals.
-    if let HirExprKind::Path(path) = &func.kind {
-        if path.segments.len() == 1 {
-            let name = cx.interner.resolve(&path.segments[0].ident.name);
-            if name == "__landin_format" && args.len() == 1 {
-                // format!("literal") → String::from_str(literal)
-                return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
-            }
-            if name == "__landin_format" && args.len() > 1 {
-                // Stage 18.202 (TD-FORMAT-VARIADIC): format!("x={}", x) → call
-                // __landin_format_variadic(out_str, fmt_ptr, fmt_len, n_args,
-                //   arg_types, arg_vals).
-                // Per §1.0 原則 6 (通解>特例): one C helper for all format! calls.
-                return lower_format_variadic_intrinsic(cx, expr, &arg_locals);
-            }
-        }
-    }
+    // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): format! intrinsic dispatch
+    // REMOVED. format! now expands to `__landin_format_v2(fmt, &[args])` via
+    // macro_rules — standard method resolution handles the call. The 598-LOC
+    // `lower_format_variadic_intrinsic` MIR walker is DELETED.
+    // Per §1.0 原則 5 (去除兼容思维): dead dispatch code removed.
+    // Per §1.0 原則 6 (通解 > 特解): standard method resolution handles all calls.
 
     // Stage 13.3a (TD-030): Closure call dispatch.
     //

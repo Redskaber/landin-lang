@@ -2,6 +2,7 @@
 //! Per §13.4 J2 (single responsibility): owns print-family macro rules.
 
 use super::*;
+use crate::session::Span;
 
 pub(crate) fn make_print_macro_rule(
     name: &str,
@@ -324,101 +325,227 @@ pub(crate) fn make_vec_macro_rule(interner: &mut Rodeo) -> MacroRule {
     }
 }
 
-/// Stage 18.32: Construct a `format!` macro rule.
+/// Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): Construct `format!` macro rules.
 ///
-/// Pattern: `$($args:tt)*` — any token sequence (format string + args)
-/// Body:    `__landin_format($($args)*)` — function call to runtime format
+/// Returns TWO rules:
+/// 1. Literal-only: `format!("hello")` → `__landin_format_v2("hello", &[])`
+/// 2. Variadic: `format!("x={}", x, y)` → `__landin_format_v2("x={}", &[x as i64, y as i64])`
 ///
-/// `format!("x={}", x)` → `__landin_format("x={}", x)` → returns a string.
-/// For now, this is a pass-through to the runtime function.
-///
-/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
-pub(crate) fn make_format_macro_rule(interner: &mut Rodeo) -> MacroRule {
-    let args_sym = interner.get("args").unwrap_or_default();
-    let tt_sym = interner.get("tt").unwrap_or_default();
-    let fmt_sym = interner.get_or_intern("__landin_format");
+/// Per §1.0 原則 6 (通解 > 特解): one prelude fn `__landin_format_v2` for all
+/// format! calls — replaces the 598-LOC MIR walker (特解).
+/// Per §12 (最优 > 最小): root-cause fix = prelude impl + macro expansion.
+pub(crate) fn make_format_macro_rules(interner: &mut Rodeo) -> Vec<MacroRule> {
+    let fmt_fn_sym = interner.get_or_intern("__landin_format_v2");
+    let lit_sym = interner.get_or_intern("lit");
+    let args_sym = interner.get_or_intern("args");
+    let expr_sym = interner.get_or_intern("expr");
+    let literal_sym = interner.get_or_intern("literal");
+    let i64_sym = interner.get_or_intern("i64");
 
-    // Pattern: $ ( $ args : tt ) *
-    let pattern = vec![
+    // Rule 1: format!("literal") → __landin_format_v2("literal", &[])
+    let rule1_pattern = vec![
         Token {
             kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
-            kind: TokenKind::LParen,
-            span: crate::session::Span::DUMMY,
-        },
-        Token {
-            kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
-        },
-        Token {
-            kind: TokenKind::Ident(args_sym),
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Ident(lit_sym),
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Colon,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
-            kind: TokenKind::Ident(tt_sym),
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Ident(literal_sym),
+            span: Span::DUMMY,
+        },
+    ];
+    let rule1_body = vec![
+        Token {
+            kind: TokenKind::Ident(fmt_fn_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(lit_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::And,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LBracket,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RBracket,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::RParen,
-            span: crate::session::Span::DUMMY,
-        },
-        Token {
-            kind: TokenKind::Star,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
     ];
 
-    // Body: __landin_format ( $ ( $ args ) * )
-    let body = vec![
+    // Rule 2: format!("x={}", x, y) → __landin_format_v2("x={}", &[x as i64, y as i64])
+    let rule2_pattern = vec![
         Token {
-            kind: TokenKind::Ident(fmt_sym),
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
         },
         Token {
-            kind: TokenKind::LParen,
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Ident(lit_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(literal_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::LParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Ident(args_sym),
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::RParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Star,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+    ];
+    let rule2_body = vec![
+        Token {
+            kind: TokenKind::Ident(fmt_fn_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(lit_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::And,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LBracket,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::KwAs,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(i64_sym),
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::RParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RBracket,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: Span::DUMMY,
         },
     ];
 
-    MacroRule {
-        pattern,
-        body,
-        span: crate::session::Span::DUMMY,
-    }
+    vec![
+        MacroRule {
+            pattern: rule1_pattern,
+            body: rule1_body,
+            span: Span::DUMMY,
+        },
+        MacroRule {
+            pattern: rule2_pattern,
+            body: rule2_body,
+            span: Span::DUMMY,
+        },
+    ]
 }
 
 /// Stage 18.32: Construct a `dbg!` macro rule.

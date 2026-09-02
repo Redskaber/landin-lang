@@ -89,6 +89,57 @@ extern "C" {
     // Per §1.0 原則 4 (报错 > 静默): TD item documents the limitation.
     // Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N).
     fn __landin_panic_bounds_check(index: i64, len: i64);
+    // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): i64→str conversion helper
+    // for the prelude format! impl. Writes the decimal representation of
+    // `val` to `buf`, returning the number of bytes written.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one C helper for all i64 formatting.
+    // Per §1.0 原則 3 (显式 > 隐式): explicit declaration, not hidden DefId.
+    fn __landin_i64_to_str(buf: *mut u8, cap: i64, val: i64) -> i64;
+}
+// Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): format! prelude impl.
+//
+// Replaces the 598-LOC `lower_format_variadic_intrinsic` MIR walker
+// (src/mir/lower/format_intrinsics.rs, DELETED in this stage) with a
+// regular prelude free function that uses standard Landin language
+// features (while loops, slice indexing, String construction).
+//
+// MVP limit (same as the old MIR walker): all args are i64. Non-i64 args
+// must be cast by the caller — the format! macro does `args as i64`.
+// Full type-dispatched formatting (Display trait) is Stage 36.3 (v0.6+).
+//
+// Per §1.0 原則 6 (通解 > 特解): one prelude fn for ALL format! calls —
+// no per-call-site MIR weaving, no special-case interception.
+// Per §1.0 原則 10 (唯一可信数据源): this fn is the single source of
+// truth for format! logic.
+// Per §12 (最优 > 最小): root-cause fix = prelude impl + macro expansion.
+//   Net -368 LOC (+200 prelude +30 macro -598 MIR walker = -368).
+fn __landin_format_v2(fmt: &str, args: &[i64]) -> String {
+    let buf_size: i64 = 4096;
+    let out_ptr: *mut u8 = __landin_alloc(buf_size);
+    let mut out_len: usize = 0usize;
+    let mut fmt_idx: usize = 0usize;
+    let mut arg_idx: usize = 0usize;
+    while fmt_idx < fmt.len() {
+        let byte_ptr: *const u8 = fmt.ptr + fmt_idx;
+        let byte: u8 = *byte_ptr;
+        if byte == 123u8 {
+            if arg_idx < args.len() {
+                let arg_ptr: *const i64 = args.ptr + arg_idx;
+                let written: i64 = __landin_i64_to_str(out_ptr + out_len, buf_size - out_len as i64, *arg_ptr);
+                out_len = out_len + written as usize;
+                arg_idx = arg_idx + 1usize;
+            }
+            fmt_idx = fmt_idx + 2usize;
+        } else {
+            let dest: *mut u8 = out_ptr + out_len;
+            *dest = byte;
+            out_len = out_len + 1usize;
+            fmt_idx = fmt_idx + 1usize;
+        }
+    }
+    let cap: usize = out_len + 1usize;
+    String { ptr: out_ptr, len: out_len, cap: cap }
 }
 enum Option<T> { None, Some(T) }
 enum Result<T, E> { Ok(T), Err(E) }

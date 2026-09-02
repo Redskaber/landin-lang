@@ -653,16 +653,33 @@ fn codegen_overflow_check_branch_to_panic() {
 #[test]
 fn codegen_overflow_no_check_for_comparison() {
     // Comparisons can't overflow — should NOT have any overflow intrinsic.
+    // Stage 36.6: The prelude __landin_format_v2 fn body uses arithmetic
+    // (add/sub) which generates overflow checks. This is in the PRELUDE
+    // (not user code), so the assertion checks only the user function `f`
+    // by extracting its IR between `define` and the matching closing `}`.
     let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
+    // Extract just the user function's IR — find "define" for landin_f,
+    // then find the next "define" (start of the next function) or end.
+    let f_start = ll
+        .find("define i1 @landin_f(")
+        .or_else(|| ll.find("define zeroext i1 @landin_f("))
+        .unwrap_or(0);
+    let after_f = &ll[f_start..];
+    // Find the next "define" after f's definition (start of next function).
+    let next_define = after_f[10..]
+        .find("define")
+        .map(|p| p + 10)
+        .unwrap_or(after_f.len());
+    let user_fn_ir = &after_f[..next_define];
     assert!(
-        !ll.contains("llvm.sadd.with.overflow") || ll.contains("landin_String_push_str"),
-        "should NOT have overflow check for comparison in:\n{}",
-        ll
+        !user_fn_ir.contains("llvm.sadd.with.overflow"),
+        "should NOT have overflow check for comparison in user fn:\n{}",
+        user_fn_ir
     );
     assert!(
-        !ll.contains("llvm.ssub.with.overflow"),
-        "should NOT have overflow check for comparison in:\n{}",
-        ll
+        !user_fn_ir.contains("llvm.ssub.with.overflow"),
+        "should NOT have overflow check for comparison in user fn:\n{}",
+        user_fn_ir
     );
 }
 

@@ -38,7 +38,7 @@ use low_level_macros::{
     make_unreachable_macro_rule,
 };
 use print_macros::{
-    make_assert_macro_rule, make_dbg_macro_rule, make_format_macro_rule, make_panic_macro_rule,
+    make_assert_macro_rule, make_dbg_macro_rule, make_format_macro_rules, make_panic_macro_rule,
     make_panic_msg_macro_rule, make_print_macro_rule, make_vec_macro_rule, make_write_macro_rule,
 };
 
@@ -62,12 +62,18 @@ pub fn build_builtin_macro_table(interner: &mut Rodeo) -> MacroTable {
     let mut table = MacroTable::new();
     for name in BUILTIN_MACRO_NAMES {
         if let Some(name_sym) = interner.get(name) {
-            let rule = make_builtin_macro_rule(name, name_sym, interner);
+            // Stage 36.6: format! macro now has TWO rules (literal + variadic).
+            // Other macros still have one rule.
+            let rules = if name == &"format" {
+                make_format_macro_rules(interner)
+            } else {
+                vec![make_builtin_macro_rule(name, name_sym, interner)]
+            };
             table.insert(
                 name_sym,
                 MacroRulesDef {
                     name: name_sym,
-                    rules: vec![rule],
+                    rules,
                     span: crate::session::Span::DUMMY,
                 },
             );
@@ -99,8 +105,7 @@ fn make_builtin_macro_rule(
         "assert" => make_assert_macro_rule(interner),
         "panic" => make_panic_macro_rule(interner),
         "vec" => make_vec_macro_rule(interner),
-        // Stage 18.32: more non-print macros
-        "format" => make_format_macro_rule(interner),
+        // Stage 36.6: format! handled separately in build_builtin_macro_table (2 rules).
         "dbg" => make_dbg_macro_rule(interner),
         "todo" | "unimplemented" => make_panic_msg_macro_rule(name, interner),
         "write" => make_write_macro_rule(interner),
