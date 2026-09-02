@@ -1417,3 +1417,85 @@ All 3 P3 typeck TDs resolved in v0.23. Architecture health stable at 9.85/10.
 
 v0.24 planning should focus on TD-FORMAT-MIGRATION (P2 — needs AST-level
 macro expansion or variadic args language feature — v0.5+ architectural).
+
+---
+
+## Stage 36 Design (v0.23→v0.24 transition) — TD-FORMAT-MIGRATION Path
+
+**Date**: 2026-09-01
+**Version**: v0.576.0 (current)
+**Architecture Health**: 9.85/10 (stable)
+**Status**: 📋 DESIGN ONLY — TD-FORMAT-MIGRATION remains BLOCKED on v0.5+
+
+### §6.2 Upgrade Criteria Re-application
+
+Per §6.2 规则 2 applied to TD-FORMAT-MIGRATION:
+
+**Test (1)**: Does next-stage correctness depend on this TD's output?
+**No.** The `format!` feature works correctly today (Stage 18.186+18.202).
+All 5194 tests pass. No downstream pass depends on the format! impl
+being a prelude impl rather than a MIR intrinsic.
+
+**Test (2)**: Does simplified impl produce wrong results?
+**No.** The 598-LOC MIR walker produces correct output for all supported
+format! calls. The "simplified" status is purely architectural
+(特解 vs 通解), not correctness.
+
+**Conclusion**: TD-FORMAT-MIGRATION does NOT upgrade per §6.2. Remains P2,
+BLOCKED on v0.5+. The current architecture's limitation is honestly
+documented (per §1.0 原則 9 正确 > 妥协), not silently accepted.
+
+### New TDs Discovered During Design Analysis
+
+During the Stage 36 design analysis (see
+`docs/develop/v0/stage-36/stage-36-format-migration-variadic-design.md`),
+3 new TDs were identified as prerequisites for TD-FORMAT-MIGRATION:
+
+| TD ID | Priority | Issue | Fix Stage |
+|-------|----------|-------|-----------|
+| TD-SLICE-LEN-MISSING | P3 | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | Stage 36.1 (v0.24) |
+| TD-ARRAY-SLICE-COERCION-MISSING | P3 | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | Stage 36.1 (v0.24) |
+| TD-DISPLAY-TRAIT-MISSING | P3 | No `Display` trait for type-dispatched formatting — blocks `%s`-style string args | Stage 36.3 (v0.6+) |
+
+### v0.24 Implementation Path (3-stage plan)
+
+| Stage | Task | MUV Type | Estimated LOC |
+|-------|------|----------|---------------|
+| 36.1 | Slice `.len()` + array→slice coercion | L2 | +150 |
+| 36.2 | Slice-based prelude format impl (replaces 598-LOC MIR walker) | L3 | +200 prelude +30 macro -598 MIR = net -368 |
+| 36.3 | Type-dispatched formatting (Display trait) | L3 | +300 (v0.6+) |
+
+### v0.23 Stage 35 Series — COMPLETE Summary
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+All 3 P3 typeck TDs resolved in v0.23. Architecture health stable at
+9.85/10. 5194 tests pass (898 lib + 4296 integration + 4 ignored).
+
+### v0.23 → v0.24 Stage Transition
+
+Per user instruction "修复完该阶段所有 tech-debt，进入下一阶段":
+- v0.23 has resolved all feasible TDs (3 P3 typeck TDs).
+- TD-FORMAT-MIGRATION (P2) remains BLOCKED on v0.5+ per §6.2 (doesn't
+  upgrade — produces correct results).
+- Transition to v0.24 = begin Stage 36.1 (slice len + coercion), which
+  is the first prerequisite for TD-FORMAT-MIGRATION.
+
+Per §1.0 原則 9 (正确 > 妥协): the BLOCKED status is explicitly
+documented, not silently ignored.
+Per §1.0 原則 1 (长期 > 短期): invest in v0.5+ language features now
+to unblock TD-FORMAT-MIGRATION in v0.24.
+Per §12 (最优 > 最小): the root-cause fix is the v0.5+ language feature
+(slice len + coercion), not forcing an incomplete migration in v0.23.
+
+### Next Stage Direction
+
+Stage 36.1 (v0.24): Implement TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING.
+- Add `len()` method to slices in prelude (similar to `str::len`).
+- Add array→slice coercion in typeck unify (similar to existing
+  Str→Ref coercion).
+- ~150 LOC + 5 positive + 28 negative tests covering 7 error categories.

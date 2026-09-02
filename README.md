@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.576.0 (v0.23 Stage 35.3 COMPLETE — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED; new `should_check_concrete_vs_param` check catches return-type mismatch in generic fns/methods; v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved — Architecture health 9.85/10) |
+| **Version** | v0.576.0 (v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; Stage 36 design doc created documenting v0.5+ path for TD-FORMAT-MIGRATION; 3 new prerequisite TDs registered: TD-SLICE-LEN-MISSING, TD-ARRAY-SLICE-COERCION-MISSING, TD-DISPLAY-TRAIT-MISSING — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.23 Stage 35.3 COMPLETE**. 5194 tests (898 lib + 4296 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. Stage 35.3 resolves TD-TYPECK-PARAM-RETURN-MISMATCH — typeck silently accepted concrete rvalue assigned to Param-typed return local (e.g., `fn f<T>(x: T) -> T { true }`). Root cause: `place_has_param` skip in `post_check_statement` (Stage 18.351 "defer to writeback") was over-broad — writeback only substitutes Param via Field projection, doesn't validate types. Fix: new `should_check_concrete_vs_param` check narrowed to RETURN LOCAL (LocalId(0)) boundary — avoids false positives on legitimate Param-vs-concrete cases (match arm deconstruction, generic field access). v0.23 Stage 35 series COMPLETE: Stage 35.1 (Self outside impl), 35.2 (trait arg count), 35.3 (return type mismatch) all resolved. Only 1 TD remaining BLOCKED on v0.5+ (TD-FORMAT-MIGRATION P2 — needs AST-level macro expansion). Architecture health: 9.85/10 (stable). Next: v0.24 planning for TD-FORMAT-MIGRATION. |
+| **Status** | ✅ **v0.23 Stage 35 Series COMPLETE + Stage 36 Design**. 5194 tests (898 lib + 4296 integration), 0 failures, 4 ignored. fmt clean, 0 clippy warnings. §3.2 verification passed. v0.23 Stage 35 series resolved all 3 P3 typeck TDs: Stage 35.1 (Self outside impl context), 35.2 (trait arg count validation), 35.3 (return type mismatch). Stage 36 (design-only) documents the v0.5+ implementation path for the last remaining TD: TD-FORMAT-MIGRATION (P2, BLOCKED on v0.5+). Analysis: the 598-LOC MIR walker for `format!` is a 特解 (special case); migrating to prelude impl (通解) requires slice `.len()` method + array→slice coercion (Stage 36.1) + Display trait (v0.6+). §6.2 upgrade criteria: TD does NOT upgrade (correct results, no next-stage dependency). 3 new prerequisite TDs registered. Architecture health: 9.85/10 (stable). Next: v0.24 Stage 36.1 (slice len + array→slice coercion). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
@@ -423,6 +423,43 @@ Remaining items are v0.5+/v0.6+ architecture limitations (documented in
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | `Self` keyword outside any impl/trait context silently defaulted to `HirSelfKind::Impl` via `unwrap_or` | ✅ Resolved (Stage 35.1) | New `ResolveErrorKind::SelfOutsideImplContext` error kind + `resolve_self_ty` helper + propagated parent SelfKind to method fn owners in `owner_self_kind` + set `current_self_kind` before fn sig resolution + extended `resolve_ast_ty_paths` to check Self in generic args |
 | TD-TYPECK-PARAM-ARG-COUNT | typeck didn't validate arg count for trait method calls when the trait method had no body (declaration only) — silent accept of wrong arg counts | ✅ Resolved (Stage 35.2) | New `populate_trait_decl_fn_sigs` in `src/driver/driver_codegen_prep.rs` registers ALL trait declaration methods (with or without body) in fn_sig_table. For decl-only methods, uses `TyKind::Error` as self_ty placeholder. typeck's existing `check_terminator` Call handler now validates arg count uniformly. Wired up in `compile_inner.rs` AFTER `populate_trait_default_fn_sigs`. |
 | TD-TYPECK-PARAM-RETURN-MISMATCH | typeck didn't unify Param(N) body with concrete return type for generic impl methods — silent accept of `fn f<T>(x: T) -> T { true }` | ✅ Resolved (Stage 35.3) | New `should_check_concrete_vs_param` check in `post_check_statement` (`src/typeck/check.rs`). Boundary: place is the RETURN LOCAL (LocalId(0)) with Param type AND rvalue is concrete non-Param. Narrowed from original design (which proposed all Param-typed places) after discovering false positives in match arm deconstruction. |
+| TD-SLICE-LEN-MISSING (NEW) | Slices (`&[T]`) don't have `.len()` method — `arr.len()` on `[i64]` fails with "no method `len` found" | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.1 (v0.24). Add `len()` to prelude impl for slices (similar to `str::len`). |
+| TD-ARRAY-SLICE-COERCION-MISSING (NEW) | `[T; N]` → `&[T]` coercion not implemented — `&[1, 2, 3]` to slice ref fails with type mismatch | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.1 (v0.24). Add coercion in typeck unify (similar to existing Str→Ref coercion). |
+| TD-DISPLAY-TRAIT-MISSING (NEW) | No `Display` trait for type-dispatched formatting — blocks `%s`-style string args | 📋 Registered (Stage 36) | Prerequisite for TD-FORMAT-MIGRATION Stage 36.3 (v0.6+). Requires trait dispatch + monomorphization. |
+
+---
+
+## v0.23 Stage 36 — TD-FORMAT-MIGRATION Architectural Design
+
+**Status**: 📋 DESIGN ONLY — no code changes, baseline preserved.
+
+The 598-LOC MIR walker for `format!` is a 特解 (special case). Migrating
+to a prelude impl (通解) requires v0.5+ language features:
+
+1. **Slice `.len()` method** (TD-SLICE-LEN-MISSING, P3) — currently missing
+2. **Array→slice coercion** (`[T; N]` → `&[T]`, TD-ARRAY-SLICE-COERCION-MISSING, P3)
+3. **Display trait** for type-dispatched formatting (TD-DISPLAY-TRAIT-MISSING, P3, v0.6+)
+
+**§6.2 upgrade criteria**: TD-FORMAT-MIGRATION does NOT upgrade — the
+current MIR walker produces correct results, no next-stage correctness
+depends on it.
+
+**v0.5+ implementation path** (3-stage plan):
+- Stage 36.1 (v0.24): Slice `.len()` + array→slice coercion (~150 LOC)
+- Stage 36.2 (v0.24): Slice-based prelude format impl (net -368 LOC)
+- Stage 36.3 (v0.6+): Display trait for type-dispatched formatting
+
+Full design doc: `docs/develop/v0/stage-36/stage-36-format-migration-variadic-design.md`
+
+### v0.23 Stage 35 Series — COMPLETE
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+All 3 P3 typeck TDs resolved in v0.23.
 
 ---
 

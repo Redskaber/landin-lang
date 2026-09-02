@@ -3,13 +3,77 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.576.0 (v0.23 Stage 35.3 — TD-TYPECK-PARAM-RETURN-MISMATCH RESOLVED; new `should_check_concrete_vs_param` check in `post_check_statement` catches return-type mismatch in generic fns/methods; v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; 5 positive + 28 negative tests covering 7 error categories) |
+| **Current version** | v0.576.0 (v0.23 Stage 35 series COMPLETE — all 3 P3 typeck TDs resolved; Stage 36 design doc created documenting v0.5+ path for TD-FORMAT-MIGRATION; 3 new prerequisite TDs registered: TD-SLICE-LEN-MISSING, TD-ARRAY-SLICE-COERCION-MISSING, TD-DISPLAY-TRAIT-MISSING) |
 | **Date** | 2026-09-01 |
 | **Test count** | 898 lib tests + 4296 integration tests = 5194 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.3 complete — TD-TYPECK-PARAM-RETURN-MISMATCH resolved; only 1 TD remaining BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35 series complete — 3 P3 typeck TDs resolved (Self outside impl, trait arg count, return type mismatch); 1 TD remaining BLOCKED on v0.5+ (TD-FORMAT-MIGRATION P2 — needs AST-level macro expansion or variadic args language feature) |
+
+---
+
+## v0.576.0 — v0.23 Stage 35 Series COMPLETE + Stage 36 Design
+
+### Overview
+
+v0.23 Stage 35 series is now COMPLETE. All 3 P3 typeck TDs resolved:
+
+| Stage | TD | Status |
+|-------|-----|--------|
+| 35.1 | TD-SELF-OUTSIDE-IMPL-CONTEXT | ✅ Resolved |
+| 35.2 | TD-TYPECK-PARAM-ARG-COUNT | ✅ Resolved |
+| 35.3 | TD-TYPECK-PARAM-RETURN-MISMATCH | ✅ Resolved |
+
+Stage 36 (design-only) documents the v0.5+ path for the last remaining TD:
+TD-FORMAT-MIGRATION (P2, BLOCKED on v0.5+ architectural changes).
+
+### Stage 36 — TD-FORMAT-MIGRATION Architectural Design
+
+**Status**: 📋 DESIGN ONLY — no code changes, baseline preserved.
+
+**Analysis** (per §2.2 根因思维): The 598-LOC MIR walker for `format!` is
+a 特解 (special case). Migrating to a prelude impl (通解) requires:
+- Slice `.len()` method (currently missing)
+- Array→slice coercion (`[T; N]` → `&[T]`, currently missing)
+- Eventually `Display` trait for type-dispatched formatting (v0.6+)
+
+**§6.2 upgrade criteria**: TD does NOT upgrade — the current MIR walker
+produces correct results, no next-stage correctness depends on it.
+
+**v0.5+ implementation path** (3-stage plan):
+- Stage 36.1 (v0.24): Slice `.len()` + array→slice coercion (~150 LOC)
+- Stage 36.2 (v0.24): Slice-based prelude format impl (net -368 LOC)
+- Stage 36.3 (v0.6+): Display trait for type-dispatched formatting
+
+**3 new TDs discovered** during design analysis:
+- TD-SLICE-LEN-MISSING (P3): Slices don't have `.len()` method
+- TD-ARRAY-SLICE-COERCION-MISSING (P3): `[T; N]` → `&[T]` coercion missing
+- TD-DISPLAY-TRAIT-MISSING (P3): No Display trait (v0.6+)
+
+### §3.2 Verification
+
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4296 integration tests ✓
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5194 tests**
+
+### Remaining BLOCKED TDs (all v0.5+ architectural)
+
+| TD ID | Priority | Blocker |
+|-------|----------|---------|
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl — needs slice len + array→slice coercion (Stage 36.1+36.2) + Display trait (v0.6+) |
+
+### Next Stage Direction
+
+v0.24 Stage 36.1: Implement TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING.
+- Add `len()` method to slices in prelude (similar to `str::len`).
+- Add array→slice coercion in typeck unify (similar to existing Str→Ref coercion).
+- ~150 LOC + 5 positive + 28 negative tests covering 7 error categories.
 
 ---
 

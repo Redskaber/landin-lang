@@ -38429,3 +38429,115 @@ Stage Summary:
   - TD-FORMAT-MIGRATION (P2): variadic args / AST-level macro expansion
 - Next stage direction: v0.24 planning — focus on TD-FORMAT-MIGRATION
   (P2 — needs AST-level macro expansion or variadic args language feature)
+
+---
+Task ID: stage36
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 36 (v0.23→v0.24 transition) — TD-FORMAT-MIGRATION architectural
+design doc. No code changes — design-only stage documenting the v0.5+
+implementation path for the last remaining TD.
+v0.576.0. 5194 tests, 0 failures (baseline preserved).
+
+3秒启动自检:
+- 定位: L2 (design doc + tech-debt-register update — no code changes)
+- 对齐: 已查 docs/lang-design/03-type-system.md (array/slice semantics) +
+  Rust format! macro design (fmt::Arguments builder) +
+  tech-debt-register.md (TD-FORMAT-MIGRATION entry) +
+  src/mir/lower/format_intrinsics.rs (598-LOC MIR walker) +
+  src/parser/builtin_macros/print_macros.rs:336 (format! macro rule) +
+  src/mir/lower/expr_variants.rs:572-578 (MIR lowering interception)
+- 阻断: v0.576.0 全绿 (5194 tests), 0 P0/P1
+
+决策点 (设计选择):
+
+1. Design-only vs forcing incomplete migration
+   - 引用 §1.0 原則 9 (正确 > 妥协): TD-FORMAT-MIGRATION requires v0.5+
+     language features (slice .len(), array→slice coercion, eventually
+     Display trait). Forcing an incomplete migration in v0.23 would
+     produce a "minimum patch" (per §1.6 终极检验), not a root-cause fix.
+   - 引用 §12 (最优 > 最小): the root-cause fix is the v0.5+ language
+     feature implementation, not a partial migration that breaks tests.
+   - 引用 §1.0 原則 4 (报错 > 静默): honestly document the BLOCKED status
+     and the v0.5+ path, rather than silently accepting the limitation.
+   - Decision: design-only stage — document the v0.5+ path in detail,
+     no code changes, preserve the green baseline.
+
+2. §6.2 upgrade criteria re-application
+   - 引用 §6.2 规则 2: TD-FORMAT-MIGRATION does NOT upgrade because:
+     (1) next-stage correctness does NOT depend on this TD's output
+         (format! feature works correctly today — all 5194 tests pass)
+     (2) the "simplified" MIR walker impl produces correct results
+         (no wrong output, just 特解 vs 通解 architectural difference)
+   - Conclusion: TD remains P2, BLOCKED on v0.5+. Not upgraded.
+
+3. v0.5+ implementation path (3-stage plan)
+   - Stage 36.1 (v0.24): Slice `.len()` + array→slice coercion (~150 LOC)
+   - Stage 36.2 (v0.24): Slice-based prelude format impl (net -368 LOC,
+     replaces 598-LOC MIR walker)
+   - Stage 36.3 (v0.6+): Display trait for type-dispatched formatting
+
+4. New TDs discovered during design analysis
+   - TD-SLICE-LEN-MISSING (P3): Slices don't have `.len()` method
+   - TD-ARRAY-SLICE-COERCION-MISSING (P3): `[T; N]` → `&[T]` coercion missing
+   - TD-DISPLAY-TRAIT-MISSING (P3): No Display trait (v0.6+)
+
+裁剪点:
+- L2 — design-only stage, no code changes
+- 安全理由: §1.2.1 — L2 design stage doesn't need §14.5 deep review
+- §3.2 verification confirms baseline preserved (5194 tests, 0 failures)
+
+5W2H:
+- WHAT: Architectural design doc for TD-FORMAT-MIGRATION v0.5+ path
+- WHY: TD-FORMAT-MIGRATION is the last remaining TD; requires v0.5+
+  language features (slice len + coercion, Display trait)
+- WHO: PM-A + ARCH-A
+- WHEN: v0.23 Stage 36 (transition to v0.24)
+- WHERE: docs/develop/v0/stage-36/ + docs/develop/v0/tech-debt-register.md
+- HOW: (1) Analyze root cause (MIR walker is 特解, needs 通解)
+  (2) Identify v0.5+ prerequisites (slice len, coercion, Display)
+  (3) Document 3-stage implementation plan
+  (4) Apply §6.2 upgrade criteria (does NOT upgrade)
+  (5) Register 3 new TDs discovered during analysis
+- HOW MUCH: 0 LOC code changes; +1 design doc (~200 LOC);
+  +3 new TDs registered; 5194 tests preserved (0 failures)
+
+§3.2 验收检查 Stage 36 (design-only):
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4296 integration tests ✓ (unchanged)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+§14.8 设计回写:
+- B1 (Design vs Implementation): N/A — design-only stage
+- B2 (New TDs): 3 new TDs registered (slice len, array→slice coercion, Display trait)
+- B3 (Deviations): Documented in design doc (v0.5+ path)
+- B4 (Architectural limitations): TD-FORMAT-MIGRATION remains BLOCKED on v0.5+
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Design doc — neither. The root-cause fix requires v0.5+ language
+  features (Stage 36.1+36.2). Forcing an incomplete fix in v0.23
+  would be a "minimum patch" (per §1.6 — would be 回炉重构).
+- The honest answer: v0.23 is COMPLETE for the current architecture.
+  Transitioning to v0.24 requires implementing Stage 36.1.
+
+Stage Summary:
+- TD-FORMAT-MIGRATION: 📋 Design doc created (v0.5+ path documented)
+- 3 new TDs registered: TD-SLICE-LEN-MISSING, TD-ARRAY-SLICE-COERCION-MISSING,
+  TD-DISPLAY-TRAIT-MISSING
+- §6.2 upgrade criteria: TD does NOT upgrade (correct results, no
+  next-stage dependency)
+- v0.23 Stage 35 series COMPLETE (all 3 P3 typeck TDs resolved)
+- v0.23 → v0.24 transition: begin Stage 36.1 (slice len + coercion)
+
+下一步:
+- v0.24 Stage 36.1: Implement TD-SLICE-LEN-MISSING + TD-ARRAY-SLICE-COERCION-MISSING
+  - Add `len()` method to slices in prelude (similar to `str::len`)
+  - Add array→slice coercion in typeck unify
+  - ~150 LOC + 5 positive + 28 negative tests covering 7 error categories
+- v0.24 Stage 36.2: Slice-based prelude format impl (replaces 598-LOC MIR walker)
+  - Net -368 LOC (architectural improvement: 特解 → 通解)
+- v0.6+ Stage 36.3: Display trait for type-dispatched formatting
