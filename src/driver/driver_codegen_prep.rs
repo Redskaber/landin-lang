@@ -218,6 +218,13 @@ pub(super) fn pre_intern_macro_symbols(interner: &mut lasso::Rodeo) {
     interner.get_or_intern("msg");
     interner.get_or_intern("x");
     interner.get_or_intern("dst");
+    // Stage 40.2 (TD-PANIC-MACRO-BROKEN): struct field names used in
+    // macro bodies (e.g., `panic!` expands to `__landin_panic_msg($msg.ptr)`
+    // where `ptr` is the &str struct's field name). Per §1.0 原則 6 (通解):
+    // one set for all struct field names used in macro bodies.
+    interner.get_or_intern("ptr");
+    interner.get_or_intern("len");
+    interner.get_or_intern("cap");
     interner.get_or_intern("__landin_assert");
     interner.get_or_intern("__landin_panic_msg");
     interner.get_or_intern("__landin_format");

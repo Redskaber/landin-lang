@@ -166,13 +166,24 @@ pub(crate) fn make_assert_macro_rule(interner: &mut Rodeo) -> MacroRule {
 /// Stage 18.29: Construct a `panic!` macro rule.
 ///
 /// Pattern: `$msg:expr` — matches a single expression (the message)
-/// Body:    `__landin_panic_msg($msg)` — function call to runtime panic
+/// Body:    `__landin_panic_msg($msg.ptr)` — function call to runtime panic
 ///
-/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+/// Stage 40.2 (v0.28 — TD-PANIC-MACRO-BROKEN): previously the body was
+/// `__landin_panic_msg($msg)` which passed a `&str` (fat pointer {ptr, len})
+/// to a C function expecting `const char*`. The type mismatch caused a
+/// compile error. Now we extract the `.ptr` field from the `&str` to
+/// pass the raw `const char*` pointer expected by the C runtime.
+///
+/// Per §12 (最优 > 最小): root-cause fix at the macro expansion layer —
+/// extract the ptr field at the source rather than special-casing in
+/// codegen or modifying the C runtime signature.
+/// Per §1.0 原則 6 (通解 > 特解): one macro rule for ALL panic! calls,
+/// regardless of message type (string literal, format! result, etc.).
 pub(crate) fn make_panic_macro_rule(interner: &mut Rodeo) -> MacroRule {
     let msg_sym = interner.get_or_intern("msg");
     let expr_sym = interner.get_or_intern("expr");
     let panic_msg_sym = interner.get_or_intern("__landin_panic_msg");
+    let ptr_sym = interner.get_or_intern("ptr");
 
     // Pattern: $ msg : expr
     let pattern = vec![
@@ -194,7 +205,8 @@ pub(crate) fn make_panic_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
     ];
 
-    // Body: __landin_panic_msg ( $ msg )
+    // Body: __landin_panic_msg ( $ msg . ptr )
+    // Stage 40.2: extract .ptr field from &str to pass raw const char* to C.
     let body = vec![
         Token {
             kind: TokenKind::Ident(panic_msg_sym),
@@ -210,6 +222,14 @@ pub(crate) fn make_panic_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
         Token {
             kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dot,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(ptr_sym),
             span: crate::session::Span::DUMMY,
         },
         Token {

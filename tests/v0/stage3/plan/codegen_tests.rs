@@ -837,34 +837,31 @@ fn codegen_string_literal_gep_to_i8_ptr() {
 #[test]
 fn codegen_string_literal_dedup() {
     // Same string twice should produce only ONE global.
+    // Stage 40.2: prelude now contains panic message strings (Option/Result
+    // unwrap), so user strings start at @.str.2 (or higher). We check the
+    // dedup by counting "hello" globals — should be exactly 1.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"hello\"; }");
-    let count = ll
-        .matches("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\"")
-        .count();
+    let count = ll.matches("[6 x i8] c\"hello\\00\"").count();
     assert_eq!(
         count, 1,
-        "expected exactly 1 hello global, got {} in:\n{}",
+        "expected exactly 1 hello global (dedup), got {} in:\n{}",
         count, ll
-    );
-    // Should NOT have a @.str.1 (no second global needed).
-    assert!(
-        !ll.contains("@.str.1"),
-        "should NOT have @.str.1 (dedup) in:\n{}",
-        ll
     );
 }
 
 #[test]
 fn codegen_string_literal_distinct() {
     // Two different strings should produce TWO globals.
+    // Stage 40.2: prelude now contains panic message strings, so we check
+    // by content rather than by @.str.N index.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"world\"; }");
     assert!(
-        ll.contains("@.str.0 = internal unnamed_addr constant [6 x i8] c\"hello\\00\""),
+        ll.contains("[6 x i8] c\"hello\\00\""),
         "expected hello global in:\n{}",
         ll
     );
     assert!(
-        ll.contains("@.str.1 = internal unnamed_addr constant [6 x i8] c\"world\\00\""),
+        ll.contains("[6 x i8] c\"world\\00\""),
         "expected world global in:\n{}",
         ll
     );

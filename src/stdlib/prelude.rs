@@ -89,6 +89,29 @@ extern "C" {
     // Per §1.0 原則 4 (报错 > 静默): TD item documents the limitation.
     // Per §1.0 原則 9 (正确 > 妥协): don't hack codegen to substitute Param(N).
     fn __landin_panic_bounds_check(index: i64, len: i64);
+    // Stage 40.2 (v0.28 — TD-PANIC-MACRO-BROKEN): panic message runtime
+    // helper. The `panic!` macro (registered in print_macros.rs:172)
+    // expands to `__landin_panic_msg(msg)`, but the function was NEVER
+    // declared in the prelude extern "C" block — so resolver failed with
+    // "cannot find value in this scope" (E300/E400) for ANY panic! call.
+    //
+    // This is a P1 bug: the macro infrastructure was complete (Stage 18.29)
+    // but the prelude declaration was missing, making panic! unusable.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): previously panic! silently failed with
+    // E300/E400 instead of running. Now it properly calls the C runtime
+    // helper which prints the message to stderr and calls abort().
+    // Per §1.0 原則 6 (通解 > 特解): one declaration for ALL panic! calls.
+    // Per §12 (最优 > 最小): root-cause fix — declare the missing extern,
+    // not patch each panic! call site.
+    // Per §2.2 根因思维: fix the missing declaration, not the symptom
+    // (resolver error).
+    fn __landin_panic_msg(msg: *const u8);
+    // Stage 40.2 (v0.28 — TD-PANIC-MACRO-BROKEN): unreachable! macro
+    // runtime helper. Like __landin_panic_msg, this was missing from the
+    // prelude extern "C" block, making unreachable! macro unusable.
+    // Per §1.0 原則 6 (通解 > 特解): one declaration for all panic paths.
+    fn __landin_unreachable(msg: *const u8);
     // Stage 36.6 (v0.24 — TD-FORMAT-MIGRATION): i64→str conversion helper
     // for the prelude format! impl. Writes the decimal representation of
     // `val` to `buf`, returning the number of bytes written.
@@ -239,6 +262,39 @@ impl<T> Option<T> {
             None => None,
         }
     }
+    // Stage 40.2 (v0.28): Option::unwrap / Option::expect — panic on None.
+    // Now unblocked by TD-PANIC-MACRO-BROKEN fix (panic! macro + extern
+    // declaration + hygiene field-name skip).
+    //
+    // NOTE: Uses direct `__landin_panic_msg` call instead of `panic!` macro
+    // because prelude is injected AFTER macro expansion (compile_inner.rs:57
+    // vs macro_expand at line 39). This is TD-PRELUDE-MACRO-TIMING (P2,
+    // v0.5+) — fixing requires moving prelude injection before macro_expand,
+    // which is a driver pipeline refactor.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): panic explicitly reports the error
+    // rather than silently returning garbage (e.g., 0 or undef).
+    // Per §1.0 原則 6 (通解 > 特解): one panic mechanism for all panic paths
+    // (unwrap, expect, bounds check, overflow, etc.).
+    // Per §12 (最优 > 最小): documented as TD — full fix requires v0.5+ refactor.
+    fn unwrap(self) -> T {
+        match self {
+            Some(v) => v,
+            None => {
+                __landin_panic_msg("called `Option::unwrap()` on a `None` value".ptr);
+                loop {}
+            }
+        }
+    }
+    fn expect(self, msg: &str) -> T {
+        match self {
+            Some(v) => v,
+            None => {
+                __landin_panic_msg(msg.ptr);
+                loop {}
+            }
+        }
+    }
 }
 impl<T, E> Result<T, E> {
     fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }
@@ -259,6 +315,28 @@ impl<T, E> Result<T, E> {
         match self {
             Ok(v) => f(v),
             Err(e) => Err(e),
+        }
+    }
+    // Stage 40.2 (v0.28): Result::unwrap / Result::expect — panic on Err.
+    // Mirrors Option::unwrap / Option::expect API.
+    // Per §1.0 原則 6 (通解 > 特解): same panic mechanism as Option.
+    // NOTE: Uses direct `__landin_panic_msg` call (TD-PRELUDE-MACRO-TIMING).
+    fn unwrap(self) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => {
+                __landin_panic_msg("called `Result::unwrap()` on an `Err` value".ptr);
+                loop {}
+            }
+        }
+    }
+    fn expect(self, msg: &str) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => {
+                __landin_panic_msg(msg.ptr);
+                loop {}
+            }
         }
     }
 }

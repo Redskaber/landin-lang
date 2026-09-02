@@ -3,13 +3,172 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.589.0 (v0.28 Stage 40.1 — prelude `Option::map`/`Option::and_then`/`Result::map`/`Result::and_then` combinators added; 5436 tests) |
+| **Current version** | v0.590.0 (v0.28 Stage 40.2 — TD-PANIC-MACRO-BROKEN fix + Option/Result unwrap/expect added; 5436 tests) |
 | **Date** | 2026-09-02 |
 | **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.590.0 — Stage 40.2 (v0.28) — TD-PANIC-MACRO-BROKEN Fix + Option/Result unwrap/expect
+
+### Overview
+
+Stage 40.2 (v0.28) fixes a P1 bug (TD-PANIC-MACRO-BROKEN) where the `panic!`
+macro was registered but never usable, and adds `Option::unwrap` /
+`Option::expect` / `Result::unwrap` / `Result::expect` to the prelude.
+
+**Before this stage**: Any `panic!("msg")` call in user code failed with
+`E300: cannot find value in this scope` because:
+1. `__landin_panic_msg` runtime function was NEVER declared in the prelude
+   `extern "C"` block (missing declaration).
+2. `__landin_unreachable` runtime function was also missing.
+3. The `panic!` macro body passed `&str` (fat pointer) to a C function
+   expecting `const char*` — type mismatch.
+4. The hygiene pass renamed struct field names like `ptr`, `len`, `cap`
+   used in macro bodies, breaking field access.
+
+**After this stage**: `panic!("msg")` correctly prints `panic: msg` to
+stderr and calls `exit(1)`. `Option::unwrap()` / `Result::unwrap()` panic
+with descriptive messages on `None` / `Err`. `Option::expect(msg)` /
+`Result::expect(msg)` panic with user-provided messages.
+
+### Root Causes Fixed
+
+#### TD-PANIC-MACRO-BROKEN (P1 — Lex/Prelude layer)
+
+**Symptom**: `panic!("custom panic message")` failed with `E300/E400:
+cannot find value in this scope`. The `panic!` macro infrastructure
+(Stage 18.29) was complete but the prelude declaration was missing.
+
+**Root cause**: `__landin_panic_msg` and `__landin_unreachable` C runtime
+functions were implemented in `src/codegen/runtime.rs` and the macros
+were registered in `src/parser/builtin_macros/print_macros.rs`, but the
+function declarations were NEVER added to the prelude's `extern "C"`
+block. The resolver therefore couldn't find the symbol when the macro
+expanded to `__landin_panic_msg(msg.ptr)`.
+
+**Fix**: Added `fn __landin_panic_msg(msg: *const u8);` and
+`fn __landin_unreachable(msg: *const u8);` to the prelude extern "C"
+block in `src/stdlib/prelude.rs`.
+
+**Per §1.0 原則 4 (报错 > 静默)**: previously panic! silently failed with
+E300/E400. Now it properly calls the C runtime helper.
+**Per §1.0 原則 6 (通解 > 特解)**: one declaration for ALL panic! calls.
+**Per §12 (最优 > 最小)**: root-cause fix — declare the missing extern,
+not patch each panic! call site.
+**Per §2.2 根因思维**: fix the missing declaration, not the symptom
+(resolver error).
+
+#### TD-PANIC-MACRO-STR-PTR (P1 — Macro expansion layer)
+
+**Symptom**: After declaring `__landin_panic_msg`, panic! still failed
+with `E400: mismatched types: expected *const u8, found &str`.
+
+**Root cause**: The `panic!` macro body was `__landin_panic_msg($msg)`
+which passed a `&str` (fat pointer `{ptr, len}`) to a C function
+expecting `const char*` (raw pointer).
+
+**Fix**: Changed the macro body to `__landin_panic_msg($msg.ptr)` to
+extract the `.ptr` field from the `&str` struct, passing the raw
+`const char*` pointer expected by the C runtime.
+
+**Per §12 (最优 > 最小)**: root-cause fix at the macro expansion layer —
+extract the ptr field at the source rather than special-casing in
+codegen or modifying the C runtime signature.
+
+#### TD-PANIC-MACRO-HYGIENE-FIELD (P1 — Hygiene layer)
+
+**Symptom**: After the ptr extraction fix, panic! still failed with
+`E400: no field '__landin_macro_ptr_0' on type &str`.
+
+**Root cause**: The macro hygiene pass renamed all non-captured
+identifiers in macro bodies to unique names (`__landin_macro_<name>_<n>`)
+to prevent collisions with caller scope. But it renamed struct field
+names like `ptr`, `len`, `cap` used in macro bodies, breaking field
+access on `&str` (which has fields `ptr`, `len`, `cap`).
+
+**Fix**: Added `ptr`, `len`, `cap` to the hygiene skip list in
+`src/parser/macro_expand/mod.rs` (alongside keywords, built-in macro
+names, runtime functions, and primitive types). Also pre-interned them
+in `src/driver/driver_codegen_prep.rs`.
+
+**Per §1.0 原則 6 (通解 > 特解)**: one set for all struct field names
+used in macro bodies (currently `ptr`, `len`, `cap` for &str).
+**Per §12 (最优 > 最小)**: root-cause fix at hygiene layer.
+
+### New Prelude Methods (Stage 40.2)
+
+```landin
+impl<T> Option<T> {
+    fn unwrap(self) -> T {
+        match self {
+            Some(v) => v,
+            None => {
+                __landin_panic_msg("called `Option::unwrap()` on a `None` value".ptr);
+                loop {}
+            }
+        }
+    }
+    fn expect(self, msg: &str) -> T {
+        match self {
+            Some(v) => v,
+            None => {
+                __landin_panic_msg(msg.ptr);
+                loop {}
+            }
+        }
+    }
+}
+
+impl<T, E> Result<T, E> {
+    fn unwrap(self) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => {
+                __landin_panic_msg("called `Result::unwrap()` on an `Err` value".ptr);
+                loop {}
+            }
+        }
+    }
+    fn expect(self, msg: &str) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => {
+                __landin_panic_msg(msg.ptr);
+                loop {}
+            }
+        }
+    }
+}
+```
+
+### Runtime Verified
+
+- `Option::unwrap()` on `Some(42)` → `42` ✓
+- `Option::unwrap()` on `None` → `panic: called Option::unwrap() on a None value` ✓
+- `Result::unwrap()` on `Ok(42)` → `42` ✓
+- `Result::unwrap()` on `Err(99)` → `panic: called Result::unwrap() on an Err value` ✓
+- `panic!("custom message")` → `panic: custom message` ✓
+
+### Known Limitations (TD-PRELUDE-MACRO-TIMING, P2, v0.5+)
+
+Prelude methods use direct `__landin_panic_msg(...)` calls instead of
+the `panic!` macro because prelude is injected AFTER macro expansion
+(`compile_inner.rs:57` vs macro_expand at line 39). Fixing this requires
+moving prelude injection before macro_expand — a driver pipeline refactor
+deferred to v0.5+.
+
+Per §12 (最优 > 最小): documented as TD — full fix requires v0.5+ refactor.
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
 
 ---
 

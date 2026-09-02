@@ -1081,7 +1081,19 @@ fn apply_hygiene(
                     | "char"
                     | "str"
             );
-            if !is_keyword && !is_builtin && !is_runtime && !is_primitive_type {
+            // Stage 40.2 (TD-PANIC-MACRO-BROKEN): Field names used in macro
+            // bodies (e.g., `panic!` expands to `__landin_panic_msg($msg.ptr)`
+            // where `ptr` is the `&str` struct's field name) must NOT be
+            // renamed — they refer to struct fields, not user bindings.
+            // Renaming them would produce `__landin_macro_ptr_0` which
+            // typeck rejects as "no field on type" (primitive types have
+            // no fields).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one set for all struct field
+            // names used in macro bodies (currently just `ptr` for &str).
+            // Per §12 (最优 > 最小): root-cause fix at hygiene layer.
+            let is_struct_field = matches!(name, "ptr" | "len" | "cap");
+            if !is_keyword && !is_builtin && !is_runtime && !is_primitive_type && !is_struct_field {
                 // Rename to unique name.
                 let new_name = hygiene.gen_unique_name(name);
                 let new_sym = interner.get_or_intern(new_name);

@@ -39853,3 +39853,92 @@ Stage Summary:
 - v0.6+: Display trait for type-dispatched formatting
   (TD-DISPLAY-TRAIT-MISSING) and Fn/FnMut/FnOnce traits for closure
   support (replacing fn type parameters with trait bounds).
+
+---
+Task ID: stage40.2
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 40.2 (v0.28) — Fixed TD-PANIC-MACRO-BROKEN (P1) +
+TD-PANIC-MACRO-STR-PTR (P1) + TD-PANIC-MACRO-HYGIENE-FIELD (P1).
+Added Option::unwrap/expect + Result::unwrap/expect to prelude.
+v0.590.0. 5436 tests, 0 failures. Runtime: all 5 panic paths verified.
+
+3秒启动自检:
+- 定位: L3 (cross-module: prelude + macro_expand + driver + codegen/runtime)
+- 对齐: 已查 Stage 40.1 worklog (next MUV candidate)
+- 阻断: v0.589.0 全绿 (5436 tests), 0 P0/P1 — but TD-PANIC-MACRO-BROKEN
+  was a P1 discovered during Stage 40.2 development
+
+决策点:
+1. TD-PANIC-MACRO-BROKEN: Added missing __landin_panic_msg + __landin_unreachable
+   extern declarations to prelude
+   - 引用 §1.0 原則 4 (报错 > 静默): previously panic! silently failed with
+     E300/E400. Now it properly calls the C runtime helper.
+   - 引用 §1.0 原則 6 (通解 > 特解): one declaration for ALL panic! calls.
+   - 引用 §12 (最优 > 最小): root-cause fix — declare the missing extern,
+     not patch each panic! call site.
+   - 引用 §2.2 根因思维: fix the missing declaration, not the symptom
+     (resolver error).
+
+2. TD-PANIC-MACRO-STR-PTR: Changed macro body from __landin_panic_msg($msg)
+   to __landin_panic_msg($msg.ptr)
+   - 引用 §12 (最优 > 最小): root-cause fix at macro expansion layer —
+     extract the ptr field at the source rather than special-casing in
+     codegen or modifying the C runtime signature.
+
+3. TD-PANIC-MACRO-HYGIENE-FIELD: Added ptr/len/cap to hygiene skip list
+   - 引用 §1.0 原則 6 (通解 > 特解): one set for all struct field names
+     used in macro bodies.
+   - 引用 §12 (最优 > 最小): root-cause fix at hygiene layer.
+
+4. Option::unwrap/expect + Result::unwrap/expect: Use direct
+   __landin_panic_msg call (not panic! macro) due to TD-PRELUDE-MACRO-TIMING
+   - 引用 §12 (最优 > 最小): documented as TD — prelude is injected AFTER
+     macro expansion, so panic! macro in prelude body is never expanded.
+     Full fix requires v0.5+ driver pipeline refactor.
+   - loop {} wrapper needed because Landin doesn't unify ! with T (v0.6+).
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P1 bug fix + additive feature, no
+  soundness impact beyond panic path which is now properly reported)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for P1 bug fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+  - 898 lib tests + 4538 integration tests = 5436 total
+  - 4 ignored (single-thread, ulimit -s unlimited)
+- Runtime verified:
+  - panic!("custom message") → "panic: custom message" ✓
+  - Option::unwrap() on Some(42) → 42 ✓
+  - Option::unwrap() on None → "panic: called Option::unwrap() on a None value" ✓
+  - Result::unwrap() on Ok(42) → 42 ✓
+  - Result::unwrap() on Err(99) → "panic: called Result::unwrap() on an Err value" ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Three layered fixes at the architecture's natural layers:
+  - Prelude (missing extern declaration)
+  - Macro expansion (str.ptr extraction)
+  - Hygiene (struct field name skip list)
+  Plus prelude extension (unwrap/expect methods). The only workaround is
+  TD-PRELUDE-MACRO-TIMING (prelude uses direct __landin_panic_msg call
+  instead of panic! macro) — documented as P2 TD for v0.5+ refactor.
+
+Stage Summary:
+- Three P1 root-cause bugs FIXED (TD-PANIC-MACRO-BROKEN +
+  TD-PANIC-MACRO-STR-PTR + TD-PANIC-MACRO-HYGIENE-FIELD)
+- Four prelude methods ADDED (Option::unwrap/expect + Result::unwrap/expect)
+- panic! macro now fully functional (was completely broken since Stage 18.29)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — 3 root-cause fixes + prelude
+  extension, no regression)
+
+下一步:
+- Stage 40.3: Add Option::or / Option::or_else / Option::filter
+  (more combinators, no panic infrastructure needed).
+- v0.5+: TD-PRELUDE-MACRO-TIMING — move prelude injection before
+  macro_expand so panic! macro can be used in prelude body.
+- v0.6+: Display trait (TD-DISPLAY-TRAIT-MISSING) + Fn/FnMut/FnOnce
+  traits + proper ! (never) type unification (remove loop {} wrappers).

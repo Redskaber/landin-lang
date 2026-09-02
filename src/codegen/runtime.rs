@@ -159,6 +159,17 @@ void __landin_panic_msg(const char* msg) {
     fprintf(stderr, "panic: %s\n", msg);
     exit(1);
 }
+/* Stage 40.2 (v0.28 — TD-PANIC-MACRO-BROKEN): unreachable! runtime helper.
+   Like __landin_panic_msg but with a different message prefix to distinguish
+   internal compiler errors from user-facing panics. Also marked noreturn
+   via exit(1) so codegen can treat the call as a terminator.
+
+   Per §1.0 原則 6 (通解 > 特解): one noreturn pattern for all panic paths.
+   Per §1.0 原則 4 (报错 > 静默): prints message to stderr before exit. */
+void __landin_unreachable(const char* msg) {
+    fprintf(stderr, "internal error: entered unreachable code: %s\n", msg);
+    exit(1);
+}
 /* Stage 18.178 (TD-HEAP-ALLOC): Heap allocation runtime stubs.
    __landin_alloc(size) → malloc(size), panics on OOM
    __landin_dealloc(ptr) → free(ptr)
