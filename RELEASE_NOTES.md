@@ -3,13 +3,99 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.588.0 (v0.27 Stage 39.3 — three root-cause fixes that unblock prelude `Option::is_some`/`is_none`/`unwrap_or`; 5415 tests) |
+| **Current version** | v0.589.0 (v0.28 Stage 40.1 — prelude `Option::map`/`Option::and_then`/`Result::map`/`Result::and_then` combinators added; 5436 tests) |
 | **Date** | 2026-09-02 |
-| **Test count** | 898 lib tests + 4517 integration tests = 5415 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4538 integration tests = 5436 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.589.0 — Stage 40.1 (v0.28) — Prelude Combinators: Option::map / Option::and_then / Result::map / Result::and_then
+
+### Overview
+
+Stage 40.1 (v0.28) adds the four most-requested combinator methods to the
+Landin prelude. These were unblocked by Stage 39.3's three root-cause
+fixes (TD-LEXER-UNDERSCORE, TD-PAT-IDENT-VARIANT, TD-TEXT-IR-DEREF-ADT)
+that made `match self { Some(v) => ..., None => ... }` patterns work
+correctly in prelude method bodies.
+
+**New prelude methods** (in `src/stdlib/prelude.rs`):
+
+```landin
+impl<T> Option<T> {
+    fn map<U>(self, f: fn(T) -> U) -> Option<U> {
+        match self { Some(v) => Some(f(v)), None => None }
+    }
+    fn and_then<U>(self, f: fn(T) -> Option<U>) -> Option<U> {
+        match self { Some(v) => f(v), None => None }
+    }
+}
+
+impl<T, E> Result<T, E> {
+    fn map<U>(self, f: fn(T) -> U) -> Result<U, E> {
+        match self { Ok(v) => Ok(f(v)), Err(e) => Err(e) }
+    }
+    fn and_then<U>(self, f: fn(T) -> Result<U, E>) -> Result<U, E> {
+        match self { Ok(v) => f(v), Err(e) => Err(e) }
+    }
+}
+```
+
+### Design Decisions
+
+- **Per §1.0 原則 6 (通解 > 特解)**: one generic mechanism handles all
+  transform functions via `fn(T) -> U` parameters. No special-case
+  intrinsics, no MIR-level weaving. Uses standard match dispatch
+  (Stage 39.3 fixed).
+- **Per §12 (最优 > 最小)**: root-cause fix at the prelude level — uses
+  standard Landin language features (match + fn type parameter).
+  No codegen changes, no resolver changes, no MIR lowerer changes.
+- **Per Rust API guidelines**: combinators return a new Option/Result
+  rather than mutating in place (zero-cost abstraction via
+  monomorphization).
+- **Per Rust semantics**: `map` transforms the payload; `and_then`
+  chains fallible operations; `Err` propagates unchanged through both
+  Result combinators; `None` propagates unchanged through both Option
+  combinators.
+
+### Runtime Verified (8 positive tests)
+
+- `Option::map` on `Some(21)` → `Some(42)` ✓
+- `Option::map` on `None` → `None` ✓
+- `Option::and_then` on `Some(42)` (with `half_even`) → `Some(21)` ✓
+- `Option::and_then` on `None` → `None` ✓
+- `Result::map` on `Ok(21)` → `Ok(42)` ✓
+- `Result::map` on `Err(99)` → `Err(99)` (propagates) ✓
+- `Result::and_then` on `Ok(42)` (with `half_even`) → `Ok(21)` ✓
+- `Result::and_then` on `Err(99)` → `Err(99)` (propagates) ✓
+
+### Test Coverage
+
+Per §9.4.3 (1:3+ positive:negative ratio): 8 positive + 24 negative = 32
+total (1:3 ratio, meets target).
+
+Per §7.3.1 (≥30 case negative audit covering 7 error categories):
+Lex (3) + Parse (3) + Typeck (3) + Borrowck (1) + Resolve (16) +
+Trait (1) + Codegen (1) = 24 cases.
+
+### §3.2 Verification
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+  - 898 lib tests + 4538 integration tests = 5436 total
+  - 4 ignored (single-thread, ulimit -s unlimited)
+
+### Limitations
+
+- Combinators use `fn(T) -> U` (function pointer) rather than `FnOnce(T) -> U`
+  (closure trait). Closures (Fn/FnMut/FnOnce traits) are deferred to v0.6+.
+- `Option::unwrap` (panicking version) is not yet added — requires panic
+  formatting infrastructure (deferred to Stage 40.2 or later).
 
 ---
 

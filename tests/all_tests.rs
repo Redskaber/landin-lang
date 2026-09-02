@@ -923,3 +923,11 @@ mod stage38_1_octal_binary_format_tests;
 //    OpaquePtr (fixes TextEmitter IR validity for `match *self { ... }`).
 #[path = "v0/stage39/plan/stage39_3_tests.rs"]
 mod stage39_3_tests;
+
+// === Stage 40.1 (v0.28): Prelude Option::map / Option::and_then /
+// Result::map / Result::and_then combinators ===
+// Adds the four most-requested combinator methods to the prelude.
+// Unblocked by Stage 39.3's three root-cause fixes (lexer `_`,
+// resolver variant disambiguation, codegen `*self` for `&Adt`).
+#[path = "v0/stage40/plan/stage40_1_tests.rs"]
+mod stage40_1_tests;

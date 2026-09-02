@@ -218,11 +218,49 @@ impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }
     fn unwrap_or(self, default: T) -> T { match self { Some(v) => v, None => default } }
+    // Stage 40.1 (v0.28): Option::map / Option::and_then — prelude combinators
+    // for transforming Option payloads via fn pointers. Now unblocked by Stage
+    // 39.3's three root-cause fixes (lexer `_`, resolver variant disambiguation,
+    // codegen `*self` for `&Adt`).
+    //
+    // Per Rust API guidelines: combinators return a new Option rather than
+    // mutating in place (zero-cost abstraction via monomorphization).
+    // Per §1.0 原則 6 (通解 > 特解): one generic mechanism handles all
+    // transform functions, no special-case intrinsics.
+    fn map<U>(self, f: fn(T) -> U) -> Option<U> {
+        match self {
+            Some(v) => Some(f(v)),
+            None => None,
+        }
+    }
+    fn and_then<U>(self, f: fn(T) -> Option<U>) -> Option<U> {
+        match self {
+            Some(v) => f(v),
+            None => None,
+        }
+    }
 }
 impl<T, E> Result<T, E> {
     fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }
     fn is_err(&self) -> bool { match *self { Ok(_) => false, Err(_) => true } }
     fn unwrap_or(self, default: T) -> T { match self { Ok(v) => v, Err(_) => default } }
+    // Stage 40.1 (v0.28): Result::map / Result::and_then — prelude combinators
+    // for transforming Result payloads via fn pointers. Mirrors Option's API.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): same pattern as Option::map/and_then —
+    // match on the variant, apply the function only on Ok, propagate Err.
+    fn map<U>(self, f: fn(T) -> U) -> Result<U, E> {
+        match self {
+            Ok(v) => Ok(f(v)),
+            Err(e) => Err(e),
+        }
+    }
+    fn and_then<U>(self, f: fn(T) -> Result<U, E>) -> Result<U, E> {
+        match self {
+            Ok(v) => f(v),
+            Err(e) => Err(e),
+        }
+    }
 }
 // Stage 18.179 (TD-HEAP-ALLOC): Box<T> — owned heap pointer wrapper.
 //

@@ -39772,3 +39772,84 @@ Stage Summary:
   unblocked — Option construction and match dispatch both work).
 - Stage 40 MUV-2: Add Result::map / Result::and_then to prelude.
 - v0.6+ Display trait for type-dispatched formatting (TD-DISPLAY-TRAIT-MISSING).
+
+---
+Task ID: stage40.1
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 40.1 (v0.28) — Added four prelude combinators:
+Option::map / Option::and_then / Result::map / Result::and_then.
+v0.589.0. 5436 tests, 0 failures. Runtime: all 8 combinator paths verified.
+
+3秒启动自检:
+- 定位: L2 (prelude only, 1 file modified: src/stdlib/prelude.rs)
+- 对齐: 已查 Stage 39.3 worklog (unblocked path)
+- 阻断: v0.588.0 全绿 (5415 tests), 0 P0/P1
+
+决策点:
+1. Use fn(T) -> U instead of FnOnce(T) -> U (closure trait)
+   - 引用 §1.0 原則 6 (通解 > 特解): one generic mechanism handles all
+     transform functions via fn type parameters. Closures (Fn/FnMut/FnOnce
+     traits) are deferred to v0.6+.
+   - 引用 §12 (最优 > 最小): root-cause fix at prelude level — uses
+     standard Landin language features (match + fn type parameter).
+     No codegen changes, no resolver changes, no MIR lowerer changes.
+
+2. map returns Some/Ok with transformed payload; and_then delegates to f
+   - Per Rust semantics: map transforms; and_then chains fallible ops;
+     Err propagates unchanged through both Result combinators; None
+     propagates unchanged through both Option combinators.
+   - Per Rust API guidelines: combinators return a new Option/Result
+     rather than mutating in place (zero-cost abstraction via
+     monomorphization).
+
+3. Mirrors Rust std::option::Option and std::result::Result API surface
+   - 1:1 method naming (map, and_then) for cross-language familiarity.
+   - Per §10 标准化 API 命名规则: lowercase method names match Rust
+     convention; no Landin-specific renames.
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+  - 898 lib tests + 4538 integration tests = 5436 total
+  - 4 ignored (single-thread, ulimit -s unlimited)
+- Runtime verified:
+  - Option::map on Some(21) → Some(42) ✓
+  - Option::map on None → None ✓
+  - Option::and_then on Some(42) (half_even) → Some(21) ✓
+  - Option::and_then on None → None ✓
+  - Result::map on Ok(21) → Ok(42) ✓
+  - Result::map on Err(99) → Err(99) (propagates) ✓
+  - Result::and_then on Ok(42) (half_even) → Ok(21) ✓
+  - Result::and_then on Err(99) → Err(99) (propagates) ✓
+- TextEmitter IR verified: llvm-as accepts the IR ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Uses standard Landin language features (match + fn
+  type parameter) at the prelude level. No codegen/resolver/MIR changes.
+  The four combinators are pure prelude methods — they leverage the
+  enum match dispatch fixed in Stage 39.3, with no compiler intrinsics
+  or special-case handling.
+
+Stage Summary:
+- Four prelude combinators ADDED (Option::map, Option::and_then,
+  Result::map, Result::and_then)
+- 21 new tests added (8 positive + 24 negative - 11 placeholder tests
+  consolidated via parameterized loops)
+- 5436 tests total, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension, no regression)
+
+下一步:
+- Stage 40.2: Add Option::unwrap / Result::unwrap (requires panic
+  formatting infrastructure — needs runtime panic message support).
+- Stage 40.3: Add Option::or / Option::or_else / Option::filter
+  (more combinators).
+- v0.6+: Display trait for type-dispatched formatting
+  (TD-DISPLAY-TRAIT-MISSING) and Fn/FnMut/FnOnce traits for closure
+  support (replacing fn type parameters with trait bounds).
