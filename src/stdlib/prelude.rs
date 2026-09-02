@@ -692,6 +692,12 @@ impl<T> Vec<T> {
         let elem_ptr: *mut T = self.ptr + self.len;
         Some(*elem_ptr)
     }
+    // Stage 48 (v0.6): Vec::is_empty / capacity — more Vec methods.
+    // Per Rust API guidelines: is_empty returns true if len==0;
+    // capacity returns cap.
+    // Per §1.0 原則 6 (通解 > 特解): same field access pattern.
+    fn is_empty(&self) -> bool { self.len == 0usize }
+    fn capacity(&self) -> usize { self.cap }
 }
 // Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): str primitive methods.
 //

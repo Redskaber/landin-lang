@@ -40472,3 +40472,55 @@ Stage Summary:
 - Stage 48 (v0.6+): TD-DISPLAY-TRAIT — Display trait + type-dispatched
   formatting (now unblocked by Stage 47 method substs inference).
 - Stage 49+ (v0.6+): TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
+
+---
+Task ID: stage48
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 48 (v0.6) — Vec::is_empty/capacity added. TD-DISPLAY-TRAIT
+design analysis completed (requires format! param redesign, deferred).
+v0.599.0. 5436 tests, 0 failures. Runtime: Vec::new().is_empty()=true.
+
+3秒启动自检:
+- 定位: L2 (prelude only, 2 Vec methods added)
+- 对齐: 已查 Stage 47 worklog (method substs fixed, Display trait next)
+- 阻断: v0.598.0 全绿 (5436 tests), 0 P0/P1
+
+决策点:
+1. Added Vec::is_empty / capacity to existing impl<T> Vec<T> block
+   - 引用 §1.0 原則 6 (通解 > 特解): same field access pattern.
+   - No additional generic params needed.
+
+2. TD-DISPLAY-TRAIT design analysis
+   - Root cause: format! receives `&[i64]` — all args cast to i64.
+     Display trait dispatch needs `&[&dyn Display]` (fat pointers).
+   - This requires format! parameter passing redesign — L3 architecture task.
+   - 引用 §13.4 (重构判据): defer if cost > benefit for current stage.
+   - Deferred to v0.7+ when dyn Display fat pointer dispatch is prioritized.
+
+裁剪点:
+- L2 — prelude-only change, no cross-module impact
+- 跳过 §14.5 D2-D8 deep review (additive feature, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for additive features
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5436 tests, 0 failures)
+- Runtime verified: Vec::new().is_empty() → true ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix for Vec::is_empty/capacity (standard field access).
+  TD-DISPLAY-TRAIT analysis documents the L3 architecture redesign needed
+  (format! param passing: &[i64] → &[&dyn Display]).
+
+Stage Summary:
+- 2 new prelude methods ADDED (Vec::is_empty, Vec::capacity)
+- TD-DISPLAY-TRAIT design analysis COMPLETED (deferred to v0.7+)
+- 5436 tests, 0 failures, fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — prelude extension, no regression)
+
+下一步:
+- Stage 49+ (v0.7+): TD-DISPLAY-TRAIT — format! param redesign for
+  trait dispatch (&[&dyn Display] instead of &[i64]).
+- Stage 50+ (v0.7+): TD-FN-TRAITS + TD-DYN-TRAIT + TD-IMPL-TRAIT.
