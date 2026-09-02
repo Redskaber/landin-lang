@@ -344,6 +344,17 @@ pub(crate) fn compile_inner(
         &mut fn_sig_table,
         &mut errors,
     );
+    // Stage 35.2 (v0.23 — TD-TYPECK-PARAM-ARG-COUNT): Register ALL trait
+    // declaration methods (with or without body) in fn_sig_table. Methods
+    // without body are NOT registered by populate_trait_default_fn_sigs
+    // (line 412: `if f.body.is_none() { continue; }`) — this caused typeck
+    // to silently accept wrong arg counts for trait decl method calls on
+    // Param(N) receivers.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): fix the silent skip.
+    // Per §1.0 原則 6 (通解 > 特解): one registration for all trait methods.
+    // Per §1.0 原則 10 (唯一可信数据源): trait decl sig is the source of truth.
+    driver_codegen_prep::populate_trait_decl_fn_sigs(&hir, &interner, &mut fn_sig_table);
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
     // Stage 16.14: Synthesized closure MIR bodies, built per-function.

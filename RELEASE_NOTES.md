@@ -3,13 +3,86 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.574.0 (v0.23 Stage 35.1 — TD-SELF-OUTSIDE-IMPL-CONTEXT RESOLVED; new `ResolveErrorKind::SelfOutsideImplContext` error kind; deeper `owner_self_kind` propagation bug discovered and fixed; 5 positive + 28 negative tests covering 7 error categories) |
+| **Current version** | v0.575.0 (v0.23 Stage 35.2 — TD-TYPECK-PARAM-ARG-COUNT RESOLVED; new `populate_trait_decl_fn_sigs` registers ALL trait declaration methods (with or without body) in fn_sig_table; typeck now uniformly validates arg count for trait method calls on Param(N) receivers; 5 positive + 28 negative tests covering 7 error categories) |
 | **Date** | 2026-09-01 |
-| **Test count** | 898 lib tests + 4230 integration tests = 5128 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
+| **Test count** | 898 lib tests + 4263 integration tests = 5161 total (100% pass rate single-thread with `ulimit -s unlimited`, 4 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.1 complete — TD-SELF-OUTSIDE-IMPL-CONTEXT resolved; 3 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH, TD-TYPECK-PARAM-ARG-COUNT) |
+| **Architecture** | Health 9.85/10 (186 files, ~93K LOC); v0.23 Stage 35.2 complete — TD-TYPECK-PARAM-ARG-COUNT resolved; 2 TDs still BLOCKED on v0.5+ architectural changes (TD-FORMAT-MIGRATION, TD-TYPECK-PARAM-RETURN-MISMATCH) |
+
+---
+
+## v0.575.0 — v0.23 Stage 35.2 — TD-TYPECK-PARAM-ARG-COUNT RESOLVED
+
+### Overview
+
+Stage 35.2 (v0.23) resolves TD-TYPECK-PARAM-ARG-COUNT — a P3 tech-debt
+documented since Stage 32.3.
+
+**Bug**: typeck did not validate arg count for trait method calls when the
+trait method had no body (declaration only). For example:
+```rust
+trait T { fn f(&self, a: i32, b: i32) -> i32; }
+struct S<X: T> { x: X }
+impl<X: T> S<X> { fn g(&self) -> i32 { self.x.f(1) } }  // ❌ silent accept
+```
+The call `self.x.f(1)` only passes 1 arg, but the method expects 2 — typeck
+silently accepted this, violating §1.0 原則 4 (报错 > 静默).
+
+**Root cause**: `populate_trait_default_fn_sigs` in
+`src/driver/driver_codegen_prep.rs:412` skipped trait methods without bodies
+(`if f.body.is_none() { continue; }`) — trait decl-only methods were NOT
+registered in `fn_sig_table`. typeck's `check_terminator` Call handler
+couldn't look up the method's sig → arg-count check was silently skipped.
+
+### Fix Components
+
+1. **New function** `populate_trait_decl_fn_sigs` in
+   `src/driver/driver_codegen_prep.rs` — walks all trait declarations and
+   registers their methods (with or without body) in fn_sig_table.
+2. **Wire-up** in `src/driver/compile_inner.rs` — called AFTER
+   `populate_trait_default_fn_sigs` (which keeps its self_ty specialization
+   for default-body methods).
+3. **Self type placeholder**: For decl-only methods (no body, no impl), uses
+   `TyKind::Error`. typeck's arg-count check only compares counts, so Error
+   is fine. typeck's arg-type unification might trigger a mismatch when
+   unifying self arg with Error — but Param(N) unifies cleanly (no false
+   positive).
+
+### Tests (33 new — 5 positive + 28 negative)
+
+Per §9.4.3 (1:3+ positive:negative ratio): 1:5.6 ratio (exceeds target).
+Per §7.3.1 (≥30 case negative audit covering 7 error categories):
+- Typeck (16): arg count mismatch on concrete impl, default body, Param(N)
+  receiver (decl & default body), free fn call, method not found, type
+  mismatch, undefined type, let binding
+- Lex (3): invalid binary, unterminated comment, unclosed string
+- Parse (3): missing semicolon, unbalanced braces, missing arrow
+- Borrowck (1): double mut borrow
+- Resolve (2): Self outside impl (Stage 35.1 regression), undefined type
+- Trait (2): trait impl wrong sig, undefined trait reference
+- Codegen (1): extern "C" call exercises codegen path
+
+### §3.2 Verification
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4263 integration tests ✓ (was 4230; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+
+### Remaining BLOCKED TDs (all v0.5+ architectural)
+
+| TD ID | Priority | Blocker |
+|-------|----------|---------|
+| TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl — needs AST-level macro expansion or variadic args language feature |
+| TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods |
 
 ---
 

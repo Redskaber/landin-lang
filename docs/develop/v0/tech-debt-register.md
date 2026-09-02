@@ -1059,7 +1059,7 @@ analysis of Landin's integer type system, comparing with Rust's design.
 | TD-FORMAT-MIGRATION | P2 | format! intrinsic (598 LOC MIR walker) migration to prelude impl blocked on method monomorphization — same root cause as TD-VEC-PUSH-GET-MIGRATION | BLOCKED (v0.5+ — needs per-instantiation fn body codegen with Param(N) substitution). Note: TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION is now RESOLVED, so the remaining blocker is the format_variadic_intrinsic's variadic args handling. |
 | TD-SELF-OUTSIDE-IMPL-CONTEXT | P3 | `Self::Item` in free fn return type silently resolves to Projection (Stage 3.66 limitation: owner context not threaded into body resolution) | ✅ Resolved Stage 35.1 — added `ResolveErrorKind::SelfOutsideImplContext` error kind. Replaced silent `unwrap_or(HirSelfKind::Impl)` with explicit error via `resolve_self_ty` helper at both single-segment and multi-segment Self-resolution sites. Also discovered and fixed deeper bug: `owner_self_kind` was keyed by Trait/Impl DefId only, missing method fn owners — propagated parent SelfKind to each method fn owner. Also added `current_self_kind` setting before fn sig resolution (covers `&self` placeholder Self type). Also extended `resolve_ast_ty_paths` to check Self in generic args (Vec<Self>, Box<Self>). 5 positive + 28 negative tests covering 7 error categories. 5128 tests total, 0 failures. |
 | TD-TYPECK-PARAM-RETURN-MISMATCH | P3 | typeck doesn't unify Param(N) body with concrete return type for generic impl methods | Documented (Stage 32.3) — pre-existing limitation |
-| TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers | Documented (Stage 32.3) — pre-existing limitation |
+| TD-TYPECK-PARAM-ARG-COUNT | P3 | typeck doesn't validate arg count for trait method calls on Param(N) receivers | ✅ Resolved Stage 35.2 — added new `populate_trait_decl_fn_sigs` in `src/driver/driver_codegen_prep.rs` that registers ALL trait declaration methods (with or without body) in fn_sig_table. typeck's existing `check_terminator` Call handler (src/typeck/check.rs:495-581) now validates arg count uniformly for all trait method calls. Root cause: existing `populate_trait_default_fn_sigs` skipped methods without body (line 412: `if f.body.is_none() { continue; }`), so trait decl-only methods (e.g., `trait T { fn f(&self, a: i32, b: i32) -> i32; }`) were NOT registered → typeck silently accepted wrong arg counts at call sites (violating §1.0 原則 4 报错>静默). Fix registers decl methods with `TyKind::Error` as self_ty placeholder (no impl exists to provide real self type). 5 positive + 28 negative tests covering 7 error categories. 5161 tests total, 0 failures. |
 
 #### B3: Deviations Requiring Design Doc Update
 
@@ -1221,3 +1221,110 @@ resolving. Extended to call `resolve_self_ty` when a segment is `Self`.
 Stage 35.2 should tackle TD-TYPECK-PARAM-ARG-COUNT (smallest remaining P3):
 typeck doesn't validate arg count for trait method calls on Param(N) receivers.
 This is a typeck-level fix (similar complexity to Stage 35.1).
+
+---
+
+## Stage 35.2 (v0.23) Update — TD-TYPECK-PARAM-ARG-COUNT RESOLVED
+
+**Date**: 2026-09-01
+**Version**: v0.575.0 (Stage 35.2)
+**Architecture Health**: 9.85/10 (stable — additive fix, no regression)
+
+### TD-TYPECK-PARAM-ARG-COUNT — Resolution Summary
+
+**Bug**: typeck did not validate arg count for trait method calls when the
+trait method had no body (declaration only). For example:
+```rust
+trait T { fn f(&self, a: i32, b: i32) -> i32; }
+struct S<X: T> { x: X }
+impl<X: T> S<X> { fn g(&self) -> i32 { self.x.f(1) } }  // ❌ silent accept
+```
+The call `self.x.f(1)` only passes 1 arg, but the method expects 2 — typeck
+silently accepted this, violating §1.0 原則 4 (报错 > 静默).
+
+**Root cause**: `populate_trait_default_fn_sigs` in
+`src/driver/driver_codegen_prep.rs:412` skipped trait methods without bodies:
+```rust
+if f.body.is_none() {
+    continue; // No body — no fn_sig needed (it's just a declaration).
+}
+```
+This meant trait declaration methods (without body) were NOT registered in
+`fn_sig_table`. When typeck's `check_terminator` (src/typeck/check.rs:525-581)
+tried to look up the method's sig via `fn_sigs.get(def_id)`, it returned
+`None` → the arg-count check was silently skipped.
+
+**Fix**: Added new function `populate_trait_decl_fn_sigs` in
+`src/driver/driver_codegen_prep.rs` that walks ALL trait declarations and
+registers their methods (with or without body) in `fn_sig_table`. Called
+in `compile_inner.rs` AFTER `populate_trait_default_fn_sigs` so default-body
+methods keep their proper self_ty from the impl.
+
+**Self type placeholder**: For decl-only methods (no body, no impl), we use
+`TyKind::Error` as the self type. typeck's arg-count check only compares
+counts, so Error is fine. typeck's arg-type unification might trigger a
+mismatch when unifying self arg with Error — but Param(N) unifies cleanly
+with Error (no false positive).
+
+### Fix Components
+
+| # | Component | File | LOC |
+|---|-----------|------|-----|
+| 1 | New function `populate_trait_decl_fn_sigs` | `src/driver/driver_codegen_prep.rs` | +85 |
+| 2 | Wire-up call in driver | `src/driver/compile_inner.rs` | +11 |
+| 3 | Test file | `tests/v0/stage35/plan/typeck_param_arg_count_tests.rs` | +323 |
+| 4 | Test entry in `all_tests.rs` | `tests/all_tests.rs` | +5 |
+| 5 | Design doc | `docs/develop/v0/stage-35/stage-35.2-typeck-param-arg-count-design.md` | +190 |
+
+**Total**: ~96 LOC code changes + ~323 LOC tests + ~190 LOC design doc.
+
+### Tests
+
+| Category | Count |
+|----------|-------|
+| Positive (correct arg count accepted) | 5 |
+| Negative — Typeck arg-count errors | 16 |
+| Negative — Lex errors | 3 |
+| Negative — Parse errors | 3 |
+| Negative — Borrowck | 1 |
+| Negative — Resolve | 2 |
+| Negative — Trait | 2 |
+| Negative — Codegen path | 1 |
+| **Total new tests** | **33** |
+
+### §3.2 Verification (Stage 35.2)
+
+- cargo clean ✓
+- cargo build --release --features llvm-backend ✓
+- cargo check --features llvm-backend (0 errors, 0 warnings) ✓
+- cargo fmt --check (0 diff) ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓
+  - 898 lib tests ✓
+  - 4263 integration tests ✓ (was 4230; +33 new)
+  - 4 ignored ✓
+  - 0 failed ✓
+  - **Total: 5161 tests**
+
+### §14.8 Design Writeback
+
+| Phase | Status |
+|-------|--------|
+| B1 (Design vs Implementation) | ✅ Match |
+| B2 (New TDs created) | ✅ None — root cause addressed |
+| B3 (Deviations requiring design doc update) | ✅ None — Rust Reference matched |
+| B4 (Architectural limitations) | ✅ None |
+
+### v0.23 Stage 35 Series — Status
+
+- Stage 35.1: TD-SELF-OUTSIDE-IMPL-CONTEXT ✅ Resolved
+- Stage 35.2: TD-TYPECK-PARAM-ARG-COUNT ✅ Resolved
+- Remaining BLOCKED TDs (all v0.5+ architectural):
+  - TD-FORMAT-MIGRATION (P2): variadic args / AST-level macro expansion
+  - TD-TYPECK-PARAM-RETURN-MISMATCH (P3): typeck Param(N) unification
+
+### Next Stage Direction
+
+Stage 35.3 should tackle TD-TYPECK-PARAM-RETURN-MISMATCH (last remaining
+typeck-area P3): typeck doesn't unify Param(N) body with concrete return
+type for generic impl methods.

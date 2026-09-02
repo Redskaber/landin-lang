@@ -863,3 +863,10 @@ mod stage32_3_prelude_mono_order_fix_tests;
 // to method fn owners + sets `current_self_kind` before fn sig resolution.
 #[path = "v0/stage35/plan/self_outside_impl_tests.rs"]
 mod stage35_1_self_outside_impl_context_tests;
+
+// === Stage 35.2 (v0.23): TD-TYPECK-PARAM-ARG-COUNT fix ===
+// New `populate_trait_decl_fn_sigs` registers ALL trait declaration methods
+// (with or without body) in fn_sig_table. typeck's existing check_terminator
+// now validates arg count for trait method calls on Param(N) receivers.
+#[path = "v0/stage35/plan/typeck_param_arg_count_tests.rs"]
+mod stage35_2_typeck_param_arg_count_tests;

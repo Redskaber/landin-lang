@@ -492,3 +492,87 @@ pub(super) fn populate_trait_default_fn_sigs(
         }
     }
 }
+
+/// Stage 35.2 (v0.23 — TD-TYPECK-PARAM-ARG-COUNT): Build fn_sig_table entries
+/// for ALL trait declaration methods (with or without body).
+///
+/// Previously, `populate_trait_default_fn_sigs` only registered trait methods
+/// with a default body. Trait declaration methods without body (e.g.,
+/// `trait T { fn f(&self, a: i32, b: i32) -> i32; }`) were NOT registered →
+/// typeck's `check_terminator` couldn't look up their sig → silently accepted
+/// wrong arg count at call sites (violating §1.0 原則 4 报错 > 静默).
+///
+/// This function ensures every trait method declared in source has a
+/// fn_sig_table entry, so typeck can validate arg count uniformly.
+///
+/// **Order**: Call AFTER `populate_trait_default_fn_sigs` so default-body
+/// methods keep their proper self_ty from the impl (not the Error placeholder).
+/// Methods already registered (via `populate_trait_default_fn_sigs` or
+/// `populate_fn_sigs`) are skipped (no override).
+///
+/// **Self type**: For methods without body, no impl exists to provide the
+/// self type. We use `TyKind::Error` as a placeholder. typeck's arg-count
+/// check (check.rs:527) only compares counts, so Error is fine. typeck's
+/// arg-type unification (check.rs:539-555) might trigger a type mismatch
+/// if it tries to unify self arg with Error — but for Param(N) receivers,
+/// the self arg is Infer/Param which unifies cleanly with Error (no false
+/// positive).
+///
+/// Per §1.0 原則 4 (报错 > 静默): fix the silent skip.
+/// Per §1.0 原則 6 (通解 > 特解): one function handles all trait methods.
+/// Per §1.0 原則 10 (唯一可信数据源): trait decl sig is the source of truth.
+/// Per §12 (最优 > 最小): root-cause fix — register decl methods in fn_sig_table.
+pub(super) fn populate_trait_decl_fn_sigs(
+    hir: &HirCrate,
+    _interner: &lasso::Rodeo,
+    fn_sig_table: &mut crate::typeck::FnSigTable,
+) {
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    let method_def_id = f.hir_id.owner;
+                    // Stage 35.2: Skip if already registered (e.g., default-body
+                    // method was registered by populate_trait_default_fn_sigs
+                    // with the impl's self_ty). Don't override.
+                    if fn_sig_table.sigs.contains_key(&method_def_id) {
+                        continue;
+                    }
+                    // Stage 35.2: For trait decl methods without body, use
+                    // TyKind::Error for self (no impl to provide real type).
+                    // typeck only needs the input count for arg-count validation.
+                    let inputs: Vec<crate::mir::ty::Ty> = f
+                        .sig
+                        .inputs
+                        .iter()
+                        .map(|p| {
+                            if p.self_kind.is_some() {
+                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                            } else if let Some(ty) = &p.ty {
+                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                            } else {
+                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                            }
+                        })
+                        .collect();
+                    let output = match &f.sig.output {
+                        HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Tuple(Vec::new()),
+                            f.span,
+                        ),
+                        HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    };
+                    fn_sig_table.sigs.insert(
+                        method_def_id,
+                        crate::mir::ty::Sig {
+                            inputs,
+                            output: Box::new(output),
+                            abi: f.sig.abi,
+                            is_unsafe: f.sig.is_unsafe,
+                        },
+                    );
+                }
+            }
+        }
+    }
+}
