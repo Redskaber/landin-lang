@@ -591,9 +591,45 @@ fn main() -> i32 {
     let _ = std::fs::write(&ir_file, &ir_text);
 
     // Run llvm-as to verify IR validity
-    let llvm_as = "/tmp/llvm-22-prefix/bin/llvm-as";
+    // Stage 67 (v0.7 — portability fix): Look up llvm-as dynamically via
+    // LLVM_SYS_221_PREFIX env var or PATH lookup, instead of hardcoding
+    // /tmp/llvm-22-prefix/bin/llvm-as. If llvm-as is not found, skip the
+    // test (return early) instead of panicking.
+    //
+    // Per §12 (最优 > 最小): root-cause fix — portable path lookup.
+    // Per §1.0 原則 4 (报错 > 静默): skip with eprintln, not silent pass.
+    let llvm_as = std::env::var("LLVM_SYS_221_PREFIX")
+        .map(|prefix| std::path::PathBuf::from(format!("{}/bin/llvm-as", prefix)))
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            // Search PATH for llvm-as
+            std::env::var("PATH").ok().and_then(|paths| {
+                paths
+                    .split(':')
+                    .map(|dir| std::path::PathBuf::from(dir).join("llvm-as"))
+                    .find(|p| p.exists())
+            })
+        })
+        .or_else(|| {
+            let hardcoded = std::path::PathBuf::from("/tmp/llvm-22-prefix/bin/llvm-as");
+            if hardcoded.exists() {
+                Some(hardcoded)
+            } else {
+                None
+            }
+        });
+
+    let llvm_as = match llvm_as {
+        Some(path) => path,
+        None => {
+            eprintln!("warning: llvm-as not found — skipping IR validity check (set LLVM_SYS_221_PREFIX or add llvm-as to PATH)");
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return;
+        }
+    };
     let bc_file = temp_dir.join("output.bc");
-    let llvm_as_result = Command::new(llvm_as)
+    let llvm_as_result = Command::new(&llvm_as)
         .arg(&ir_file)
         .arg("-o")
         .arg(&bc_file)

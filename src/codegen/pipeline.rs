@@ -193,6 +193,7 @@ pub fn run_codegen_pipeline(
         &result.interner,
         &mono_layouts,
         emitter,
+        &result.trait_method_map,
     )?;
 
     // 6. Synthesized closure function bodies

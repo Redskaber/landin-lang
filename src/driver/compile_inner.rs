@@ -1093,6 +1093,18 @@ pub(crate) fn compile_inner(
     // Stage 18.138 §13.4 J2: extracted to driver_codegen_prep.rs
     let type_name_by_def_id = driver_codegen_prep::build_type_name_by_def_id(&hir);
 
+    // Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Build trait method
+    // resolution map. Pre-computed in driver (per §16 — codegen is HIR-free),
+    // passed as data to codegen. Used to re-resolve trait method calls during
+    // monomorphization (when Param(N) types are substituted with concrete types).
+    // Per §12 (最优 > 最小): root-cause fix — pre-compute, pass as data.
+    // Per §1.0 原則 6 (通解 > 特解): one map for all trait method resolutions.
+    let trait_method_map = crate::mir::monomorphize::build_trait_method_resolution_map(
+        &hir,
+        &interner,
+        &trait_resolver,
+    );
+
     CompileResult {
         hir: Some(hir),
         mirs,
@@ -1108,5 +1120,6 @@ pub(crate) fn compile_inner(
         type_interner: crate::mir::ty_interner::TypeInterner::new(),
         synthesized_closure_mir_bodies,
         type_name_by_def_id,
+        trait_method_map,
     }
 }

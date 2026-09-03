@@ -44,6 +44,7 @@ use lasso::Rodeo;
 /// propagate codegen errors from `codegen_function`.
 ///
 /// Per §2 原则 9 (正确>妥协): full Result propagation.
+#[allow(clippy::too_many_arguments)]
 pub fn codegen_mono_functions(
     mirs: &[MirBody],
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
@@ -52,6 +53,7 @@ pub fn codegen_mono_functions(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
+    trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
 ) -> CodegenResult<()> {
     use crate::mir::collect_mono_items;
     use crate::mir::monomorphize::{build_mono_item_names, mono_item_name, MonoItem};
@@ -88,7 +90,21 @@ pub fn codegen_mono_functions(
             };
 
             // Substitute Param types with concrete substs.
-            let specialized_mir = substitute_mir_body(generic_mir, substs);
+            let mut specialized_mir = substitute_mir_body(generic_mir, substs);
+
+            // Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Re-resolve trait
+            // method calls in the specialized MIR. After substitution, Param(N)
+            // types are replaced with concrete types. Trait method calls that
+            // were resolved to the trait declaration method (no body) are now
+            // re-resolved to the concrete impl method (has body) using the
+            // pre-computed TraitMethodResolutionMap.
+            re_resolve_trait_method_calls(
+                &mut specialized_mir,
+                substs,
+                trait_method_map,
+                fn_name_by_def_id,
+                interner,
+            );
 
             // Get the specialized function name.
             let specialized_name = mono_names.get(item).cloned().unwrap_or_else(|| {
@@ -593,4 +609,143 @@ pub(crate) fn call_dest_type(
         }
     }
     None
+}
+
+// Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Trait method re-resolution
+// during monomorphization. After substitute_mir_body replaces Param(N) types
+// with concrete types, trait method calls still point to the trait declaration
+// method (no body). This function re-resolves them to the concrete impl method.
+//
+// Per §12 (最优 > 最小): root-cause fix — re-resolve after substitution.
+// Per §16 (codegen is HIR-free): uses pre-computed map, no HIR access.
+fn re_resolve_trait_method_calls(
+    mir: &mut crate::mir::body::MirBody,
+    substs: &[crate::mir::ty::Ty],
+    trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    interner: &Rodeo,
+) {
+    use crate::mir::body::TerminatorKind;
+    use crate::mir::place::Operand;
+    use crate::mir::ty::TyKind;
+
+    let _ = (fn_name_by_def_id, interner); // Reserved for future ADT type lookup.
+
+    if substs.is_empty() {
+        return;
+    }
+
+    // Clone local_decls to avoid borrow conflict with the mutable iteration
+    // over basic_blocks. This is O(n) but only runs on generic functions.
+    let local_decls = mir.local_decls.clone();
+
+    for bb in &mut mir.basic_blocks {
+        let TerminatorKind::Call { func, args, .. } = &mut bb.terminator.kind else {
+            continue;
+        };
+        let Operand::Constant(c) = func else {
+            continue;
+        };
+        let TyKind::FnDef(trait_method_def_id, _) = &c.ty.kind else {
+            continue;
+        };
+
+        // Get the receiver type (first arg or first input local).
+        let receiver_ty = get_receiver_type(&local_decls, args);
+        let Some(recv_ty) = receiver_ty else {
+            continue;
+        };
+
+        // Get the concrete type name.
+        let type_name = get_concrete_type_name(&recv_ty, interner);
+        if type_name.is_empty() {
+            continue;
+        }
+
+        // Look up in the trait method map.
+        let Some(impl_method_def_id) = trait_method_map.lookup(*trait_method_def_id, &type_name)
+        else {
+            continue;
+        };
+
+        // Found the concrete impl method! Replace the func operand.
+        c.ty = crate::mir::ty::Ty::new(
+            TyKind::FnDef(impl_method_def_id, Vec::new().into()),
+            crate::session::Span::DUMMY,
+        );
+        c.val = crate::mir::place::ConstVal::Uint(impl_method_def_id.as_u32() as u128);
+    }
+}
+
+/// Get the receiver type from the Call terminator's args or the first input local.
+fn get_receiver_type(
+    local_decls: &[crate::mir::body::LocalDecl],
+    args: &[crate::mir::place::Operand],
+) -> Option<crate::mir::ty::Ty> {
+    use crate::mir::place::{Operand, PlaceKind};
+
+    if !args.is_empty() {
+        match &args[0] {
+            Operand::Copy(place) | Operand::Move(place) => {
+                let PlaceKind::Local(id) = &place.kind else {
+                    return None;
+                };
+                let idx = id.0 as usize;
+                if idx < local_decls.len() {
+                    return Some(local_decls[idx].ty.clone());
+                }
+            }
+            Operand::Constant(c) => return Some(c.ty.clone()),
+        }
+    }
+
+    // No args — the receiver might be the first input local.
+    if local_decls.len() > 1 {
+        return Some(local_decls[1].ty.clone());
+    }
+    None
+}
+
+/// Get the source-language name of a MIR type as a string.
+fn get_concrete_type_name(ty: &crate::mir::ty::Ty, _interner: &Rodeo) -> String {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Int(int_ty) => {
+            use crate::ast::IntTy;
+            match int_ty {
+                IntTy::I8 => "i8",
+                IntTy::I16 => "i16",
+                IntTy::I32 => "i32",
+                IntTy::I64 => "i64",
+                IntTy::I128 => "i128",
+                IntTy::Isize => "isize",
+            }
+            .to_string()
+        }
+        TyKind::Uint(uint_ty) => {
+            use crate::ast::UintTy;
+            match uint_ty {
+                UintTy::U8 => "u8",
+                UintTy::U16 => "u16",
+                UintTy::U32 => "u32",
+                UintTy::U64 => "u64",
+                UintTy::U128 => "u128",
+                UintTy::Usize => "usize",
+            }
+            .to_string()
+        }
+        TyKind::Bool => "bool".to_string(),
+        TyKind::Str => "str".to_string(),
+        TyKind::Char => "char".to_string(),
+        TyKind::Float(float_ty) => {
+            use crate::ast::FloatTy;
+            match float_ty {
+                FloatTy::F32 => "f32",
+                FloatTy::F64 => "f64",
+            }
+            .to_string()
+        }
+        TyKind::Ref(_, _, inner) => get_concrete_type_name(inner, _interner),
+        _ => String::new(),
+    }
 }

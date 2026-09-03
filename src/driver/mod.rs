@@ -483,6 +483,12 @@ pub struct CompileResult {
     /// (e.g., `make_box_Box_i32` instead of `make_box_Adt_0_i32`).
     /// Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
     pub type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    /// Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Pre-computed trait
+    /// method resolution map. Maps (trait_method_def_id, type_name) →
+    /// concrete impl method DefId. Used by codegen to re-resolve trait method
+    /// calls during monomorphization.
+    /// Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
+    pub trait_method_map: crate::mir::monomorphize::TraitMethodResolutionMap,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -522,6 +528,7 @@ impl CompileResult {
             type_interner: crate::mir::ty_interner::TypeInterner::new(),
             synthesized_closure_mir_bodies: Vec::new(),
             type_name_by_def_id: std::collections::HashMap::new(),
+            trait_method_map: crate::mir::monomorphize::TraitMethodResolutionMap::default(),
         }
     }
 }

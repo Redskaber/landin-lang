@@ -203,15 +203,16 @@ fn stage63_impl_trait_fn_bound_compiles() {
 // Negative tests: error paths
 // =============================================================================
 
-/// Stage 63 negative 1: Calling a trait method on impl Trait arg inside the
-/// function body fails at runtime (TD-IMPL-TRAIT-MONO-RESOLUTION, P1, v0.8+).
+/// Stage 63 positive (was negative 1): Calling a trait method on impl Trait
+/// arg inside the function body now WORKS (TD-IMPL-TRAIT-MONO-RESOLUTION
+/// FIXED in Stage 68 — monomorphization re-resolves trait methods).
 ///
-/// NOTE: This test is marked `#[ignore]` because the monomorphization pass
-/// doesn't re-resolve trait methods after type substitution. The method call
-/// resolves to the trait declaration's method (no body → `@null`).
+/// Previously this test was `#[ignore]` because the monomorphization pass
+/// didn't re-resolve trait methods after type substitution. Stage 68 added
+/// `re_resolve_trait_method_calls` which uses the pre-computed
+/// `TraitMethodResolutionMap` to re-resolve during codegen.
 #[test]
-#[ignore = "TD-IMPL-TRAIT-MONO-RESOLUTION: mono doesn't re-resolve trait methods"]
-fn stage63_impl_trait_arg_method_call_inside_body_fails() {
+fn stage63_impl_trait_arg_method_call_inside_body_works() {
     assert_runtime(
         "impl-trait-arg-method-call",
         r#"

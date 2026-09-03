@@ -41786,3 +41786,158 @@ Stage Summary:
 - v0.7 → v0.8 stage transition.
 - v0.8+ priorities: TD-IMPL-TRAIT-MONO-RESOLUTION (P1), TD-DYN-TRAIT-COMPLETION,
   TD-FN-CLOSURE-COERCION, TD-ASSOC-TYPE-SCOPE.
+
+---
+Task ID: stage68
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 68 (v0.7) — Portability fix for llvm-as test lookup.
+Tests hardcoded `/tmp/llvm-22-prefix/bin/llvm-as` — fails on local dev-shell
+environments where LLVM 22 is elsewhere. Fixed with dynamic lookup:
+LLVM_SYS_221_PREFIX env var → PATH search → hardcoded fallback → skip.
+v0.616.0. 5519 tests, 0 failures, 14 ignored.
+
+3秒启动自检:
+- 定位: L1 (test portability fix, 2 test files)
+- 对齐: 已查 Stage 67 worklog, test code, scripts/env.sh
+- 阻断: v0.616.0 全绿 (5519 tests, sandbox env), 2 tests fail on local dev-shell
+
+决策点:
+1. Dynamic llvm-as lookup (portability fix)
+   - 引用 §12 (最优 > 最小): root-cause fix — portable path lookup.
+   - 引用 §1.0 原則 4 (报错 > 静默): skip with eprintln, not panic.
+   - Lookup order: LLVM_SYS_221_PREFIX env var → PATH search → hardcoded fallback → skip.
+   - If llvm-as not found, test returns early with warning (not panic).
+   - Affected tests: stage39_3_neg_codegen_text_ir_valid_for_adt_deref,
+     stage40_1_neg_codegen_ir_validity.
+
+裁剪点:
+- L1 — §3.2 + §8 only per §1.2.1
+- 跳过 §14.5 deep review (test portability fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5519 tests, 0 failures, 14 ignored)
+- Both previously-failing tests pass ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Tests no longer hardcode `/tmp/llvm-22-prefix/bin/llvm-as`.
+  Dynamic lookup via LLVM_SYS_221_PREFIX → PATH → hardcoded → skip ensures
+  tests work in any environment where LLVM 22 is installed.
+
+Stage Summary:
+- llvm-as portability fix (2 test files fixed)
+- 5519 tests (898 lib + 4621 integration), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+---
+Task ID: stage69
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 69 (v0.8) — TD-IMPL-TRAIT-MONO-RESOLUTION FIXED (P1).
+Implemented TraitMethodResolutionMap + re_resolve_trait_method_calls.
+Monomorphization now re-resolves trait method calls after type substitution.
+`fn process(x: impl Clone) { x.clone() }` works at runtime!
+v0.617.0. 5520 tests, 0 failures, 13 ignored (was 14 — 1 un-ignored).
+
+3秒启动自检:
+- 定位: L3 (new module + driver + codegen + pipeline integration)
+- 对齐: 已查 Stage 68 worklog, TD register, monomorphization design doc
+- 阻断: v0.616.0 全绿 (5519 tests), 0 P0/P1
+
+决策点:
+1. Pre-computed TraitMethodResolutionMap (Approach C from design doc)
+   - 引用 §12 (最优 > 最小): root-cause fix — pre-compute, pass as data.
+   - 引用 §16 (codegen is HIR-free): map is pre-computed in driver.
+   - 引用 §1.0 原則 6 (通解 > 特解): one map for all trait method resolutions.
+   - New module: src/mir/monomorphize/trait_method_map.rs
+   - New field: CompileResult.trait_method_map
+   - New function: re_resolve_trait_method_calls (walks MIR, re-resolves Call terminators)
+   - Helper: get_receiver_type, get_concrete_type_name
+
+2. Borrow conflict resolution
+   - Clone local_decls before iterating basic_blocks (mutable borrow conflict).
+   - O(n) but only runs on generic functions — acceptable cost.
+
+3. Un-ignored stage63 test (was TD-IMPL-TRAIT-MONO-RESOLUTION)
+   - stage63_impl_trait_arg_method_call_inside_body_fails → _works
+   - Test now passes: `fn process(x: impl Clone) { x.clone() }` returns 42.
+
+裁剪点:
+- L3 — full process applies
+- 跳过 §14.5 D2-D8 deep review (P1 TD fix, root-cause, verified at runtime)
+- 安全理由: §1.2.1 — L3 can use §7.3 gate review for TD fixes with runtime verification
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5520 tests, 0 failures, 13 ignored)
+- Runtime verified: process(7) with impl Clone + x.clone() inside body → 42 ✓
+- IR verified: call i32 @landin_i32_clone (not @null) ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. The TraitMethodResolutionMap pre-computes (trait_method_def_id,
+  type_name) → impl_method_def_id in the driver (per §16 — codegen is HIR-free).
+  During monomorphization, re_resolve_trait_method_calls walks the specialized
+  MIR and replaces trait declaration method calls with concrete impl method calls.
+  This is the rustc-style approach — pre-compute in driver, pass as data.
+
+Stage Summary:
+- TD-IMPL-TRAIT-MONO-RESOLUTION FIXED (P1 — first v0.8 TD)
+- New module: trait_method_map.rs (~200 LOC)
+- New function: re_resolve_trait_method_calls (~80 LOC)
+- CompileResult + driver + pipeline integration (~30 LOC)
+- 1 test un-ignored (was stage63 negative, now stage63 positive)
+- 5520 tests (898 lib + 4622 integration), 0 failures, 13 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — root-cause P1 fix)
+
+---
+Task ID: stage70
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 70 (v0.8) — Added §14.9 阶段末尾系统性代码整理协议 to
+docs/stage-committee-process.md. 6 dimensions (C1-C6): code cleanliness,
+cohesion, comment sync, file headers, API naming, data structure flow.
+Updated §1.3 flowchart and §1.2.1 routing table to include §14.9.
+v0.617.0. 5520 tests (unchanged, no code changes).
+
+3秒启动自检:
+- 定位: L2 (documentation update to stage-committee-process.md)
+- 对齐: 已查 §14.5, §14.8, §1.3 flowchart, §1.2.1 routing table
+- 阻断: v0.617.0 全绿 (5520 tests), 0 P0/P1
+
+决策点:
+1. Add §14.9 as new section after §14.8 (not inside §14.5)
+   - 引用 §1.0 原則 6 (通解 > 特解): §14.9 is a standalone protocol,
+     not a sub-item of §14.5 (which is architecture-level review).
+   - 引用 §12 (最优 > 最小): §14.9 is code-level cleanup, complementing
+     §14.5 (architecture-level) and §14.8 (document-level).
+   - 6 dimensions: C1 code cleanliness, C2 cohesion, C3 comment sync,
+     C4 file header info, C5 API naming, C6 data structure flow.
+   - Each dimension has verification method (grep/cargo commands).
+
+2. Update §1.3 flowchart and §1.2.1 routing
+   - Added CodeClean node between Writeback and CrossStage.
+   - Updated L1/L2 path description to include §14.9.
+
+裁剪点:
+- L2 — §7.3 gate review sufficient per §1.2.1
+- 跳过 §14.5 deep review (documentation update, no code changes)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend (unchanged, 5520 tests)
+
+Stage Summary:
+- §14.9 阶段末尾系统性代码整理协议 added to stage-committee-process.md
+- 6 dimensions (C1-C6) with verification methods
+- §1.3 flowchart + §1.2.1 routing table updated
+- 5520 tests (unchanged), 0 failures, 13 ignored
+- fmt clean, 0 clippy warnings
+
+下一步:
+- Continue v0.8 TD fixes: TD-DYN-TRAIT-COMPLETION, TD-FN-CLOSURE-COERCION.
+- Apply §14.9 to current codebase (systematic code cleanup).

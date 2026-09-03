@@ -17,6 +17,7 @@
 mod item;
 mod layout;
 mod mangle;
+mod trait_method_map;
 
 // Stage 16.54 (Phase 3): Monomorphization collection.
 pub use item::{collect_mono_items, MonoItem};
@@ -26,3 +27,7 @@ pub use mangle::{build_mono_item_names, mangle_ty, mangle_ty_with_interner, mono
 
 // Stage 16.57-16.58 (Phase 4b-4c): Per-mono layouts + codegen integration.
 pub use layout::{build_mono_layouts, lookup_mono_layout, MonoLayoutKey, MonoLayoutMap};
+
+// Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Trait method resolution map.
+// Pre-computed in driver, passed as data to codegen. Per §16 (codegen is HIR-free).
+pub use trait_method_map::{build_trait_method_resolution_map, TraitMethodResolutionMap};
