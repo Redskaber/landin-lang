@@ -3,13 +3,76 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.612.0 (v0.7 Stage 62 — TD-FN-TRAITS partial fix: Fn/FnMut/FnOnce traits + associated type Output; manual impl pattern verified; closure auto-impl deferred to v0.8+; 5473 tests) |
+| **Current version** | v0.613.0 (v0.7 Stage 63 — TD-IMPL-TRAIT partial fix: impl Trait in arg position desugared to generic param at HIR lowering; method calls inside body deferred to v0.8+; 5482 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4575 integration tests = 5473 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4584 integration tests = 5482 total (100% pass rate single-thread with `ulimit -s unlimited`, 13 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.613.0 — Stage 63 (v0.7) — TD-IMPL-TRAIT Partial Fix + 4 New TDs Discovered
+
+### Overview
+
+Stage 63 partially fixes **TD-IMPL-TRAIT** by implementing the HIR lowering desugar of `impl Trait` in arg position. `fn f(x: impl Trait)` is now desugared to `fn f<__impl_T_N: Trait>(x: __impl_T_N)` — the canonical Rust approach per Rust Reference §6.3 ("impl Trait in argument position is sugar for a generic type parameter with a trait bound"). The rest of the pipeline (typeck, MIR lowering, codegen) handles it as a regular generic param, no special-casing needed.
+
+### Root-cause analysis (§2.2)
+
+**Problem**: `fn f(x: impl Clone) { x.clone() }` was broken — `x.clone()` resolved to the function itself (`landin_process`), causing infinite recursion.
+
+**Root cause**: `lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics` fell through `_ => Ty::new(TyKind::Error, span)` for `ImplTrait`. Then `resolve_trait_method` searched by receiver type name — for `Error` type, no impl matched, and `resolve_inherent_method` fell back to the first fn matching the method name in HIR (which was `landin_process` itself).
+
+**Fix**: Desugar `impl Trait` to a generic param at HIR lowering time. During `lower_fn`, scan inputs for `HirTyKind::ImplTrait(bounds)`, allocate a fresh type param name `__impl_T_N`, add `<__impl_T_N: Trait>` to generics, and replace the param's ty with `HirTyKind::Path(__impl_T_N)`.
+
+### Implementation details
+
+- `src/hir/lower/item.rs::lower_fn` — desugar `impl Trait` params to generic params
+- `src/hir/lower/cx.rs` — `impl_trait_counter: u32` field for unique param names
+- `src/driver/driver_codegen_prep.rs::pre_intern_macro_symbols` — pre-intern `__impl_T_0`..`__impl_T_31` (32 slots, enough for any realistic function). This avoids changing `lower_crate`'s signature from `&Rodeo` to `&mut Rodeo` (which would require updating 8+ test call sites).
+
+### Deferrals (4 new TDs discovered, 1 P1 + 3 P3, v0.8+)
+
+- **TD-IMPL-TRAIT-MONO-RESOLUTION (P1, v0.8+)**: Method calls on `impl Trait` args inside the function body don't resolve correctly. The monomorphization pass doesn't re-resolve trait methods after type substitution — `x.clone()` inside `process<i32>` resolves to the trait declaration's method (no body → `@null` at codegen). Fix: teach monomorphization to re-resolve trait methods after type substitution.
+- **TD-IMPL-TRAIT-CALLSITE-CHECK (P3, v0.8+)**: typeck doesn't validate trait bounds at call site. `process("hello")` where `process(x: impl Greet)` and `&str` doesn't impl `Greet` silently compiles.
+- **TD-IMPL-TRAIT-UNDEFINED-BOUND (P3, v0.8+)**: resolver doesn't report `impl Trait` with undefined trait as an error — bounds are scanned but errors don't propagate to `has_errors()`.
+- **TD-IMPL-TRAIT-NO-BOUNDS (P3, v0.8+)**: parser accepts `impl` with no bounds (should require at least one trait bound).
+
+### Test impact
+
+- 13 new tests added in `tests/v0/stage63/plan/impl_trait_tests.rs`
+- 9 passing tests cover the desugar (compile + run with bodies that don't call trait methods)
+- 4 `#[ignore]` tests document the deferred TDs
+- No existing tests modified
+- 5473 tests → **5482 tests** (+9 passing, +4 ignored)
+- All tests pass single-threaded with `ulimit -s unlimited`
+
+### Runtime verification
+
+```landin
+fn process(x: impl Clone) -> i32 {
+    42  // body doesn't call trait methods (deferred to v0.8+)
+}
+
+fn main() {
+    let r = process(7);
+    println!("{}", r);  // → 42
+    0
+}
+```
+
+### Acceptance checks (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5482 tests, 0 failures, 13 ignored)
+- Runtime verified: `process(7)` with `impl Clone` arg compiles and runs ✓
+
+### Architecture health
+
+9.85/10 (stable — root-cause TD fix, no regression). The HIR lowering desugar is the canonical Rust approach — the rest of the pipeline handles `impl Trait` args as regular generic params with no special-casing.
 
 ---
 

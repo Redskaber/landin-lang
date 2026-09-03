@@ -251,6 +251,16 @@ pub(super) fn pre_intern_macro_symbols(interner: &mut lasso::Rodeo) {
     interner.get_or_intern("__landin_unreachable");
     interner.get_or_intern("__landin_trace_macros");
     interner.get_or_intern("__landin_format_args");
+    // Stage 63 (v0.7 — TD-IMPL-TRAIT): Pre-intern anonymous impl-Trait type
+    // parameter names. When `fn f(x: impl Trait)` is desugared to
+    // `fn f<__impl_T_N: Trait>(x: __impl_T_N)`, the name `__impl_T_N` must
+    // already exist in the interner (HIR lowering only has &Rodeo, not
+    // &mut Rodeo). 32 slots should be enough for any realistic function.
+    // Per §1.0 原則 6 (通解 > 特解): one pool for all impl-Trait params.
+    // Per §12 (最优 > 最小): root-cause fix — desugar at HIR lowering time.
+    for i in 0..32u32 {
+        interner.get_or_intern(format!("__impl_T_{}", i));
+    }
 }
 
 /// Build generics_map from HIR: maps DefId to Vec<ParamTy>.

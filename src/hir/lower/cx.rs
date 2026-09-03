@@ -14,6 +14,10 @@ use lasso::Rodeo;
 /// - A stack of previous owners (for nested owner lowering, e.g. trait items)
 /// - The HIR crate being built (owners + bodies)
 /// - Errors encountered (non-fatal)
+///
+/// Stage 63 (v0.7 — TD-IMPL-TRAIT): `impl_trait_counter` tracks the next
+/// index for generating unique anonymous type parameter names when
+/// desugaring `fn f(x: impl Trait)` to `fn f<T: Trait>(x: T)`.
 pub struct HirLowerCtxt<'a> {
     pub interner: &'a Rodeo,
     pub def_id_counter: DefIdCounter,
@@ -28,6 +32,11 @@ pub struct HirLowerCtxt<'a> {
     pub hir: HirCrate,
     /// Errors encountered during lowering (non-fatal: continue).
     pub errors: Vec<LowerError>,
+    /// Stage 63 (TD-IMPL-TRAIT): Counter for anonymous impl-Trait type
+    /// parameter names. Incremented each time `fn f(x: impl Trait)` is
+    /// desugared to `fn f<__impl_T_N: Trait>(x: __impl_T_N)`.
+    /// Per §1.0 原則 6 (通解 > 特解): one counter for all impl-Trait params.
+    pub impl_trait_counter: u32,
 }
 
 impl<'a> HirLowerCtxt<'a> {
@@ -40,6 +49,7 @@ impl<'a> HirLowerCtxt<'a> {
             owner_stack: Vec::new(),
             hir: HirCrate::new(),
             errors: Vec::new(),
+            impl_trait_counter: 0,
         }
     }
 

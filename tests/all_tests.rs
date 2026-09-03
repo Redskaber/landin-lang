@@ -949,3 +949,12 @@ mod stage61_display_trait_tests;
 // Per §9.4.3 (1:3+ 正负比例): 11 positive + 9 negative tests.
 #[path = "v0/stage62/plan/fn_traits_tests.rs"]
 mod stage62_fn_traits_tests;
+
+// === Stage 63 (v0.7 — TD-IMPL-TRAIT partial): impl Trait in arg position
+// desugar to generic param. Method calls inside body deferred (v0.8+). ===
+// Per Rust Reference §6.3: "impl Trait in argument position is sugar for a
+// generic type parameter with a trait bound."
+// Per §12 (最优 > 最小): root-cause fix at HIR lowering time.
+// Per §9.4.3 (1:3+ 正负比例): 8 positive + 4 negative + 1 arch tests.
+#[path = "v0/stage63/plan/impl_trait_tests.rs"]
+mod stage63_impl_trait_tests;

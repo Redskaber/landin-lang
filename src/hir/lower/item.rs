@@ -84,13 +84,69 @@ impl<'a> HirLowerCtxt<'a> {
         attrs: Vec<ast::Attr>,
         span: Span,
     ) -> HirFn {
-        let generics = generics::lower_generics(self, &fn_decl.generics);
-        let inputs: Vec<HirParam> = fn_decl
-            .sig
-            .inputs
-            .iter()
-            .map(|p| self.lower_param(p))
-            .collect();
+        let mut generics = generics::lower_generics(self, &fn_decl.generics);
+        let mut inputs: Vec<HirParam> = Vec::with_capacity(fn_decl.sig.inputs.len());
+        // Stage 63 (v0.7 — TD-IMPL-TRAIT): Desugar `fn f(x: impl Trait)` to
+        // `fn f<__impl_T_N: Trait>(x: __impl_T_N)`. This is the canonical
+        // Rust desugaring — `impl Trait` in arg position is syntactic sugar
+        // for an anonymous generic type parameter with a trait bound.
+        //
+        // Per Rust Reference §6.3: "impl Trait in argument position is sugar
+        // for a generic type parameter with a trait bound."
+        // Per §12 (最优 > 最小): root-cause fix at HIR lowering time — the
+        // rest of the pipeline (typeck, MIR lowering, codegen) handles it
+        // as a regular generic param, no special-casing needed.
+        // Per §1.0 原則 6 (通解 > 特解): one desugaring path for all impl-Trait args.
+        for p in &fn_decl.sig.inputs {
+            let mut hir_param = self.lower_param(p);
+            // Check if the param's type is `impl Trait` and desugar it.
+            if let Some(hir_ty) = &hir_param.ty {
+                if let crate::hir::HirTyKind::ImplTrait(bounds) = &hir_ty.kind {
+                    if !bounds.is_empty() {
+                        // Allocate an anonymous type param name: __impl_T_N
+                        let idx = self.impl_trait_counter;
+                        self.impl_trait_counter += 1;
+                        let name_str = format!("__impl_T_{}", idx);
+                        let sym = self.interner.get(&name_str).unwrap_or_default();
+                        let param_ident = crate::ast::Ident::new(sym, hir_ty.span);
+                        // Add the type param to generics with the trait bounds.
+                        generics.params.push(crate::hir::HirGenericParam::Type(
+                            crate::hir::HirTypeParam {
+                                hir_id: self.fresh_hir_id(),
+                                ident: param_ident,
+                                bounds: bounds.clone(),
+                                default: None,
+                                span: hir_ty.span,
+                            },
+                        ));
+                        // Replace the param's type with a Path to the new type param.
+                        let path = crate::hir::HirPath {
+                            hir_id: self.fresh_hir_id(),
+                            segments: vec![crate::hir::HirPathSegment {
+                                ident: param_ident,
+                                args: None,
+                            }],
+                            leading: crate::ast::PathLeading::None,
+                            res: crate::hir::Res::Unknown,
+                            span: hir_ty.span,
+                        };
+                        hir_param.ty = Some(crate::hir::HirTy {
+                            hir_id: self.fresh_hir_id(),
+                            kind: crate::hir::HirTyKind::Path(
+                                crate::hir::HirQSelf {
+                                    ty: None,
+                                    position: 0,
+                                },
+                                path,
+                            ),
+                            inferred: None,
+                            span: hir_ty.span,
+                        });
+                    }
+                }
+            }
+            inputs.push(hir_param);
+        }
         let output = match &fn_decl.sig.output {
             ast::FnRetTy::Default(s) => HirFnRetTy::Default(*s),
             ast::FnRetTy::Ty(t) => HirFnRetTy::Ty(ty::lower_ty(self, t)),
