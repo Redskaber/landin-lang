@@ -224,12 +224,22 @@ pub fn mir_type_to_emit_type_with_layouts(
         // the correct type and lets LLVM verification succeed.
         // Stage 18.336: Filter Void from closure captures (ZST captures
         // would leak `Void` into the closure struct type).
+        // Stage 82 (v0.8 — TD-FN-CLOSURE-COERCION runtime): Empty closures
+        // (no captures) coerced to fn pointers should emit as OpaquePtr (ptr),
+        // NOT Struct(vec![]) (empty struct → i8). This allows the function
+        // pointer value (@closure_call_fn_N) to be stored correctly.
         TyKind::Closure(_, substs) => {
-            let fields: Vec<EmitType> = substs
-                .iter()
-                .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
-                .collect();
-            filter_void_fields(fields)
+            if substs.is_empty() {
+                // Empty closure — no captures, can be coerced to fn pointer.
+                // Emit as ptr so the fn pointer value fits.
+                EmitType::OpaquePtr
+            } else {
+                let fields: Vec<EmitType> = substs
+                    .iter()
+                    .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
+                    .collect();
+                filter_void_fields(fields)
+            }
         }
         // Stage 18.444 (Phase 5 Step 5): Was `_ => mir_type_to_emit_type(ty)`
         // which delegates to the unchecked variant (with I32 fallback for
@@ -363,13 +373,21 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
         )),
         // Stage 18.176: Bare TyKind::Str — fat pointer (same as with_layouts).
         TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
+        // Stage 82 (v0.8 — TD-FN-CLOSURE-COERCION runtime): Empty closures
+        // emit as OpaquePtr (ptr) — same fix as in _with_layouts variant.
         TyKind::Closure(_, substs) => {
-            let fields: Vec<EmitType> = substs
-                .iter()
-                .map(|ty| mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts))
-                .collect();
-            // Stage 18.336 (P1 soundness fix): Filter Void from closure captures.
-            filter_void_fields(fields)
+            if substs.is_empty() {
+                EmitType::OpaquePtr
+            } else {
+                let fields: Vec<EmitType> = substs
+                    .iter()
+                    .map(|ty| {
+                        mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts)
+                    })
+                    .collect();
+                // Stage 18.336 (P1 soundness fix): Filter Void from closure captures.
+                filter_void_fields(fields)
+            }
         }
         // All other kinds — delegate to the existing function.
         _ => mir_type_to_emit_type_with_layouts(ty, layouts),

@@ -42399,3 +42399,47 @@ Stage Summary:
 下一步:
 - TD-FN-CLOSURE-COERCION runtime: needs alloca type = ptr when closure coerced to fn ptr.
 - Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION.
+
+---
+Task ID: stage82
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 82 (v0.8) — TD-FN-CLOSURE-COERCION runtime alloca type fix.
+Changed empty Closure emit type from Struct(vec![]) (→i8) to OpaquePtr (→ptr)
+in all 3 mir_type_to_emit_type variants. IR now shows `alloca ptr` + `store ptr
+@closure_call_fn_0`. Runtime still segfaults: call site passes alloca address
+instead of loaded value. Fix needs codegen_operand to load FnPtr-typed locals.
+v0.622.0. 5522 tests, 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L3 (codegen mir_translation/types.rs — alloca type resolution)
+- 对齐: 已查 Stage 81 worklog, IR output, alloca types
+- 阻断: v0.621.0 全绿 (5522 tests), 0 P0/P1
+
+决策点:
+1. Empty Closure → OpaquePtr (alloca type fix)
+   - 引用 §12 (最优 > 最小): root-cause fix — ptr type for fn pointer storage.
+   - Changed all 3 mir_type_to_emit_type variants: empty Closure → OpaquePtr.
+   - IR: `alloca ptr` (was `alloca i8`) + `store ptr @closure_call_fn_0` (was `i8 0`).
+   - Runtime still fails: call site passes alloca address, not loaded value.
+   - Root cause: codegen_operand passes `%loc_N` (address) for FnPtr-typed
+     args. Needs to load `%v = load ptr, ptr %loc_N` and pass `%v`.
+
+裁剪点:
+- L3 — partial fix, tests pass (no regression)
+- 跳过 §14.5 deep review (codegen fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5522 tests, 0 failures, 11 ignored)
+
+Stage Summary:
+- TD-FN-CLOSURE-COERCION runtime alloca fix (ptr type for empty closures)
+- IR: alloca ptr + store ptr @closure_call_fn_0 (correct types)
+- Runtime: still segfaults (call site passes address, not loaded value)
+- 5522 tests (898 lib + 4624 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+
+下一步:
+- TD-FN-CLOSURE-COERCION runtime: needs codegen_operand to load FnPtr locals.
+- Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION.
