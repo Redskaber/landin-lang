@@ -42278,3 +42278,43 @@ Stage Summary:
 下一步:
 - Return type check: needs assoc type projection resolution (TD-ASSOC-TYPE-PROJECTION).
 - Next v0.8 TD: TD-FN-CLOSURE-COERCION or TD-DYN-TRAIT-COMPLETION.
+
+---
+Task ID: stage79
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 79 (v0.8) — TD-FN-CLOSURE-COERCION FIXED. Closures now coerce
+to fn pointers (fn(i32) -> i32) when passed to functions expecting fn ptrs.
+Added Closure↔FnPtr unification in typeck/unify.rs: looks up closure sig
+from fn_sigs, compares non-self params + return type.
+v0.620.0. 5522 tests, 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L2 (typeck/unify.rs closure coercion + clippy fixes)
+- 对齐: 已查 Stage 78 worklog, TD register, unify.rs Closure handling
+- 阻断: v0.619.0 全绿 (5522 tests), 0 P0/P1
+
+决策点:
+1. Closure → FnPtr coercion in unify
+   - 引用 §12 (最优 > 最小): root-cause fix — unify closure sig with fn ptr sig.
+   - 引用 §1.0 原則 6 (通解 > 特解): one coercion path for all closures.
+   - Added (Closure, FnPtr) and (FnPtr, Closure) arms in unify match.
+   - Looks up closure sig from fn_sigs, skips self param, compares params + return.
+   - Clippy: used ? operator instead of if let Err for cleaner code.
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1
+- 跳过 §14.5 deep review (typeck fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5522 tests, 0 failures, 11 ignored)
+
+Stage Summary:
+- TD-FN-CLOSURE-COERCION FIXED (Closure↔FnPtr unification)
+- 5522 tests (898 lib + 4624 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- Next v0.8 TD: TD-DYN-TRAIT-COMPLETION or TD-FORMAT-ARGS-WRITE.

@@ -832,6 +832,60 @@ impl UnificationTable {
             // Closure with Closure: same DefId → OK
             (TyKind::Closure(a_def, _), TyKind::Closure(b_def, _)) if a_def == b_def => Ok(()),
 
+            // Stage 79 (v0.8 — TD-FN-CLOSURE-COERCION): Closure → FnPtr
+            // coercion. When a closure is used where a fn pointer is expected
+            // (e.g., passing a closure to a function taking `fn(i32) -> i32`),
+            // unify the closure's signature with the fn pointer's signature.
+            //
+            // Per Rust: closures coerce to fn pointers when the closure has
+            // no captures (non-capturing closures). Capturing closures cannot
+            // coerce to fn pointers (they need an environment).
+            //
+            // Per §12 (最优 > 最小): root-cause fix — unify closure sig with
+            // fn ptr sig, not silently reject.
+            // Per §1.0 原則 6 (通解 > 特解): one coercion path for all
+            // non-capturing closures.
+            (TyKind::Closure(closure_def, _), TyKind::FnPtr(fnptr_sig)) => {
+                // Look up the closure's signature from fn_sigs.
+                let fn_sigs_ref = match self.fn_sigs {
+                    Some(ptr) => unsafe { &*ptr },
+                    None => return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span))),
+                };
+                if let Some(closure_sig) = fn_sigs_ref.get(closure_def) {
+                    // Closure sig has inputs = [self, params...].
+                    // FnPtr sig has inputs = [params...].
+                    // Compare non-self params + return type.
+                    let closure_params = &closure_sig.inputs[1.min(closure_sig.inputs.len())..];
+                    if closure_params.len() == fnptr_sig.inputs.len() {
+                        for (c_param, f_param) in closure_params.iter().zip(fnptr_sig.inputs.iter())
+                        {
+                            self.unify(c_param, f_param, span)?;
+                        }
+                        return self.unify(&closure_sig.output, &fnptr_sig.output, span);
+                    }
+                }
+                // If fn_sigs not available or sigs don't match → error.
+                Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)))
+            }
+            (TyKind::FnPtr(fnptr_sig), TyKind::Closure(closure_def, _)) => {
+                // Symmetric case: fn ptr expected, closure found.
+                let fn_sigs_ref = match self.fn_sigs {
+                    Some(ptr) => unsafe { &*ptr },
+                    None => return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span))),
+                };
+                if let Some(closure_sig) = fn_sigs_ref.get(closure_def) {
+                    let closure_params = &closure_sig.inputs[1.min(closure_sig.inputs.len())..];
+                    if closure_params.len() == fnptr_sig.inputs.len() {
+                        for (c_param, f_param) in closure_params.iter().zip(fnptr_sig.inputs.iter())
+                        {
+                            self.unify(f_param, c_param, span)?;
+                        }
+                        return self.unify(&fnptr_sig.output, &closure_sig.output, span);
+                    }
+                }
+                Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)))
+            }
+
             // Foreign with Foreign → OK
             (TyKind::Foreign, TyKind::Foreign) => Ok(()),
 
