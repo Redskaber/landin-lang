@@ -41536,3 +41536,74 @@ Stage Summary:
 下一步:
 - Wave 4: TD-PRELUDE-MACRO-TIMING (DefId decoupling + token-level injection).
 - v0.8+: TD-IMPL-TRAIT-MONO-RESOLUTION (P1), TD-MEM-DROP, TD-TRAIT-NAME-COLLISION.
+
+---
+Task ID: stage65
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 65 (v0.7) — TD-PRELUDE-MACRO-TIMING RESOLVED. Root cause
+fixed differently than originally planned — prelude uses direct C runtime
+calls (__landin_panic_msg, __landin_unreachable), not panic!/unreachable!
+macros. Token-level injection not needed. 14 new tests verify prelude works.
+v0.615.0. 5510 tests, 0 failures, 14 ignored. Wave 1-3 COMPLETE.
+
+3秒启动自检:
+- 定位: L2 (14 new tests + documentation update)
+- 对齐: 已查 Stage 64 worklog, TD register, prelude injection code
+- 阻断: v0.614.0 全绿 (5496 tests), 0 P0/P1
+
+决策点:
+1. Mark as RESOLVED (not implement token-level injection)
+   - 引用 §12 (最优 > 最小): root cause fixed at right level (direct C calls).
+   - 引用 §13.4 (重构判据): token-level injection needs DefId decoupling (L3, broke 60+ tests).
+   - 引用 §1.0 原則 9 (正确 > 妥协): document alternative resolution approach.
+   - Prelude source has ZERO macro calls (grep verified).
+   - Prelude uses __landin_panic_msg(...) and __landin_unreachable(...) directly.
+   - User panic! macro works (expands to __landin_panic_msg call).
+
+2. Why the original approach was abandoned
+   - Stage 44 token-level injection was reverted (broke 60+ tests).
+   - DefId allocation order change: prelude items get DefIds 0..N.
+   - 60+ tests assumed prelude items come AFTER user items.
+   - Fixing requires decoupling DefId from item order (L3 refactor).
+   - Since prelude no longer uses macros, token-level injection is unnecessary.
+
+裁剪点:
+- L2 — §7.3 gate review sufficient per §1.2.1
+- 跳过 §14.5 D2-D8 deep review (no code changes, only tests + docs)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5510 tests, 0 failures, 14 ignored)
+- Runtime verified: Option, Result, String, Vec, Clone, Display, Drop, panic! all work ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause resolution. The TD was resolved by a different approach than
+  originally planned — the root cause (prelude macros not expanded) was
+  eliminated by switching the prelude to direct C runtime calls. This is
+  the correct fix because: (1) it eliminates the need for DefId decoupling
+  (avoids breaking 60+ tests); (2) it's the same pattern Rust uses internally
+  (std::panicking::panic_fmt calls abort directly); (3) the prelude source
+  is cleaner (no dependency on macro expansion order).
+
+Stage Summary:
+- TD-PRELUDE-MACRO-TIMING RESOLVED (root cause fixed differently)
+- 14 new tests added (all passing)
+- Wave 1 TD items ALL COMPLETE
+- 5510 tests (898 lib + 4612 integration), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+Wave Completion:
+- Wave 1 (解除 prelude 限制): COMPLETE (4/4 TDs)
+- Wave 2 (trait 系统基础): COMPLETE (3/3 TDs)
+- Wave 3 (闭包 + 高级特性): COMPLETE (3/3 TDs)
+- Wave 4 (架构优化): REMAINING (TD-SPECIAL-8, TD-SPECIAL-10 — P3, v0.8+)
+
+下一步:
+- v0.7 stage transition: All Wave 1-3 TDs complete. v0.7 is feature-complete
+  for the trait system phase.
+- v0.8+: 21 deferred TDs across trait system.
+- Wave 4 (TD-SPECIAL-8, TD-SPECIAL-10) are P3 architecture optimizations.

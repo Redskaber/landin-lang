@@ -3,13 +3,60 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.614.0 (v0.7 Stage 64 — TD-SPECIAL-16 FIXED: Drop trait added to prelude; drop glue infrastructure was already complete from Stage 15.x; 5496 tests) |
+| **Current version** | v0.615.0 (v0.7 Stage 65 — TD-PRELUDE-MACRO-TIMING RESOLVED: prelude uses direct C runtime calls, not macros; Wave 1-3 COMPLETE; 5510 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4598 integration tests = 5496 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
+| **Test count** | 898 lib tests + 4612 integration tests = 5510 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.615.0 — Stage 65 (v0.7) — TD-PRELUDE-MACRO-TIMING RESOLVED + Wave 1-3 COMPLETE
+
+### Overview
+
+Stage 65 resolves **TD-PRELUDE-MACRO-TIMING** — the last Wave 1 item. The root cause was fixed differently than originally planned: the prelude source uses direct `__landin_panic_msg(...)` and `__landin_unreachable(...)` extern "C" calls instead of `panic!`/`unreachable!` macros (changed in Stages 40-43). Token-level injection is no longer needed.
+
+**Wave 1-3 ALL COMPLETE.** v0.7 trait system phase is feature-complete.
+
+### Root-cause analysis (§2.2)
+
+**Original problem**: Prelude was injected after macro_expand, so prelude macros (panic!, unreachable!) were never expanded.
+
+**Original fix plan**: Token-level injection (inject prelude tokens before macro_expand). A previous attempt (Stage 44) broke 60+ tests due to DefId ordering changes.
+
+**Actual root cause**: The prelude source has ZERO macro calls — it uses direct C runtime calls. The macros were converted to direct calls in Stages 40-43 (TD-PANIC-MACRO-BROKEN, TD-UNREACHABLE-MACRO-BROKEN, TD-PANIC-CONSOLIDATION).
+
+**Resolution**: Mark TD-PRELUDE-MACRO-TIMING as RESOLVED. Token-level injection is unnecessary because the prelude doesn't use macros. Per §12 (最优 > 最小): root cause fixed at the right level (direct calls, not macros). Per §1.0 原則 9 (正确 > 妥协): document alternative resolution approach.
+
+### Test impact
+
+- 14 new tests added in `tests/v0/stage65/plan/prelude_macro_timing_tests.rs`
+- All 14 passing — verify prelude types (Option, Result, String, Vec, Clone, Display, Drop) and user `panic!` macro work correctly
+- 5496 tests → **5510 tests** (+14 passing)
+- All tests pass single-threaded with `ulimit -s unlimited`
+
+### Wave completion summary
+
+| Wave | TDs | Status |
+|------|-----|--------|
+| Wave 1 (prelude restrictions) | TD-OPTION-TAKE-INCOMPLETE, TD-STR-INTRINSIC-MARKER-BODIES, TD-PRINTLN-CODEGEN-INTERCEPT, TD-PRELUDE-MACRO-TIMING | ✅ COMPLETE |
+| Wave 2 (trait system basics) | TD-DYN-TRAIT-COMPLETION, TD-CLONE-TRAIT-MISSING, TD-DISPLAY-TRAIT-MISSING | ✅ COMPLETE |
+| Wave 3 (closures + advanced) | TD-FN-TRAITS, TD-IMPL-TRAIT, TD-SPECIAL-16 | ✅ COMPLETE |
+| Wave 4 (architecture optimizations) | TD-SPECIAL-8, TD-SPECIAL-10 | v0.8+ |
+
+### Acceptance checks (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5510 tests, 0 failures, 14 ignored)
+- Runtime verified: Option, Result, String, Vec, Clone, Display, Drop, panic! all work ✓
+
+### Architecture health
+
+9.85/10 (stable). v0.7 trait system phase is feature-complete. All Wave 1-3 TDs resolved (some as partial fixes with documented v0.8+ deferrals).
 
 ---
 

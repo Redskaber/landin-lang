@@ -968,3 +968,12 @@ mod stage63_impl_trait_tests;
 // Per §9.4.3 (1:3+ 正负比例): 10 positive + 5 negative tests.
 #[path = "v0/stage64/plan/drop_trait_tests.rs"]
 mod stage64_drop_trait_tests;
+
+// === Stage 65 (v0.7 — TD-PRELUDE-MACRO-TIMING RESOLVED): Prelude injection
+// timing verified correct. Root cause was fixed differently than originally
+// planned — prelude uses direct C runtime calls, not macros. ===
+// Per §12 (最优 > 最小): root cause fixed at the right level (direct calls).
+// Per §1.0 原則 9 (正确 > 妥协): document alternative resolution approach.
+// Per §9.4.3 (1:3+ 正负比例): 11 positive + 3 negative tests.
+#[path = "v0/stage65/plan/prelude_macro_timing_tests.rs"]
+mod stage65_prelude_macro_timing_tests;
