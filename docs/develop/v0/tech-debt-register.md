@@ -54,7 +54,7 @@
 | TD-TOSTRING-DEFAULT-BODY | Display::to_string 默认方法缺失 | Bug Z7 workaround (override per impl) 触发 libLLVM 间歇性 crash | LLVM codegen crash 调查 + 修复 | libLLVM bug (P3, v0.8+) |
 | TD-FN-CLOSURE-COERCION | closures 不自动实现 Fn traits | TyKind::Closure 无 Fn trait coercion | typeck closure → Fn trait coercion + vtable emission | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-FN-UNIT-ARGS | `Fn<()>` unit tuple arg 不支持 | typeck/codegen 不支持 () as Args | typeck/codegen 支持 unit tuple as Fn<Args> | TD-FN-TRAITS ✅ (Stage 62) |
-| TD-ASSOC-TYPE-SCOPE | associated type `Output` 在 2 impls 中冲突 | resolver 未按 impl 块 scope assoc types | resolver scope assoc types per impl block | TD-FN-TRAITS ✅ (Stage 62) |
+| TD-ASSOC-TYPE-SCOPE | ~~associated type `Output` 在 2 impls 中冲突~~ **FIXED Stage 73** — resolver skips impl assoc types in global namespace | resolver 未按 impl 块 scope assoc types | ~~resolver scope assoc types per impl block~~ **DONE: pre-collect impl assoc type DefIds, skip in registration** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-FN-IMPL-SIG-VALIDATION | typeck 不校验 impl sig 匹配 Args/Output | typeck 缺少 impl signature 检查 | typeck validate impl fn sig vs trait Args/Output | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-GENERIC-TRAIT-METHOD-MANGLING | 泛型 trait method 调用 mangled 名错误 | `From::<i32>::from(42)` 产生 `fn_0_i32` (未定义) | 修复 generic trait method mangling | trait resolver |
 | TD-FN-ASSOC-TYPE-CALL | `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法不支持 | parser/typeck 未支持 explicit trait dispatch | parser/typeck 支持 explicit trait dispatch syntax | typeck |

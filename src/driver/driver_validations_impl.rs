@@ -92,6 +92,64 @@ pub(super) fn validate_impl_method_signatures(
             // Note: We compare the *non-self* parameters. Self is implicit
             // in trait methods but explicit in impl methods (via &self/&mut self).
             // Both trait and impl methods have self_kind set for self params,
+            // Stage 78 (v0.8 — TD-FN-IMPL-SIG-VALIDATION): Build a substitution
+            // map from the impl block's trait path generic args. For
+            // `impl Fn<(i32,)> for Doubler`, the trait path has `args = [(i32,)]`,
+            // which maps `Param(0) → (i32,)`. We substitute this into the trait
+            // method's signature before comparing, so that `args: Args` (Param(0))
+            // becomes `args: (i32,)` — matching the impl method's concrete type.
+            //
+            // Per §12 (最优 > 最小): root-cause fix — substitute before comparing.
+            // Per §1.0 原則 6 (通解 > 特解): one substitution mechanism for all
+            // generic trait impls.
+            let trait_substs: Vec<crate::mir::ty::Ty> = {
+                let mut substs = Vec::new();
+                if let Some(trait_path) = &impl_block.of_trait {
+                    if let Some(seg) = trait_path.segments.last() {
+                        if let Some(crate::ast::GenericArgs::AngleBracketed(args)) = &seg.args {
+                            for arg in args.iter() {
+                                if let crate::ast::GenericArg::Type(ty) = arg {
+                                    substs
+                                        .push(crate::mir::lower::lower_ast_ty_to_mir_ty(ty, None));
+                                }
+                            }
+                        }
+                    }
+                }
+                substs
+            };
+
+            // Substitute Param types in trait method signature with concrete substs.
+            // Substitute Param types in trait method signature with concrete substs.
+            // Stage 78 (v0.8 — TD-FN-IMPL-SIG-VALIDATION): Use a helper fn
+            // instead of a closure to allow recursion.
+            fn substitute_ty(
+                ty: &crate::mir::ty::Ty,
+                substs: &[crate::mir::ty::Ty],
+            ) -> crate::mir::ty::Ty {
+                use crate::mir::ty::TyKind;
+                match &ty.kind {
+                    TyKind::Param(p) => {
+                        if (p.index as usize) < substs.len() {
+                            substs[p.index as usize].clone()
+                        } else {
+                            ty.clone()
+                        }
+                    }
+                    TyKind::Tuple(tys) => {
+                        let substituted: Vec<_> =
+                            tys.iter().map(|t| substitute_ty(t, substs)).collect();
+                        crate::mir::ty::Ty::from_kind(TyKind::Tuple(substituted))
+                    }
+                    TyKind::Ref(r, m, inner) => crate::mir::ty::Ty::from_kind(TyKind::Ref(
+                        *r,
+                        *m,
+                        Box::new(substitute_ty(inner, substs)),
+                    )),
+                    _ => ty.clone(),
+                }
+            }
+
             // so we filter those out and compare the rest.
             let trait_inputs: Vec<_> = trait_fn
                 .sig
@@ -132,10 +190,10 @@ pub(super) fn validate_impl_method_signatures(
                     Some(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
                     None => continue,
                 };
-                // Use types_match_loose from typeck::checker via a simple
-                // kind comparison. We avoid importing the private fn —
-                // instead do a structural kind compare that handles the
-                // common cases (Int, Bool, Tuple, Adt).
+                // Stage 78 (v0.8 — TD-FN-IMPL-SIG-VALIDATION): Substitute
+                // Param types in trait method signature with concrete substs
+                // from the impl block's trait path (e.g., Fn<(i32,)> → Args becomes (i32,)).
+                let trait_ty = substitute_ty(&trait_ty, &trait_substs);
                 if !mir_ty_kinds_compatible(&impl_ty, &trait_ty) {
                     let method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
                     let impl_ty_str = crate::mir::ty::type_to_string(&impl_ty);
@@ -169,6 +227,10 @@ pub(super) fn validate_impl_method_signatures(
                 )),
             };
             if let (Some(impl_ret), Some(trait_ret)) = (impl_ret_ty, trait_ret_ty) {
+                // Stage 78 (v0.8 — TD-FN-IMPL-SIG-VALIDATION): Substitute
+                // Param types in trait return type too (e.g., Self::Output
+                // or associated types that reference Args).
+                let trait_ret = substitute_ty(&trait_ret, &trait_substs);
                 if !mir_ty_kinds_compatible(&impl_ret, &trait_ret) {
                     let method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
                     let impl_ret_str = crate::mir::ty::type_to_string(&impl_ret);

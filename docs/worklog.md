@@ -42055,3 +42055,226 @@ Stage Summary:
 - 5521 tests (898 lib + 4623 integration), 0 failures, 12 ignored
 - fmt clean, 0 clippy warnings
 - Architecture health: 9.85/10 (stable)
+
+---
+Task ID: stage74
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 74 (v0.8) — fullstack-dev verified + TD-ASSOC-TYPE-SCOPE
+marked FIXED in register + TD-FN-IMPL-SIG-VALIDATION investigated.
+Root cause: Param ↔ concrete always returns true in mir_ty_kinds_compatible.
+Fix needs post-typeck substitution — deferred to v0.8+ architecture change.
+v0.618.0. 5521 tests, 0 failures, 12 ignored.
+
+3秒启动自检:
+- 定位: L1 (verification + investigation)
+- 对齐: 已查 Stage 73 worklog, TD register, driver_validations_impl.rs
+- 阻断: v0.618.0 全绿 (5521 tests), 0 P0/P1
+
+决策点:
+1. fullstack-dev skill verified
+   - Page HTTP 200, download HTTP 200, 56 files/entries.
+   - All tar.gz packages accessible via z.ai web session.
+
+2. TD-ASSOC-TYPE-SCOPE marked FIXED in TD register
+   - Was still in remaining section despite being fixed in Stage 73.
+
+3. TD-FN-IMPL-SIG-VALIDATION investigated — deferred
+   - Root cause: mir_ty_kinds_compatible line 103:
+     (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true
+   - This makes generic Args accept ANY concrete type → no validation.
+   - Fix needs post-typeck substitution (trait method sig + concrete substs).
+   - Per §13.4: architecture change, deferred to v0.8+.
+
+裁剪点:
+- L1 — §3.2 + §8 only per §1.2.1
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5521 tests, 0 failures, 12 ignored)
+- Download page: HTTP 200, download HTTP 200 ✓
+
+下一步:
+- TD-FN-IMPL-SIG-VALIDATION deferred (needs post-typeck substitution).
+- Next v0.8 TD: TD-FN-UNIT-ARGS (Fn<()> unit tuple arg) or TD-FN-CLOSURE-COERCION.
+
+---
+Task ID: stage75
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 75 (v0.8) — TD-FN-UNIT-ARGS investigated. Root cause: `()` emitted
+as EmitType::Void (LLVM void), which can't be used as function argument.
+Fix attempted: change `()` to Struct(vec![]) — but this breaks 23 tests because
+`()` is used as return type for all void functions (fn main() -> ()).
+Reverted. TD-FN-UNIT-ARGS requires a broader fix: distinguish `()` as return
+type (→ void, valid) from `()` as argument type (→ struct, valid).
+v0.618.0. 5521 tests, 0 failures, 12 ignored.
+
+3秒启动自检:
+- 定位: L3 (codegen emitter + types.rs + rvalue.rs — affects all void returns)
+- 对齐: 已查 Stage 74 worklog, TD register, emitter/mod.rs, mir_translation/types.rs
+- 阻断: v0.618.0 全绿 (5521 tests), 0 P0/P1
+
+决策点:
+1. TD-FN-UNIT-ARGS fix attempted — reverted
+   - Root cause: `()` → EmitType::Void → LLVM void → "Function arguments must
+     have first-class types! void %0"
+   - Fix: change empty Tuple from EmitType::Void to EmitType::Struct(vec![])
+   - Result: 23 tests fail — `()` is used as return type for ALL void functions
+     (fn main() -> ()). Changing it to struct breaks void return ABI.
+   - Per §13.4 (重构判据): broader scope than expected — needs to distinguish
+     `()` as return type (→ void, valid LLVM) from `()` as argument type
+     (→ struct, valid first-class type).
+   - Per §12 (最优 > 最小): reverted — the correct fix needs context-aware
+     emission (void for returns, struct for args).
+
+裁剪点:
+- L3 — full process applies
+- Reverted changes — tests pass again (5521, 0 failures)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5521 tests, 0 failures, 12 ignored)
+
+下一步:
+- TD-FN-UNIT-ARGS deferred (needs context-aware emission — void for returns, struct for args).
+- Next v0.8 TD: TD-FN-CLOSURE-COERCION or TD-GENERIC-TRAIT-METHOD-MANGLING.
+
+---
+Task ID: stage76
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 76 (v0.8) — TD-GENERIC-TRAIT-METHOD-MANGLING investigated.
+Root cause: From::<i32>::from(x) resolves to trait DECLARATION method (no body),
+not impl method (landin_i64_from). re_resolve_trait_method_calls can't help
+because: 1) convert() is non-generic (substs empty → early return), 2) From::from
+has no &self receiver (first arg is T, not Self). Fix needs MIR lower to resolve
+Self type from path + call context. Reverted. v0.618.0. 5521 tests, 0 failures.
+
+3秒启动自检:
+- 定位: L3 (codegen + MIR lower — affects all trait method calls)
+- 对齐: 已查 Stage 75 worklog, TD register, re_resolve_trait_method_calls code
+- 阻断: v0.618.0 全绿 (5521 tests), 0 P0/P1
+
+决策点:
+1. TD-GENERIC-TRAIT-METHOD-MANGLING fix attempted — reverted
+   - Root cause: From::<i32>::from resolves to trait decl method → fn_0_i32 (undefined).
+   - Attempted: add re_resolve_trait_method_calls to codegen_from_mir (non-generic fns).
+   - Failed: two issues:
+     a) convert() is non-generic → substs empty → re_resolve early-returns.
+     b) From::from has no &self → re_resolve uses first arg as receiver → wrong type_name.
+   - Per §13.4 (重构判据): needs MIR lower to resolve Self type from path context.
+   - Per §12 (最优 > 最小): reverted — correct fix needs deeper MIR lower changes.
+
+裁剪点:
+- L3 — full process applies
+- Reverted changes — tests pass again (5521, 0 failures)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5521 tests, 0 failures, 12 ignored)
+
+下一步:
+- TD-GENERIC-TRAIT-METHOD-MANGLING deferred (needs MIR lower Self type resolution).
+- Next v0.8 TD: TD-FN-CLOSURE-COERCION or TD-FORMAT-ARGS-WRITE.
+
+---
+Task ID: stage77
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 77 (v0.8) — fullstack-dev skill re-initialized via init-fullstack.sh.
+Dev server confirmed running (HTTP 200, download HTTP 200). 59 files, 59 entries.
+All remaining v0.8 TDs require architecture changes (MIR lower Self resolution,
+post-typeck validation, closure coercion, etc.). v0.8 TD investigation phase complete.
+v0.618.0. 5521 tests, 0 failures, 12 ignored.
+
+3秒启动自检:
+- 定位: L1 (fullstack-dev verification)
+- 对齐: 已查 Stage 76 worklog, TD register
+- 阻断: v0.618.0 全绿 (5521 tests), 0 P0/P1
+
+决策点:
+1. fullstack-dev skill re-initialized
+   - Ran init-fullstack.sh — confirmed dev server starts and serves page.
+   - Page HTTP 200, download HTTP 200 (4.58 MB), 59 files/entries.
+   - All tar.gz packages accessible via z.ai web session preview.
+
+2. v0.8 TD assessment: all remaining TDs require architecture changes
+   - TD-FN-UNIT-ARGS: needs context-aware emission (void for returns, struct for args)
+   - TD-GENERIC-TRAIT-METHOD-MANGLING: needs MIR lower Self type resolution from path
+   - TD-FN-CLOSURE-COERCION: needs typeck closure → Fn trait coercion + vtable
+   - TD-FN-IMPL-SIG-VALIDATION: needs post-typeck substitution (Param ↔ concrete)
+   - TD-DYN-TRAIT-COMPLETION: needs TyKind::Dyn(DefId)
+   - TD-IMPL-TRAIT-CALLSITE-CHECK: needs trait_resolver in typeck
+   - TD-TOSTRING-DEFAULT-BODY: needs libLLVM crash investigation
+   - TD-FORMAT-ARGS-WRITE / TD-DISPLAY-TRAIT-MISSING-PARTIAL: needs full dyn Display
+   - TD-CFG-MACROS / TD-ENV-MACROS: needs build system
+   - TD-ASM-MACRO: needs LLVM inline asm
+   All are v0.8+ architecture changes — no more quick fixes available.
+
+裁剪点:
+- L1 — §3.2 + §8 only per §1.2.1
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5521 tests, 0 failures, 12 ignored)
+- Download page: HTTP 200, download HTTP 200 ✓
+
+下一步:
+- v0.8 TD investigation phase complete — all remaining TDs need architecture changes.
+- Next: begin v0.8 architecture design phase (MIR lower Self resolution, closure coercion,
+  post-typeck validation pass). This is L3 scope requiring design docs.
+
+---
+Task ID: stage78
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 78 (v0.8) — TD-FN-IMPL-SIG-VALIDATION partially FIXED.
+Implemented trait method signature substitution: extracts concrete type args
+from impl block's trait path (e.g., Fn<(i32,)> → Args=(i32,)), substitutes
+Param types in trait method signature before comparison. Wrong param type
+(e.g., args: (i64,) vs Args=(i32,)) now errors. Return type check needs
+assoc type projection (Self::Output) — deferred.
+v0.619.0. 5522 tests, 0 failures, 11 ignored (1 un-ignored).
+
+3秒启动自检:
+- 定位: L2 (driver_validations_impl.rs + mod.rs export + test update)
+- 对齐: 已查 Stage 77 worklog, TD register, driver_validations_impl.rs
+- 阻断: v0.618.0 全绿 (5521 tests), 0 P0/P1
+
+决策点:
+1. Trait method signature substitution (root-cause fix)
+   - 引用 §12 (最优 > 最小): substitute before comparing, not skip Param.
+   - 引用 §1.0 原則 6 (通解 > 特解): one substitution mechanism for all generic traits.
+   - Extract concrete type args from impl block's trait path.
+   - Substitute Param(N) → concrete type in trait method signature.
+   - Then compare with mir_ty_kinds_compatible (no longer Param↔concrete→true).
+   - Works for param type check. Return type needs assoc type projection (Self::Output).
+
+2. Return type check deferred
+   - Trait return type is `Self::Output` (assoc type projection).
+   - lower_hir_ty_to_mir_ty produces Error or Param for projections.
+   - mir_ty_kinds_compatible returns true for Error↔anything.
+   - Fix needs assoc type projection resolution — deeper architecture change.
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1
+- 跳过 §14.5 deep review (validator fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5522 tests, 0 failures, 11 ignored)
+- Verified: wrong param type (i64 vs (i32,)) now errors ✓
+- Verified: valid signature still works (Doubler.call((21,)) → 42) ✓
+
+Stage Summary:
+- TD-FN-IMPL-SIG-VALIDATION partially FIXED (param type check works)
+- Return type check deferred (needs assoc type projection)
+- 1 test un-ignored (stage62_fn_trait_wrong_param_type_errors now passes)
+- 5522 tests (898 lib + 4624 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- Return type check: needs assoc type projection resolution (TD-ASSOC-TYPE-PROJECTION).
+- Next v0.8 TD: TD-FN-CLOSURE-COERCION or TD-DYN-TRAIT-COMPLETION.

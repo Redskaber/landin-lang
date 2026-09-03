@@ -413,9 +413,8 @@ fn stage62_fn_trait_impl_missing_call_method_errors() {
 ///
 /// NOTE: This test is currently skipped because Landin's typeck doesn't
 /// validate that the impl's `fn call` signature matches the trait's Args
-/// generic parameter. Tracked as TD-FN-IMPL-SIG-VALIDATION (P3, v0.8+).
+/// generic parameter. Tracked as TD-FN-IMPL-SIG-VALIDATION — param check FIXED Stage 78, return check needs assoc type projection.
 #[test]
-#[ignore = "TD-FN-IMPL-SIG-VALIDATION: typeck doesn't check impl sig matches Args"]
 fn stage62_fn_trait_wrong_param_type_errors() {
     let src = r#"
         struct Doubler;
@@ -439,7 +438,7 @@ fn stage62_fn_trait_wrong_param_type_errors() {
 ///
 /// NOTE: This test is currently skipped because Landin's typeck doesn't
 /// validate that the impl's `fn call` return type matches `type Output`.
-/// Tracked as TD-FN-IMPL-SIG-VALIDATION (P3, v0.8+).
+/// Tracked as TD-FN-IMPL-SIG-VALIDATION — param check FIXED Stage 78, return check needs assoc type projection.
 #[test]
 #[ignore = "TD-FN-IMPL-SIG-VALIDATION: typeck doesn't check impl return matches Output"]
 fn stage62_fn_trait_wrong_return_type_errors() {

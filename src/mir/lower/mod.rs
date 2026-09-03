@@ -108,8 +108,8 @@ pub use adt_layout::compute_type_size_with_fallback;
 // Per §10.1.4: explicit list, no glob.
 // Per §13.4.3 反模式 5: only re-export functions actually called externally.
 pub(crate) use ty_lower::{
-    lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics, lower_hir_ty_to_mir_ty_with_hir,
-    lower_hir_ty_to_mir_ty_with_hir_and_generics,
+    lower_ast_ty_to_mir_ty, lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics,
+    lower_hir_ty_to_mir_ty_with_hir, lower_hir_ty_to_mir_ty_with_hir_and_generics,
 };
 // Stage 18.130: test-only re-export (used by mod.rs tests, not by non-test code).
 #[cfg(test)]
