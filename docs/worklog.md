@@ -41715,3 +41715,74 @@ Stage Summary:
 - TD-IMPL-TRAIT-CALLSITE-CHECK: typeck validate trait bounds at call site (L2, can do).
 - TD-CFG-MACROS / TD-ENV-MACROS: need build system (v0.8+).
 - Wave 4: TD-SPECIAL-8, TD-SPECIAL-10 (P3 architecture optimizations, v0.8+).
+
+---
+Task ID: stage67
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 67 (v0.7) — TD register cleanup + v0.7 final assessment.
+Removed TD-CLONE-TRAIT-MISSING from remaining section (duplicate — already
+resolved in Stage 59). Updated TD-IMPL-TRAIT-CALLSITE-CHECK root cause
+(needs trait_resolver access, v0.8+ architecture change). v0.7 is truly
+feature-complete — all remaining TDs require v0.8+ architecture changes.
+v0.616.0. 5519 tests, 0 failures, 14 ignored.
+
+3秒启动自检:
+- 定位: L1 (documentation cleanup)
+- 对齐: 已查 Stage 66 worklog, TD register
+- 阻断: v0.616.0 全绿 (5519 tests), 0 P0/P1
+
+决策点:
+1. TD-IMPL-TRAIT-CALLSITE-CHECK deferred to v0.8+
+   - 引用 §13.4 (重构判据): root cause requires trait_resolver in TypeChecker
+     (circular dependency — trait_resolver needs typeck results, typeck would
+     need trait_resolver) OR a post-typeck MIR walking pass (needs careful
+     threading of MIR + typeck_results + trait_resolver).
+   - Both approaches are L3 refactors, beyond v0.7 scope.
+   - Per §12 (最优 > 最小): document as v0.8+ architectural TD.
+
+2. TD-CLONE-TRAIT-MISSING duplicate removed
+   - Was in BOTH resolved (line 20) and remaining (line 63) sections.
+   - Resolved in Stage 59 — removed from remaining section.
+
+3. v0.7 final assessment: ALL remaining TDs require v0.8+ architecture changes
+   - TD-IMPL-TRAIT-MONO-RESOLUTION (P1): monomorphization re-resolution
+   - TD-IMPL-TRAIT-CALLSITE-CHECK: trait_resolver in typeck
+   - TD-FN-CLOSURE-COERCION: TyKind::Closure → Fn trait coercion
+   - TD-DYN-TRAIT-COMPLETION: TyKind::Dyn(DefId)
+   - TD-ASSOC-TYPE-SCOPE: resolver scope refactor
+   - TD-GENERIC-TRAIT-METHOD-MANGLING: trait resolver refactor
+   - TD-FN-ASSOC-TYPE-CALL: parser/typeck explicit trait dispatch
+   - TD-SPECIAL-8/10/13/14/15: architecture optimizations
+   - TD-CFG-MACROS/TD-ENV-MACROS: need build system
+   - TD-ASM-MACRO: need LLVM inline asm
+   - TD-FORMAT-ARGS-WRITE: need Display trait (have it, but need dyn Display)
+   - TD-TOSTRING-DEFAULT-BODY: libLLVM crash investigation
+   - TD-DISPLAY-TRAIT-MISSING-PARTIAL: format! redesign needs dyn Trait
+
+裁剪点:
+- L1 — documentation only, no code changes
+- 安全理由: §1.2.1 — L1 only needs §3.2 + §8
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5519 tests, 0 failures, 14 ignored)
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Documentation cleanup. v0.7 is truly feature-complete — all remaining
+  TDs require v0.8+ architecture changes. The TD register now accurately
+  reflects the state.
+
+Stage Summary:
+- TD register cleaned up (removed duplicate TD-CLONE-TRAIT-MISSING)
+- TD-IMPL-TRAIT-CALLSITE-CHECK root cause updated (needs trait_resolver, v0.8+)
+- v0.7 is TRULY feature-complete — all remaining TDs are v0.8+ architecture
+- 5519 tests (898 lib + 4621 integration), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- v0.7 → v0.8 stage transition.
+- v0.8+ priorities: TD-IMPL-TRAIT-MONO-RESOLUTION (P1), TD-DYN-TRAIT-COMPLETION,
+  TD-FN-CLOSURE-COERCION, TD-ASSOC-TYPE-SCOPE.
