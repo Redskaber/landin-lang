@@ -18,6 +18,41 @@ use super::CompileErrors;
 /// (intentional error recovery). The result: typos in function names
 /// go undetected.
 pub(super) fn scan_for_unresolved_paths(hir: &HirCrate, errors: &mut CompileErrors) {
+    // Stage 66 (v0.7 — TD-IMPL-TRAIT-UNDEFINED-BOUND): Scan owner generics
+    // for unresolved trait bounds. This catches undefined traits in
+    // `impl Trait` arg position (desugared to generic param bounds in
+    // Stage 63) and in explicit `<T: UndefinedTrait>` bounds.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): previously, undefined trait bounds in
+    // generic params were silently accepted (scanner only checked body
+    // params, not owner generics).
+    // Per §12 (最优 > 最小): root-cause fix — scan all generic param bounds.
+    for (_, owner) in &hir.owners {
+        if let OwnerNode::Item(item) = owner {
+            let generics = match item {
+                HirItem::Fn(f) => &f.generics,
+                HirItem::Struct(s) => &s.generics,
+                HirItem::Enum(e) => &e.generics,
+                HirItem::Trait(t) => &t.generics,
+                HirItem::Impl(i) => &i.generics,
+                _ => continue,
+            };
+            for param in &generics.params {
+                if let HirGenericParam::Type(tp) = param {
+                    for bound in &tp.bounds {
+                        scan_type_bound_for_unresolved(bound, errors);
+                    }
+                }
+            }
+            // Also scan where_clause bounds.
+            for pred in &generics.where_clause {
+                scan_ty_for_unresolved(&pred.bounded_ty, errors);
+                for bound in &pred.bounds {
+                    scan_type_bound_for_unresolved(bound, errors);
+                }
+            }
+        }
+    }
     for (_, body) in &hir.bodies {
         scan_expr_for_unresolved(&body.value, errors);
         for param in &body.params {

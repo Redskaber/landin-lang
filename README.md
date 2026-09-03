@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.615.0 (v0.7 Stage 65 — TD-PRELUDE-MACRO-TIMING RESOLVED: prelude uses direct C runtime calls, not macros; Wave 1-3 COMPLETE; 5510 tests — Architecture health 9.85/10) |
+| **Version** | v0.616.0 (v0.7 Stage 66 — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED: parser rejects `impl` with no bounds; scanner reports undefined trait bounds; 5519 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 65 COMPLETE — Wave 1-3 ALL DONE**. 5510 tests (898 lib + 4612 integration), 0 failures, 14 ignored. fmt clean, 0 clippy warnings. Stage 65 resolves TD-PRELUDE-MACRO-TIMING — the last Wave 1 item. Root cause was fixed differently than originally planned: the prelude source uses direct `__landin_panic_msg(...)` and `__landin_unreachable(...)` extern "C" calls instead of `panic!`/`unreachable!` macros (changed in Stages 40-43). Token-level injection is no longer needed. 14 new tests verify all prelude types (Option, Result, String, Vec, Clone, Display, Drop) and user `panic!` macro work correctly. **Wave 1-3 COMPLETE**: Wave 1 (prelude restrictions — 4 TDs), Wave 2 (trait system basics — 3 TDs), Wave 3 (closures + advanced features — 3 TDs). v0.7 trait system phase is feature-complete. Architecture health: 9.85/10 (stable). |
+| **Status** | ✅ **v0.7 Stage 66 COMPLETE**. 5519 tests (898 lib + 4621 integration), 0 failures, 14 ignored. fmt clean, 0 clippy warnings. Stage 66 fixes two impl Trait validation gaps: (1) parser now rejects `impl` with no bounds (requires at least one trait bound, per Rust Reference §6.3); (2) scanner now scans owner generics for undefined trait bounds, catching `impl UndefinedTrait`, `<T: UndefinedTrait>`, and `where T: UndefinedTrait` errors that were previously silently accepted. 9 new tests added. Architecture health: 9.85/10 (stable). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

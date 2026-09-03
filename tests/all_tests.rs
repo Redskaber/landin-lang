@@ -977,3 +977,11 @@ mod stage64_drop_trait_tests;
 // Per §9.4.3 (1:3+ 正负比例): 11 positive + 3 negative tests.
 #[path = "v0/stage65/plan/prelude_macro_timing_tests.rs"]
 mod stage65_prelude_macro_timing_tests;
+
+// === Stage 66 (v0.7): TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND
+// — parser rejects `impl` with no bounds; resolver reports undefined trait bounds. ===
+// Per §1.0 原則 4 (报错 > 静默): previously both cases silently compiled.
+// Per §12 (最优 > 最小): root-cause fixes at parser and scanner levels.
+// Per §9.4.3 (1:3+ 正负比例): 7 positive + 2 negative tests.
+#[path = "v0/stage66/plan/impl_trait_bounds_tests.rs"]
+mod stage66_impl_trait_bounds_tests;

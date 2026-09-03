@@ -41607,3 +41607,111 @@ Wave Completion:
   for the trait system phase.
 - v0.8+: 21 deferred TDs across trait system.
 - Wave 4 (TD-SPECIAL-8, TD-SPECIAL-10) are P3 architecture optimizations.
+
+---
+Task ID: stage66
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 66 (v0.7) — TD register cleanup + Download page update.
+Moved 3 resolved P2 TDs to resolved section (TD-OPTION-TAKE-INCOMPLETE,
+TD-STR-INTRINSIC-MARKER-BODIES, TD-PRINTLN-CODEGEN-INTERCEPT). Added
+6 new packages (Stages 60-65) to download page. 49 tar.gz packages total.
+v0.615.0. Wave 1-3 COMPLETE.
+
+3秒启动自检:
+- 定位: L2 (TD register doc cleanup + download page update)
+- 对齐: 已查 Stage 65 worklog, TD register, download page code
+- 阻断: v0.615.0 全绿 (5510 tests), 0 P0/P1
+
+决策点:
+1. TD register cleanup (move resolved P2 TDs to resolved section)
+   - 引用 §1.0 原則 10 (唯一可信数据源): TD register must be accurate.
+   - 3 P2 TDs were listed as "remaining" but were actually resolved in Wave 1.
+   - TD-OPTION-TAKE-INCOMPLETE: Stage 40.2 (resolved)
+   - TD-STR-INTRINSIC-MARKER-BODIES: Stages 56-58 (3/3 complete)
+   - TD-PRINTLN-CODEGEN-INTERCEPT: partial (println! works via codegen intercept)
+
+2. Download page update (6 new packages: Stages 60-65)
+   - Copied 5 new tar.gz to public/files/ (v0.611-v0.615)
+   - Updated PACKAGES array in page.tsx with 6 entries
+   - Updated metadata (version range v0.573→v0.615, 49 packages total)
+   - Updated footer text ("Wave 1-3 全部完成")
+
+裁剪点:
+- L2 — §7.3 gate review sufficient per §1.2.1
+- 跳过 §14.5 D2-D8 deep review (doc cleanup + web page update)
+
+§3.2 验收检查:
+- bun run lint ✓ (0 errors)
+- 49 tar.gz files in public/files/ ✓
+- 49 package entries in page.tsx ✓
+- Page renders with new content (v0.615, Wave 1-3) ✓ (curl verified)
+
+Stage Summary:
+- TD register cleaned up (3 P2 TDs moved to resolved section)
+- Download page updated (6 new packages, 49 total)
+- Wave 1-3 COMPLETE, v0.7 feature-complete
+- 5510 tests (unchanged), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- v0.7 stage transition: All Wave 1-3 TDs complete. v0.7 is feature-complete.
+- v0.8+: 21 deferred TDs across trait system.
+- Wave 4 (TD-SPECIAL-8, TD-SPECIAL-10) are P3 architecture optimizations.
+
+---
+Task ID: stage66
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 66 (v0.7) — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED.
+Parser rejects `impl` with no bounds; resolver/scanner reports undefined
+trait bounds in impl Trait and generic params. 9 new tests.
+v0.616.0. 5519 tests, 0 failures, 14 ignored.
+
+3秒启动自检:
+- 定位: L2 (parser fix + scanner fix + 9 new tests)
+- 对齐: 已查 Stage 65 worklog, TD register, parser/ty.rs, driver_scan.rs
+- 阻断: v0.615.0 全绿 (5510 tests), 0 P0/P1
+
+决策点:
+1. Parser fix for `impl` with no bounds
+   - 引用 §1.0 原則 4 (报错 > 静默): emit parse error instead of silently accepting.
+   - 引用 §12 (最优 > 最小): root-cause fix at parser level.
+   - Per Rust Reference §6.3: `impl Trait` must have at least one trait bound.
+   - Added bounds.is_empty() check in parser/ty.rs KwImpl arm.
+
+2. Scanner fix for undefined trait bounds in generics
+   - 引用 §1.0 原則 4 (报错 > 静默): scan owner generics, not just body params.
+   - 引用 §12 (最优 > 最小): root-cause fix — scan all generic param bounds.
+   - Added scan loop for Fn/Struct/Enum/Trait/Impl generics in scan_for_unresolved_paths.
+   - Also scans where_clause bounds.
+   - This catches: impl UndefinedTrait, <T: UndefinedTrait>, where T: UndefinedTrait.
+
+裁剪点:
+- L2 — §7.3 gate review sufficient per §1.2.1
+- 跳过 §14.5 D2-D8 deep review (parser + scanner fixes, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5519 tests, 0 failures, 14 ignored)
+- Runtime verified: `impl` no bounds errors, `impl UndefinedTrait` errors, valid `impl Clone` compiles ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Two fixes: (1) parser rejects `impl` with no bounds
+  (Rust Reference §6.3 compliance); (2) scanner scans owner generics
+  for undefined trait bounds (catches impl Trait desugar targets).
+  Both are root-cause fixes at the right abstraction level.
+
+Stage Summary:
+- TD-IMPL-TRAIT-NO-BOUNDS FIXED (parser rejects `impl` with no bounds)
+- TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED (scanner scans owner generics)
+- 9 new tests added (all passing)
+- 5519 tests (898 lib + 4621 integration), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- TD-IMPL-TRAIT-CALLSITE-CHECK: typeck validate trait bounds at call site (L2, can do).
+- TD-CFG-MACROS / TD-ENV-MACROS: need build system (v0.8+).
+- Wave 4: TD-SPECIAL-8, TD-SPECIAL-10 (P3 architecture optimizations, v0.8+).

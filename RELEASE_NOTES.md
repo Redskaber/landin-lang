@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.615.0 (v0.7 Stage 65 — TD-PRELUDE-MACRO-TIMING RESOLVED: prelude uses direct C runtime calls, not macros; Wave 1-3 COMPLETE; 5510 tests) |
+| **Current version** | v0.616.0 (v0.7 Stage 66 — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED: parser rejects `impl` with no bounds; scanner reports undefined trait bounds; 5519 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4612 integration tests = 5510 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
+| **Test count** | 898 lib tests + 4621 integration tests = 5519 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |

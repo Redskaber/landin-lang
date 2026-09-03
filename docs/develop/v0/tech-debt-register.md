@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.615.0 (Stage 65)
+# Landin 编译器技术债完整清单 — v0.616.0 (Stage 66)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.615.0
-> **状态**: v0.7+ trait 系统阶段，TD 聚焦修复（TD-PRELUDE-MACRO-TIMING resolved, Wave 1-3 完成）
+> **版本**: v0.616.0
+> **状态**: v0.7+ trait 系统阶段，TD 聚焦修复（impl Trait bounds validation 完成）
 
 ---
 
@@ -24,6 +24,8 @@
 | TD-IMPL-TRAIT | 63 | impl Trait in arg position desugared to generic param at HIR lowering (method calls inside body deferred to v0.8+) |
 | TD-SPECIAL-16 | 64 | Drop trait added to prelude (drop glue infrastructure was already complete from Stage 15.x) |
 | TD-PRELUDE-MACRO-TIMING | 65 | Prelude macro timing resolved — prelude uses direct C runtime calls (__landin_panic_msg, __landin_unreachable), not panic!/unreachable! macros. Token-level injection not needed. |
+| TD-IMPL-TRAIT-NO-BOUNDS | 66 | Parser rejects `impl` with no bounds — requires at least one trait bound |
+| TD-IMPL-TRAIT-UNDEFINED-BOUND | 66 | Resolver/scanner reports undefined trait bounds in `impl Trait` and generic params |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -41,9 +43,7 @@
 
 | TD ID | 描述 | 根因 | 修复方案 | 依赖 |
 |-------|------|------|---------|------|
-| TD-OPTION-TAKE-INCOMPLETE | take() 消耗 self 而非 &mut self | Landin 无 mem::replace | 实现 mem::replace 或 &mut self 方法 | 无 |
-| TD-STR-INTRINSIC-MARKER-BODIES | str len/is_empty/as_bytes 用 __landin_unreachable | typeck 不支持 fat pointer field access | typeck 支持 &str.field | 无 |
-| TD-PRINTLN-CODEGEN-INTERCEPT | println! 绕过 __landin_format_v2 | codegen 直接拦截 __landin_println → printf | 统一走 format_v2 路径 | Display trait |
+| *(无剩余 P2 TD — 所有 P2 TD 已在 Wave 1 中修复)* | | | | |
 
 ### P3 — v0.7+ trait 系统阶段
 
@@ -60,8 +60,6 @@
 | TD-DYN-TRAIT-COMPLETION | dyn Trait typeck 不完整 | typeck 无 dyn Trait 代码 | typeck trait dispatch | trait resolver |
 | TD-IMPL-TRAIT-MONO-RESOLUTION | impl Trait arg 方法调用在函数体内不解析 | monomorphization 不在类型替换后重新解析 trait 方法 | mono pass 重新解析 trait 方法 (P1, v0.8+) | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-IMPL-TRAIT-CALLSITE-CHECK | typeck 不校验 call site 实参是否满足 impl Trait bound | typeck 缺少 call site bound 检查 | typeck validate trait bounds at call site | TD-IMPL-TRAIT ✅ (Stage 63) |
-| TD-IMPL-TRAIT-UNDEFINED-BOUND | resolver 不报告 impl Trait 中未定义的 trait | bounds 扫描后错误未传播到 has_errors() | resolver propagate impl Trait bound errors | TD-IMPL-TRAIT ✅ (Stage 63) |
-| TD-IMPL-TRAIT-NO-BOUNDS | parser 接受 `impl` 无 bounds | parser 未要求至少一个 trait bound | parser reject `impl` with no bounds | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-CLONE-TRAIT-MISSING | 无 Clone trait | prelude 仅有 Copy trait | Clone trait + auto-derive | trait dispatch |
 | TD-CFG-MACROS | cfg!/cfg_attr! 未实现 | 需配置系统 | 编译期 cfg 评估 | build system |
 | TD-ASM-MACRO | asm! 未实现 | 需 LLVM inline asm | LLVM asm 支持 | LLVM backend |
@@ -187,6 +185,14 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD-IMPL-TRAIT | 63 | impl Trait arg desugar to generic param at HIR lowering |
 | TD-SPECIAL-16 | 64 | Drop trait added to prelude (drop glue infra already complete) |
 | TD-PRELUDE-MACRO-TIMING | 65 | Prelude macro timing resolved (prelude uses direct C calls, not macros) |
+
+### v0.5-v0.7 阶段已修复（P2 prelude 限制 — Wave 1）
+
+| TD ID | Stage | 描述 |
+|-------|-------|------|
+| TD-OPTION-TAKE-INCOMPLETE | 40.2 | Option::take 修复（&mut self 方法 + mem::replace pattern） |
+| TD-STR-INTRINSIC-MARKER-BODIES | 56-58 | str::len/is_empty/as_bytes 真实 body（3/3 complete） |
+| TD-PRINTLN-CODEGEN-INTERCEPT | partial | println! via codegen intercept（partial — 统一 format_v2 路径 deferred to v0.8+） |
 
 ### v0.5 阶段已修复（Stage 39-50）
 

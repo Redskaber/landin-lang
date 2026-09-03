@@ -225,6 +225,19 @@ impl<'a> Parser<'a> {
             TokenKind::KwImpl => {
                 self.bump();
                 let bounds = self.parse_type_bounds();
+                // Stage 66 (v0.7 — TD-IMPL-TRAIT-NO-BOUNDS): `impl` with
+                // no bounds is invalid — at least one trait bound is required.
+                // Per Rust Reference §6.3: "impl Trait" must have at least one
+                // trait bound. `impl` alone is a parse error.
+                // Per §1.0 原則 4 (报错 > 静默): emit a parse error instead of
+                // silently accepting empty bounds.
+                // Per §12 (最优 > 最小): root-cause fix at parser level.
+                if bounds.is_empty() {
+                    self.errors.push(crate::parser::ParseError::new(
+                        "expected at least one trait bound after `impl`".to_string(),
+                        span,
+                    ));
+                }
                 Ty::ImplTrait(bounds, span)
             }
             // dyn Trait — `dyn Display + Send`
