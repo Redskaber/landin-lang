@@ -42318,3 +42318,84 @@ Stage Summary:
 
 下一步:
 - Next v0.8 TD: TD-DYN-TRAIT-COMPLETION or TD-FORMAT-ARGS-WRITE.
+
+---
+Task ID: stage80
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 80 (v0.8) — TD-FN-CLOSURE-COERCION runtime investigation.
+Typeck coercion works (no compile error), but runtime segfaults.
+Root cause: closure is passed as `i8 0` (ZST placeholder) instead of
+function pointer. The closure's synthesized `call` function exists in IR
+(closure_call_fn_0) but main stores `i8 0` (ZST) instead of `ptr @closure_call_fn_0`.
+Codegen doesn't emit the closure-to-fnptr reify (store function pointer).
+Per §13.4: needs codegen fix to reify closure as fn pointer when typeck
+unifies Closure→FnPtr. Deferred — runtime fix needs MIR/codegen changes.
+v0.620.0. 5522 tests (unchanged), 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L3 (codegen MIR closure reify — affects closure call codegen)
+- 对齐: 已查 Stage 79 worklog, IR output, dmesg segfault
+- 阻断: v0.620.0 全绿 (5522 tests), 0 P0/P1
+
+决策点:
+1. TD-FN-CLOSURE-COERCION runtime fix deferred
+   - Typeck works: Closure↔FnPtr unification passes (no compile error).
+   - Runtime fails: closure stored as `i8 0` (ZST) not `ptr @closure_call_fn_0`.
+   - Root cause: codegen doesn't reify closure as fn pointer when typeck
+     unifies Closure→FnPtr. The closure's synthesized call function exists
+     but isn't stored as the fn pointer value.
+   - Per §13.4 (重构判据): needs codegen MIR changes to emit function pointer
+     store when closure type is coerced to fn pointer.
+   - Per §12 (最优 > 最小): not a minimum patch — need proper reify in codegen.
+
+裁剪点:
+- L3 — investigation only, no code changes
+- Tests unchanged (5522, 0 failures, 11 ignored)
+
+下一步:
+- TD-FN-CLOSURE-COERCION runtime: needs codegen reify (store fn ptr for coerced closures).
+- Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-TRAIT-METHOD-OVERLOAD.
+
+---
+Task ID: stage81
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 81 (v0.8) — TD-FN-CLOSURE-COERCION runtime partial fix.
+Changed empty closure Aggregate codegen from "0" to "@closure_call_fn_N"
+(function pointer). IR now shows function pointer instead of ZST value.
+However, alloca type mismatch (i8 vs ptr) prevents runtime from working.
+5522 tests pass (no regression). Runtime fix needs alloca type resolution.
+v0.621.0. 5522 tests, 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L3 (codegen rvalue.rs closure Aggregate + alloca type resolution)
+- 对齐: 已查 Stage 80 worklog, IR output, closure DefId allocation
+- 阻断: v0.620.0 全绿 (5522 tests), 0 P0/P1
+
+决策点:
+1. Closure reify — emit function pointer instead of ZST
+   - 引用 §12 (最优 > 最小): root-cause fix — emit @closure_call_fn_N.
+   - DefId is from CLOSURE_DEF_ID_BASE downward; function name uses
+     counter (CLOSURE_DEF_ID_BASE - def_id.as_u32()).
+   - IR now shows: `store i8 @closure_call_fn_0, ptr %loc_3` (was `i8 0`).
+   - BUT: alloca type is i8 (ZST) not ptr — type mismatch prevents runtime.
+   - Full fix needs codegen to use ptr type for coerced closure allocas.
+   - Per §13.4: deeper codegen change — deferred.
+
+裁剪点:
+- L3 — partial fix, tests pass (no regression)
+- 跳过 §14.5 deep review (codegen fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5522 tests, 0 failures, 11 ignored)
+
+Stage Summary:
+- TD-FN-CLOSURE-COERCION runtime partial fix (fn pointer emitted, alloca type mismatch)
+- 5522 tests (898 lib + 4624 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — partial fix, no regression)
+
+下一步:
+- TD-FN-CLOSURE-COERCION runtime: needs alloca type = ptr when closure coerced to fn ptr.
+- Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION.

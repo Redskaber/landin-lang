@@ -610,10 +610,27 @@ pub(crate) fn codegen_rvalue(
         // the closure struct is an anonymous struct with one field per capture.
         // The struct type is computed by `mir_type_to_emit_type` from
         // `TyKind::Closure(_, substs)` (see `emitter.rs:487-490`).
-        Rvalue::Aggregate(AggregateKind::Closure(_def_id, substs), operands) => {
+        Rvalue::Aggregate(AggregateKind::Closure(def_id, substs), operands) => {
             if operands.is_empty() {
-                // Empty closure (no captures) — emit an empty struct value.
-                return Ok("0".to_string());
+                // Stage 81 (v0.8 — TD-FN-CLOSURE-COERCION runtime fix):
+                // Empty closure (no captures) coerced to fn pointer — emit
+                // the synthesized closure call function's pointer instead of
+                // "0". When a closure is passed as a `fn(...)` argument,
+                // codegen stores the closure value. For no-capture closures,
+                // the "value" should be the function pointer to the
+                // synthesized `closure_call_fn_N` function, NOT a ZST `0`.
+                //
+                // The closure's DefId is allocated from CLOSURE_DEF_ID_BASE
+                // (u32::MAX - 1000) downward. The function name is
+                // `closure_call_fn_<counter>` where counter starts at 0.
+                // So the first closure gets `closure_call_fn_0`.
+                //
+                // Per §12 (最优 > 最小): root-cause fix — emit function pointer.
+                // Per §1.0 原則 6 (通解 > 特解): one path for all no-capture closures.
+                // Per Rust: non-capturing closures coerce to fn pointers.
+                const CLOSURE_DEF_ID_BASE: u32 = u32::MAX - 1000;
+                let closure_idx = CLOSURE_DEF_ID_BASE - def_id.as_u32();
+                return Ok(format!("@closure_call_fn_{}", closure_idx));
             }
             // Build the closure struct type from the capture field types.
             //
