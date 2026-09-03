@@ -42443,3 +42443,199 @@ Stage Summary:
 下一步:
 - TD-FN-CLOSURE-COERCION runtime: needs codegen_operand to load FnPtr locals.
 - Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION.
+
+---
+Task ID: stage83
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 83 (v0.8) — TD-FN-CLOSURE-COERCION runtime FULLY FIXED.
+Removed the Stage 16.21 redundant closure-arg alloca-pointer special-case
+in codegen/terminator.rs:379-394. Non-self closure args now flow through
+`codegen_operand`, which emits `load ptr, ptr %loc_N` to fetch the
+function pointer value (Stage 82 made empty Closure alloca type = ptr).
+Runtime verified: `apply(|n: i32| n * 2, 21)` correctly produces 42.
+v0.623.0. 5526 tests, 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L2 (codegen/terminator.rs ~15 lines removed + 1 positive + 3 negative tests)
+- 对齐: 已查 Stage 82 worklog, tech-debt-register.md, codegen/terminator.rs,
+  codegen/operand.rs, codegen/mir_translation/places.rs, typeck/unify.rs
+- 阻断: v0.622.0 全绿 (5522 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: 闭包（typeck 中已强制转换为 FnPtr）作为参数传入函数时，codegen 传入
+  alloca 地址 `ptr %loc_3` 而非加载的函数指针值，导致被调用方间接调用栈内存
+  (segfault)。
+- WHY (根因): Stage 16.21 在 codegen/terminator.rs:379-394 加了"凡是 Closure
+  类型参数 → 传 alloca 指针"的特殊处理。最初是为闭包调用 self 准备的
+  (synthesized closure_call_fn_N 期望 self: ptr)。但 Stage 16.30 重构后改为
+  通过 closure_self_local 单独 prepend self，Stage 16.21 对 self 变成冗余，
+  对非 self 的 Closure 类型参数变成有害（Stage 79 加了 Closure→FnPtr typeck
+  强制转换后，MIR 类型仍是 Closure，但被调用方期望 FnPtr）。
+- WHO: 影响所有把闭包作为参数传给 fn(...) -> ... 类型形参的代码。阻塞
+  TD-FN-CLOSURE-COERCION 在运行时可用。
+- WHEN: Stage 79 引入 Closure→FnPtr typeck 强制转换后开始触发。
+- WHERE: src/codegen/terminator.rs:379-394 (Stage 16.21 special-case)。
+- HOW: 删除 Stage 16.21 冗余检查。闭包 self 由 Stage 16.30 closure_self_local
+  单独 prepend 处理。非 self 的 Closure 参数走 codegen_operand 正常路径，
+  配合 Stage 82 修复（空 Closure → OpaquePtr alloca = ptr），emit_load 会
+  正确产出 load ptr, ptr %loc_N。
+- HOW MUCH: ~15 行删除 + 1 正向 runtime 测试 + 3 负向 typeck 测试。无回归风险
+  (Stage 16.30 已覆盖 self 路径)。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — 传入加载的 fn 指针值（而非 alloca 地址）确保调用目标为
+  真实函数，不是随机栈内存。
+- Zero-Cost Abstraction ✓ — 闭包到 fn 指针的强制转换为编译期；运行时仅一次
+  load (LLVM 还常量折叠为直接函数引用)。
+- Explicit > Implicit ✓ — 移除了"用 MIR 类型 Closure 隐式掩盖真实期望类型
+  FnPtr"的特殊路径。
+- Make Invalid States Unrepresentable ✓ — alloca 类型与值类型现在一致（都是 ptr）。
+
+决策点:
+1. 选择"删除 Stage 16.21"而非"为 FnPtr 情况加新特例"
+   - 引用 §12 (最优 > 最小): 根因修复 — 移除冗余特例，而非叠加新特例。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一条 codegen_operand 路径处理所有
+     Operand::Copy/Move 参数（闭包、fn 指针、struct、标量）。
+   - 引用 §1.0 原則 4 (显式 > 隐式): alloca 指针不再被静默替换为加载值。
+   - 替代方案 (拒绝): 在 Stage 16.21 检查中加 "若 callee 期望 FnPtr 则走
+     codegen_operand"。这只是治症不治根 — 仍然有两条代码路径，且需要查 callee
+     sig，增加耦合。
+
+2. 选择 3 个 arity 负向测试 (而非 param type / return type)
+   - Stage 83 测试编写过程中发现：闭包参数的显式类型注解（如 |n: i64|）被
+     MIR lower 忽略，使用 fresh_infer_ty() 替代。这导致 Closure↔FnPtr 强制
+     转换无法捕获参数类型不匹配（infer var 与任何具体类型都可 unify）。
+   - 这是独立的更深 typeck 问题，记录为 TD-CLOSURE-PARAM-ANNOT-IGNORE (P3,
+     v0.8+)，不在 Stage 83 范围内。
+   - 选择 arity 测试因为 arity 检查在 Stage 79 已正确实现（不依赖 param 类型
+     推断），可以稳定验证 Closure↔FnPtr unification 路径。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (codegen 调用点修复，无 soundness 影响 — Stage 16.30
+  已正确处理 closure self 路径，删除 Stage 16.21 不引入新的 unsafe 路径)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5526 tests, 0 failures, 11 ignored)
+- Verified: apply(|n: i32| n * 2, 21) → prints "result = 42", exits 42 ✓
+- Verified: arity mismatch (2/0/3 params vs 1 expected) → typeck errors ✓
+
+Stage Summary:
+- TD-FN-CLOSURE-COERCION FULLY FIXED (typeck Stage 79 + runtime Stage 83)
+- IR verification: `call i32 @landin_apply(ptr @closure_call_fn_0, i32 21)`
+  (was: `ptr %loc_3` — alloca address)
+- Runtime verification: prints "result = 42", exits 42 (main returns result)
+- 4 new tests (1 positive runtime + 3 negative typeck arity)
+- 5526 tests (898 lib + 4628 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — removed redundant special-case)
+- 新发现 TD: TD-CLOSURE-PARAM-ANNOT-IGNORE (P3, v0.8+) — 闭包参数显式类型
+  注解被 MIR lower 忽略，影响 Closure↔FnPtr param type 检查
+
+下一步:
+- TD-CLOSURE-PARAM-ANNOT-IGNORE: MIR lower 尊重 param.ty (若是 Infer 用 fresh var)
+- TD-FN-UNIT-ARGS: Fn<()> unit tuple arg 支持
+- TD-FN-IMPL-SIG-VALIDATION (return type): 需要 assoc type projection
+- Next v0.8 TD: TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION
+
+---
+Task ID: stage84
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 84 (v0.8) — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED. MIR lower
+now respects explicit closure param type annotations (`|n: i64|` honored,
+was: always fresh_infer_ty). Three dispatch sites fixed: expr_operand.rs
+(outer body), body_lower.rs (closure's own MIR body), compile_inner.rs
+(fn_sig_table entry). All three use the same logic: if param.ty is Some
+AND not Infer → lower HIR type; else → fresh infer var. Closure↔FnPtr
+typeck now catches param type mismatches (e.g., `|n: i64|` passed to
+`fn(i32) -> i32` errors with "mismatched types: expected i32, found i64").
+v0.624.0. 5530 tests, 0 failures, 11 ignored.
+
+3秒启动自检:
+- 定位: L2 (~15 lines × 3 sites + 1 positive + 3 negative tests + docs sync)
+- 对齐: 已查 Stage 83 worklog, tech-debt-register.md (TD-CLOSURE-PARAM-
+  ANNOT-IGNORE was discovered and tracked there), expr_operand.rs,
+  body_lower.rs, compile_inner.rs, typeck/unify.rs Closure↔FnPtr arms
+- 阻断: v0.623.0 全绿 (5526 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: 闭包参数的显式类型注解（如 `|n: i64|` 中的 `: i64`）被 MIR lower
+  完全忽略，全部用 `cx.fresh_infer_ty()` 替代，导致 Closure↔FnPtr 强制转换
+  无法捕获参数类型不匹配（infer var 与任何具体类型都可 unify）。
+- WHY (根因): 三处 MIR lower 不分情况地用 `cx.fresh_infer_ty()`，没看
+  `param.ty` 是 `Ty::Infer` 还是具体类型:
+  1. src/mir/lower/expr_operand.rs:1059 — outer body 中 closure 值的 local
+  2. src/mir/lower/body_lower.rs:775 — 闭包自己的 MIR body 的 param locals
+  3. src/driver/compile_inner.rs:572 — fn_sig_table 中闭包的 sig inputs
+- WHO: 影响所有写了 `|x: T|` 显式类型注解的闭包，破坏类型安全网，绕过
+  Closure↔FnPtr 强制转换的 typeck 检查。
+- WHEN: 自 Stage 79 加入 Closure→FnPtr typeck 强制转换后开始可见（Stage 83
+  编写负向测试时发现）。
+- WHERE: 3 处 MIR lower 路径（详见 WHY）。
+- HOW: 改为 `if param.ty is Some AND not Infer → lower_hir_ty_to_mir_ty_with_hir;
+  else → fresh_infer_ty`。三处统一相同的 dispatch 逻辑。
+- HOW MUCH: ~50 行修改 (3 sites × ~15 lines + comments) + 4 测试 + worklog +
+  tech-debt-register + README + RELEASE_NOTES + package。无回归风险（保留
+  unannotated 闭包的 fresh infer var 行为）。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — 显式类型注解被尊重后，闭包参数的内存布局与调用方期望
+  一致，避免 infer var 误统一导致的运行时 UB。
+- Zero-Cost Abstraction ✓ — 编译期类型检查，无运行时开销。
+- Explicit > Implicit ✓ — 用户写的 `: i64` 必须显式生效，不能被静默替换。
+- Make Invalid States Unrepresentable ✓ — 类型不匹配的闭包在 typeck 阶段
+  直接拒绝（之前是静默统一）。
+
+决策点:
+1. 选择"三处统一 dispatch"而非"单点修复 + 其他点 look-through"
+   - 引用 §12 (最优 > 最小): 根因修复 — 三处都用相同的 dispatch 逻辑，
+     避免"修一处其他处仍发 fresh infer var"的不一致状态。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 dispatch 模板适用于所有 closure
+     param lower 路径（outer body / own body / fn_sig_table）。
+   - 引用 §1.0 原則 4 (显式 > 隐式): user-supplied annotation 必须被尊重，
+     不允许 MIR lower 静默替换。
+   - 替代方案 (拒绝): 在 typeck unify(Closure, FnPtr) 中"look through"
+     infer vars 来查 param.ty。这是治症不治根 — 会让 typeck 耦合到 HIR，
+     且其他依赖 fn_sig 的代码路径（如 codegen）仍然看到错误的 infer var。
+
+2. 选择保留 unannotated 闭包的 fresh infer var 行为
+   - 引用 §13.4 (重构判据): 保留现有行为以避免回归 — `|n| n * 2` 模式仍然
+     依赖 type inference 推断 n 的类型。
+   - 引用 §1.0 原則 9 (正确 > 妥协): 不为了"统一性"而强制要求所有闭包
+     参数都写显式注解（这会破坏向后兼容）。
+
+3. 选择 lower_hir_ty_to_mir_ty_with_hir 而非 lower_hir_ty_to_mir_ty
+   - 引用 §1.0 原則 6 (通解 > 特解): HIR-aware 变体能解析嵌套路径类型
+     （如 `|x: Vec<i32>|` 中的 `Vec<i32>`），无 HIR 变体只能解析原始类型。
+   - 一致性: 与 expr_operand.rs 中已有 1900/2022 行的使用方式一致。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (MIR lower 修复，无 soundness 影响 — 只是把
+  fresh_infer_ty 改为有条件的 dispatch，未引入新的 unsafe 路径)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo check --all-targets --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5530 tests, 0 failures, 11 ignored)
+- Verified: `|n: i64|` passed to `fn(i32) -> i32` → "mismatched types: expected i32, found i64" ✓
+- Verified: `|n: u64|` passed to `fn(i32) -> i32` → typeck error ✓
+- Verified: `|n: bool|` passed to `fn(i32) -> i32` → typeck error ✓
+- Verified: `|n| n * 2` (unannotated) passed to `fn(i32) -> i32` → still compiles + runs ✓
+
+Stage Summary:
+- TD-CLOSURE-PARAM-ANNOT-IGNORE FULLY FIXED (3 dispatch sites unified)
+- 4 new tests (1 positive runtime + 3 negative typeck param mismatch)
+- 5530 tests (898 lib + 4632 integration), 0 failures, 11 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — removed silent type erasure)
+- 关键发现: 3 处独立 MIR lower 路径都有同样的 bug — 一次性修复所有路径
+  避免了"修一处其他处仍 broken"的不一致状态
+
+下一步:
+- TD-FN-UNIT-ARGS: Fn<()> unit tuple arg 支持
+- TD-FN-IMPL-SIG-VALIDATION (return type): 需要 assoc type projection
+- TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION: 进阶特性

@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.616.0 (Stage 66)
+# Landin 编译器技术债完整清单 — v0.624.0 (Stage 84)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.616.0
-> **状态**: v0.7+ trait 系统阶段，TD 聚焦修复（impl Trait bounds validation 完成）
+> **版本**: v0.624.0
+> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-CLOSURE-PARAM-ANNOT-IGNORE 完成）
 
 ---
 
@@ -27,6 +27,8 @@
 | TD-IMPL-TRAIT-NO-BOUNDS | 66 | Parser rejects `impl` with no bounds — requires at least one trait bound |
 | TD-IMPL-TRAIT-UNDEFINED-BOUND | 66 | Resolver/scanner reports undefined trait bounds in `impl Trait` and generic params |
 | TD-IMPL-TRAIT-MONO-RESOLUTION | 69 | TraitMethodResolutionMap + re_resolve_trait_method_calls — monomorphization re-resolves trait methods after type substitution |
+| TD-FN-CLOSURE-COERCION | 79+83 | typeck Closure↔FnPtr unification (Stage 79) + runtime alloca/load fix (Stage 83: removed Stage 16.21 redundant closure-arg alloca-pointer special-case in codegen/terminator.rs) |
+| TD-CLOSURE-PARAM-ANNOT-IGNORE | 84 | MIR lower respects explicit closure param type annotations (`\|n: i64\|` now honored, was: always fresh_infer_ty) — three dispatch sites fixed: expr_operand.rs, body_lower.rs, compile_inner.rs |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -52,7 +54,7 @@
 |-------|------|------|---------|------|
 | TD-DISPLAY-TRAIT-MISSING-PARTIAL | format! 参数 &[i64] 限制类型；Display trait 已定义但 format! 重设计未完成 | format! impl 接收 i64 数组 (Stage 36.6) | &[&dyn Display] trait dispatch | Display trait ✅ (Stage 61) + full dyn Trait (v0.8+) |
 | TD-TOSTRING-DEFAULT-BODY | Display::to_string 默认方法缺失 | Bug Z7 workaround (override per impl) 触发 libLLVM 间歇性 crash | LLVM codegen crash 调查 + 修复 | libLLVM bug (P3, v0.8+) |
-| TD-FN-CLOSURE-COERCION | closures 不自动实现 Fn traits | TyKind::Closure 无 Fn trait coercion | typeck closure → Fn trait coercion + vtable emission | TD-FN-TRAITS ✅ (Stage 62) |
+| TD-FN-CLOSURE-COERCION | ~~closures 不自动实现 Fn traits~~ **FIXED Stage 79 + Stage 83** — typeck Closure↔FnPtr unification (Stage 79) + runtime alloca/load fix (Stage 83: removed Stage 16.21 redundant closure-arg alloca-pointer special-case) | ~~TyKind::Closure 无 Fn trait coercion~~ **DONE: typeck unify closure sig with fn ptr sig + codegen_operand loads fn ptr value** | ~~typeck closure → Fn trait coercion + vtable emission~~ **DONE** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-FN-UNIT-ARGS | `Fn<()>` unit tuple arg 不支持 | typeck/codegen 不支持 () as Args | typeck/codegen 支持 unit tuple as Fn<Args> | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-ASSOC-TYPE-SCOPE | ~~associated type `Output` 在 2 impls 中冲突~~ **FIXED Stage 73** — resolver skips impl assoc types in global namespace | resolver 未按 impl 块 scope assoc types | ~~resolver scope assoc types per impl block~~ **DONE: pre-collect impl assoc type DefIds, skip in registration** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-FN-IMPL-SIG-VALIDATION | typeck 不校验 impl sig 匹配 Args/Output | typeck 缺少 impl signature 检查 | typeck validate impl fn sig vs trait Args/Output | TD-FN-TRAITS ✅ (Stage 62) |

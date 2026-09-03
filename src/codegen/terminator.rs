@@ -376,22 +376,35 @@ pub(crate) fn codegen_terminator(
                 if ty == EmitType::Void {
                     continue;
                 }
-                // Stage 16.21: For closure calls, the first arg (self)
-                // is a Closure-typed value. The synthesized function
-                // expects it as a pointer (OpaquePtr). So we pass the
-                // local's pointer instead of its value.
-                if let Operand::Copy(lv) | Operand::Move(lv) = a {
-                    if let PlaceKind::Local(id) = &lv.kind {
-                        if let Some(ld) = mir.local_decls.get(id.0 as usize) {
-                            if matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _)) {
-                                // Pass the closure struct by pointer.
-                                let ptr_str = format!("%loc_{}", id.0);
-                                arg_pairs.push((EmitType::OpaquePtr, ptr_str));
-                                continue;
-                            }
-                        }
-                    }
-                }
+                // Stage 83 (v0.8 — TD-FN-CLOSURE-COERCION runtime fix):
+                // REMOVED the Stage 16.21 special-case that passed Closure-typed
+                // args as alloca pointers (`ptr %loc_N`) instead of loaded values.
+                //
+                // Root cause analysis (5W2H):
+                // - WHAT: Closure-coerced-to-FnPtr args were passed as alloca
+                //   address, causing the callee to indirect-call stack memory
+                //   (segfault).
+                // - WHY: Stage 16.21 added "Closure-typed arg → pass alloca
+                //   pointer" to support the synthesized `closure_call_fn_N`
+                //   self parameter. But Stage 16.30 already prepends closure
+                //   self via `closure_self_local` separately, making Stage 16.21
+                //   redundant for self. After Stage 79 added Closure→FnPtr
+                //   typeck coercion (leaving MIR type as Closure), Stage 16.21
+                //   started firing on non-self closure args too — passing the
+                //   alloca address instead of the loaded function pointer.
+                // - HOW: Remove the redundant check. Non-self closure args now
+                //   flow through `codegen_operand`, which calls
+                //   `codegen_place_load_typed`. With Stage 82's fix (empty
+                //   Closure → OpaquePtr), the alloca type is `ptr` and
+                //   emit_load produces `load ptr, ptr %loc_N` — passing the
+                //   actual function pointer value to the callee.
+                //
+                // Per §12 (最优 > 最小): root-cause fix — remove the redundant
+                // special-case rather than patching it with another special-case.
+                // Per §1.0 原則 6 (通解 > 特解): one code path for all
+                // Operand::Copy/Move args (closures, fn ptrs, structs, scalars).
+                // Per §1.0 原則 4 (显式 > 隐式): the alloca pointer is no longer
+                // silently substituted for the loaded value.
                 let val = codegen_operand(
                     emitter,
                     mir,

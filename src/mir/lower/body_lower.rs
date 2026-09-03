@@ -40,7 +40,7 @@ use super::MirLowerCtxt;
 use super::SynthesizedClosureFunction;
 // Stage 18.129: type lowering functions extracted to ty_lower.rs
 use super::ty_lower::{
-    lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_lifetimes,
+    lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_hir, lower_hir_ty_to_mir_ty_with_lifetimes,
     lower_hir_ty_to_mir_ty_with_regions,
 };
 
@@ -770,9 +770,33 @@ pub fn build_synthesized_closure_mir_body(
     // Note: LocalId(0) is the return local, LocalId(1) is `self`.
 
     // LocalId(2), (3), ...: closure parameters.
+    //
+    // Stage 84 (v0.8 — TD-CLOSURE-PARAM-ANNOT-IGNORE): Respect explicit
+    // type annotations on closure params. Previously, ALL closure params
+    // got `cx.fresh_infer_ty()` — ignoring user-supplied annotations like
+    // `|n: i64|`. This broke Closure↔FnPtr typeck coercion: the infer var
+    // unified with any concrete type, so `apply(|n: i64| ..., 21)` (where
+    // apply expects `fn(i32) -> i32`) silently compiled and produced
+    // runtime UB.
+    //
+    // Per Rust: rustc's HIR→TyLowering uses user-supplied types when
+    // present, fresh infer vars only when absent. This mirrors that
+    // contract — same logic as the expr_operand.rs Stage 84 fix.
+    // Per §12 (最优 > 最小): root-cause fix — dispatch on annotation
+    // presence, not patch typeck to "look through" infer vars.
+    // Per §1.0 原則 4 (显式 > 隐式): user-supplied annotation must be
+    // honored, not silently replaced.
     let mut param_locals: Vec<crate::mir::place::LocalId> = Vec::new();
     for param in &func.params {
-        let ty = cx.fresh_infer_ty(param.pat.span);
+        let ty = if let Some(hir_ty) = &param.ty {
+            if matches!(hir_ty.kind, crate::hir::HirTyKind::Infer) {
+                cx.fresh_infer_ty(param.pat.span)
+            } else {
+                lower_hir_ty_to_mir_ty_with_hir(hir_ty, cx.hir)
+            }
+        } else {
+            cx.fresh_infer_ty(param.pat.span)
+        };
         let local = cx.mir.new_local(ty, None, param.pat.span);
         // Register param's hir_id → local in local_map.
         cx.local_map.insert(param.pat.hir_id, local);

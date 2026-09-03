@@ -568,13 +568,48 @@ pub(crate) fn compile_inner(
             // from shared_unify. These Infer vars will be unified with
             // call site types during main body typeck, and resolved
             // during closure body typeck.
+            //
+            // Stage 84 (v0.8 — TD-CLOSURE-PARAM-ANNOT-IGNORE): If a closure
+            // param has an explicit (non-Infer) type annotation, lower it
+            // to a MIR type and use that as the fn_sig input. This makes
+            // the closure's signature concrete from the typeck's perspective,
+            // so Closure↔FnPtr unification can detect type mismatches (e.g.,
+            // `|n: i64|` passed where `fn(i32) -> i32` is expected errors).
+            //
+            // Per Rust: rustc uses the user-supplied type for the closure
+            // signature; only unannotated params get fresh infer vars.
+            // Per §12 (最优 > 最小): root-cause fix — respect annotations at
+            // the fn_sig layer (which typeck consults), not just MIR lower.
+            // Per §1.0 原則 6 (通解 > 特解): one fn_sig build path for all
+            // closures (annotated + unannotated), dispatching on param.ty.
             let mut inputs = vec![func.closure_struct_ty.clone()];
-            for _ in &func.params {
-                let fresh_vid = shared_unify.new_ty_var();
-                inputs.push(crate::mir::ty::Ty::new(
-                    crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(fresh_vid)),
-                    crate::session::Span::DUMMY,
-                ));
+            for param in &func.params {
+                let input_ty = if let Some(hir_ty) = &param.ty {
+                    if matches!(hir_ty.kind, crate::hir::HirTyKind::Infer) {
+                        // Unannotated (`|x|`) — fresh var (original behavior).
+                        let fresh_vid = shared_unify.new_ty_var();
+                        crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(
+                                fresh_vid,
+                            )),
+                            crate::session::Span::DUMMY,
+                        )
+                    } else {
+                        // Annotated (`|x: T|`) — lower HIR type to MIR type.
+                        // Use the HIR-aware variant so nested path types
+                        // (e.g., `|x: Vec<i32>|`) resolve correctly.
+                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(hir_ty, Some(&hir))
+                    }
+                } else {
+                    // No type annotation (defensive — shouldn't happen for
+                    // closure params, but keep fresh var for safety).
+                    let fresh_vid = shared_unify.new_ty_var();
+                    crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(fresh_vid)),
+                        crate::session::Span::DUMMY,
+                    )
+                };
+                inputs.push(input_ty);
             }
             let fresh_output_vid = shared_unify.new_ty_var();
             let placeholder_sig = crate::mir::ty::Sig {

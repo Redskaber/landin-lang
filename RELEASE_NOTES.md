@@ -3,17 +3,180 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.616.0 (v0.7 Stage 66 — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED: parser rejects `impl` with no bounds; scanner reports undefined trait bounds; 5519 tests) |
+| **Current version** | v0.624.0 (v0.8 Stage 84 — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED: MIR lower now respects explicit closure param type annotations; three dispatch sites unified; 5530 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4621 integration tests = 5519 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
+| **Test count** | 898 lib tests + 4632 integration tests = 5530 total (100% pass rate single-thread with `ulimit -s unlimited`, 11 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+| **Architecture** | Health 9.85/10 (stable — removed silent type erasure); v0.8 TD-focused phase — TD-CLOSURE-PARAM-ANNOT-IGNORE closed (3 dispatch sites unified) |
 
 ---
 
-## v0.615.0 — Stage 65 (v0.7) — TD-PRELUDE-MACRO-TIMING RESOLVED + Wave 1-3 COMPLETE
+## v0.624.0 — Stage 84 (v0.8) — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED
+
+### Overview
+
+Stage 84 fixes **TD-CLOSURE-PARAM-ANNOT-IGNORE** — a typeck soundness bug
+discovered during Stage 83 testing. MIR lower was unconditionally calling
+`cx.fresh_infer_ty()` for closure params, ignoring user-supplied
+annotations like `|n: i64|`. This broke Closure↔FnPtr typeck coercion:
+the infer var unified with any concrete type, so `apply(|n: i64| ..., 21)`
+(where apply expects `fn(i32) -> i32`) silently compiled and produced
+runtime UB.
+
+**Result**: `apply(|n: i64| n as i32 * 2, 21)` now correctly errors with
+"mismatched types: expected i32, found i64" at compile time.
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: Closure param type annotations (`|n: i64|`) were silently
+ignored. The MIR lower produced a fresh infer var instead of the
+annotated type, so typeck's Closure↔FnPtr unification saw an unconstrained
+infer var (which unifies with any type) instead of the user's `i64`.
+
+**Root cause**: Three independent MIR lower paths all had the same bug
+pattern — unconditionally calling `cx.fresh_infer_ty()`:
+
+1. `src/mir/lower/expr_operand.rs:1059` — outer body's closure value's
+   local got fresh infer var (was the original Stage 4 code).
+2. `src/mir/lower/body_lower.rs:775` — the closure's OWN MIR body's
+   param locals got fresh infer var (also original Stage 4 code).
+3. `src/driver/compile_inner.rs:572` — the `fn_sig_table` entry for the
+   closure's signature used fresh infer vars for inputs (Stage 16.29 code).
+
+All three were written before Stage 79 added Closure↔FnPtr typeck
+coercion, so the lack of annotation respect was harmless. Stage 79 made
+it harmful by relying on `fn_sigs[closure_def].inputs` to compare with
+the expected FnPtr signature — but those inputs were always infer vars.
+
+**Fix**: All three sites now use the same dispatch logic:
+
+```rust
+let ty = if let Some(hir_ty) = &param.ty {
+    if matches!(hir_ty.kind, HirTyKind::Infer) {
+        cx.fresh_infer_ty(param.pat.span)  // unannotated: `|x| ...`
+    } else {
+        lower_hir_ty_to_mir_ty_with_hir(hir_ty, cx.hir)  // annotated: `|x: T| ...`
+    }
+} else {
+    cx.fresh_infer_ty(param.pat.span)  // defensive (shouldn't happen)
+};
+```
+
+### Rust design philosophy verification
+
+- **Memory Safety** ✓ — explicit type annotations are now honored, so
+  closure param memory layout matches the caller's expectation. Without
+  this fix, calling `|n: i64| ...` with i32 bits would silently
+  reinterpret 4 bytes as 8 bytes — UB.
+- **Zero-Cost Abstraction** ✓ — compile-time type checking, no runtime
+  overhead.
+- **Explicit > Implicit** ✓ — user-supplied annotations are no longer
+  silently replaced with infer vars.
+- **Make Invalid States Unrepresentable** ✓ — type-mismatched closures
+  are now rejected at typeck (was: silently accepted via infer var
+  unification).
+
+### Test matrix (§9.4.3 — 1:3+ positive:negative ratio)
+
+- 1 positive runtime test (unannotated closure still works — verifies
+  backward compat for `|n| n * 2` patterns, ensuring the fix doesn't
+  over-correct).
+- 3 negative typeck tests:
+  - i64 vs i32 (signed width mismatch)
+  - u64 vs i32 (signedness + width mismatch)
+  - bool vs i32 (totally incompatible type)
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5530 tests, 0 failures, 11 ignored)
+
+---
+
+## v0.623.0 — Stage 83 (v0.8) — TD-FN-CLOSURE-COERCION runtime FULLY FIXED
+
+### Overview
+
+Stage 83 closes the loop on **TD-FN-CLOSURE-COERCION** — the runtime half of
+the closure-to-fn-pointer coercion feature. Stages 79-82 made incremental
+progress on the typeck coercion and codegen plumbing; Stage 83 removes the
+final blocker (a redundant codegen special-case from Stage 16.21 that
+passed Closure-typed args as alloca addresses instead of loaded values).
+
+**Result**: `apply(|n: i32| n * 2, 21)` correctly produces `42` at runtime.
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: Closure-coerced-to-FnPtr passed as a call argument caused a
+runtime segfault. The IR showed:
+
+```llvm
+store ptr @closure_call_fn_0, ptr %loc_3       ; correct: stores fn pointer
+%v1 = call i32 @landin_apply(ptr %loc_3, i32 21)  ; BUG: passes alloca address
+```
+
+The callee (`landin_apply`) then indirect-called `%loc_3` (stack memory
+address) instead of the actual function pointer — segfault.
+
+**Root cause**: Stage 16.21 introduced a special-case in
+`codegen/terminator.rs:379-394` — "any Closure-typed arg → pass alloca
+pointer (`ptr %loc_N`)". This was originally for the synthesized
+`closure_call_fn_N` self parameter (which expects `self: ptr`). But
+Stage 16.30 already refactored to prepend closure self separately via
+`closure_self_local`, making Stage 16.21 redundant for the self case.
+After Stage 79 added Closure→FnPtr typeck coercion (leaving the MIR type
+as `Closure`), Stage 16.21 started firing on non-self closure args too —
+passing the alloca address instead of the loaded function pointer value.
+
+**Fix**: Removed the redundant Stage 16.21 check. Non-self closure args now
+flow through `codegen_operand`, which calls `codegen_place_load_typed`.
+With Stage 82's fix (empty `Closure` → `OpaquePtr`), the alloca type is
+`ptr` and `emit_load` produces `load ptr, ptr %loc_N` — passing the actual
+function pointer value to the callee. (LLVM further constant-folds this
+to `call i32 @landin_apply(ptr @closure_call_fn_0, i32 21)`.)
+
+### Rust design philosophy verification
+
+- **Memory Safety** ✓ — passing the loaded fn pointer value (not alloca
+  address) ensures the callee indirect-calls a real function, not random
+  stack memory.
+- **Zero-Cost Abstraction** ✓ — closure-to-fn-ptr coercion is compile-time;
+  runtime cost is one load (often constant-folded away by LLVM).
+- **Explicit > Implicit** ✓ — removed a silent special-case that masked
+  the real expected type (`FnPtr`) under the MIR type (`Closure`).
+- **Make Invalid States Unrepresentable** ✓ — alloca type and value type
+  are now consistent (both `ptr`).
+
+### Test matrix (§9.4.3 — 1:3+ positive:negative ratio)
+
+- 1 positive runtime test (closure coerced, called, output verified)
+- 3 negative typeck tests (closure arity mismatch: too many, too few,
+  way too many params vs `fn(i32) -> i32` expected)
+
+### Newly discovered tech-debt
+
+**TD-CLOSURE-PARAM-ANNOT-IGNORE** (P3, v0.8+) — While writing the negative
+tests, discovered that Landin's MIR lower (`src/mir/lower/expr_operand.rs:1059`)
+assigns fresh infer var types to closure parameters, **ignoring explicit
+type annotations** like `|n: i64|`. This means Closure↔FnPtr unification
+cannot catch param type mismatches (the infer var unifies with any
+concrete type). Out of scope for Stage 83's runtime fix; tracked in
+`docs/develop/v0/tech-debt-register.md`.
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5526 tests, 0 failures, 11 ignored)
+
+---
+
+## v0.616.0 — Stage 66 (v0.7) — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED
 
 ### Overview
 

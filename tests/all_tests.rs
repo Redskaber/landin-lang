@@ -985,3 +985,33 @@ mod stage65_prelude_macro_timing_tests;
 // Per §9.4.3 (1:3+ 正负比例): 7 positive + 2 negative tests.
 #[path = "v0/stage66/plan/impl_trait_bounds_tests.rs"]
 mod stage66_impl_trait_bounds_tests;
+
+// === Stage 83 (v0.8 — TD-FN-CLOSURE-COERCION runtime fix): Removed the
+// Stage 16.21 redundant check that passed Closure-typed args as alloca
+// addresses. Non-self closure args now flow through `codegen_operand`, which
+// emits `load ptr, ptr %loc_N` to fetch the coerced function pointer value. ===
+// Root cause (5W2H): Stage 16.21 was originally for closure self (handled
+// separately by Stage 16.30's `closure_self_local` prepend), but became
+// harmful after Stage 79 added Closure→FnPtr typeck coercion — firing on
+// non-self closure args and passing alloca addresses instead of loaded values.
+// Per §12 (最优 > 最小): root-cause fix — remove redundant special-case.
+// Per §1.0 原則 6 (通解 > 特解): one code path for all Operand::Copy/Move args.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative typeck tests.
+#[path = "v0/stage83/plan/closure_coercion_runtime_tests.rs"]
+mod stage83_closure_coercion_runtime_tests;
+
+// === Stage 84 (v0.8 — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED): MIR lower
+// now respects explicit type annotations on closure params (was: always
+// used fresh_infer_ty, ignoring `|n: i64|` annotations). Three dispatch
+// sites updated: expr_operand.rs (outer body), body_lower.rs (closure's
+// own MIR body), compile_inner.rs (fn_sig_table entry). All three use
+// the same logic: if param.ty is Some AND not Infer → lower HIR type;
+// else → fresh infer var (preserving unannotated closure behavior). ===
+// Root cause (5W2H): MIR lower unconditionally called fresh_infer_ty,
+// bypassing user-supplied annotations. This broke Closure↔FnPtr typeck
+// coercion (infer var unified with any concrete type).
+// Per §12 (最优 > 最小): root-cause fix at MIR lower + driver layers.
+// Per §1.0 原則 4 (显式 > 隐式): user-supplied annotation must be honored.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative typeck tests.
+#[path = "v0/stage84/plan/closure_param_annot_tests.rs"]
+mod stage84_closure_param_annot_tests;

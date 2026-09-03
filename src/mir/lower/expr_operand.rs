@@ -1051,12 +1051,53 @@ pub(crate) fn lower_expr_to_operand(
         }
         HirExprKind::Closure { params, body, .. } => {
             // Register closure params as locals + collect their hir_ids.
-            // The params get fresh infer var types — these will be unified
-            // with the call arg types when the closure is called.
+            //
+            // Stage 84 (v0.8 — TD-CLOSURE-PARAM-ANNOT-IGNORE): Respect
+            // explicit type annotations on closure params. Previously, ALL
+            // closure params got `cx.fresh_infer_ty()` — ignoring user-supplied
+            // annotations like `|n: i64|`. This broke Closure↔FnPtr typeck
+            // coercion: the infer var unified with any concrete type, so
+            // `apply(|n: i64| n as i32 * 2, 21)` (where apply expects
+            // `fn(i32) -> i32`) silently compiled and produced runtime UB
+            // (calling the closure with i32 bits but interpreting as i64).
+            //
+            // Root cause (5W2H):
+            // - WHAT: closure param type annotations were ignored.
+            // - WHY: `cx.fresh_infer_ty()` was called unconditionally, not
+            //   dispatching on `param.ty.kind`.
+            // - HOW: If `param.ty` is `Some` AND its kind is NOT `Infer`,
+            //   lower the HIR type to MIR type. Otherwise (None or Infer),
+            //   allocate a fresh infer var (preserving the original behavior
+            //   for unannotated closure params like `|x| ...`).
+            //
+            // Per Rust: rustc's HIR→TyLowering uses user-supplied types
+            // when present, fresh infer vars only when absent. This mirrors
+            // that contract.
+            // Per §12 (最优 > 最小): root-cause fix — dispatch on annotation
+            // presence, not patch typeck to "look through" infer vars.
+            // Per §1.0 原則 4 (显式 > 隐式): user-supplied annotation must
+            // be honored, not silently replaced.
+            // Per §1.0 原則 6 (通解 > 特解): same dispatch logic for ALL
+            // closure params (regardless of whether they appear in a
+            // Closure↔FnPtr coercion context or a direct call).
             let mut param_hir_ids: std::collections::HashSet<HirId> =
                 std::collections::HashSet::new();
             for param in params {
-                let ty = cx.fresh_infer_ty(param.pat.span);
+                let ty = if let Some(hir_ty) = &param.ty {
+                    if matches!(hir_ty.kind, crate::hir::HirTyKind::Infer) {
+                        // Unannotated closure param (`|x| ...`) — fresh var.
+                        cx.fresh_infer_ty(param.pat.span)
+                    } else {
+                        // Annotated closure param (`|x: T| ...`) — lower the
+                        // user-supplied type. Use the HIR-aware variant so
+                        // nested path types (e.g., `|x: Vec<i32>|`) resolve.
+                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(hir_ty, cx.hir)
+                    }
+                } else {
+                    // No type annotation at all (e.g., self shorthand — rare
+                    // for closures, but defensive). Fresh var.
+                    cx.fresh_infer_ty(param.pat.span)
+                };
                 cx.new_local(param.pat.hir_id, ty, None);
                 // Collect all hir_ids from the pattern (ident, tuple, etc.)
                 pattern_bindings::collect_pat_hir_ids(&param.pat, &mut param_hir_ids);

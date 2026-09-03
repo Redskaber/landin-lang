@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~93K LOC across 186 files) and targets x86_64 + AArch64 Linux.
+> Rust (~94K LOC across 183 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.616.0 (v0.7 Stage 66 — TD-IMPL-TRAIT-NO-BOUNDS + TD-IMPL-TRAIT-UNDEFINED-BOUND FIXED: parser rejects `impl` with no bounds; scanner reports undefined trait bounds; 5519 tests — Architecture health 9.85/10) |
+| **Version** | v0.624.0 (v0.8 Stage 84 — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED: MIR lower now respects explicit closure param type annotations like `\|n: i64\|`; three dispatch sites unified (expr_operand.rs + body_lower.rs + compile_inner.rs); 5530 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.7 Stage 66 COMPLETE**. 5519 tests (898 lib + 4621 integration), 0 failures, 14 ignored. fmt clean, 0 clippy warnings. Stage 66 fixes two impl Trait validation gaps: (1) parser now rejects `impl` with no bounds (requires at least one trait bound, per Rust Reference §6.3); (2) scanner now scans owner generics for undefined trait bounds, catching `impl UndefinedTrait`, `<T: UndefinedTrait>`, and `where T: UndefinedTrait` errors that were previously silently accepted. 9 new tests added. Architecture health: 9.85/10 (stable). |
+| **Status** | ✅ **v0.8 Stage 84 COMPLETE**. 5530 tests (898 lib + 4632 integration), 0 failures, 11 ignored. fmt clean, 0 clippy warnings. Stage 84 fixes TD-CLOSURE-PARAM-ANNOT-IGNORE (discovered during Stage 83 testing): MIR lower was unconditionally calling `cx.fresh_infer_ty()` for closure params, ignoring user-supplied annotations like `|n: i64|`. This broke Closure↔FnPtr typeck coercion (the infer var unified with any concrete type, so `apply(|n: i64| ..., 21)` where apply expects `fn(i32) -> i32` silently compiled, causing runtime UB). Fixed at 3 dispatch sites: expr_operand.rs (outer body), body_lower.rs (closure's own MIR body), compile_inner.rs (fn_sig_table entry). All three use the same logic: if `param.ty` is `Some` AND not `Infer` → lower HIR type to MIR type; else → fresh infer var (preserving unannotated closure behavior). 4 new tests (1 positive runtime + 3 negative typeck). Architecture health: 9.85/10 (stable — removed silent type erasure). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
