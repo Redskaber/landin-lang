@@ -1015,3 +1015,18 @@ mod stage83_closure_coercion_runtime_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative typeck tests.
 #[path = "v0/stage84/plan/closure_param_annot_tests.rs"]
 mod stage84_closure_param_annot_tests;
+
+// === Stage 85 (v0.8 — TD-FN-UNIT-ARGS FIXED): `Fn<()>` unit tuple arg
+// now correctly supported. The fix is in `build_fn_sigs_map` (function_sigs.rs)
+// — filter out `EmitType::Void` params from the signature map, mirroring
+// the ZST elision already done in codegen_function (definition) and
+// terminator.rs (call site). ===
+// Root cause (5W2H): `build_fn_sigs_map` built forward-declaration sigs
+// from `sig.inputs` without filtering Void → forward decl had `void` param
+// type while actual definition elided ZST → LLVM module verification
+// failed with "Function arguments must have first-class types! void %0".
+// Per §12 (最优 > 最小): root-cause fix at the sig map layer.
+// Per §1.0 原則 6 (通解 > 特解): same ZST elision pattern for all 3 sites.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative typeck tests.
+#[path = "v0/stage85/plan/fn_unit_args_tests.rs"]
+mod stage85_fn_unit_args_tests;

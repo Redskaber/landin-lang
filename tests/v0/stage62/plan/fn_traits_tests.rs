@@ -158,13 +158,15 @@ fn stage62_fn_trait_bool_output() {
     );
 }
 
-/// Stage 62 positive 6: Fn trait with no-arg tuple `()`.
+/// Stage 62 positive 6: Fn<()> unit tuple arg — calling `g.call(())`.
 ///
-/// NOTE: This test is currently skipped because Landin's typeck doesn't
-/// handle the unit tuple `()` as a Fn<Args> argument — codegen produces
-/// invalid LLVM IR. Tracked as TD-FN-UNIT-ARGS (P3, v0.8+).
+/// Stage 85 (v0.8 — TD-FN-UNIT-ARGS FIXED): The `()` arg is now correctly
+/// elided from the LLVM function signature (was: leaked as `void` param
+/// type → LLVM module verification failed). The fix is in
+/// `build_fn_sigs_map` — filter out `EmitType::Void` params from the
+/// signature map, mirroring the ZST elision already done in
+/// `codegen_function` (function definition) and `terminator.rs` (call site).
 #[test]
-#[ignore = "TD-FN-UNIT-ARGS: Landin typeck doesn't handle () as Fn<Args>"]
 fn stage62_fn_trait_unit_arg() {
     assert_runtime(
         "fn-trait-unit-arg",

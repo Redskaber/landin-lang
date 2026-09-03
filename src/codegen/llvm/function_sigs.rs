@@ -38,6 +38,30 @@ pub(crate) fn build_fn_sigs_map(
     for (def_id, name) in fn_name_by_def_id {
         if let Some(sig) = fn_sigs.get(def_id) {
             let ret_ty = mir_type_to_emit_type_with_layouts(&sig.output, adt_layouts);
+            // Stage 85 (v0.8 — TD-FN-UNIT-ARGS): Filter out ZST params
+            // (EmitType::Void) from the signature map. Without this filter,
+            // functions with `()` params (e.g., `Fn<()>` trait impl's
+            // `fn call(&self, args: ())`) get a forward declaration with
+            // `void` as a param type — LLVM rejects this with
+            // "Function arguments must have first-class types! void %0".
+            //
+            // This mirrors the ZST elision already done in:
+            // - codegen_function.rs (function definition side, Stage 18.335)
+            // - codegen/terminator.rs (call site side, Stage 18.335)
+            //
+            // The signature map is used by `declare_function` (forward
+            // declarations) and `emit_call` (call site type lookup). Both
+            // need to agree with the function definition's signature, which
+            // elides ZST params. Without this filter, the forward decl has
+            // a different signature than the definition → LLVM module
+            // verification fails.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): same ZST elision pattern for
+            // all three sites (definition, call site, forward decl).
+            // Per §12 (最优 > 最小): root-cause fix at the sig map layer,
+            // not a workaround in declare_function or emit_call.
+            // Per §20 (iterative audit): same root cause as Stage 18.335;
+            // this is the third site that needed the same fix.
             let param_tys: Vec<EmitType> = sig
                 .inputs
                 .iter()
@@ -52,6 +76,7 @@ pub(crate) fn build_fn_sigs_map(
                         mir_type_to_emit_type_with_layouts(t, adt_layouts)
                     }
                 })
+                .filter(|ty| *ty != EmitType::Void)
                 .collect();
             map.insert(name.clone(), (ret_ty, param_tys));
         }

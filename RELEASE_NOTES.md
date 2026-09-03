@@ -3,13 +3,84 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.624.0 (v0.8 Stage 84 — TD-CLOSURE-PARAM-ANNOT-IGNORE FIXED: MIR lower now respects explicit closure param type annotations; three dispatch sites unified; 5530 tests) |
+| **Current version** | v0.625.0 (v0.8 Stage 85 — TD-FN-UNIT-ARGS FIXED: `Fn<()>` unit tuple arg now correctly elided from LLVM forward declarations; 5535 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4632 integration tests = 5530 total (100% pass rate single-thread with `ulimit -s unlimited`, 11 ignored) |
+| **Test count** | 898 lib tests + 4637 integration tests = 5535 total (100% pass rate single-thread with `ulimit -s unlimited`, 10 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — removed silent type erasure); v0.8 TD-focused phase — TD-CLOSURE-PARAM-ANNOT-IGNORE closed (3 dispatch sites unified) |
+| **Architecture** | Health 9.85/10 (stable — closed ZST elision gap); v0.8 TD-focused phase — TD-FN-UNIT-ARGS closed (third ZST elision site fixed) |
+
+---
+
+## v0.625.0 — Stage 85 (v0.8) — TD-FN-UNIT-ARGS FIXED
+
+### Overview
+
+Stage 85 fixes **TD-FN-UNIT-ARGS** — `Fn<()>` (empty tuple as Args) was
+not supported. The trait impl compiled through typeck + MIR lower, but
+failed at LLVM module verification with:
+
+```text
+Function arguments must have first-class types!
+void %0
+error[E700]: LLVM module verification failed (see messages above)
+```
+
+**Result**: `impl Fn<()> for Getter { fn call(&self, args: ()) -> i32 { 42 } }`
++ `g.call(())` now correctly produces `42` at runtime.
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `Fn<()>` trait impls failed at LLVM module verification. The
+TextEmitter IR was valid (passed `llvm-as`), but the LLVM module built
+via llvm-sys had a function with `void` as a param type.
+
+**Root cause**: `build_fn_sigs_map` (src/codegen/llvm/function_sigs.rs:41-55)
+built forward-declaration signatures from `sig.inputs` WITHOUT filtering
+out `EmitType::Void` (which is what `()` maps to in
+`mir_type_to_emit_type_with_layouts`). So:
+
+- Forward declaration: `declare i32 @landin_Getter_call(ptr, void)` ❌
+- Actual definition: `define i32 @landin_Getter_call(ptr %arg0)` ✓
+  (ZST param elided by `codegen_function` Stage 18.335)
+
+The signature mismatch caused LLVM module verification to fail.
+
+**Fix**: Add `.filter(|ty| *ty != EmitType::Void)` to the `param_tys`
+builder in `build_fn_sigs_map`, mirroring the ZST elision already done
+in `codegen_function` (definition, Stage 18.335) and `terminator.rs`
+(call site, Stage 18.335). This is the **third site** needing the same
+ZST elision fix.
+
+### Rust design philosophy verification
+
+- **Memory Safety** ✓ — signature consistency is a prerequisite for
+  LLVM verification; filtering Void ensures forward decl matches the
+  actual definition, avoiding LLVM backend UB.
+- **Zero-Cost Abstraction** ✓ — ZST params are not passed at runtime
+  (Rust ABI); now the LLVM signature correctly reflects this.
+- **Explicit > Implicit** ✓ — forward decl no longer implicitly contains
+  `void` as a param type.
+- **Make Invalid States Unrepresentable** ✓ — LLVM disallows `void` as
+  a param type; now the sig map also disallows Void from entering.
+
+### Test matrix (§9.4.3 — 1:3+ positive:negative ratio)
+
+- 1 positive runtime test (`Fn<()>` impl + `g.call(())` → prints 42)
+- 3 negative typeck tests:
+  - `Fn<()>` impl with wrong return type (i64 vs Output=i32)
+  - `Fn<()>` impl body accesses `args.0` on `()` (no fields)
+  - `Fn<()>` impl called with non-unit arg (`g.call(42)`)
+
+Also un-ignored `stage62_fn_trait_unit_arg` (now passes).
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5535 tests, 0 failures, 10 ignored)
 
 ---
 

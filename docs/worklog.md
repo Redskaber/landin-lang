@@ -42639,3 +42639,103 @@ Stage Summary:
 - TD-FN-UNIT-ARGS: Fn<()> unit tuple arg 支持
 - TD-FN-IMPL-SIG-VALIDATION (return type): 需要 assoc type projection
 - TD-FORMAT-ARGS-WRITE or TD-DYN-TRAIT-COMPLETION: 进阶特性
+
+---
+Task ID: stage85
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 85 (v0.8) — TD-FN-UNIT-ARGS FIXED. `Fn<()>` unit tuple arg
+now correctly elided from LLVM forward declarations. The fix is in
+`build_fn_sigs_map` (src/codegen/llvm/function_sigs.rs) — filter out
+`EmitType::Void` params from the signature map, mirroring the ZST elision
+already done in codegen_function (definition, Stage 18.335) and
+terminator.rs (call site, Stage 18.335). v0.625.0. 5535 tests, 0 failures,
+10 ignored (was 11 — stage62_fn_trait_unit_arg un-ignored).
+
+3秒启动自检:
+- 定位: L2 (~10 lines code change + 1 positive + 3 negative tests + docs sync)
+- 对齐: 已查 Stage 84 worklog, tech-debt-register.md (TD-FN-UNIT-ARGS 列为 P3),
+  codegen/llvm/function_sigs.rs (build_fn_sigs_map), codegen/function.rs
+  (codegen_function — already filters Void), codegen/terminator.rs (call site
+  — already filters Void)
+- 阻断: v0.624.0 全绿 (5530 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: `Fn<()>` (空元组作为 Args) 不被支持。`impl Fn<()> for Getter {
+  fn call(&self, args: ()) -> i32 { ... } }` 在 typeck + MIR lower 都通过，
+  但在 LLVM module verification 失败: "Function arguments must have
+  first-class types! void %0"。
+- WHY (根因): `build_fn_sigs_map` (src/codegen/llvm/function_sigs.rs:41-55)
+  从 `sig.inputs` 构建 forward-declaration 签名时，没有过滤 `EmitType::Void`
+  (即 `()` 的 EmitType 表示)。所以 forward declaration 是
+  `declare i32 @landin_Getter_call(ptr, void)`，而实际函数定义是
+  `define i32 @landin_Getter_call(ptr %arg0)` (ZST 参数已 elide)。签名不匹配
+  导致 LLVM module verification 失败。
+- WHO: 影响所有用 `Fn<()>` 表达"无参数 fn"的 trait impl (例如 `impl Fn<()> for Getter`).
+- WHEN: Stage 62 编写 Fn trait 测试时发现，标记为 TD-FN-UNIT-ARGS (P3, v0.8+)。
+- WHERE: src/codegen/llvm/function_sigs.rs:build_fn_sigs_map — 第三个需要 ZST
+  elision 的 codegen 路径 (前两个是 codegen_function 和 terminator.rs call site)。
+- HOW: 在 build_fn_sigs_map 的 param_tys 构建后加 `.filter(|ty| *ty != EmitType::Void)`，
+  与 codegen_function (line 394-396) 和 terminator.rs (line 376-378) 的过滤逻辑一致。
+- HOW MUCH: ~10 行修改 + 1 positive runtime + 3 negative typeck + worklog +
+  tech-debt-register + README + RELEASE_NOTES + package。无回归风险（仅过滤 Void，
+  不改变其他类型的行为）。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — 签名一致性是 LLVM 验证的前提，过滤 Void 保证 forward decl
+  与实际定义匹配，避免 LLVM 后端的未定义行为。
+- Zero-Cost Abstraction ✓ — ZST 参数在 Rust ABI 中本就不传递（无运行时开销），
+  现在 LLVM 签名也正确反映这一点。
+- Explicit > Implicit ✓ — forward decl 不再隐式包含 `void` 参数类型。
+- Make Invalid States Unrepresentable ✓ — LLVM 不允许 `void` 作为参数类型，
+  现在签名 map 也不允许 Void 进入。
+
+决策点:
+1. 选择"在 build_fn_sigs_map 过滤 Void"而非"在 declare_function 过滤"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在数据源 (sig map) 过滤，而非在
+     消费者 (declare_function) 过滤。否则每个消费者都要重复过滤逻辑。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个过滤点 (build_fn_sigs_map) 适用于
+     所有 forward decl 路径 (declare_function + emit_call + ad-hoc lookup)。
+   - 引用 §1.0 原則 4 (显式 > 隐式): ZST elision 在数据源显式发生，消费
+     者看到的就是最终签名，不需要"look through" Void。
+   - 替代方案 (拒绝): 在 declare_function 内部过滤 Void。这是治症不治根 —
+     emit_call 也调用 declare_function 间接获取签名，仍然会看到 Void。
+
+2. 选择"与 codegen_function + terminator.rs 一致的过滤模式"
+   - 引用 §20 (迭代审计): 同一类根因 (ZST elision) 在三个 codegen 路径都
+     需要修复 — Stage 18.335 修了两个，Stage 85 补上第三个。这是同类路径
+     深挖到底的体现 (§20 原则)。
+   - 引用 §1.0 原則 6 (通解 > 特解): 三个过滤点用相同的 `.filter(|ty| *ty != EmitType::Void)`
+     模式，避免每处用不同方式处理 ZST。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (codegen 签名 map 修复，无 soundness 影响 — 只过滤
+  Void，不改变其他类型的行为；ZST elision 在 codegen_function + terminator.rs
+  已稳定运行多个 stage)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo check --all-targets --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5535 tests, 0 failures, 10 ignored)
+- Verified: `impl Fn<()> for Getter { fn call(&self, args: ()) -> i32 { 42 } }` +
+  `g.call(())` → prints "42", exits 0 ✓
+- Verified: `g.call(42)` on `Fn<()>` impl → typeck errors ✓
+- Verified: accessing `args.0` on `()` (unit type) → typeck/lower errors ✓
+
+Stage Summary:
+- TD-FN-UNIT-ARGS FULLY FIXED (build_fn_sigs_map filters Void params)
+- 4 new tests (1 positive runtime + 3 negative typeck) in stage85
+- 1 test un-ignored (stage62_fn_trait_unit_arg now passes)
+- 5535 tests (898 lib + 4637 integration), 0 failures, 10 ignored (was 11)
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — closed ZST elision gap, third site)
+- 关键发现: ZST elision 在三个 codegen 路径都需要 — Stage 18.335 修了两个
+  (definition + call site), Stage 85 补上第三个 (forward decl sig map)。
+  一次性审计所有同类路径避免了"修一处其他处仍 broken"的不一致状态。
+
+下一步:
+- TD-FN-IMPL-SIG-VALIDATION (return type): 需要 assoc type projection 解析
+- TD-FORMAT-ARGS-WRITE: format_args!/write! 宏
+- TD-DYN-TRAIT-COMPLETION: dyn Trait typeck 完整化
+- TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
