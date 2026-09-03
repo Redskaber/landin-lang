@@ -194,7 +194,7 @@ fn stage62_fn_trait_unit_arg() {
 /// scope associated type `Output` per impl block — second impl's `Output`
 /// triggers TD-TRAIT-NAME-COLLISION. Tracked as TD-ASSOC-TYPE-SCOPE (P3, v0.8+).
 #[test]
-#[ignore = "TD-ASSOC-TYPE-SCOPE: Output in 2 impls of same trait conflicts"]
+
 fn stage62_fn_trait_multiple_impls_same_args() {
     assert_runtime(
         "fn-trait-multiple-impls",
@@ -232,9 +232,10 @@ fn stage62_fn_trait_multiple_impls_same_args() {
 /// (Tests that the resolver correctly distinguishes Args.)
 ///
 /// NOTE: This test is currently skipped because Landin's resolver doesn't
-/// scope associated type `Output` per impl block (TD-ASSOC-TYPE-SCOPE, P3, v0.8+).
+/// support trait method overload resolution (same method name with different
+/// Args on the same type). Tracked as TD-TRAIT-METHOD-OVERLOAD (P3, v0.8+).
 #[test]
-#[ignore = "TD-ASSOC-TYPE-SCOPE: Output in 2 impls of same trait conflicts"]
+#[ignore = "TD-TRAIT-METHOD-OVERLOAD: same method name with different Args on same type"]
 fn stage62_fn_trait_one_type_multiple_args() {
     assert_runtime(
         "fn-trait-one-type-multi-args",

@@ -57,6 +57,33 @@ impl Resolver {
         };
         self.impl_method_def_ids = impl_method_def_ids;
 
+        // Stage 73 (v0.8 — TD-ASSOC-TYPE-SCOPE): Pre-collect assoc type DefIds
+        // from impl blocks. Assoc types (e.g., `type Output = i32;` inside
+        // `impl Fn<...> for Type { ... }`) are stored as separate
+        // HirItem::TypeAlias owners by the HIR lower, but they should NOT
+        // be registered in the global type namespace — they're scoped to
+        // their impl block. Without this pre-collection, two impls of the
+        // same trait (e.g., `impl Fn for Doubler` + `impl Fn for Tripler`)
+        // would both try to register `Output` in the type namespace →
+        // "duplicate definition" error.
+        //
+        // Per §12 (最优 > 最小): root-cause fix — skip impl assoc types in
+        // global namespace registration, same pattern as impl methods.
+        // Per §1.0 原則 6 (通解 > 特解): one pre-collection for all impl items.
+        let impl_assoc_type_def_ids: std::collections::HashSet<DefId> = {
+            let mut set = std::collections::HashSet::new();
+            for (_, node) in &hir.owners {
+                if let OwnerNode::Item(HirItem::Impl(impl_block)) = node {
+                    for impl_item in &impl_block.items {
+                        if let HirImplItem::Type(t) = impl_item {
+                            set.insert(t.hir_id.owner);
+                        }
+                    }
+                }
+            }
+            set
+        };
+
         // Stage 15.70: Register Box<T> as a builtin prelude type.
         //
         // Box<T> is a special type — it represents a heap-allocated owned
@@ -94,6 +121,18 @@ impl Resolver {
                     if self.impl_method_def_ids.contains(def_id) {
                         // Still record the DefKind so codegen can find it.
                         self.def_kinds.insert(*def_id, DefKind::Fn);
+                        continue;
+                    }
+                }
+                // Stage 73 (v0.8 — TD-ASSOC-TYPE-SCOPE): Skip impl assoc type
+                // owners — they're scoped to their impl block, not the global
+                // type namespace. Without this skip, two impls of the same
+                // trait would conflict on `Output`.
+                // Per §12 (最优 > 最小): root-cause fix — same pattern as impl methods.
+                if let HirItem::TypeAlias(_) = item {
+                    if impl_assoc_type_def_ids.contains(def_id) {
+                        // Still record the DefKind so codegen can find it.
+                        self.def_kinds.insert(*def_id, DefKind::TypeAlias);
                         continue;
                     }
                 }

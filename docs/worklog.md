@@ -41941,3 +41941,117 @@ Stage Summary:
 下一步:
 - Continue v0.8 TD fixes: TD-DYN-TRAIT-COMPLETION, TD-FN-CLOSURE-COERCION.
 - Apply §14.9 to current codebase (systematic code cleanup).
+
+---
+Task ID: stage71
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 71 — Version numbering fix (v0.700.0 → v0.617.0).
+User pointed out v0.700.0 was a version jump violation — should be natural
+increment from v0.616.0 → v0.617.0. Fixed Cargo.toml, worklog, TD register,
+README, RELEASE_NOTES. Repackaged all v0.617.0 files. Download page updated.
+v0.617.0. 5520 tests, 0 failures, 13 ignored.
+
+3秒启动自检:
+- 定位: L1 (version number fix + package rename)
+- 对齐: 已查 §19.2 naming convention in stage-committee-process.md
+- 阻断: v0.700.0 was version jump violation (P0 process issue)
+
+决策点:
+1. Version rollback to v0.617.0 (natural increment from v0.616.0)
+   - 引用 §19.2: version is <major>.<minor>.<patch>, naturally incrementing.
+   - v0.616.0 → v0.617.0 is correct (1 minor increment).
+   - v0.616.0 → v0.700.0 was a 84-step jump — invalid.
+   - Fixed: Cargo.toml, worklog, TD register, README, RELEASE_NOTES.
+   - Repackaged: stage69, stage70, stage71 all now v0.617.0.
+
+裁剪点:
+- L1 — §3.2 + §8 only per §1.2.1
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5520 tests, 0 failures, 13 ignored)
+- 55 files, 55 entries (download page) ✓
+
+下一步:
+- Continue v0.8 TD fixes with correct version numbering.
+
+---
+Task ID: stage72
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 72 — fullstack-dev skill deployment verified + TD register
+updated (TD-IMPL-TRAIT-MONO-RESOLUTION marked as FIXED Stage 69).
+Download page verified: 55 files, 55 entries, HTTP 200.
+v0.617.0. 5520 tests, 0 failures, 13 ignored.
+
+3秒启动自检:
+- 定位: L1 (verification + TD register update)
+- 对齐: 已查 Stage 71 worklog, TD register
+- 阻断: v0.617.0 全绿 (5520 tests), 0 P0/P1
+
+决策点:
+1. fullstack-dev skill verified deployed
+   - Next.js project at /home/z/my-project with page.tsx (55 entries)
+   - Dev server running, page HTTP 200, download HTTP 200
+   - All 55 tar.gz packages available via z.ai web session preview link
+
+2. TD-IMPL-TRAIT-MONO-RESOLUTION marked as FIXED in TD register
+   - Was listed in remaining section despite being fixed in Stage 69
+   - Moved to resolved section + marked remaining entry as FIXED
+
+裁剪点:
+- L1 — §3.2 + §8 only per §1.2.1
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5520 tests, 0 failures, 13 ignored)
+- Download page: HTTP 200, download HTTP 200 ✓
+
+下一步:
+- Continue v0.8 TD fixes: next is TD-IMPL-TRAIT-CALLSITE-CHECK or TD-ASSOC-TYPE-SCOPE.
+
+---
+Task ID: stage73
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 73 (v0.8) — TD-ASSOC-TYPE-SCOPE FIXED. Resolver now skips
+impl assoc type owners in global type namespace registration (same pattern
+as impl methods). Two impls of same trait with `type Output` no longer conflict.
+New TD discovered: TD-TRAIT-METHOD-OVERLOAD (same method different Args on same type).
+v0.618.0. 5521 tests, 0 failures, 12 ignored (1 un-ignored, 1 new TD).
+
+3秒启动自检:
+- 定位: L2 (resolver fix in module_build.rs + test update)
+- 对齐: 已查 Stage 72 worklog, TD register, resolver code
+- 阻断: v0.617.0 全绿 (5520 tests), 0 P0/P1
+
+决策点:
+1. Pre-collect impl assoc type DefIds (same pattern as impl methods)
+   - 引用 §12 (最优 > 最小): root-cause fix — same pattern as impl_method_def_ids.
+   - 引用 §1.0 原則 6 (通解 > 特解): one pre-collection for all impl assoc types.
+   - Root cause: assoc types stored as separate HirItem::TypeAlias owners.
+   - Without skip: two impls register `Output` in global type namespace → conflict.
+   - Fix: pre-collect impl assoc type DefIds, skip in registration loop.
+
+2. TD-TRAIT-METHOD-OVERLOAD discovered
+   - Same type with `impl Fn<(i32,)>` + `impl Fn<(i64,)>` fails.
+   - Method resolver can't distinguish by Args — picks first match.
+   - Tracked as TD-TRAIT-METHOD-OVERLOAD (P3, v0.8+).
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1
+- 跳过 §14.5 deep review (resolver fix, no soundness impact)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5521 tests, 0 failures, 12 ignored)
+- Runtime verified: Doubler.call((21,)) + Tripler.call((14,)) → 84 ✓
+
+Stage Summary:
+- TD-ASSOC-TYPE-SCOPE FIXED (resolver skips impl assoc types in global namespace)
+- 1 test un-ignored (stage62_fn_trait_multiple_impls_same_args now passes)
+- TD-TRAIT-METHOD-OVERLOAD discovered (P3, v0.8+)
+- 5521 tests (898 lib + 4623 integration), 0 failures, 12 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)

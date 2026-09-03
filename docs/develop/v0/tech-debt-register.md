@@ -26,6 +26,7 @@
 | TD-PRELUDE-MACRO-TIMING | 65 | Prelude macro timing resolved — prelude uses direct C runtime calls (__landin_panic_msg, __landin_unreachable), not panic!/unreachable! macros. Token-level injection not needed. |
 | TD-IMPL-TRAIT-NO-BOUNDS | 66 | Parser rejects `impl` with no bounds — requires at least one trait bound |
 | TD-IMPL-TRAIT-UNDEFINED-BOUND | 66 | Resolver/scanner reports undefined trait bounds in `impl Trait` and generic params |
+| TD-IMPL-TRAIT-MONO-RESOLUTION | 69 | TraitMethodResolutionMap + re_resolve_trait_method_calls — monomorphization re-resolves trait methods after type substitution |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -58,7 +59,7 @@
 | TD-GENERIC-TRAIT-METHOD-MANGLING | 泛型 trait method 调用 mangled 名错误 | `From::<i32>::from(42)` 产生 `fn_0_i32` (未定义) | 修复 generic trait method mangling | trait resolver |
 | TD-FN-ASSOC-TYPE-CALL | `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法不支持 | parser/typeck 未支持 explicit trait dispatch | parser/typeck 支持 explicit trait dispatch syntax | typeck |
 | TD-DYN-TRAIT-COMPLETION | dyn Trait typeck 不完整 | typeck 无 dyn Trait 代码 | typeck trait dispatch | trait resolver |
-| TD-IMPL-TRAIT-MONO-RESOLUTION | impl Trait arg 方法调用在函数体内不解析 | monomorphization 不在类型替换后重新解析 trait 方法 | mono pass 重新解析 trait 方法 (P1, v0.8+) | TD-IMPL-TRAIT ✅ (Stage 63) |
+| TD-IMPL-TRAIT-MONO-RESOLUTION | ~~impl Trait arg 方法调用在函数体内不解析~~ **FIXED Stage 69** — TraitMethodResolutionMap + re_resolve_trait_method_calls | monomorphization 不在类型替换后重新解析 trait 方法 | ~~mono pass 重新解析 trait 方法~~ **DONE: pre-computed map in driver, re-resolve in codegen** | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-IMPL-TRAIT-CALLSITE-CHECK | typeck 不校验 call site 实参是否满足 impl Trait bound | typeck 缺少 call site bound 检查 + 无 trait_resolver 访问 | typeck validate trait bounds at call site (需 trait_resolver 访问，v0.8+ 架构变更) | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-CFG-MACROS | cfg!/cfg_attr! 未实现 | 需配置系统 | 编译期 cfg 评估 | build system |
 | TD-ASM-MACRO | asm! 未实现 | 需 LLVM inline asm | LLVM asm 支持 | LLVM backend |
