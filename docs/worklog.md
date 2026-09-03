@@ -41479,3 +41479,60 @@ Stage Summary:
 - TD-SPECIAL-16: Drop trait + drop glue (Wave 3).
 - TD-PRELUDE-MACRO-TIMING: DefId decoupling + token-level injection (Wave 4).
 - v0.8+: TD-IMPL-TRAIT-MONO-RESOLUTION (P1), 3 more P3 TDs from Stage 63.
+
+---
+Task ID: stage64
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A
+Task: Stage 64 (v0.7) — TD-SPECIAL-16 FIXED. Drop trait added to prelude.
+Drop glue infrastructure was already complete (Stage 15.x). 13 test files
+updated (removed trait Drop declarations, TD-TRAIT-NAME-COLLISION workaround).
+TD-MEM-DROP discovered (P3, v0.8+).
+v0.614.0. 5496 tests, 0 failures, 14 ignored. Runtime: drop called at scope exit.
+
+3秒启动自检:
+- 定位: L2 (prelude trait definition + 15 new tests + 13 test files updated)
+- 对齐: 已查 Stage 63 worklog, TD register (merged), drop design docs
+- 阻断: v0.613.0 全绿 (5482 tests), 0 P0/P1
+
+决策点:
+1. Add Drop to prelude (mirrors Rust std::ops::Drop)
+   - 引用 §12 (最优 > 最小): root-cause fix — prelude definition eliminates boilerplate.
+   - 引用 §1.0 原則 6 (通解 > 特解): one Drop trait for all types.
+   - trait Drop { fn drop(&mut self); }
+   - Infrastructure (is_drop_builtin, drop_elaboration, drop_glue) already recognizes Drop by name.
+
+2. Remove trait Drop declarations from 13 test files
+   - 引用 §1.0 原則 9 (正确 > 妥协): document TD-TRAIT-NAME-COLLISION.
+   - Same pattern as Stage 59 (Clone→Show), Stage 61 (Display→Show).
+   - Files: stage15 tests (5), stage16/18 tests (3), stage5/8 tests (3), conformance (2).
+
+裁剪点:
+- L2 — §7.3 gate review sufficient per §1.2.1
+- 跳过 §14.5 D2-D8 deep review (P3 TD fix, no soundness impact)
+- 安全理由: §1.2.1 — L2 can use §7.3 gate review for TD fixes
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5496 tests, 0 failures, 14 ignored)
+- Runtime verified: Drop called at scope exit, reverse order drops, nested scope drops ✓
+
+§1.6 终极检验:
+- Is this a root-cause fix or a minimum patch?
+  Root-cause fix. Drop trait is now in prelude — users no longer need to
+  declare it. The drop glue infrastructure was already complete. The
+  test file updates are the same TD-TRAIT-NAME-COLLISION workaround
+  pattern used for Clone (Stage 59) and Display (Stage 61).
+
+Stage Summary:
+- TD-SPECIAL-16 FIXED (Drop trait added to prelude)
+- 13 test files updated (removed trait Drop declarations)
+- 15 new tests added (14 passing + 1 ignored for TD-MEM-DROP)
+- TD-MEM-DROP discovered (P3, v0.8+) — mem::drop() explicit drop function
+- 5496 tests (898 lib + 4598 integration), 0 failures, 14 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable)
+
+下一步:
+- Wave 4: TD-PRELUDE-MACRO-TIMING (DefId decoupling + token-level injection).
+- v0.8+: TD-IMPL-TRAIT-MONO-RESOLUTION (P1), TD-MEM-DROP, TD-TRAIT-NAME-COLLISION.

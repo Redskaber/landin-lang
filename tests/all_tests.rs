@@ -958,3 +958,13 @@ mod stage62_fn_traits_tests;
 // Per §9.4.3 (1:3+ 正负比例): 8 positive + 4 negative + 1 arch tests.
 #[path = "v0/stage63/plan/impl_trait_tests.rs"]
 mod stage63_impl_trait_tests;
+
+// === Stage 64 (v0.7 — TD-SPECIAL-16): Drop trait added to prelude.
+// Drop glue infrastructure was already implemented (Stage 15.x); only
+// the prelude declaration was missing. ===
+// Per Rust: std::ops::Drop is in the Rust prelude. Landin mirrors this.
+// Per §1.0 原則 6 (通解 > 特解): one Drop trait for all types.
+// Per §12 (最优 > 最小): root-cause fix — prelude definition eliminates boilerplate.
+// Per §9.4.3 (1:3+ 正负比例): 10 positive + 5 negative tests.
+#[path = "v0/stage64/plan/drop_trait_tests.rs"]
+mod stage64_drop_trait_tests;

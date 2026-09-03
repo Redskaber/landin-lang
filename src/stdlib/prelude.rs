@@ -461,6 +461,27 @@ trait FnOnce<Args> {
     type Output;
     fn call_once(self, args: Args) -> Self::Output;
 }
+// Stage 64 (v0.7 — TD-SPECIAL-16): Drop trait.
+//
+// Provides RAII resource management — types implementing Drop have their
+// `drop` method called automatically when they go out of scope. The drop
+// glue infrastructure (drop_elaboration.rs + drop_glue.rs) was already
+// fully implemented in Stage 15.x — only the prelude declaration was missing.
+//
+// Per Rust: `std::ops::Drop` is in the Rust prelude. Landin mirrors this.
+// Per Rust API Guidelines: `fn drop(&mut self)` — takes &mut self, no return.
+// Per §1.0 原則 6 (通解 > 特解): one Drop trait for all types.
+// Per §12 (最优 > 最小): root-cause fix — prelude definition eliminates
+// user boilerplate (previously users had to declare `trait Drop` themselves).
+//
+// NOTE: TD-TRAIT-NAME-COLLISION applies (same as Clone/Display/Fn) —
+// user code defining `trait Drop { ... }` conflicts with prelude's Drop.
+// Resolver should merge prelude/user trait definitions (P3, v0.8+).
+// Workaround: test files that declared `trait Drop` are renamed to
+// `trait MyDrop` (same pattern as Stage 59 Clone→Show rename).
+trait Drop {
+    fn drop(&mut self);
+}
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }

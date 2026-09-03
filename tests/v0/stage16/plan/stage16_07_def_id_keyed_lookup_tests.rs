@@ -19,11 +19,11 @@ use landin_compiler::compile;
 
 /// Stage 16.07 test 1: `find_trait_def_id` returns the trait's DefId.
 ///
-/// For `trait Drop { fn drop(&mut self); }`, `find_trait_def_id("Drop")`
+/// For ``, `find_trait_def_id("Drop")`
 /// should return `Some(DefId)`.
 #[test]
 fn stage16_07_find_trait_def_id_returns_def_id() {
-    let result = compile("trait Drop { fn drop(&mut self); } fn main() {}");
+    let result = compile("fn main() {}");
     let drop_spur = result.interner.get("Drop").expect("Drop interned");
     let drop_def_id = result
         .trait_resolver

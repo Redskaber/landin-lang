@@ -37,7 +37,6 @@ use landin_compiler::compile;
 #[test]
 fn stage15_61_impl_drop_basic_compiles() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn main() -> i32 {
@@ -60,7 +59,6 @@ fn stage15_61_impl_drop_basic_compiles() {
 #[test]
 fn stage15_61_impl_drop_let_wildcard_compiles() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn main() -> i32 {
@@ -84,7 +82,6 @@ fn stage15_61_impl_drop_let_wildcard_compiles() {
 #[test]
 fn stage15_61_impl_drop_multiple_locals() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn main() -> i32 {
@@ -109,7 +106,6 @@ fn stage15_61_impl_drop_multiple_locals() {
 #[test]
 fn stage15_61_impl_drop_field_access_copy() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn main() -> i32 {
@@ -134,7 +130,6 @@ fn stage15_61_impl_drop_field_access_copy() {
 #[test]
 fn stage15_61_impl_drop_with_ref_method() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         impl S {

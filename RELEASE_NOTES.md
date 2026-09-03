@@ -3,13 +3,79 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.613.0 (v0.7 Stage 63 — TD-IMPL-TRAIT partial fix: impl Trait in arg position desugared to generic param at HIR lowering; method calls inside body deferred to v0.8+; 5482 tests) |
+| **Current version** | v0.614.0 (v0.7 Stage 64 — TD-SPECIAL-16 FIXED: Drop trait added to prelude; drop glue infrastructure was already complete from Stage 15.x; 5496 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4584 integration tests = 5482 total (100% pass rate single-thread with `ulimit -s unlimited`, 13 ignored) |
+| **Test count** | 898 lib tests + 4598 integration tests = 5496 total (100% pass rate single-thread with `ulimit -s unlimited`, 14 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (improved — 特解 → 通解, -1166 LOC net); v0.24 Stage 36 series COMPLETE — TD-FORMAT-MIGRATION resolved; only TD-DISPLAY-TRAIT-MISSING (P3, v0.6+) remains |
+
+---
+
+## v0.614.0 — Stage 64 (v0.7) — TD-SPECIAL-16 FIXED: Drop Trait in Prelude + TD Register Merge
+
+### Overview
+
+Stage 64 fixes **TD-SPECIAL-16** by adding the `Drop` trait to the prelude: `trait Drop { fn drop(&mut self); }`. The drop glue infrastructure (drop_elaboration.rs + drop_glue.rs + is_drop_builtin + TerminatorKind::Drop) was already fully implemented in Stage 15.x — only the prelude declaration was missing. Users can now `impl Drop for MyType { fn drop(&mut self) { ... } }` without declaring the trait themselves.
+
+This stage also includes a **TD register merge** — the 4 versioned TD register files (`tech-debt-register-v0.604.md`, `-v0.611.md`, `-v0.612.md`, `-v0.613.md`) were merged into a single `tech-debt-register.md` (单一可信数据源 per §1.0 原則 10). The versioned files were removed.
+
+### Root-cause analysis (§2.2)
+
+**Problem**: Users had to manually declare `trait Drop { fn drop(&mut self); }` before implementing `impl Drop for MyType`. The drop glue infrastructure recognized Drop by name, but the trait wasn't in the prelude.
+
+**Root cause**: Missing prelude declaration — the infrastructure was complete, only the trait definition was absent.
+
+**Fix**: Add `trait Drop { fn drop(&mut self); }` to prelude. Update 13 test files that declared `trait Drop` themselves (TD-TRAIT-NAME-COLLISION workaround, same pattern as Stage 59 Clone→Show, Stage 61 Display→Show).
+
+### Test impact
+
+- 15 new tests added in `tests/v0/stage64/plan/drop_trait_tests.rs`
+- 14 passing tests cover Drop from prelude (scope exit, reverse order, nested scope, field access, unit struct, function scope, no-impl no-glue)
+- 1 `#[ignore]` test documents TD-MEM-DROP (P3, v0.8+ — `mem::drop()` explicit drop function)
+- 13 test files updated (removed `trait Drop` declarations)
+- 5482 tests → **5496 tests** (+14 passing, +1 ignored)
+- All tests pass single-threaded with `ulimit -s unlimited`
+
+### Runtime verification
+
+```landin
+struct File { fd: i32 }
+impl Drop for File {
+    fn drop(&mut self) {
+        println!("dropping {}", self.fd);
+    }
+}
+fn main() {
+    let _f = File { fd: 42 };
+    println!("before drop");
+    0
+}
+// Output:
+// before drop
+// dropping 42
+```
+
+### TD register merge (单一可信数据源)
+
+Per §1.0 原則 10 (唯一可信数据源): merged 4 versioned TD register files into a single `docs/develop/v0/tech-debt-register.md`. The merged register includes:
+- All current unresolved TDs (from v0.613, the latest version)
+- A historical section with all resolved TDs from v0.4 FINAL through v0.7 (Stages 18.500 through 64)
+- A merge note documenting the consolidation
+
+The versioned files (`tech-debt-register-v0.604.md`, `-v0.611.md`, `-v0.612.md`, `-v0.613.md`) were removed.
+
+### Acceptance checks (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5496 tests, 0 failures, 14 ignored)
+- Runtime verified: Drop called at scope exit, reverse order drops, nested scope drops ✓
+
+### Architecture health
+
+9.85/10 (stable — root-cause TD fix, no regression). Drop trait in prelude mirrors Rust's `std::ops::Drop` prelude placement. The TD register merge improves maintainability by establishing a single source of truth.
 
 ---
 

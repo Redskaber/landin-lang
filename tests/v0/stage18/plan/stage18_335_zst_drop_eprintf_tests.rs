@@ -179,7 +179,6 @@ fn main() -> i32 {
 #[test]
 fn stage18_335_drop_impl_valid() {
     let code = r#"
-trait Drop { fn drop(&mut self); }
 struct Foo;
 impl Drop for Foo { fn drop(&mut self) { } }
 fn main() -> i32 {
@@ -238,7 +237,6 @@ fn main() -> i32 { 0 }
 fn stage18_335_drop_wrong_signature() {
     let result = compile(
         r#"
-trait Drop { fn drop(&mut self); }
 struct Foo;
 impl Drop for Foo { fn drop(&mut self) -> i32 { 0 } }
 fn main() -> i32 { 0 }
@@ -259,7 +257,6 @@ fn main() -> i32 { 0 }
 fn stage18_335_drop_wrong_self() {
     let result = compile(
         r#"
-trait Drop { fn drop(&mut self); }
 struct Foo;
 impl Drop for Foo { fn drop(self) { } }
 fn main() -> i32 { 0 }
@@ -281,7 +278,6 @@ fn main() -> i32 { 0 }
 #[test]
 fn stage18_335_combined_zst_eprintln_drop() {
     let code = r#"
-trait Drop { fn drop(&mut self); }
 struct Foo;
 impl Drop for Foo { fn drop(&mut self) { } }
 

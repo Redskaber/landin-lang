@@ -27,7 +27,6 @@ use landin_compiler::compile;
 #[test]
 fn stage15_64_struct_literal_non_copy_field_no_double_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }
@@ -53,7 +52,6 @@ fn stage15_64_struct_literal_non_copy_field_no_double_drop() {
 #[test]
 fn stage15_64_field_access_no_double_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }
@@ -77,7 +75,6 @@ fn stage15_64_field_access_no_double_drop() {
 #[test]
 fn stage15_64_nested_struct_literals_no_double_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Middle { inner: Inner }
@@ -147,7 +144,6 @@ fn stage15_64_field_access_non_drop_no_regression() {
 #[test]
 fn stage15_64_multiple_field_accesses_no_double_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32, y: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }
@@ -172,7 +168,6 @@ fn stage15_64_multiple_field_accesses_no_double_drop() {
 #[test]
 fn stage15_64_struct_literal_mixed_copy_non_copy() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Mixed { copy_field: i32, drop_field: Inner }
@@ -196,7 +191,6 @@ fn stage15_64_struct_literal_mixed_copy_non_copy() {
 #[test]
 fn stage15_64_function_return_struct_with_drop_field() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }

@@ -39,7 +39,6 @@ fn stage8_4_fn_with_drop_trait() {
     // Trait with Drop impl — exercises drop elaboration analysis
     let result = compile(
         "
-        trait Drop { fn drop(&mut self); }
         struct Resource;
         impl Drop for Resource { fn drop(&mut self) { } }
         fn main() { let _r = Resource; }

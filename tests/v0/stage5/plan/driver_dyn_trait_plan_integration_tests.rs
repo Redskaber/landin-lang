@@ -295,7 +295,7 @@ fn test_driver_with_impl_plan_built() {
     // (it's internal to the driver), but we verify the compile completes
     // without panicking.
     let src = r#"
-        trait Drop { fn drop(); }
+        // Drop is now in prelude
         struct S {}
         impl Drop for S { fn drop() {} }
         fn f() { let x = 42; }

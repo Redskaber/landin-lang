@@ -28,7 +28,6 @@ use landin_compiler::compile;
 #[test]
 fn stage15_63_recursive_drop_outer_no_drop_inner_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }
@@ -54,7 +53,6 @@ fn stage15_63_recursive_drop_outer_no_drop_inner_drop() {
 #[test]
 fn stage15_63_recursive_drop_both_have_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }
@@ -85,7 +83,6 @@ fn stage15_63_recursive_drop_both_have_drop() {
 #[test]
 fn stage15_63_recursive_drop_three_levels() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Middle { inner: Inner }
@@ -110,7 +107,6 @@ fn stage15_63_recursive_drop_three_levels() {
 #[test]
 fn stage15_63_recursive_drop_multiple_drop_fields() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct A { x: i32 }
         struct B { y: i32 }
         impl Drop for A { fn drop(&mut self) {} }
@@ -136,7 +132,6 @@ fn stage15_63_recursive_drop_multiple_drop_fields() {
 #[test]
 fn stage15_63_recursive_drop_mixed_fields() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct DropType { x: i32 }
         impl Drop for DropType { fn drop(&mut self) {} }
         struct Mixed { a: i32, drop_field: DropType, b: i32 }
@@ -181,7 +176,6 @@ fn stage15_63_no_drop_all_primitives_no_regression() {
 #[test]
 fn stage15_63_recursive_drop_function_returns_struct_with_drop_field() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         struct Outer { inner: Inner }

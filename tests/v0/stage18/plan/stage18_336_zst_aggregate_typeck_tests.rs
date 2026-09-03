@@ -251,7 +251,6 @@ fn main() -> i32 { 0 }
 fn stage18_336_drop_wrong_self_errors() {
     let result = compile(
         r#"
-trait Drop { fn drop(&mut self); }
 struct Foo;
 impl Drop for Foo { fn drop(self) { } }
 fn main() -> i32 { 0 }

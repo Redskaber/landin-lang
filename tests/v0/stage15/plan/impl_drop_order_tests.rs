@@ -30,7 +30,6 @@ use landin_compiler::compile;
 #[test]
 fn stage15_62_drop_order_reverse_declaration_compiles() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn main() -> i32 {
@@ -163,7 +162,6 @@ fn stage15_62_no_drop_no_regression() {
 #[test]
 fn stage15_62_drop_order_mixed_drop_non_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct DropType { x: i32 }
         struct PlainType { y: i32 }
         impl Drop for DropType { fn drop(&mut self) {} }
@@ -193,7 +191,6 @@ fn stage15_62_drop_order_mixed_drop_non_drop() {
 #[test]
 fn stage15_62_drop_nested_function_scopes() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct S { x: i32 }
         impl Drop for S { fn drop(&mut self) {} }
         fn helper(v: i32) -> i32 {

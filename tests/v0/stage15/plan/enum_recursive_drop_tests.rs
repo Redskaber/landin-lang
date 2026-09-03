@@ -28,7 +28,6 @@ use landin_compiler::compile;
 #[test]
 fn stage15_66_enum_no_drop_impl_variant_has_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
@@ -58,7 +57,6 @@ fn stage15_66_enum_no_drop_impl_variant_has_drop() {
 #[test]
 fn stage15_66_enum_has_drop_impl_and_variant_has_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
@@ -86,7 +84,6 @@ fn stage15_66_enum_has_drop_impl_and_variant_has_drop() {
 #[test]
 fn stage15_66_enum_multiple_drop_variants() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct A { x: i32 }
         struct B { y: i32 }
         impl Drop for A { fn drop(&mut self) {} }
@@ -148,7 +145,6 @@ fn stage15_66_enum_no_drop_variants_no_regression() {
 #[test]
 fn stage15_66_enum_mixed_drop_non_drop_variants() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
@@ -184,7 +180,6 @@ fn stage15_66_enum_mixed_drop_non_drop_variants() {
 #[test]
 fn stage15_66_enum_drop_runtime_verification() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
@@ -217,7 +212,6 @@ fn stage15_66_enum_drop_runtime_verification() {
 #[test]
 fn stage15_66_nested_enum_in_struct_recursive_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
@@ -248,7 +242,6 @@ fn stage15_66_nested_enum_in_struct_recursive_drop() {
 #[test]
 fn stage15_66_enum_struct_variant_payload_drop() {
     let src = r#"
-        trait Drop { fn drop(&mut self); }
         struct Inner { x: i32 }
         impl Drop for Inner { fn drop(&mut self) {} }
         enum E {
