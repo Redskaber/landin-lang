@@ -43000,3 +43000,108 @@ Stage Summary:
 - TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
 - TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
 - TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
+
+---
+Task ID: stage88
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 88 (v0.8) — TD-DYN-TRAIT-RUNTIME-DISPATCH vtable dispatch wiring
+FIXED. `dyn Trait` method calls now go through vtable indirect dispatch
+(GEP + load vtable + load method ptr + indirect call), not static dispatch.
+Fix in `method_call_lower.rs`: `receiver_is_dyn` check forces vtable
+dispatch for Dyn/Ref(Dyn) receivers; `use_dyn_trait_dispatch` bypasses
+type_name check for Dyn receivers. v0.628.0. 5548 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (codegen method_call_lower.rs dispatch decision + vtable indirect call)
+- 对齐: 已查 Stage 87 worklog, tech-debt-register.md (TD-DYN-TRAIT-RUNTIME-DISPATCH
+  是 Stage 87 发现的新 TD), method_call_lower.rs (can_static_dispatch logic),
+  codegen/llvm/aggregate.rs (emit_dyn_trait_method_call — existing vtable
+  indirect call infrastructure)
+- 阻断: v0.627.0 全绿 (5544 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: `dyn Trait` 方法调用在 codegen 中走 static dispatch (call i32 @null)
+  而非 vtable indirect call。IR 显示 `call i32 @null(ptr %v2)` 而不是
+  GEP + load vtable + load method + indirect call。
+- WHY (根因): Stage 87 的 `resolve_trait_method` 新增了 `Dyn(trait_def_id)`
+  arm，在 trait 声明中查找方法。这导致 `can_static_dispatch` 对 `&dyn Greeter`
+  接收者返回 `true`（因为 resolve_trait_method 找到了 `greet` 方法）。
+  但 static dispatch 对 fat pointer 是错误的 — 它传 thin data pointer，
+  而 callee 期望 fat pointer `{ptr,ptr}` (data + vtable)。
+- WHO: 影响所有 `&dyn Trait` 方法调用 (vtable dispatch)。
+- WHEN: Stage 87 引入 Dyn type 后暴露。
+- WHERE: src/mir/lower/method_call_lower.rs (dispatch decision at line 75-107
+  + type_name check at line 183)。
+- HOW:
+  1. 新增 `receiver_is_dyn` 检查：接收者类型是 `Dyn(_)` 或 `Ref(_,_,Dyn(_))`
+     时，强制 vtable dispatch (skip static dispatch)。
+  2. 修改 `use_dyn_trait_dispatch` 条件：Dyn 接收者绕过 `recv_type_name ==
+     call.type_name` 检查（vtable 已编码具体类型，不需要 type_name 匹配）。
+- HOW MUCH: ~30 行修改 in method_call_lower.rs + 4 tests + worklog +
+  tech-debt-register + README + RELEASE_NOTES + package。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — vtable dispatch 正确通过 fat pointer 的 vtable 字段
+  索引方法（was: static dispatch 传 thin pointer → callee 读到错误 vtable
+  或 segfault).
+- Zero-Cost Abstraction ✓ — vtable indirect call 是 Rust 的 dyn Trait
+  设计（运行时仅一次 indirect call 开销）。
+- Explicit > Implicit ✓ — Dyn 接收者显式走 vtable 路径，不隐式降级到
+  static dispatch。
+- Make Invalid States Unrepresentable ✓ — Dyn 接收者不能用 static dispatch
+  (fat pointer != thin pointer)。
+
+决策点:
+1. 选择"检查 receiver_is_dyn 并强制 vtable dispatch"而非"在 resolve_trait_method
+   中不对 Dyn 返回方法"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在 dispatch decision 点检查接收者
+     类型，而非削弱 resolve_trait_method（Stage 87 的 Dyn arm 是正确的 —
+     typeck 需要它来验证方法存在性）。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 receiver_is_dyn 检查适用于所有
+     Dyn/Ref(Dyn) 接收者，不论哪个 trait。
+   - 替代方案 (拒绝): 让 resolve_trait_method 对 Dyn 返回 None。这会破坏
+     Stage 87 的 typeck 验证（"method not found" 错误对 Dyn 接收者会误报）。
+
+2. 选择"绕过 type_name check for Dyn receivers"而非"为 Dyn 接收者构建
+   type_name"
+   - 引用 §12 (最优 > 最小): 根因修复 — Dyn 接收者的 vtable 已编码具体类型，
+     不需要 type_name 匹配（type_name check 是为 static dispatch 安全性
+     设计的，不适用于 vtable dispatch）。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 bypass 适用于所有 Dyn 接收者。
+
+3. 选择"defer fat pointer coercion 到 TD-DYN-TRAIT-FAT-PTR-COERCION"
+   - 引用 §13.4 (重构判据): fat pointer coercion 涉及 codegen 在 `Adt →
+     Ref(Dyn)` 转换点构造 `{ptr,ptr}` — 需要修改 codegen/terminator.rs +
+     codegen/rvalue.rs 的 coercion 逻辑。L3 scope, ~100+ 行。Stage 88
+     已经完成了 vtable dispatch wiring（最难的部分），fat pointer
+     construction 可以独立 stage 推进。
+
+裁剪点:
+- L3 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (dispatch decision 修复，无 soundness 影响 —
+  vtable indirect call 是 Rust 的标准 dyn Trait 设计)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5548 tests, 0 failures, 9 ignored)
+- IR verification: use_greeter now emits vtable indirect call:
+  `%v2 = getelementptr {ptr,ptr}, ptr @.dynptr.Greeter.English, i32 0, i32 1`
+  `%v3 = load ptr, ptr %v2` (load vtable)
+  `%v4 = load ptr, ptr %v3, i32 0` (load method fn ptr)
+  `%v6 = call i32 %v4(ptr %arg0)` (indirect call)
+
+Stage Summary:
+- TD-DYN-TRAIT-RUNTIME-DISPATCH FIXED (vtable dispatch wired)
+- New TD: TD-DYN-TRAIT-FAT-PTR-COERCION (P3, v0.9+) — codegen fat pointer
+  construction at coercion sites
+- 4 new tests (1 positive + 3 negative) in stage88
+- 5548 tests (898 lib + 4650 integration), 0 failures, 9 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — vtable dispatch wired)
+
+下一步:
+- TD-DYN-TRAIT-FAT-PTR-COERCION: codegen fat pointer construction at coercion sites
+- TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
+- TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法

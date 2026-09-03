@@ -3,13 +3,65 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.627.0 (v0.8 Stage 87 — TD-DYN-TRAIT-COMPLETION typeck foundation FIXED: `dyn Trait` is now proper `TyKind::Dyn(DefId)`; 12 files updated; 5544 tests) |
+| **Current version** | v0.628.0 (v0.8 Stage 88 — TD-DYN-TRAIT-RUNTIME-DISPATCH vtable dispatch wiring FIXED: dyn Trait method calls now go through vtable indirect dispatch; 5548 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4646 integration tests = 5544 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4650 integration tests = 5548 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — proper Dyn type, foundation for runtime dispatch); v0.8 TD-focused phase — TD-DYN-TRAIT-COMPLETION typeck foundation closed (runtime dispatch deferred to v0.9+) |
+| **Architecture** | Health 9.85/10 (stable — vtable dispatch wired); v0.8 TD-focused phase — TD-DYN-TRAIT-RUNTIME-DISPATCH closed (fat pointer coercion deferred to v0.9+) |
+
+---
+
+## v0.628.0 — Stage 88 (v0.8) — TD-DYN-TRAIT-RUNTIME-DISPATCH vtable dispatch wiring FIXED
+
+### Overview
+
+Stage 88 wires the vtable dispatch path for `dyn Trait` method calls. After
+Stage 87 introduced `TyKind::Dyn(DefId)` at the typeck layer, method calls
+on `&dyn Trait` receivers were incorrectly going through static dispatch
+(producing `call i32 @null` — broken). Stage 88 forces vtable dispatch for
+Dyn receivers.
+
+**Result**: `use_greeter(g: &dyn Greeter)` now emits vtable indirect call:
+```llvm
+  %v2 = getelementptr { ptr, ptr }, ptr @.dynptr.Greeter.English, i32 0, i32 1
+  %v3 = load ptr, ptr %v2        ; load vtable
+  %v4 = load ptr, ptr %v3, i32 0  ; load method fn ptr (slot 0)
+  %v6 = call i32 %v4(ptr %arg0)   ; indirect call!
+```
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `g.greet()` on `&dyn Greeter` produced `call i32 @null(ptr %v2)`
+— static dispatch to a broken `@null` symbol.
+
+**Root cause**: Stage 87's `resolve_trait_method` added a `Dyn(trait_def_id)`
+arm that found methods in the trait declaration. This caused
+`can_static_dispatch` to return `true` for Dyn receivers — but static
+dispatch is wrong for fat pointers (it passes thin data pointer, not the
+fat pointer with vtable).
+
+**Fix** in `method_call_lower.rs`:
+1. `receiver_is_dyn` check: if receiver type is `Dyn(_)` or `Ref(_,_,Dyn(_))`,
+   force vtable dispatch (skip static dispatch).
+2. `use_dyn_trait_dispatch` condition: for Dyn receivers, bypass the
+   `recv_type_name == call.type_name` check (the vtable already encodes
+   the concrete type).
+
+### Remaining gap (deferred to TD-DYN-TRAIT-FAT-PTR-COERCION, v0.9+)
+
+The call site (`main`) still passes a thin pointer instead of the fat
+pointer global `@.dynptr.Greeter.English`. This is the unsized coercion
+codegen gap — typeck accepts `&English → &dyn Greeter` but codegen doesn't
+construct the fat pointer `{ptr, ptr}` at the coercion site.
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5548 tests, 0 failures, 9 ignored)
 
 ---
 

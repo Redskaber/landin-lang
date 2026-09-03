@@ -1068,3 +1068,19 @@ mod stage86_fn_impl_sig_return_type_tests;
 // Note: Full runtime vtable dispatch deferred to TD-DYN-TRAIT-RUNTIME-DISPATCH (v0.9+).
 #[path = "v0/stage87/plan/dyn_trait_typeck_tests.rs"]
 mod stage87_dyn_trait_typeck_tests;
+
+// === Stage 88 (v0.8 — TD-DYN-TRAIT-RUNTIME-DISPATCH vtable dispatch wiring):
+// `dyn Trait` method calls now go through vtable indirect dispatch (GEP +
+// load vtable + load method ptr + indirect call), not static dispatch.
+// Fix in method_call_lower.rs: `receiver_is_dyn` check forces vtable
+// dispatch for Dyn/Ref(Dyn) receivers; `use_dyn_trait_dispatch` bypasses
+// the type_name check for Dyn receivers. ===
+// Root cause (5W2H): Stage 87's resolve_trait_method Dyn arm found methods
+// in trait declaration → can_static_dispatch returned true → vtable
+// dispatch was skipped → call i32 @null (broken static dispatch on fat ptr).
+// Per §12 (最优 > 最小): root-cause fix — check receiver type before
+// static dispatch; force vtable dispatch for Dyn receivers.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
+// Note: Fat pointer coercion at call sites deferred to TD-DYN-TRAIT-FAT-PTR-COERCION (v0.9+).
+#[path = "v0/stage88/plan/dyn_trait_runtime_dispatch_tests.rs"]
+mod stage88_dyn_trait_runtime_dispatch_tests;

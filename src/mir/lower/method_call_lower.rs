@@ -71,40 +71,83 @@ pub(super) fn lower_method_call_expr(
         find_dyn_trait_method_call_in_plan_by_method(plan, &method_name_str).cloned()
     });
 
-    // Check if static dispatch is possible before using dyn Trait
-    let can_static_dispatch = cx.hir.is_some_and(|hir| {
-        let recv_ty = cx.mir.local(recv_local).ty.clone();
-        if resolve_inherent_method(hir, cx.interner, &recv_ty, &method.name).is_some() {
-            return true;
+    // Stage 88 (v0.8 — TD-DYN-TRAIT-RUNTIME-DISPATCH): When the receiver
+    // type is `TyKind::Dyn(_)` (or `Ref(_, _, Dyn(_))`), we MUST use
+    // vtable dispatch, not static dispatch. Static dispatch assumes the
+    // receiver is a thin pointer to the concrete type — but a `Dyn`
+    // receiver is a fat pointer `{ptr, ptr}` (data + vtable).
+    //
+    // Stage 87's `resolve_trait_method` `Dyn(trait_def_id)` arm finds
+    // methods in the trait declaration — so `can_static_dispatch` would
+    // return `true` for `g.greet()` on `&dyn Greeter`. But that's wrong
+    // for Dyn receivers — they need vtable dispatch at runtime.
+    //
+    // Stage 88: Check BOTH the raw receiver type AND the auto-deref'd
+    // type. `&dyn Greeter` lowers to `Ref(Dyn(...))` — the raw type is
+    // Ref, but after one level of auto-deref (which method resolution
+    // does), it becomes `Dyn(...)`.
+    //
+    // Per §12 (最优 > 最小): root-cause fix — check receiver type BEFORE
+    // attempting static dispatch. If Dyn (direct or behind Ref), force
+    // vtable dispatch.
+    // Per §1.0 原則 6 (通解 > 特解): one check for all Dyn receivers,
+    // regardless of whether it's `dyn Trait` or `&dyn Trait`.
+    // Per §1.0 原則 4 (报错 > 静默): don't silently use static dispatch
+    // when the receiver is a fat pointer.
+    let recv_ty_for_dispatch = cx.mir.local(recv_local).ty.clone();
+    let receiver_is_dyn = match &recv_ty_for_dispatch.kind {
+        crate::mir::ty::TyKind::Dyn(_) => true,
+        // `&dyn Trait` → auto-deref to `dyn Trait`
+        crate::mir::ty::TyKind::Ref(_, _, inner) => {
+            matches!(inner.kind, crate::mir::ty::TyKind::Dyn(_))
         }
-        if resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name).is_some() {
-            return true;
-        }
-        // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
-        if resolve_trait_method(hir, cx.interner, &recv_ty, &method.name, cx.owner_def_id).is_some()
-        {
-            return true;
-        }
-        // Stage 14.91: Also try HIR-traced type for trait method resolution.
-        // The MIR type may be Infer, but HIR tracing can find the ADT type.
-        if let Some(init_ty) = find_local_init_type(cx, hir, {
-            // Get the hir_id from the receiver Path
-            if let HirExprKind::Path(path) = &receiver.kind {
-                if let crate::hir::Res::Local(hir_id) = path.res {
-                    hir_id
+        _ => false,
+    };
+
+    // Check if static dispatch is possible before using dyn Trait.
+    // Stage 88: Skip static dispatch for Dyn receivers — they MUST use
+    // vtable dispatch.
+    let can_static_dispatch = !receiver_is_dyn
+        && cx.hir.is_some_and(|hir| {
+            let recv_ty = cx.mir.local(recv_local).ty.clone();
+            if resolve_inherent_method(hir, cx.interner, &recv_ty, &method.name).is_some() {
+                return true;
+            }
+            if resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name).is_some() {
+                return true;
+            }
+            // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
+            if resolve_trait_method(hir, cx.interner, &recv_ty, &method.name, cx.owner_def_id)
+                .is_some()
+            {
+                return true;
+            }
+            // Stage 14.91: Also try HIR-traced type for trait method resolution.
+            // The MIR type may be Infer, but HIR tracing can find the ADT type.
+            if let Some(init_ty) = find_local_init_type(cx, hir, {
+                // Get the hir_id from the receiver Path
+                if let HirExprKind::Path(path) = &receiver.kind {
+                    if let crate::hir::Res::Local(hir_id) = path.res {
+                        hir_id
+                    } else {
+                        return false;
+                    }
                 } else {
                     return false;
                 }
-            } else {
-                return false;
-            }
-        }) {
-            // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
-            return resolve_trait_method(hir, cx.interner, &init_ty, &method.name, cx.owner_def_id)
+            }) {
+                // Stage 32.3: Pass owner_def_id for Param(N) trait method resolution.
+                return resolve_trait_method(
+                    hir,
+                    cx.interner,
+                    &init_ty,
+                    &method.name,
+                    cx.owner_def_id,
+                )
                 .is_some();
-        }
-        false
-    });
+            }
+            false
+        });
 
     if let Some(call) = matched_call {
         if !can_static_dispatch {
@@ -153,7 +196,22 @@ pub(super) fn lower_method_call_expr(
             // Stage 18.297: Empty recv_type_name (e.g. Infer type) also falls
             // through to error path — don't use dyn Trait dispatch for unknown
             // types.
-            if !recv_type_name.is_empty() && recv_type_name == call.type_name {
+            //
+            // Stage 88 (v0.8 — TD-DYN-TRAIT-RUNTIME-DISPATCH): For Dyn
+            // receivers, the recv_type_name is empty (Dyn is not an Adt
+            // and not a primitive). But the receiver IS a dyn Trait object
+            // — the vtable already encodes the concrete type. So we bypass
+            // the type_name check for Dyn receivers and use the vtable
+            // dispatch path directly.
+            //
+            // Per §12 (最优 > 最小): root-cause fix — Dyn receivers use
+            // vtable dispatch unconditionally (the type_name check was for
+            // static dispatch safety, which doesn't apply to Dyn).
+            // Per §1.0 原則 6 (通解 > 特解): one bypass for all Dyn
+            // receivers, regardless of which trait.
+            let use_dyn_trait_dispatch =
+                receiver_is_dyn || (!recv_type_name.is_empty() && recv_type_name == call.type_name);
+            if use_dyn_trait_dispatch {
                 let dest_ty = cx.fresh_infer_ty(expr.span);
                 let dest = cx.mir.new_local(dest_ty, None, expr.span);
                 let cont = cx.new_block();
