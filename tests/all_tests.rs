@@ -1084,3 +1084,18 @@ mod stage87_dyn_trait_typeck_tests;
 // Note: Fat pointer coercion at call sites deferred to TD-DYN-TRAIT-FAT-PTR-COERCION (v0.9+).
 #[path = "v0/stage88/plan/dyn_trait_runtime_dispatch_tests.rs"]
 mod stage88_dyn_trait_runtime_dispatch_tests;
+
+// === Stage 89 (v0.8 — TD-DYN-TRAIT-FAT-PTR-COERCION call site fat pointer):
+// Call site now passes `@.dynptr.Trait.Concrete` (fat pointer global) when
+// the callee expects `&dyn Trait` and the arg is `&ConcreteType`. Fix in
+// codegen/terminator.rs: detect Ref(Dyn) callee param + Ref(Adt) arg,
+// construct dynptr symbol. Also fixed build_type_name_by_def_id to include
+// Trait DefIds (was: only Struct/Enum). ===
+// Root cause (5W2H): call site passed thin data pointer; callee expected
+// fat pointer → vtable field read garbage.
+// Per §12 (最优 > 最小): root-cause fix — construct fat pointer at call site.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
+// Note: Method call still passes fat pointer to English::greet (expects thin
+// ptr to data) — deferred to TD-DYN-TRAIT-DATA-PTR-EXTRACT (v0.9+).
+#[path = "v0/stage89/plan/dyn_trait_fat_ptr_coercion_tests.rs"]
+mod stage89_dyn_trait_fat_ptr_coercion_tests;

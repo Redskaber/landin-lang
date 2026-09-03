@@ -349,6 +349,46 @@ pub(crate) fn codegen_terminator(
             // (closure_self_local is Some), PREPEND the closure struct as self.
             let mut arg_pairs: Vec<(EmitType, EmitValue)> = Vec::new();
 
+            // Stage 89 (v0.8 — TD-DYN-TRAIT-FAT-PTR-COERCION): Pre-compute
+            // callee_def_id before the args loop so we can look up the
+            // callee's param types (to detect Adt→Dyn coercion sites).
+            // This duplicates the extraction logic below (line 484+) but is
+            // necessary because the args loop runs before that block.
+            // Per §13.4 (重构判据): small duplication is acceptable — the
+            // alternative (moving the entire callee_def_id block up) would
+            // require reordering ~100 lines of code with non-trivial borrow
+            // patterns.
+            let callee_def_id_early: Option<crate::hir::DefId> = if let Operand::Constant(c) = func
+            {
+                if let crate::mir::ty::TyKind::FnDef(did, _) = &c.ty.kind {
+                    Some(*did)
+                } else {
+                    match &c.val {
+                        ConstVal::Uint(n) => Some(crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                        )),
+                        ConstVal::Int(n) => Some(crate::hir::DefId(
+                            u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                        )),
+                        _ => None,
+                    }
+                }
+            } else if let Operand::Copy(lv) | Operand::Move(lv) = func {
+                if let PlaceKind::Local(id) = &lv.kind {
+                    mir.local_decls
+                        .get(id.0 as usize)
+                        .and_then(|ld| match &ld.ty.kind {
+                            crate::mir::ty::TyKind::FnDef(did, _) => Some(*did),
+                            crate::mir::ty::TyKind::Closure(did, _) => Some(*did),
+                            _ => None,
+                        })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Stage 16.30: Prepend closure self arg if applicable.
             if let Some(self_id) = closure_self_local {
                 // The synthesized function expects self as a pointer
@@ -358,7 +398,7 @@ pub(crate) fn codegen_terminator(
             }
 
             // Process the remaining args from the terminator.
-            for a in args {
+            for (arg_idx, a) in args.iter().enumerate() {
                 let ty =
                     detect_operand_type(mir, a, layouts, mono_layouts).unwrap_or(EmitType::I32);
                 // Stage 18.335 (P1 soundness fix): Skip ZST args (EmitType::Void).
@@ -376,35 +416,93 @@ pub(crate) fn codegen_terminator(
                 if ty == EmitType::Void {
                     continue;
                 }
-                // Stage 83 (v0.8 — TD-FN-CLOSURE-COERCION runtime fix):
-                // REMOVED the Stage 16.21 special-case that passed Closure-typed
-                // args as alloca pointers (`ptr %loc_N`) instead of loaded values.
+
+                // Stage 89 (v0.8 — TD-DYN-TRAIT-FAT-PTR-COERCION): When
+                // the callee expects a `&dyn Trait` param (Ref(Dyn)) but
+                // the arg is `&ConcreteType` (Ref(Adt)), construct the fat
+                // pointer `{ptr @.data.Concrete, ptr @.vtable.Trait.Concrete}`
+                // instead of passing the thin data pointer.
                 //
-                // Root cause analysis (5W2H):
-                // - WHAT: Closure-coerced-to-FnPtr args were passed as alloca
-                //   address, causing the callee to indirect-call stack memory
-                //   (segfault).
-                // - WHY: Stage 16.21 added "Closure-typed arg → pass alloca
-                //   pointer" to support the synthesized `closure_call_fn_N`
-                //   self parameter. But Stage 16.30 already prepends closure
-                //   self via `closure_self_local` separately, making Stage 16.21
-                //   redundant for self. After Stage 79 added Closure→FnPtr
-                //   typeck coercion (leaving MIR type as Closure), Stage 16.21
-                //   started firing on non-self closure args too — passing the
-                //   alloca address instead of the loaded function pointer.
-                // - HOW: Remove the redundant check. Non-self closure args now
-                //   flow through `codegen_operand`, which calls
-                //   `codegen_place_load_typed`. With Stage 82's fix (empty
-                //   Closure → OpaquePtr), the alloca type is `ptr` and
-                //   emit_load produces `load ptr, ptr %loc_N` — passing the
-                //   actual function pointer value to the callee.
+                // This is the unsized coercion `&Concrete → &dyn Trait` —
+                // typeck accepts it (Stage 87's Adt↔Dyn arm), but codegen
+                // must construct the fat pointer at the call site.
                 //
-                // Per §12 (最优 > 最小): root-cause fix — remove the redundant
-                // special-case rather than patching it with another special-case.
-                // Per §1.0 原則 6 (通解 > 特解): one code path for all
-                // Operand::Copy/Move args (closures, fn ptrs, structs, scalars).
-                // Per §1.0 原則 4 (显式 > 隐式): the alloca pointer is no longer
-                // silently substituted for the loaded value.
+                // The dynptr global `@.dynptr.Trait.Concrete` is already
+                // emitted by the trait_dispatch orchestrator (Stage 5.50+).
+                // We just need to reference it instead of the thin pointer.
+                //
+                // Per Rust: unsized coercion constructs a fat pointer
+                // `{data_ptr, vtable_ptr}` at the coercion site.
+                // Per §12 (最优 > 最小): root-cause fix — construct fat
+                // pointer at the call site, not patch the callee to accept
+                // thin pointers.
+                // Per §1.0 原則 6 (通解 > 特解): one coercion path for all
+                // Adt → Dyn arg coercions (any concrete type, any trait).
+                // Per §1.0 原則 4 (显式 > 隐式): the fat pointer is
+                // explicitly constructed, not silently passed as thin.
+                let callee_param_ty = callee_def_id_early
+                    .and_then(|did| {
+                        let sig_opt = fn_sigs.get(&did);
+                        sig_opt
+                    })
+                    .and_then(|sig| sig.inputs.get(arg_idx));
+
+                if let Some(param_ty) = callee_param_ty {
+                    // Check if callee expects Ref(Dyn(trait_def_id))
+                    if let crate::mir::ty::TyKind::Ref(_, _, inner) = &param_ty.kind {
+                        if let crate::mir::ty::TyKind::Dyn(trait_def_id) = inner.kind {
+                            // Callee expects &dyn Trait. Build the fat pointer
+                            // global name: @.dynptr.{trait_name}.{concrete_name}
+                            let concrete_def_id = if let Operand::Copy(lv) | Operand::Move(lv) = a {
+                                if let PlaceKind::Local(id) = &lv.kind {
+                                    mir.local_decls.get(id.0 as usize).and_then(|ld| {
+                                        if let crate::mir::ty::TyKind::Ref(_, _, inner) =
+                                            &ld.ty.kind
+                                        {
+                                            if let crate::mir::ty::TyKind::Adt(adt_def, _) =
+                                                inner.kind
+                                            {
+                                                Some(adt_def)
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            if let Some(concrete_def_id) = concrete_def_id {
+                                // Look up trait_name and concrete_name from HIR/resolver
+                                // via the interner. We need the symbol names.
+                                // For now, we can't easily access the resolver here,
+                                // but we can construct the symbol from the DefIds
+                                // using the type_name_by_def_id map.
+                                let trait_name_opt = type_name_by_def_id.get(&trait_def_id);
+                                let concrete_name_opt = type_name_by_def_id.get(&concrete_def_id);
+                                if let (Some(trait_sym), Some(concrete_sym)) =
+                                    (trait_name_opt, concrete_name_opt)
+                                {
+                                    let trait_name = interner.resolve(trait_sym);
+                                    let concrete_name = interner.resolve(concrete_sym);
+                                    let dynptr_symbol =
+                                        format!("@.dynptr.{}.{}", trait_name, concrete_name);
+                                    // Pass the fat pointer global as the arg.
+                                    // The callee's vtable dispatch will GEP into
+                                    // this fat pointer to load the vtable.
+                                    arg_pairs.push((ty, dynptr_symbol));
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let val = codegen_operand(
                     emitter,
                     mir,

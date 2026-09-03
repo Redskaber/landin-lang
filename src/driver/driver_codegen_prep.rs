@@ -105,9 +105,15 @@ pub(super) fn populate_fn_name_by_def_id(
     }
 }
 
-/// Build type_name_by_def_id: maps struct/enum DefId to their name Symbol.
+/// Build type_name_by_def_id: maps struct/enum/trait DefId to their name Symbol.
+///
+/// Stage 89 (v0.8 — TD-DYN-TRAIT-FAT-PTR-COERCION): Added Trait support
+/// so the codegen can look up trait names by DefId (for constructing
+/// `@.dynptr.{trait_name}.{concrete_name}` symbols at coercion sites).
 ///
 /// Per §13.4 J1-J6 (Stage 18.138): extracted from compile_inner.
+/// Per §1.0 原則 6 (通解 > 特解): one map for all named types (struct,
+/// enum, trait).
 pub(super) fn build_type_name_by_def_id(
     hir: &HirCrate,
 ) -> std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol> {
@@ -117,6 +123,9 @@ pub(super) fn build_type_name_by_def_id(
             let name = match item {
                 crate::hir::HirItem::Struct(s) => s.ident.name,
                 crate::hir::HirItem::Enum(e) => e.ident.name,
+                // Stage 89: Include Trait so codegen can look up trait
+                // names by DefId (for dynptr symbol construction).
+                crate::hir::HirItem::Trait(t) => t.ident.name,
                 _ => continue,
             };
             map.insert(*def_id, name);

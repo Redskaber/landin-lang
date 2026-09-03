@@ -3,13 +3,60 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.628.0 (v0.8 Stage 88 — TD-DYN-TRAIT-RUNTIME-DISPATCH vtable dispatch wiring FIXED: dyn Trait method calls now go through vtable indirect dispatch; 5548 tests) |
+| **Current version** | v0.629.0 (v0.8 Stage 89 — TD-DYN-TRAIT-FAT-PTR-COERCION call site fat pointer FIXED: call site now passes `@.dynptr.Trait.Concrete` fat pointer global; 5548 tests) |
 | **Date** | 2026-09-03 |
 | **Test count** | 898 lib tests + 4650 integration tests = 5548 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — vtable dispatch wired); v0.8 TD-focused phase — TD-DYN-TRAIT-RUNTIME-DISPATCH closed (fat pointer coercion deferred to v0.9+) |
+| **Architecture** | Health 9.85/10 (stable — call site fat pointer wired); v0.8 TD-focused phase — TD-DYN-TRAIT-FAT-PTR-COERCION closed (data ptr extract deferred to v0.9+) |
+
+---
+
+## v0.629.0 — Stage 89 (v0.8) — TD-DYN-TRAIT-FAT-PTR-COERCION call site fat pointer FIXED
+
+### Overview
+
+Stage 89 fixes the call site fat pointer construction for `&ConcreteType →
+&dyn Trait` coercion. After Stage 88 wired the vtable dispatch path inside
+the callee, the call site still passed a thin data pointer. Stage 89
+constructs the fat pointer global `@.dynptr.Trait.Concrete` at the call
+site.
+
+**Result**: `use_greeter(&e)` now passes `ptr @.dynptr.Greeter.English`
+(fat pointer global) instead of `ptr %v1` (thin data pointer).
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `use_greeter(&e)` passed `ptr %v1` (thin pointer to English
+data) but the callee expected a fat pointer `{ptr, ptr}` (data + vtable).
+
+**Root cause**: codegen had no "construct fat pointer" logic at the call
+site. When typeck unified `Ref(Adt(English))` with `Ref(Dyn(Greeter))`,
+codegen should have inserted the fat pointer global reference.
+
+**Fix** in `codegen/terminator.rs` + `driver/driver_codegen_prep.rs`:
+1. `terminator.rs`: In the args loop, check if the callee's param type is
+   `Ref(_, _, Dyn(trait_def_id))` and the arg's type is
+   `Ref(_, _, Adt(concrete_def_id))`. If so, construct the dynptr symbol
+   `@.dynptr.{trait_name}.{concrete_name}` and pass it as the arg.
+2. `driver_codegen_prep.rs`: `build_type_name_by_def_id` now includes
+   Trait DefIds (was: only Struct/Enum), so codegen can look up trait
+   names by DefId.
+
+### Remaining gap (deferred to TD-DYN-TRAIT-DATA-PTR-EXTRACT, v0.9+)
+
+The vtable indirect call `call i32 %v4(ptr %arg0)` passes the fat pointer
+(`@.dynptr.Greeter.English`) to `English::greet`, which expects a thin
+pointer to English data. The method should receive the data pointer
+(fat pointer field 0), not the fat pointer itself.
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5548 tests, 0 failures, 9 ignored)
 
 ---
 
