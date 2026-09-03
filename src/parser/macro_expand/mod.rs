@@ -1093,7 +1093,22 @@ fn apply_hygiene(
             // names used in macro bodies (currently just `ptr` for &str).
             // Per §12 (最优 > 最小): root-cause fix at hygiene layer.
             let is_struct_field = matches!(name, "ptr" | "len" | "cap");
-            if !is_keyword && !is_builtin && !is_runtime && !is_primitive_type && !is_struct_field {
+            // Stage 91 (v0.8 — TD-FORMAT-ARGS-WRITE): Method names used in
+            // macro bodies (e.g., `write!` expands to `dst.write_str(...)`)
+            // must NOT be renamed — they refer to method calls on user types,
+            // not user bindings. Renaming would produce `__landin_macro_write_str_0`
+            // which typeck rejects as "no method found".
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one set for all method names
+            // used in macro bodies (currently just `write_str` for write!).
+            let is_method_name = matches!(name, "write_str");
+            if !is_keyword
+                && !is_builtin
+                && !is_runtime
+                && !is_primitive_type
+                && !is_struct_field
+                && !is_method_name
+            {
                 // Rename to unique name.
                 let new_name = hygiene.gen_unique_name(name);
                 let new_sym = interner.get_or_intern(new_name);

@@ -707,7 +707,23 @@ pub(crate) fn make_panic_msg_macro_rule(_name: &str, interner: &mut Rodeo) -> Ma
 /// Pattern: `$dst:expr, $($args:tt)*` — destination + format args
 /// Body:    `__landin_write($dst, $($args)*)` — function call to runtime write
 ///
-/// `write!(dst, "x={}", x)` → `__landin_write(dst, "x={}", x)`
+/// `write!(dst, "x={}", x)` → `dst.write_str(__landin_format_v2("x={}", &[x]))`
+///
+/// Stage 91 (v0.8 — TD-FORMAT-ARGS-WRITE): Changed from `__landin_write(dst, "fmt", args)`
+/// (which had no codegen support — linker error) to method call
+/// `dst.write_str(__landin_format_v2("fmt", &[args]))`. This reuses the
+/// existing `__landin_format_v2` format backend + the dst's `write_str`
+/// method (which user types must implement, per Rust's `core::fmt::Write`).
+///
+/// Per Rust: `write!(dst, "fmt", args)` calls `dst.write_fmt(format_args!("fmt", args))`.
+/// In Landin v0.8, we simplify: `write!(dst, "fmt", args)` calls
+/// `dst.write_str(format!("fmt", args))` — the formatted String is written
+/// via `write_str` (which user types must implement).
+///
+/// Per §12 (最优 > 最小): root-cause fix — route to existing format!
+/// backend + user's write_str method, not add a new __landin_write codegen path.
+/// Per §1.0 原則 6 (通解 > 特解): one format backend for format!, format_args!,
+/// and write!.
 ///
 /// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
 pub(crate) fn make_write_macro_rule(interner: &mut Rodeo) -> MacroRule {
@@ -715,7 +731,6 @@ pub(crate) fn make_write_macro_rule(interner: &mut Rodeo) -> MacroRule {
     let expr_sym = interner.get_or_intern("expr");
     let args_sym = interner.get_or_intern("args");
     let tt_sym = interner.get_or_intern("tt");
-    let write_sym = interner.get_or_intern("__landin_write");
 
     // Pattern: $ dst : expr , $ ( $ args : tt ) *
     let pattern = vec![
@@ -773,55 +788,85 @@ pub(crate) fn make_write_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
     ];
 
-    // Body: __landin_write ( $ dst , $ ( $ args ) * )
+    // Body: $dst . write_str ( format_args ! ( $ ( $args ) * ) )
+    // Stage 91: write! → dst.write_str(format_args!("fmt", args))
+    // format_args! is then expanded by the macro expander to __landin_format_v2
+    // (same as format!), which correctly wraps args in &[...].
+    // Stage 91: `write_str` is added to the hygiene skip list (is_method_name)
+    // so it's not renamed to `__landin_macro_write_str_0`.
+    let format_args_sym = interner.get_or_intern("format_args");
+    let write_str_sym = interner.get_or_intern("write_str");
     let body = vec![
-        Token {
-            kind: TokenKind::Ident(write_sym),
-            span: crate::session::Span::DUMMY,
-        },
-        Token {
-            kind: TokenKind::LParen,
-            span: crate::session::Span::DUMMY,
-        },
+        // $dst
         Token {
             kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Ident(dst_sym),
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        // .write_str
+        Token {
+            kind: TokenKind::Dot,
+            span: Span::DUMMY,
         },
         Token {
-            kind: TokenKind::Comma,
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Ident(write_str_sym),
+            span: Span::DUMMY,
+        },
+        // (
+        Token {
+            kind: TokenKind::LParen,
+            span: Span::DUMMY,
+        },
+        // format_args ! ( $($args)* )
+        Token {
+            kind: TokenKind::Ident(format_args_sym),
+            span: Span::DUMMY,
         },
         Token {
-            kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            kind: TokenKind::Not,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::LParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        // $($args)*
+        Token {
+            kind: TokenKind::Dollar,
+            span: Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Dollar,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Ident(args_sym),
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::RParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
         Token {
             kind: TokenKind::Star,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
         },
+        // ) — close format_args! call
         Token {
             kind: TokenKind::RParen,
-            span: crate::session::Span::DUMMY,
+            span: Span::DUMMY,
+        },
+        // ) — close write_str call
+        Token {
+            kind: TokenKind::RParen,
+            span: Span::DUMMY,
         },
     ];
 

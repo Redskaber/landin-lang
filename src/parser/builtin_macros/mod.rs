@@ -63,8 +63,10 @@ pub fn build_builtin_macro_table(interner: &mut Rodeo) -> MacroTable {
     for name in BUILTIN_MACRO_NAMES {
         if let Some(name_sym) = interner.get(name) {
             // Stage 36.6: format! macro now has TWO rules (literal + variadic).
+            // Stage 91 (v0.8 — TD-FORMAT-ARGS-WRITE): format_args! also uses
+            // TWO rules (same as format!) — routes to __landin_format_v2.
             // Other macros still have one rule.
-            let rules = if name == &"format" {
+            let rules = if name == &"format" || name == &"format_args" {
                 make_format_macro_rules(interner)
             } else {
                 vec![make_builtin_macro_rule(name, name_sym, interner)]

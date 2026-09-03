@@ -1113,3 +1113,13 @@ mod stage89_dyn_trait_fat_ptr_coercion_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative tests.
 #[path = "v0/stage90/plan/dyn_trait_data_ptr_extract_tests.rs"]
 mod stage90_dyn_trait_data_ptr_extract_tests;
+
+// === Stage 91 (v0.8 — TD-FORMAT-ARGS-WRITE): format_args! and write!
+// macros now compile and run (was: linker error — __landin_format_args
+// and __landin_write had no codegen support). Fix: format_args! routes
+// to __landin_format_v2 (same as format!); write! expands to
+// dst.write_str(format_args!(...)); write_str added to hygiene skip list. ===
+// Per §12 (最优 > 最小): root-cause fix — route to existing format! backend.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
+#[path = "v0/stage91/plan/format_args_write_tests.rs"]
+mod stage91_format_args_write_tests;

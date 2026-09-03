@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.630.0 (Stage 90)
+# Landin 编译器技术债完整清单 — v0.631.0 (Stage 91)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.630.0
-> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-DYN-TRAIT-DATA-PTR-EXTRACT runtime 完成 — dyn Trait 端到端可用）
+> **版本**: v0.631.0
+> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-FORMAT-ARGS-WRITE 完成）
 
 ---
 
@@ -35,6 +35,7 @@
 | TD-DYN-TRAIT-RUNTIME-DISPATCH | 88 | vtable dispatch wiring — `dyn Trait` method calls now go through vtable indirect call (GEP + load vtable + load method ptr + indirect call), not static dispatch. Fix in `method_call_lower.rs`: `receiver_is_dyn` check forces vtable dispatch for Dyn/Ref(Dyn) receivers; `use_dyn_trait_dispatch` bypasses type_name check for Dyn receivers. |
 | TD-DYN-TRAIT-FAT-PTR-COERCION | 89 | Call site fat pointer construction — `&Concrete → &dyn Trait` coercion at call sites now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs`: detect Ref(Dyn) callee param + Ref(Adt) arg, construct dynptr symbol. Also fixed `build_type_name_by_def_id` to include Trait DefIds. |
 | TD-DYN-TRAIT-DATA-PTR-EXTRACT | 90 | vtable indirect call extracts data pointer from fat pointer field 0 and passes it to the impl method (was: passed fat pointer → method read garbage → returned 0). Fix in `codegen/llvm/aggregate.rs` + `codegen/text/aggregate.rs`: GEP field 0 + load data ptr before indirect call. **First successful end-to-end dyn Trait runtime test** — `use_greeter(&e)` returns 42. |
+| TD-FORMAT-ARGS-WRITE | 91 | `format_args!` and `write!` macros now compile and run (was: linker error — `__landin_format_args` and `__landin_write` had no codegen support). Fix: `format_args!` routes to `__landin_format_v2` (same as `format!`); `write!` expands to `dst.write_str(format_args!(...))`; `write_str` added to hygiene skip list. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -71,7 +72,7 @@
 | TD-IMPL-TRAIT-CALLSITE-CHECK | typeck 不校验 call site 实参是否满足 impl Trait bound | typeck 缺少 call site bound 检查 + 无 trait_resolver 访问 | typeck validate trait bounds at call site (需 trait_resolver 访问，v0.8+ 架构变更) | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-CFG-MACROS | cfg!/cfg_attr! 未实现 | 需配置系统 | 编译期 cfg 评估 | build system |
 | TD-ASM-MACRO | asm! 未实现 | 需 LLVM inline asm | LLVM asm 支持 | LLVM backend |
-| TD-FORMAT-ARGS-WRITE | format_args!/write! 未实现 | 需 Display trait | Display trait 依赖 | Display trait |
+| TD-FORMAT-ARGS-WRITE | ~~format_args!/write! 未实现~~ **FIXED Stage 91** — `format_args!` routes to `__landin_format_v2` (same as `format!`); `write!` expands to `dst.write_str(format_args!(...))`; `write_str` added to hygiene skip list. | ~~需 Display trait~~ **DONE** (reuses existing format! backend) | ~~Display trait 依赖~~ **DONE** | Display trait ✅ (Stage 61) |
 | TD-ENV-MACROS | env!/option_env!/include_str! 未实现 | 需编译期 I/O | 编译期文件读取 | build system |
 | TD-DYN-TRAIT-RUNTIME-DISPATCH | ~~dyn Trait 运行时 vtable dispatch 不完整~~ **FIXED Stage 88** — `method_call_lower.rs` forces vtable dispatch for Dyn/Ref(Dyn) receivers (was: static dispatch used because Stage 87's resolve_trait_method found the method → `call i32 @null` broken). | ~~codegen fat pointer arg 传递 + vtable indirect call 未正确连接~~ **DONE** (vtable dispatch wired; fat pointer coercion at call sites deferred to TD-DYN-TRAIT-FAT-PTR-COERCION) | ~~1) Dyn alloca {ptr,ptr}; 2) call site 传 fat pointer; 3) vtable indirect call~~ **DONE** (vtable indirect call works; call site fat pointer construction pending) | TD-DYN-TRAIT-COMPLETION ✅ (Stage 87) |
 | TD-DYN-TRAIT-FAT-PTR-COERCION | ~~dyn Trait unsized coercion codegen 不完整~~ **FIXED Stage 89** — call site now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs` + `build_type_name_by_def_id` (added Trait support). | ~~codegen coercion site 未构造 fat pointer~~ **DONE** | ~~detect Adt→Ref(Dyn) coercion site; construct fat pointer~~ **DONE** | TD-DYN-TRAIT-RUNTIME-DISPATCH ✅ (Stage 88) |

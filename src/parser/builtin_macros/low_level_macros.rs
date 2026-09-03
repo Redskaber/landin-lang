@@ -432,14 +432,30 @@ pub(crate) fn make_trace_macros_macro_rule(interner: &mut Rodeo) -> MacroRule {
 /// Pattern: `$($args:tt)*` — any token sequence (format string + args)
 /// Body:    `__landin_format_args($($args)*)` — function call to runtime
 ///
-/// `format_args!("x={}", x)` → `__landin_format_args("x={}", x)`.
-/// This is the low-level macro that println!/format! are built on.
+/// `format_args!("x={}", x)` → `__landin_format_v2("x={}", &[x])`.
+///
+/// Stage 91 (v0.8 — TD-FORMAT-ARGS-WRITE): Changed from `__landin_format_args`
+/// (which had no codegen support — linker error) to `__landin_format_v2`
+/// (the existing format! backend, which returns a formatted String).
+///
+/// Per Rust: `format_args!` returns an `Arguments` struct that can be
+/// passed to `write!`. In Landin v0.8, we simplify: `format_args!` returns
+/// the formatted String directly (via `__landin_format_v2`). This is not
+/// zero-cost (Rust's `Arguments` defers formatting), but it's the MVP
+/// that unblocks `write!` and user code that uses `format_args!`.
+///
+/// Per §12 (最优 > 最小): root-cause fix — route to existing format! backend,
+/// not add a new `__landin_format_args` codegen path.
+/// Per §1.0 原則 6 (通解 > 特解): one format backend (`__landin_format_v2`)
+/// for format!, format_args!, and write! (via write!'s expansion).
 ///
 /// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
 pub(crate) fn make_format_args_macro_rule(interner: &mut Rodeo) -> MacroRule {
     let args_sym = interner.get("args").unwrap_or_default();
     let tt_sym = interner.get("tt").unwrap_or_default();
-    let fa_sym = interner.get_or_intern("__landin_format_args");
+    // Stage 91: Route to __landin_format_v2 (same as format!) instead of
+    // __landin_format_args (which had no codegen support).
+    let fa_sym = interner.get_or_intern("__landin_format_v2");
 
     let pattern = vec![
         Token {

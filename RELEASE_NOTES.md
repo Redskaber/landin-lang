@@ -3,13 +3,59 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.630.0 (v0.8 Stage 90 — TD-DYN-TRAIT-DATA-PTR-EXTRACT FIXED: dyn Trait end-to-end runtime works — `use_greeter(&e)` returns 42; 5556 tests) |
+| **Current version** | v0.631.0 (v0.8 Stage 91 — TD-FORMAT-ARGS-WRITE FIXED: `format_args!` and `write!` macros now compile and run; 5560 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4658 integration tests = 5556 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4662 integration tests = 5560 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — dyn Trait end-to-end works); v0.8 TD-focused phase — TD-DYN-TRAIT-DATA-PTR-EXTRACT closed (complete dyn Trait chain) |
+| **Architecture** | Health 9.85/10 (stable — format_args!/write! work); v0.8 TD-focused phase — TD-FORMAT-ARGS-WRITE closed |
+
+---
+
+## v0.631.0 — Stage 91 (v0.8) — TD-FORMAT-ARGS-WRITE FIXED
+
+### Overview
+
+Stage 91 fixes `format_args!` and `write!` macros — they now compile and run
+(was: linker error — `__landin_format_args` and `__landin_write` had no
+codegen support).
+
+**Result**: `format_args!("hello {}", 42)` compiles and runs; `write!(dst,
+"fmt", args)` compiles (expands to `dst.write_str(format_args!(...))`).
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `format_args!` and `write!` expanded to `__landin_format_args`
+and `__landin_write` function calls, but these symbols had no codegen
+support — the linker reported "undefined reference".
+
+**Root cause**: Stage 18.43 added `format_args` to `BUILTIN_MACRO_NAMES`
+and wrote a macro rule (`make_format_args_macro_rule`) that expanded to
+`__landin_format_args(...)`. But `__landin_format_args` was never
+implemented (not in prelude, not in codegen). Same for `write!` →
+`__landin_write`.
+
+**Fix** — 3 changes:
+
+1. `format_args!` routes to `__landin_format_v2` (same as `format!`) —
+   reuses the existing format backend. Changed `build_builtin_macro_table`
+   to use `make_format_macro_rules` for both `format` and `format_args`.
+
+2. `write!` expands to `dst.write_str(format_args!(...))` — reuses the
+   method call codegen + `format_args!` expansion. Changed
+   `make_write_macro_rule` body to emit method call syntax.
+
+3. Hygiene: `write_str` added to the skip list (`is_method_name`) in
+   `apply_hygiene` — was: renamed to `__landin_macro_write_str_0` (which
+   typeck rejected as "no method found").
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5560 tests, 0 failures, 9 ignored)
 
 ---
 
