@@ -216,13 +216,37 @@ impl AggregateEmitter for TextEmitter {
 
         // Build args list (sret pointer first, then user args with byval replacement).
         // Stage 18.334: Use `ptr sret(<ret_ty>)` syntax for sret slot (mirrors emit_call).
+        //
+        // Stage 90 (v0.8 — TD-DYN-TRAIT-DATA-PTR-EXTRACT): For the receiver
+        // arg (args[0] = self), extract the data pointer from the fat pointer
+        // (field 0 of {ptr, ptr}) before passing it to the method. The method
+        // (e.g., English::greet) expects a thin pointer to the concrete data,
+        // NOT the fat pointer itself.
+        //
+        // Per Rust: vtable dispatch passes `self` as a thin pointer to the
+        // concrete type's data — the vtable is used to find the method,
+        // not to pass it.
+        // Per §12 (最优 > 最小): root-cause fix — extract data pointer at the
+        // call site, not patch the method to accept fat pointers.
+        // Per §1.0 原則 6 (通解 > 特解): one extraction path for all Dyn method
+        // calls (any trait, any concrete type).
+        let data_gep_r = self.fresh();
+        self.line(&format!(
+            "  %v{data_gep_r} = getelementptr {{ ptr, ptr }}, ptr @{dynptr_symbol}, i32 0, i32 0"
+        ));
+        let data_ptr_r = self.fresh();
+        self.line(&format!("  %v{data_ptr_r} = load ptr, ptr %v{data_gep_r}"));
+
         let mut all_args: Vec<String> = Vec::with_capacity(args.len() + 1);
         if let Some(ref sret) = sret_name {
             let ret_str = emit_type_to_llvm_str(ret_ty);
             all_args.push(format!("ptr sret({}) {}", ret_str, sret));
         }
         for (i, (ty, a)) in args.iter().enumerate() {
-            if ty.needs_byval() {
+            if i == 0 {
+                // Stage 90: Replace receiver (self) with extracted data pointer.
+                all_args.push(format!("ptr %v{data_ptr_r}"));
+            } else if ty.needs_byval() {
                 let ty_str = emit_type_to_llvm_str(ty);
                 let slot_name = format!("%dyncall_byval_arg{}_{}", i, r);
                 self.line(&format!("  {} = alloca {}", slot_name, ty_str));

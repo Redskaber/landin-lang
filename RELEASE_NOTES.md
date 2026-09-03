@@ -3,13 +3,73 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.629.0 (v0.8 Stage 89 — TD-DYN-TRAIT-FAT-PTR-COERCION call site fat pointer FIXED: call site now passes `@.dynptr.Trait.Concrete` fat pointer global; 5548 tests) |
+| **Current version** | v0.630.0 (v0.8 Stage 90 — TD-DYN-TRAIT-DATA-PTR-EXTRACT FIXED: dyn Trait end-to-end runtime works — `use_greeter(&e)` returns 42; 5556 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4650 integration tests = 5548 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4658 integration tests = 5556 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — call site fat pointer wired); v0.8 TD-focused phase — TD-DYN-TRAIT-FAT-PTR-COERCION closed (data ptr extract deferred to v0.9+) |
+| **Architecture** | Health 9.85/10 (stable — dyn Trait end-to-end works); v0.8 TD-focused phase — TD-DYN-TRAIT-DATA-PTR-EXTRACT closed (complete dyn Trait chain) |
+
+---
+
+## v0.630.0 — Stage 90 (v0.8) — TD-DYN-TRAIT-DATA-PTR-EXTRACT FIXED — dyn Trait end-to-end runtime works!
+
+### Overview
+
+Stage 90 completes the dyn Trait end-to-end runtime chain. The vtable
+indirect call now extracts the data pointer from the fat pointer field 0
+and passes it to the impl method (was: passed the fat pointer → method
+read garbage → returned 0).
+
+**Result**: `use_greeter(&e)` where `English::greet` returns 42 now
+correctly exits with 42 — the **first successful end-to-end dyn Trait
+runtime test**.
+
+### The complete dyn Trait chain (Stages 87-90)
+
+| Stage | TD | What was fixed |
+|-------|-----|----------------|
+| 87 | TD-DYN-TRAIT-COMPLETION | `TyKind::Dyn(DefId)` — proper trait object type (was: `Ref(Error)` placeholder) |
+| 88 | TD-DYN-TRAIT-RUNTIME-DISPATCH | Vtable dispatch wiring — force vtable dispatch for Dyn receivers (was: static dispatch → `call i32 @null`) |
+| 89 | TD-DYN-TRAIT-FAT-PTR-COERCION | Call site fat pointer — pass `@.dynptr.Trait.Concrete` (was: thin data pointer) |
+| 90 | TD-DYN-TRAIT-DATA-PTR-EXTRACT | Data pointer extraction — GEP field 0 + load data ptr before indirect call (was: passed fat pointer to method) |
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `use_greeter(&e)` returned 0 instead of 42. The vtable
+indirect call `call i32 %v4(ptr %arg0)` passed `%arg0` (the fat pointer
+`@.dynptr.Greeter.English`) to `English::greet`, which expects a thin
+pointer to English data.
+
+**Root cause**: `emit_dyn_trait_method_call` built the indirect call
+args using `args[0]` (the receiver/self) which was the fat pointer. The
+method function expects a thin data pointer, not a fat pointer.
+
+**Fix** in `codegen/llvm/aggregate.rs` + `codegen/text/aggregate.rs`:
+Before the indirect call, GEP the fat pointer's field 0 (data pointer)
+and load it. Replace `args[0]` (the receiver) with the extracted data
+pointer.
+
+```llvm
+; Before Stage 90:
+  %v4 = load ptr, ptr %v3, i32 0          ; load method fn ptr
+  %v6 = call i32 %v4(ptr %arg0)           ; WRONG: %arg0 is fat pointer
+
+; After Stage 90:
+  %v4 = load ptr, ptr %v3, i32 0          ; load method fn ptr
+  %v6 = getelementptr {ptr,ptr}, ptr @.dynptr.Greeter.English, i32 0, i32 0  ; GEP data
+  %v7 = load ptr, ptr %v6                  ; load data pointer
+  %v8 = call i32 %v4(ptr %v7)             ; CORRECT: %v7 is data pointer
+```
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5556 tests, 0 failures, 9 ignored)
+- **Runtime verification**: `use_greeter(&e)` exits with 42 ✓
 
 ---
 

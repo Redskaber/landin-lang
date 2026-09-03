@@ -1099,3 +1099,17 @@ mod stage88_dyn_trait_runtime_dispatch_tests;
 // ptr to data) — deferred to TD-DYN-TRAIT-DATA-PTR-EXTRACT (v0.9+).
 #[path = "v0/stage89/plan/dyn_trait_fat_ptr_coercion_tests.rs"]
 mod stage89_dyn_trait_fat_ptr_coercion_tests;
+
+// === Stage 90 (v0.8 — TD-DYN-TRAIT-DATA-PTR-EXTRACT runtime works):
+// vtable indirect call now extracts data pointer from fat pointer field 0
+// and passes it to the impl method (was: passed fat pointer → method
+// read garbage → returned 0). Fix in codegen/llvm/aggregate.rs +
+// codegen/text/aggregate.rs: GEP field 0 + load data ptr before indirect
+// call. First successful end-to-end dyn Trait runtime test —
+// `use_greeter(&e)` returns 42. ===
+// Root cause (5W2H): indirect call `call i32 %v4(ptr %arg0)` passed fat
+// pointer to English::greet (expects thin ptr to data).
+// Per §12 (最优 > 最小): root-cause fix — extract data ptr at call site.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative tests.
+#[path = "v0/stage90/plan/dyn_trait_data_ptr_extract_tests.rs"]
+mod stage90_dyn_trait_data_ptr_extract_tests;

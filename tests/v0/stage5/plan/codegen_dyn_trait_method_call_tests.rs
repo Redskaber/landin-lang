@@ -288,6 +288,13 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
 }
 
 /// IR for dyn Trait call is well-formed: gep + 2 loads + call.
+///
+/// Stage 90 (v0.8 — TD-DYN-TRAIT-DATA-PTR-EXTRACT): When args is non-empty,
+/// the data pointer is extracted from the fat pointer (1 extra GEP + 1 extra
+/// load). With 0 args (this test), the data pointer extraction is emitted
+/// but the data pointer is not passed to the call (no args to pass it to).
+/// So the counts are: 1 GEP (vtable) + 1 GEP (data) = 2 GEPs, 2 loads
+/// (vtable + method) + 1 load (data) = 3 loads, 1 call.
 #[test]
 fn test_dyn_trait_call_ir_well_formed() {
     let mut emitter = TextEmitter::new();
@@ -299,8 +306,19 @@ fn test_dyn_trait_call_ir_well_formed() {
     let load_count = output.matches("load").count();
     let call_count = output.matches("call i32 %v").count();
 
-    assert_eq!(gep_count, 1, "expected 1 getelementptr, got {}", gep_count);
-    assert_eq!(load_count, 2, "expected 2 loads, got {}", load_count);
+    // Stage 90: 2 GEPs (vtable field + data field), 3 loads (vtable + method
+    // + data), 1 call. The data GEP + load is emitted unconditionally for
+    // future use (the receiver arg will use it when args is non-empty).
+    assert_eq!(
+        gep_count, 2,
+        "expected 2 getelementptr (vtable + data), got {}",
+        gep_count
+    );
+    assert_eq!(
+        load_count, 3,
+        "expected 3 loads (vtable + method + data), got {}",
+        load_count
+    );
     assert_eq!(
         call_count, 1,
         "expected 1 indirect call, got {}",

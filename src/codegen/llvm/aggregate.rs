@@ -403,6 +403,20 @@ impl AggregateEmitter for LLVMSysEmitter {
             // hoist the alloca to the entry block. Same rationale as emit_call:
             // mid-function allocas produce fragile dynamic stack adjustments.
             // Stage 18.333: Same entry_block_alloca pattern for byval slots.
+            //
+            // Stage 90 (v0.8 — TD-DYN-TRAIT-DATA-PTR-EXTRACT): For the
+            // receiver arg (args[0] = self), extract the data pointer from
+            // the fat pointer (field 0 of {ptr, ptr}) before passing it to
+            // the method. The method (e.g., English::greet) expects a thin
+            // pointer to the concrete data, NOT the fat pointer itself.
+            //
+            // Per Rust: vtable dispatch passes `self` as a thin pointer to
+            // the concrete type's data — the vtable is used to find the
+            // method, not to pass it.
+            // Per §12 (最优 > 最小): root-cause fix — extract data pointer
+            // at the call site, not patch the method to accept fat pointers.
+            // Per §1.0 原則 6 (通解 > 特解): one extraction path for all Dyn
+            // method calls (any trait, any concrete type).
             let sret_slot: Option<LLVMValueRef> = if use_sret {
                 Some(self.entry_block_alloca(ret_llvm_ty, "dyncall_sret_slot"))
             } else {
@@ -413,10 +427,37 @@ impl AggregateEmitter for LLVMSysEmitter {
             if let Some(slot) = sret_slot {
                 all_arg_vals.push(slot);
             }
+
+            // Stage 90: Extract data pointer from the fat pointer for
+            // the receiver arg (args[0]). The fat pointer is the dynptr
+            // global `{ ptr @.data.Concrete, ptr @.vtable.Trait.Concrete }`.
+            // Field 0 is the data pointer — GEP + load to get it.
+            let data_ptr_name = cstr_owned("dyn_data_ptr");
+            let mut data_indices = [zero, zero]; // GEP {ptr,ptr} field 0
+            let gep_data = LLVMBuildInBoundsGEP2(
+                self.builder,
+                fat_ptr_ty,
+                dynptr,
+                data_indices.as_mut_ptr(),
+                data_indices.len() as u32,
+                data_ptr_name.as_ptr(),
+            );
+            let data_ptr = LLVMBuildLoad2(
+                self.builder,
+                opaque_ptr_ty,
+                gep_data,
+                cstr_owned("data_ptr").as_ptr(),
+            );
+
             let user_arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();
             for (i, (_, _)) in args.iter().enumerate() {
-                if args[i].0.needs_byval() {
+                if i == 0 {
+                    // Stage 90: Replace the receiver (self) arg with the
+                    // extracted data pointer (thin pointer to concrete
+                    // data), not the fat pointer.
+                    all_arg_vals.push(data_ptr);
+                } else if args[i].0.needs_byval() {
                     // byval: store value to slot, pass slot pointer.
                     let slot_name = format!("dyncall_byval_arg{}_slot", i);
                     let orig_llvm_ty = final_user_param_tys[i]; // already `ptr` here; use byval_infos

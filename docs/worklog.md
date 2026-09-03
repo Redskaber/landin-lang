@@ -43203,3 +43203,99 @@ Stage Summary:
 - TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
 - TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
 - TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
+
+---
+Task ID: stage90
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 90 (v0.8) — TD-DYN-TRAIT-DATA-PTR-EXTRACT FIXED. vtable
+indirect call now extracts data pointer from fat pointer field 0 and
+passes it to the impl method (was: passed fat pointer → method read
+garbage → returned 0). Fix in codegen/llvm/aggregate.rs +
+codegen/text/aggregate.rs: GEP field 0 + load data ptr before indirect
+call. **First successful end-to-end dyn Trait runtime test** —
+`use_greeter(&e)` returns 42. v0.630.0. 5556 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L2 (~40 行 codegen 改动 in 2 emitter files + 4 tests + docs sync)
+- 对齐: 已查 Stage 89 worklog, tech-debt-register.md (TD-DYN-TRAIT-DATA-PTR-EXTRACT
+  是 Stage 89 发现的新 TD), codegen/llvm/aggregate.rs (emit_dyn_trait_method_call),
+  codegen/text/aggregate.rs (TextEmitter counterpart)
+- 阻断: v0.629.0 全绿 (5552 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: vtable indirect call `call i32 %v4(ptr %arg0)` 传 fat pointer
+  (`@.dynptr.Greeter.English`) 给 `English::greet`，但 method 期望 thin
+  pointer to English data → method 读到 fat pointer bits 作为 data → 返回 0。
+- WHY (根因): `emit_dyn_trait_method_call` 在构建 indirect call args 时，
+  args[0] (receiver/self) 是 fat pointer (`%arg0` = `@.dynptr.Greeter.English`)。
+  应该从 fat pointer field 0 GEP 出 data pointer，传 data pointer 给 method。
+- WHO: 影响所有 `&dyn Trait` 方法调用的 runtime 结果。
+- WHEN: Stage 89 发现。
+- WHERE: src/codegen/llvm/aggregate.rs (emit_dyn_trait_method_call — LLVMSysEmitter)
+  + src/codegen/text/aggregate.rs (TextEmitter counterpart)。
+- HOW: 在 vtable indirect call 前，从 fat pointer (dynptr global) GEP field 0
+  → load data pointer → 用 data pointer 替换 args[0] (receiver)。
+- HOW MUCH: ~40 行 codegen 改动 + 4 tests + 1 stage5 test updated (IR well-formed
+  test counts changed: 1→2 GEPs, 2→3 loads) + worklog + tech-debt-register +
+  README + RELEASE_NOTES + package。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — method 现在收到正确的 thin data pointer (was: fat pointer
+  → 读取 fat pointer 的 vtable field 作为 data → type confusion → UB).
+- Zero-Cost Abstraction ✓ — data pointer extraction 是编译期 GEP + load，运行时
+  仅一次 memory read (零成本抽象的 Rust vtable dispatch 设计).
+- Explicit > Implicit ✓ — data pointer 显式从 fat pointer 提取 (was: 隐式传
+  fat pointer 给 method).
+- Make Invalid States Unrepresentable ✓ — method 的 `&self` 现在是正确的
+  thin pointer to concrete data (was: fat pointer → type mismatch).
+
+决策点:
+1. 选择"在 emit_dyn_trait_method_call 内提取 data pointer"而非"在 codegen_dyn_trait_call_direct
+   中提前提取"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在 data pointer 被使用的点 (indirect call)
+     提取，而非提前提取再传递。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 GEP+load 适用于所有 Dyn method calls
+     (any trait, any concrete type)。LLVMSysEmitter 和 TextEmitter 都用相同
+     pattern。
+   - 替代方案 (拒绝): 在 codegen_dyn_trait_call_direct (operand.rs) 中提前提取
+     data pointer 并替换 args[0]。这需要改 emit_dyn_trait_method_call 的接口
+     (不再需要 dynptr_symbol 用于 data extraction)，影响面更大。
+
+2. 选择"同时更新 TextEmitter"而非"只更新 LLVMSysEmitter"
+   - 引用 §1.0 原則 6 (通解 > 特解): 两个 emitter 应保持一致 — TextEmitter
+     生成 IR text (用于 --emit-llvm-ir), LLVMSysEmitter 生成 LLVM module
+     (用于 --emit-obj/bin/run)。两者必须产生等价的 IR。
+   - 引用 §20 (迭代审计): 审查所有同类路径 — 发现 TextEmitter 也有相同的
+     emit_dyn_trait_method_call，需要同步修复。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (codegen indirect call 修复，无 soundness 影响 —
+  仅改变传给 method 的 arg 从 fat pointer 到 data pointer)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5556 tests, 0 failures, 9 ignored)
+- Runtime verification: `use_greeter(&e)` returns 42 (exit code 42) ✓
+- IR verification: use_greeter emits:
+  `%v6 = getelementptr {ptr,ptr}, ptr @.dynptr.Greeter.English, i32 0, i32 0` (data GEP)
+  `%v7 = load ptr, ptr %v6` (load data pointer)
+  `%v8 = call i32 %v4(ptr %v7)` (indirect call with data pointer) ✓
+
+Stage Summary:
+- TD-DYN-TRAIT-DATA-PTR-EXTRACT FIXED (vtable indirect call extracts data pointer)
+- **First successful end-to-end dyn Trait runtime test** — `use_greeter(&e)` returns 42
+- Complete dyn Trait chain: typeck (87) → vtable dispatch (88) → call site fat ptr (89) → data ptr extract (90)
+- 4 new tests (1 positive runtime + 3 negative) in stage90
+- 1 stage5 test updated (IR well-formed counts: 1→2 GEPs, 2→3 loads)
+- 5556 tests (898 lib + 4658 integration), 0 failures, 9 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — dyn Trait end-to-end works)
+
+下一步:
+- TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
+- TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
+- TD-CFG-MACROS/TD-ENV-MACROS: build system macros
+- TD-ASM-MACRO: LLVM inline asm

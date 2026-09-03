@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.629.0 (Stage 89)
+# Landin 编译器技术债完整清单 — v0.630.0 (Stage 90)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.629.0
-> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-DYN-TRAIT-FAT-PTR-COERCION call site fat pointer 完成）
+> **版本**: v0.630.0
+> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-DYN-TRAIT-DATA-PTR-EXTRACT runtime 完成 — dyn Trait 端到端可用）
 
 ---
 
@@ -34,6 +34,7 @@
 | TD-DYN-TRAIT-COMPLETION | 60+87 | Stage 60 partial fix (TraitObject → Ref(Error) placeholder) replaced by Stage 87 proper `TyKind::Dyn(DefId)`. typeck now carries trait DefId + verifies trait impl bounds via `implements_by_def_ids`. Method resolution looks up methods directly in trait declaration for `Dyn` receivers. Codegen emits fat pointer `{ptr,ptr}`. 12 files updated for new TyKind variant. |
 | TD-DYN-TRAIT-RUNTIME-DISPATCH | 88 | vtable dispatch wiring — `dyn Trait` method calls now go through vtable indirect call (GEP + load vtable + load method ptr + indirect call), not static dispatch. Fix in `method_call_lower.rs`: `receiver_is_dyn` check forces vtable dispatch for Dyn/Ref(Dyn) receivers; `use_dyn_trait_dispatch` bypasses type_name check for Dyn receivers. |
 | TD-DYN-TRAIT-FAT-PTR-COERCION | 89 | Call site fat pointer construction — `&Concrete → &dyn Trait` coercion at call sites now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs`: detect Ref(Dyn) callee param + Ref(Adt) arg, construct dynptr symbol. Also fixed `build_type_name_by_def_id` to include Trait DefIds. |
+| TD-DYN-TRAIT-DATA-PTR-EXTRACT | 90 | vtable indirect call extracts data pointer from fat pointer field 0 and passes it to the impl method (was: passed fat pointer → method read garbage → returned 0). Fix in `codegen/llvm/aggregate.rs` + `codegen/text/aggregate.rs`: GEP field 0 + load data ptr before indirect call. **First successful end-to-end dyn Trait runtime test** — `use_greeter(&e)` returns 42. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -74,7 +75,7 @@
 | TD-ENV-MACROS | env!/option_env!/include_str! 未实现 | 需编译期 I/O | 编译期文件读取 | build system |
 | TD-DYN-TRAIT-RUNTIME-DISPATCH | ~~dyn Trait 运行时 vtable dispatch 不完整~~ **FIXED Stage 88** — `method_call_lower.rs` forces vtable dispatch for Dyn/Ref(Dyn) receivers (was: static dispatch used because Stage 87's resolve_trait_method found the method → `call i32 @null` broken). | ~~codegen fat pointer arg 传递 + vtable indirect call 未正确连接~~ **DONE** (vtable dispatch wired; fat pointer coercion at call sites deferred to TD-DYN-TRAIT-FAT-PTR-COERCION) | ~~1) Dyn alloca {ptr,ptr}; 2) call site 传 fat pointer; 3) vtable indirect call~~ **DONE** (vtable indirect call works; call site fat pointer construction pending) | TD-DYN-TRAIT-COMPLETION ✅ (Stage 87) |
 | TD-DYN-TRAIT-FAT-PTR-COERCION | ~~dyn Trait unsized coercion codegen 不完整~~ **FIXED Stage 89** — call site now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs` + `build_type_name_by_def_id` (added Trait support). | ~~codegen coercion site 未构造 fat pointer~~ **DONE** | ~~detect Adt→Ref(Dyn) coercion site; construct fat pointer~~ **DONE** | TD-DYN-TRAIT-RUNTIME-DISPATCH ✅ (Stage 88) |
-| TD-DYN-TRAIT-DATA-PTR-EXTRACT | dyn Trait method call 传 fat pointer 给 impl method (期望 thin ptr to data) — vtable indirect call `call i32 %v4(ptr %arg0)` 传 `@.dynptr.Greeter.English` (fat ptr global)，但 `English::greet` 期望 `ptr` to English data (thin ptr) | codegen/llvm/aggregate.rs `emit_dyn_trait_method_call` 的 indirect call 应从 fat pointer field 0 提取 data pointer 传给 method | 1) GEP fat ptr field 0 → data ptr；2) 传 data ptr (非 fat ptr) 给 method fn | TD-DYN-TRAIT-FAT-PTR-COERCION ✅ (Stage 89) — 发现于 Stage 89 IR 验证 |
+| TD-DYN-TRAIT-DATA-PTR-EXTRACT | ~~dyn Trait method call 传 fat pointer 给 impl method~~ **FIXED Stage 90** — vtable indirect call 从 fat pointer field 0 提取 data pointer 传给 impl method。`use_greeter(&e)` 返回 42 (was: 返回 0)。 | ~~codegen emit_dyn_trait_method_call 传 fat pointer~~ **DONE** | ~~GEP fat ptr field 0 → data ptr；传 data ptr 给 method fn~~ **DONE** | TD-DYN-TRAIT-FAT-PTR-COERCION ✅ (Stage 89) |
 
 ### P3 — 架构重构（非功能缺失）
 
