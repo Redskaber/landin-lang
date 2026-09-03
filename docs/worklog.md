@@ -42739,3 +42739,140 @@ Stage Summary:
 - TD-FORMAT-ARGS-WRITE: format_args!/write! 宏
 - TD-DYN-TRAIT-COMPLETION: dyn Trait typeck 完整化
 - TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
+
+---
+Task ID: stage86
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 86 (v0.8) — TD-FN-IMPL-SIG-VALIDATION (return type check) FIXED.
+typeck now validates the impl method's return type against the trait's
+declared return type — including when the trait return type is `Self::Output`
+(an associated type projection). Three fixes:
+1. driver_validations_impl.rs: Use HIR-aware ty lowering + resolve_projection_in_ty_pub
+   for both impl_ret and trait_ret (was: lower_hir_ty_to_mir_ty without HIR
+   context → Self::Output became Error → mir_ty_kinds_compatible(_, Error)
+   == true → silently accepted mismatches).
+2. projection_resolver.rs: Exposed resolve_projection_in_ty_pub as pub alias
+   of the private resolve_projection_in_ty.
+3. ty_lower.rs: Fixed find_assoc_type_def_id to match by name AND owner trait
+   (was: name only → Self::Output in FnMut::call_mut found Fn's Output, not
+   FnMut's → resolver looked for impls of wrong trait → Projection stayed
+   unresolved). Added find_assoc_type_def_id_in_trait with fallback to
+   name-only match for backward compat.
+v0.626.0. 5540 tests, 0 failures, 9 ignored (was 10 — stage62_fn_trait_wrong_return_type_errors
+un-ignored).
+
+3秒启动自检:
+- 定位: L2 (~60 lines code change across 3 files + 1 positive + 3 negative tests + docs sync)
+- 对齐: 已查 Stage 85 worklog, tech-debt-register.md (TD-FN-IMPL-SIG-VALIDATION
+  列为 P3, Stage 78 fixed param type, return type deferred),
+  driver_validations_impl.rs (Stage 78 code), projection_resolver.rs
+  (existing resolver), ty_lower.rs (find_assoc_type_def_id)
+- 阻断: v0.625.0 全绿 (5535 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: typeck 不校验 impl 的 fn call 返回类型与 trait 的 type Output 关联
+  类型是否一致。例如 `impl Fn<(i32,)> for Doubler { type Output = i32;
+  fn call(&self, args: (i32,)) -> i64 { ... } }` 应该报错 (i64 vs i32)。
+- WHY (根因 — 3 处独立 bug):
+  1. driver_validations_impl.rs:223 用 lower_hir_ty_to_mir_ty(trait_fn.sig.output)
+     而非 HIR-aware 变体。lower_hir_ty_to_mir_ty 没有 HIR 上下文，无法解析
+     Self::Output → 产生 TyKind::Error。
+  2. mir_ty_kinds_compatible(_, Error) == true (Error 是通配符)，所以不匹配
+     被静默接受。
+  3. 即使使用 HIR-aware 变体 (lower_hir_ty_to_mir_ty_with_hir)，find_assoc_type_def_id
+     只按 name 匹配，所以 Self::Output 在 FnMut::call_mut 中找到 Fn 的 Output
+     (第一个有 Output 关联类型的 trait)，不是 FnMut 的。Projection 创建时
+     用了错误的 DefId → resolver 找不到对应的 impl → Projection 未解析。
+- WHO: 影响 Fn/FnMut/FnOnce trait impls 中返回类型与 Output 不一致的情况。
+- WHEN: Stage 62 编写 Fn trait 测试时发现，Stage 78 修复了 param check 但
+  deferred return check。
+- WHERE: src/driver/driver_validations_impl.rs (return type comparison),
+  src/driver/projection_resolver.rs (resolve_projection_in_ty visibility),
+  src/mir/lower/ty_lower.rs (find_assoc_type_def_id name-only match bug).
+- HOW:
+  1. driver_validations_impl.rs: 用 lower_hir_ty_to_mir_ty_with_hir + resolve_projection_in_ty_pub
+     解析 Self::Output → 具体类型 (从 impl 块的 type Output = T 声明)。
+  2. projection_resolver.rs: 暴露 resolve_projection_in_ty_pub 作为 pub alias。
+  3. ty_lower.rs: 新增 find_assoc_type_def_id_in_trait，先在 owner trait 中
+     按 name 匹配，找不到再 fallback 到 name-only match (向后兼容)。
+- HOW MUCH: ~60 行修改 (3 files) + 4 测试 + 1 un-ignored + worklog +
+  tech-debt-register + README + RELEASE_NOTES + package。无回归 (Stage 30
+  qualified path tests 也通过了 — Stage 86 fix 同时修复了 impl_ret 的
+  qualified path projection resolution)。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — 返回类型不匹配的 impl 现在被拒绝 (was: 静默接受导致
+  运行时 UB — 调用方期望 i32 但 impl 返回 i64，可能读 4 字节垃圾).
+- Zero-Cost Abstraction ✓ — 编译期检查，无运行时开销。
+- Explicit > Implicit ✓ — Self::Output 现在显式解析为具体类型，不再隐式
+  匹配 Error 通配符。
+- Make Invalid States Unrepresentable ✓ — 类型不匹配的 impl 在 typeck
+  阶段直接拒绝。
+
+决策点:
+1. 选择"在 validation site 解析 projection"而非"weaken mir_ty_kinds_compatible
+   拒绝 Error"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在 validation site 解析 projection，
+     而非削弱 mir_ty_kinds_compatible (Error 作为通配符在其他合法场景中
+     仍然需要，例如未解析的 Param 类型)。
+   - 引用 §1.0 原則 6 (通解 > 特解): 复用现有 projection_resolver，不写
+     parallel resolver。
+   - 替代方案 (拒绝): 让 mir_ty_kinds_compatible 拒绝 Error。这会破坏
+     其他合法使用 (例如 generic trait method 的 Param 类型比较)。
+
+2. 选择"修复 find_assoc_type_def_id 按 name AND owner trait 匹配"而非
+   "在 resolver 中 fallback 到 name-only match"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在 ty_lower 创建 Projection 时就
+     用正确的 DefId，而不是让 resolver 事后猜测。
+   - 引用 §1.0 原則 4 (显式 > 隐式): owner trait context 在 HirId 中显式
+     可用，应该使用。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 find_assoc_type_def_id_in_trait
+     适用于所有 trait (Fn, FnMut, FnOnce, 用户自定义 trait)。
+   - 替代方案 (拒绝): 在 resolver 中如果 find_trait_for_assoc_type 找不到
+     impl，fallback 到 name-only match。这是治症不治根 — Projection 仍然
+     携带错误的 DefId，其他依赖 Projection DefId 的代码路径会继续 broken。
+
+3. 选择"同时修复 impl_ret 的 projection resolution"而非"只修 trait_ret"
+   - 引用 §20 (迭代审计): 修复 trait_ret 后，stage30 qualified path tests
+     失败 — 暴露 impl_ret 也有同样的 projection resolution 缺失。一次性
+     修复两个方向 (impl_ret + trait_ret) 避免了"修一处其他处仍 broken"。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 HIR-aware lower + resolve_projection
+     模式适用于 impl_ret 和 trait_ret 两个方向。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (typeck + projection resolver 修复，无 soundness
+  影响 — 只是把 fresh Error 改为 resolved concrete type，未引入新的 unsafe
+  路径；stage30 qualified path 回归测试通过验证了正确性)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo check --all-targets --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5540 tests, 0 failures, 9 ignored)
+- Verified: `impl Fn<(i32,)> for Doubler { type Output = i32; fn call(...) -> i64 }`
+  → "method `call` return type mismatch: expected `i32`, found `i64`" ✓
+- Verified: `impl Fn<(i32,)> for Doubler { type Output = i32; fn call(...) -> i32 }`
+  → compiles ✓
+- Verified: FnMut/FnOnce impls with `Self::Output` return type still compile ✓
+- Verified: `<Holder as Container>::Item` qualified path resolution still works ✓
+
+Stage Summary:
+- TD-FN-IMPL-SIG-VALIDATION (return type check) FULLY FIXED (3 sites)
+- 4 new tests (1 positive + 3 negative typeck return type mismatch) in stage86
+- 1 test un-ignored (stage62_fn_trait_wrong_return_type_errors now passes)
+- 5540 tests (898 lib + 4642 integration), 0 failures, 9 ignored (was 10)
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — closed assoc type projection gap)
+- 关键发现:
+  1. find_assoc_type_def_id 的 name-only match 是 pre-existing bug — Stage 86
+     修复 trait_ret 暴露了它 (FnMut 的 Self::Output 错误地找到 Fn 的 Output)。
+     一次性修复 owner trait context matching 避免了"修一处其他处仍 broken"。
+  2. 修复 trait_ret 后，stage30 qualified path tests 失败 — 暴露 impl_ret
+     也有同样的 projection resolution 缺失。一次性修复两个方向。
+
+下一步:
+- TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
+- TD-DYN-TRAIT-COMPLETION: dyn Trait typeck 完整化
+- TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法

@@ -1030,3 +1030,20 @@ mod stage84_closure_param_annot_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative typeck tests.
 #[path = "v0/stage85/plan/fn_unit_args_tests.rs"]
 mod stage85_fn_unit_args_tests;
+
+// === Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION return type check FIXED):
+// typeck now validates the impl method's return type against the trait's
+// declared return type — including when the trait return type is
+// `Self::Output` (an associated type projection). The fix uses HIR-aware
+// ty lowering + the existing `projection_resolver::resolve_projection_in_ty_pub`
+// to resolve `Self::Output` to the impl's `type Output = T;` declaration
+// before comparison. ===
+// Root cause (5W2H): Stage 78's `trait_ret` was `TyKind::Error` (Self::Output
+// unresolved by `lower_hir_ty_to_mir_ty` without HIR context), and
+// `mir_ty_kinds_compatible(_, Error) == true` (Error wildcard), so mismatches
+// were silently accepted.
+// Per §12 (最优 > 最小): root-cause fix — resolve projection at validation site.
+// Per §1.0 原則 6 (通解 > 特解): reuse existing projection_resolver helper.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative typeck tests.
+#[path = "v0/stage86/plan/fn_impl_sig_return_type_tests.rs"]
+mod stage86_fn_impl_sig_return_type_tests;

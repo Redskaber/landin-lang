@@ -642,12 +642,38 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         // to find the associated type's DefId. The last
                         // segment's name should match an associated type in
                         // the trait. We look it up from HIR.
+                        //
+                        // Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION return
+                        // type check): Use the HirTy's owner DefId to
+                        // constrain the search to the CURRENT trait context.
+                        // Previously, `find_assoc_type_def_id` matched by
+                        // name only — so `Self::Output` in `FnMut::call_mut`
+                        // found `Fn`'s `Output` (the first trait with that
+                        // assoc type), not `FnMut`'s. This caused
+                        // `resolve_projection_in_ty_pub` to look for impls
+                        // of `Fn` (wrong trait) and fail to resolve,
+                        // leaving the Projection unresolved.
+                        //
+                        // Per §12 (最优 > 最小): root-cause fix — match by
+                        // name AND owner trait, not just name.
+                        // Per §1.0 原則 4 (显式 > 隐式): the owner context
+                        // is explicit in the HirId, use it.
+                        // Per §1.0 原則 6 (通解 > 特解): one lookup for all
+                        // Self::X projections in trait method signatures.
                         if path.segments.len() >= 2 {
                             let assoc_name = path.segments.last().map(|s| s.ident.name);
                             if let Some(assoc_name) = assoc_name {
                                 // Search HIR for the associated type declaration.
                                 if let Some(hir) = hir {
-                                    let assoc_def_id = find_assoc_type_def_id(hir, assoc_name);
+                                    // Stage 86: pass the HirTy's owner DefId
+                                    // to constrain the search to the current
+                                    // trait context.
+                                    let owner_trait_def_id = ty.hir_id.owner;
+                                    let assoc_def_id = find_assoc_type_def_id_in_trait(
+                                        hir,
+                                        assoc_name,
+                                        owner_trait_def_id,
+                                    );
                                     if let Some(assoc_def_id) = assoc_def_id {
                                         // Create a Projection with the assoc type's DefId.
                                         // The substs will be [Self_type] — for now, we
@@ -914,4 +940,45 @@ fn find_assoc_type_def_id(
         }
     }
     None
+}
+
+/// Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION return type check): Find the
+/// DefId of an associated type declared in a SPECIFIC trait.
+///
+/// This is the trait-context-aware variant of `find_assoc_type_def_id`. It
+/// matches by name AND owner trait DefId — so `Self::Output` in
+/// `FnMut::call_mut` correctly finds `FnMut`'s `Output` (not `Fn`'s).
+///
+/// Falls back to `find_assoc_type_def_id` (name-only match) if no match is
+/// found in the specified trait — preserves backward compat for cases where
+/// the owner context isn't the trait itself (e.g., impl method bodies).
+///
+/// Per §23: `find_assoc_type_def_id_in_trait` follows
+/// `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+/// Per §12 (最优 > 最小): root-cause fix — match by name AND owner trait.
+/// Per §1.0 原則 6 (通解 > 特解): one lookup for all Self::X projections
+/// in trait method signatures (Fn, FnMut, FnOnce, user traits).
+fn find_assoc_type_def_id_in_trait(
+    hir: &crate::hir::HirCrate,
+    assoc_name: crate::lexer::Symbol,
+    owner_trait_def_id: crate::hir::DefId,
+) -> Option<crate::hir::DefId> {
+    // First, try to find the assoc type in the SPECIFIED trait.
+    for (trait_def_id, owner) in &hir.owners {
+        if *trait_def_id != owner_trait_def_id {
+            continue;
+        }
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for item in &t.items {
+                if let crate::hir::HirTraitItem::Type(at) = item {
+                    if at.ident.name == assoc_name {
+                        return Some(at.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: name-only match (preserves backward compat for cases where
+    // the owner context isn't the trait itself).
+    find_assoc_type_def_id(hir, assoc_name)
 }

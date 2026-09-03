@@ -438,11 +438,14 @@ fn stage62_fn_trait_wrong_param_type_errors() {
 
 /// Stage 62 negative 6: Wrong call return type (doesn't match Output).
 ///
-/// NOTE: This test is currently skipped because Landin's typeck doesn't
-/// validate that the impl's `fn call` return type matches `type Output`.
-/// Tracked as TD-FN-IMPL-SIG-VALIDATION — param check FIXED Stage 78, return check needs assoc type projection.
+/// Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION return type check FIXED):
+/// The trait return type `Self::Output` is now resolved to the impl's
+/// `type Output = i32` declaration via `resolve_projection_in_ty_pub`
+/// before comparison. Previously, `trait_ret` was `TyKind::Error`
+/// (because `lower_hir_ty_to_mir_ty` without HIR context can't resolve
+/// `Self::X`), and `mir_ty_kinds_compatible(_, Error) == true` (Error
+/// is a wildcard), silently accepting the mismatch.
 #[test]
-#[ignore = "TD-FN-IMPL-SIG-VALIDATION: typeck doesn't check impl return matches Output"]
 fn stage62_fn_trait_wrong_return_type_errors() {
     let src = r#"
         struct Doubler;

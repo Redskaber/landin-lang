@@ -212,15 +212,64 @@ pub(super) fn validate_impl_method_signatures(
             }
 
             // 3. Return type mismatch.
+            //
+            // Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION return type check):
+            // For trait methods with `Self::Output` (or any associated type
+            // projection) as the return type, we MUST:
+            //   (a) Use the HIR-aware ty lowering variant so `Self::Output`
+            //       lowers to `TyKind::Projection(assoc_def_id, [])` (not
+            //       `TyKind::Error` — which `lower_hir_ty_to_mir_ty` without
+            //       HIR context produces for `Self::X`).
+            //   (b) Resolve the projection to the concrete type from the
+            //       impl block's `type Output = T;` declaration. This uses
+            //       the existing `projection_resolver::resolve_projection_in_ty`
+            //       helper (which walks HIR impls for assoc type bindings).
+            //
+            // Without this fix: `trait_ret` was `TyKind::Error`, and
+            // `mir_ty_kinds_compatible(Int(I64), Error) == true` (Error is a
+            // wildcard), so the mismatch was silently accepted.
+            //
+            // Per §12 (最优 > 最小): root-cause fix — resolve the projection
+            // at the validation site, not weaken `mir_ty_kinds_compatible`
+            // to reject Error (which would break other legitimate uses).
+            // Per §1.0 原則 6 (通解 > 特解): reuse the existing
+            // `resolve_projection_in_ty` helper, don't write a parallel
+            // resolver.
+            // Per §1.0 原則 4 (显式 > 隐式): the projection is explicitly
+            // resolved to a concrete type before comparison, so mismatches
+            // are caught instead of silently matching the Error wildcard.
             let impl_ret_ty = match &impl_fn.sig.output {
-                HirFnRetTy::Ty(t) => Some(crate::mir::lower::lower_hir_ty_to_mir_ty(t)),
+                HirFnRetTy::Ty(t) => {
+                    // Stage 86: Use HIR-aware lowering + projection resolution
+                    // for the impl method's return type too — handles cases
+                    // like `<Holder as Container>::Item` (qualified path
+                    // projection) which the previous `lower_hir_ty_to_mir_ty`
+                    // (without HIR context) couldn't resolve.
+                    let lowered = crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(t, Some(hir));
+                    Some(
+                        crate::driver::projection_resolver::resolve_projection_in_ty_pub(
+                            &lowered, hir, 0,
+                        ),
+                    )
+                }
                 HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
                     crate::mir::ty::TyKind::Tuple(vec![]),
                     impl_fn.span,
                 )),
             };
             let trait_ret_ty = match &trait_fn.sig.output {
-                HirFnRetTy::Ty(t) => Some(crate::mir::lower::lower_hir_ty_to_mir_ty(t)),
+                HirFnRetTy::Ty(t) => {
+                    // Stage 86: Use HIR-aware lowering so `Self::Output`
+                    // becomes `Projection(...)` instead of `Error`.
+                    let lowered = crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(t, Some(hir));
+                    // Stage 86: Resolve projections to concrete types from
+                    // the impl block (e.g., `Self::Output` → `i32`).
+                    Some(
+                        crate::driver::projection_resolver::resolve_projection_in_ty_pub(
+                            &lowered, hir, 0,
+                        ),
+                    )
+                }
                 HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
                     crate::mir::ty::TyKind::Tuple(vec![]),
                     trait_fn.span,

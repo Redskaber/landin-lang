@@ -48,6 +48,31 @@ pub fn resolve_projections_in_mir(mir: &mut crate::mir::body::MirBody, hir: &Hir
 ///
 /// Stage 18.87 B8: Added `depth` parameter to prevent infinite recursion
 /// on cyclic associated type bindings (e.g., `type A = B; type B = A;`).
+///
+/// Stage 86 (v0.8 — TD-FN-IMPL-SIG-VALIDATION): Exposed as `pub` so
+/// `validate_impl_method_signatures` can resolve `Self::Output` in trait
+/// method return types before comparing with the impl method's return type.
+/// This closes the gap where `trait_ret` was `TyKind::Error` (because
+/// `lower_hir_ty_to_mir_ty` without HIR context can't resolve `Self::X`)
+/// and `mir_ty_kinds_compatible(_, Error) == true` (Error is a wildcard),
+/// silently accepting return type mismatches.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one projection resolver for all callers
+/// (MIR local_decls + impl method sig validation).
+/// Per §23: `resolve_projection_in_ty_pub` follows `<verb>_<noun>_<prep>_<noun>_<adj>`
+/// pattern (pub alias of the private `resolve_projection_in_ty`).
+pub fn resolve_projection_in_ty_pub(ty: &Ty, hir: &HirCrate, depth: u32) -> Ty {
+    resolve_projection_in_ty(ty, hir, depth)
+}
+
+/// Recursively resolve `Projection` in a `Ty` (private impl).
+///
+/// If the projection can be resolved (impl found, assoc type found), returns
+/// the concrete type. If not, returns the original `Ty` unchanged (the
+/// projection remains unresolved — this is a graceful degradation).
+///
+/// Stage 18.87 B8: Added `depth` parameter to prevent infinite recursion
+/// on cyclic associated type bindings (e.g., `type A = B; type B = A;`).
 fn resolve_projection_in_ty(ty: &Ty, hir: &HirCrate, depth: u32) -> Ty {
     // B8: Recursion depth limit — prevent infinite loops on cyclic bindings.
     if depth >= MAX_PROJECTION_DEPTH {

@@ -3,13 +3,89 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.625.0 (v0.8 Stage 85 — TD-FN-UNIT-ARGS FIXED: `Fn<()>` unit tuple arg now correctly elided from LLVM forward declarations; 5535 tests) |
+| **Current version** | v0.626.0 (v0.8 Stage 86 — TD-FN-IMPL-SIG-VALIDATION return type check FIXED: typeck validates impl method return type against trait's `Self::Output` assoc type projection; 5540 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4637 integration tests = 5535 total (100% pass rate single-thread with `ulimit -s unlimited`, 10 ignored) |
+| **Test count** | 898 lib tests + 4642 integration tests = 5540 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — closed ZST elision gap); v0.8 TD-focused phase — TD-FN-UNIT-ARGS closed (third ZST elision site fixed) |
+| **Architecture** | Health 9.85/10 (stable — closed assoc type projection gap); v0.8 TD-focused phase — TD-FN-IMPL-SIG-VALIDATION return type check closed (3 sites fixed) |
+
+---
+
+## v0.626.0 — Stage 86 (v0.8) — TD-FN-IMPL-SIG-VALIDATION return type check FIXED
+
+### Overview
+
+Stage 86 fixes the **return type check** half of TD-FN-IMPL-SIG-VALIDATION
+(the param type check was fixed in Stage 78). typeck now validates the impl
+method's return type against the trait's declared return type — including
+when the trait return type is `Self::Output` (an associated type projection).
+
+**Result**: `impl Fn<(i32,)> for Doubler { type Output = i32; fn call(&self,
+args: (i32,)) -> i64 { ... } }` now correctly errors with "method `call`
+return type mismatch: expected `i32`, found `i64`".
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: Fn/FnMut/FnOnce trait impls with wrong return type (e.g.,
+`fn call(...) -> i64` when `type Output = i32`) silently compiled instead
+of erroring.
+
+**Root cause — 3 independent bugs**:
+
+1. `driver_validations_impl.rs:223` used `lower_hir_ty_to_mir_ty(trait_ret)`
+   (without HIR context) — `Self::Output` lowered to `TyKind::Error` (not
+   `TyKind::Projection(...)`).
+
+2. `mir_ty_kinds_compatible(_, Error) == true` (Error is a wildcard) — so
+   mismatches were silently accepted.
+
+3. `ty_lower.rs::find_assoc_type_def_id` matched by NAME only — so
+   `Self::Output` in `FnMut::call_mut` found `Fn`'s `Output` (the first
+   trait with that assoc type), not FnMut's. Even with HIR-aware lowering,
+   the Projection carried the wrong DefId → resolver looked for impls of
+   `Fn` (wrong trait) → Projection stayed unresolved.
+
+**Fix — 3 sites**:
+
+1. `driver_validations_impl.rs`: Use `lower_hir_ty_to_mir_ty_with_hir` +
+   `resolve_projection_in_ty_pub` for both `impl_ret` and `trait_ret`.
+
+2. `projection_resolver.rs`: Exposed `resolve_projection_in_ty_pub` as pub
+   alias of the private `resolve_projection_in_ty`.
+
+3. `ty_lower.rs`: Added `find_assoc_type_def_id_in_trait` — matches by
+   name AND owner trait DefId (from `HirTy.hir_id.owner`). Falls back to
+   name-only match for backward compat (impl method bodies where owner
+   isn't the trait itself).
+
+### Rust design philosophy verification
+
+- **Memory Safety** ✓ — return type mismatches now caught at compile time
+  (was: silently accepted, causing runtime UB when caller expects i32 but
+  impl returns i64 — reads 4 bytes of garbage).
+- **Zero-Cost Abstraction** ✓ — compile-time check, no runtime overhead.
+- **Explicit > Implicit** ✓ — `Self::Output` is explicitly resolved to a
+  concrete type, no longer silently matches the Error wildcard.
+- **Make Invalid States Unrepresentable** ✓ — type-mismatched impls are
+  rejected at typeck (was: silently accepted via Error wildcard).
+
+### Test matrix (§9.4.3 — 1:3+ positive:negative ratio)
+
+- 1 positive test (valid Fn impl with correct return type — verifies the
+  fix doesn't break legitimate impls).
+- 3 negative typeck tests (wrong return type: i64 vs i32, bool vs i32,
+  Wrapper Adt vs i32).
+
+Also un-ignored `stage62_fn_trait_wrong_return_type_errors` (now passes).
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5540 tests, 0 failures, 9 ignored)
 
 ---
 
