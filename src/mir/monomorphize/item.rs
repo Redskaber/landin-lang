@@ -347,7 +347,11 @@ pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
         | TyKind::Foreign
         | TyKind::Error
         | TyKind::Param(_)
-        | TyKind::Infer(_) => {}
+        | TyKind::Infer(_)
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is not a
+        // generic type — no monomorphization needed (the vtable is emitted
+        // once per impl, not per instantiation).
+        | TyKind::Dyn(_) => {}
     }
 }
 

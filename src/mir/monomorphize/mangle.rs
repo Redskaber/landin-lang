@@ -43,6 +43,10 @@ pub fn mangle_ty(ty: &Ty) -> String {
         TyKind::Never => "never".to_string(),
         TyKind::Foreign => "foreign".to_string(),
         TyKind::Error => "error".to_string(),
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` mangled
+        // as `dyn_<def_id>` — used in mono item names. The trait DefId
+        // distinguishes `dyn Greeter` from `dyn Display`.
+        TyKind::Dyn(def_id) => format!("dyn_{}", def_id.as_u32()),
         TyKind::Param(param_ty) => {
             // For Param, use the name if available, else the index.
             format!("param_{}", param_ty.index)

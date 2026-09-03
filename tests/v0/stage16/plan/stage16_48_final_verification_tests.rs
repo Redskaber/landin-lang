@@ -45,7 +45,7 @@ fn stage16_48_trait_dispatch() {
 
 #[test]
 fn stage16_48_dyn_trait() {
-    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: dyn Foo = &S; d.bar() }";
+    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: &dyn Foo = &S; d.bar() }";
     let result = compile(src);
     assert!(!result.has_errors());
 }

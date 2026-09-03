@@ -41,7 +41,7 @@ fn stage16_36_vtable_globals() {
 /// Stage 16.36 test 5: Dyn trait const still works (emit_dyn_trait_const).
 #[test]
 fn stage16_36_dyn_trait_const() {
-    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: dyn Foo = &S; d.bar() }";
+    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: &dyn Foo = &S; d.bar() }";
     let result = compile(src);
     assert!(!result.has_errors());
 }

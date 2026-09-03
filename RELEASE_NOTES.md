@@ -3,13 +3,95 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.626.0 (v0.8 Stage 86 — TD-FN-IMPL-SIG-VALIDATION return type check FIXED: typeck validates impl method return type against trait's `Self::Output` assoc type projection; 5540 tests) |
+| **Current version** | v0.627.0 (v0.8 Stage 87 — TD-DYN-TRAIT-COMPLETION typeck foundation FIXED: `dyn Trait` is now proper `TyKind::Dyn(DefId)`; 12 files updated; 5544 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4642 integration tests = 5540 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4646 integration tests = 5544 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — closed assoc type projection gap); v0.8 TD-focused phase — TD-FN-IMPL-SIG-VALIDATION return type check closed (3 sites fixed) |
+| **Architecture** | Health 9.85/10 (stable — proper Dyn type, foundation for runtime dispatch); v0.8 TD-focused phase — TD-DYN-TRAIT-COMPLETION typeck foundation closed (runtime dispatch deferred to v0.9+) |
+
+---
+
+## v0.627.0 — Stage 87 (v0.8) — TD-DYN-TRAIT-COMPLETION typeck foundation FIXED
+
+### Overview
+
+Stage 87 introduces `TyKind::Dyn(DefId)` to properly represent `dyn Trait` in
+MIR — replacing Stage 60's placeholder `Ref(Error)` which lost trait info.
+This enables typeck to carry the trait DefId and verify trait impl bounds
+via `implements_by_def_ids` (was: silently accepted via Error wildcard).
+
+**Result**: `let g: &dyn Greeter = &English;` compiles when `English`
+implements `Greeter`; errors when the type doesn't implement the trait.
+
+### Root-cause analysis (5W2H — §2.2)
+
+**Symptom**: `dyn Trait` types were lowered to `Ref(Error)` (Stage 60
+placeholder), losing the trait DefId. typeck couldn't verify trait impl
+bounds — `mir_ty_kinds_compatible(_, Error) == true` (Error wildcard)
+silently accepted any `Adt → Dyn` coercion, including invalid ones
+(e.g., `let g: &dyn Greeter = &Spanish;` where Spanish doesn't impl Greeter).
+
+**Root cause**: Stage 60's `Ref(Error)` placeholder was a pragmatic MVP
+that lost trait info. Without the trait DefId, typeck couldn't call
+`implements_by_def_ids` to verify the bound.
+
+**Fix**: Introduced `TyKind::Dyn(DefId)` — 12 files updated for the new
+TyKind variant:
+
+1. `mir/ty.rs`: New `Dyn(DefId)` variant + Copy/type_to_string handling
+2. `mir/lower/ty_lower.rs`: `HirTyKind::TraitObject` → `TyKind::Dyn(trait_def_id)`
+3. `typeck/unify.rs`: `(Adt, Dyn)` arm checks `implements_by_def_ids`
+4. `mir/lower/method_resolution.rs`: `Dyn(trait_def_id)` receiver looks up
+   method directly in trait declaration
+5. `codegen/emitter/mod.rs`: `Dyn` → fat pointer `{ptr, ptr}`
+6. `borrowck/copy_semantics.rs`: `Dyn` NOT Copy (per Rust)
+7. `mir/drop_elaboration.rs`: `Dyn` no drop (v0.9+ for vtable drop)
+8. `mir/lower/adt_layout.rs`: `Dyn` size = 16 bytes (2 pointers)
+9. `mir/monomorphize/item.rs`: `Dyn` not generic (no mono needed)
+10. `mir/monomorphize/mangle.rs`: `Dyn` mangled as `dyn_<def_id>`
+11. `mir/substitute.rs`: `Dyn` leaf type (no subst)
+12. `traits/solver/eval.rs`: `Dyn` defers obligation evaluation
+
+### Rust design philosophy verification
+
+- **Memory Safety** ✓ — typeck now verifies trait impl bounds (was: silently
+  accepted any coercion via Error wildcard → runtime UB when vtable points
+  to wrong impl or null).
+- **Zero-Cost Abstraction** ✓ — `Dyn` type resolves to fat pointer at
+  compile time; runtime cost is one vtable indirect call (Rust's design).
+- **Explicit > Implicit** ✓ — trait DefId explicitly stored in
+  `TyKind::Dyn(DefId)` (was: implicitly lost as Error).
+- **Make Invalid States Unrepresentable** ✓ — trait bound violations
+  rejected at typeck (was: silently accepted).
+
+### Test matrix (§9.4.3 — 1:3+ positive:negative ratio)
+
+- 1 positive test (`&dyn Trait` coercion with valid impl compiles)
+- 3 negative typeck tests:
+  - Coercion rejected when Adt doesn't implement the trait
+  - Method not in trait (documented gap — v0.9+ will enforce)
+  - `dyn UndefinedTrait` errors (undefined trait reference)
+
+Also updated 7 stage16 regression tests that asserted "compiles silently"
+with the old invalid `let d: dyn Foo = &S;` pattern — now use valid
+`let d: &dyn Foo = &S;` pattern.
+
+### Runtime dispatch deferred
+
+Full runtime vtable dispatch (codegen fat pointer arg passing + vtable
+indirect call) is deferred to **TD-DYN-TRAIT-RUNTIME-DISPATCH** (P3, v0.9+).
+Stage 87 delivers the typeck + MIR foundation; the codegen fat pointer
+emission exists but the call site doesn't yet pass fat pointers correctly.
+This is tracked in `docs/develop/v0/tech-debt-register.md`.
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5544 tests, 0 failures, 9 ignored)
 
 ---
 

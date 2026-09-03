@@ -614,6 +614,34 @@ pub(super) fn resolve_trait_method(
     // Per §1.0 原則 6 (通解>特解): one path for all types.
     // Per §12 (最优>最小): root cause fix — add interner param (same as
     // resolve_inherent_method) to enable string comparison.
+    //
+    // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): For `dyn Trait` receivers,
+    // look up the method directly in the trait declaration (the trait
+    // DefId is carried by `TyKind::Dyn(trait_def_id)`). This is the
+    // vtable dispatch path — the actual impl method is resolved at
+    // runtime via the vtable.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one path for all Dyn receivers —
+    // regardless of which trait.
+    // Per §1.0 原則 4 (报错 > 静默): if the method isn't in the trait,
+    // return None (caller reports "no method found").
+    if let TyKind::Dyn(trait_def_id) = recv_ty.kind {
+        // Look up the trait declaration by DefId.
+        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t))) =
+            hir.find_owner(trait_def_id)
+        {
+            // Search the trait's items for the method by name.
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.ident.name == *method_name {
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
     let type_name_str: &str = match &recv_ty.kind {
         TyKind::Adt(def_id, _) => {
             let sym = hir.find_owner(*def_id).and_then(|owner| match owner {

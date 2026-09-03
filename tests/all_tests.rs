@@ -1047,3 +1047,24 @@ mod stage85_fn_unit_args_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative typeck tests.
 #[path = "v0/stage86/plan/fn_impl_sig_return_type_tests.rs"]
 mod stage86_fn_impl_sig_return_type_tests;
+
+// === Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION typeck foundation):
+// `dyn Trait` is now a proper MIR type `TyKind::Dyn(DefId)` instead of
+// the Stage 60 placeholder `Ref(Error)`. This enables typeck to carry
+// the trait DefId and verify trait impl bounds via `implements_by_def_ids`.
+// Updates: ty_lower.rs (lower TraitObject to Dyn), typeck/unify.rs
+// (Adt↔Dyn coercion via implements_by_def_ids), method_resolution.rs
+// (Dyn receiver looks up method in trait declaration), codegen/emitter
+// (Dyn → fat pointer {ptr,ptr}), borrowck (Dyn not Copy), drop_elaboration
+// (Dyn no drop), adt_layout (Dyn size=16), monomorphize (Dyn not generic),
+// substitute (Dyn leaf), ty.rs (Dyn not Copy, type_to_string), traits/solver
+// (Dyn defers obligation). ===
+// Root cause (5W2H): Stage 60 lowered dyn Trait to Ref(Error) placeholder,
+// losing trait info → typeck couldn't verify trait impl bounds (Error
+// wildcard silently accepted mismatches).
+// Per §12 (最优 > 最小): root-cause fix — proper TyKind::Dyn(DefId).
+// Per §1.0 原則 6 (通解 > 特解): one Dyn variant for all trait objects.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative typeck tests.
+// Note: Full runtime vtable dispatch deferred to TD-DYN-TRAIT-RUNTIME-DISPATCH (v0.9+).
+#[path = "v0/stage87/plan/dyn_trait_typeck_tests.rs"]
+mod stage87_dyn_trait_typeck_tests;

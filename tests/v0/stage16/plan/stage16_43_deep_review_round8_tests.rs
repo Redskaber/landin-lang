@@ -53,7 +53,7 @@ fn stage16_43_trait_dispatch() {
 /// Stage 16.43 test 6: Dyn trait (fat pointer).
 #[test]
 fn stage16_43_dyn_trait() {
-    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: dyn Foo = &S; d.bar() }";
+    let src = "trait Foo { fn bar(&self) -> i32; } struct S; impl Foo for S { fn bar(&self) -> i32 { 42 } } fn main() -> i32 { let d: &dyn Foo = &S; d.bar() }";
     let result = compile(src);
     assert!(!result.has_errors());
 }

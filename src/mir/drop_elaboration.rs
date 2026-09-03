@@ -541,6 +541,12 @@ fn ty_needs_drop_impl(
         // Closures: v0.2 doesn't support Drop on closures.
         TyKind::Closure(_, _) => false,
 
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer (data + vtable). The data may need drop, but v0.8 doesn't
+        // support drop on trait objects (no Drop slot in vtable yet —
+        // deferred to v0.9+). Conservatively false.
+        TyKind::Dyn(_) => false,
+
         // Foreign types: conservatively false (we don't know their layout).
         TyKind::Foreign => false,
 

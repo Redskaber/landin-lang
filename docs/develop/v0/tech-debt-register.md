@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.626.0 (Stage 86)
+# Landin 编译器技术债完整清单 — v0.627.0 (Stage 87)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.626.0
-> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-FN-IMPL-SIG-VALIDATION return type 完成）
+> **版本**: v0.627.0
+> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-DYN-TRAIT-COMPLETION typeck foundation 完成）
 
 ---
 
@@ -31,6 +31,7 @@
 | TD-CLOSURE-PARAM-ANNOT-IGNORE | 84 | MIR lower respects explicit closure param type annotations (`\|n: i64\|` now honored, was: always fresh_infer_ty) — three dispatch sites fixed: expr_operand.rs, body_lower.rs, compile_inner.rs |
 | TD-FN-UNIT-ARGS | 85 | `Fn<()>` unit tuple arg now correctly elided from LLVM forward declarations (was: leaked as `void` param type → LLVM module verification failed). Fix in `build_fn_sigs_map` — filter `EmitType::Void` from sig map, mirroring ZST elision in codegen_function + terminator.rs |
 | TD-FN-IMPL-SIG-VALIDATION | 78+86 | param type check (Stage 78: substitute trait generic args before comparing) + return type check (Stage 86: resolve `Self::Output` assoc type projection via HIR-aware ty lowering + `resolve_projection_in_ty_pub` before comparing). Also fixed `find_assoc_type_def_id` to match by name AND owner trait (was: name only → `Self::Output` in `FnMut::call_mut` found `Fn`'s Output, not FnMut's). |
+| TD-DYN-TRAIT-COMPLETION | 60+87 | Stage 60 partial fix (TraitObject → Ref(Error) placeholder) replaced by Stage 87 proper `TyKind::Dyn(DefId)`. typeck now carries trait DefId + verifies trait impl bounds via `implements_by_def_ids`. Method resolution looks up methods directly in trait declaration for `Dyn` receivers. Codegen emits fat pointer `{ptr,ptr}`. 12 files updated for new TyKind variant. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -62,13 +63,14 @@
 | TD-FN-IMPL-SIG-VALIDATION | ~~typeck 不校验 impl sig 匹配 Args/Output~~ **FIXED Stage 78+86** — param check (Stage 78: substitute trait generic args) + return check (Stage 86: resolve Self::Output projection via resolve_projection_in_ty_pub + fix find_assoc_type_def_id to match by name AND owner trait) | ~~typeck 缺少 impl signature 检查~~ **DONE** | ~~typeck validate impl fn sig vs trait Args/Output~~ **DONE** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-GENERIC-TRAIT-METHOD-MANGLING | 泛型 trait method 调用 mangled 名错误 | `From::<i32>::from(42)` 产生 `fn_0_i32` (未定义) | 修复 generic trait method mangling | trait resolver |
 | TD-FN-ASSOC-TYPE-CALL | `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法不支持 | parser/typeck 未支持 explicit trait dispatch | parser/typeck 支持 explicit trait dispatch syntax | typeck |
-| TD-DYN-TRAIT-COMPLETION | dyn Trait typeck 不完整 | typeck 无 dyn Trait 代码 | typeck trait dispatch | trait resolver |
+| TD-DYN-TRAIT-COMPLETION | ~~dyn Trait typeck 不完整~~ **FIXED Stage 60+87** — Stage 60 partial (TraitObject → Ref(Error) placeholder) replaced by Stage 87 proper `TyKind::Dyn(DefId)`. typeck carries trait DefId + verifies trait impl bounds via `implements_by_def_ids`. Method resolution looks up methods in trait declaration for `Dyn` receivers. | ~~typeck 无 dyn Trait 代码~~ **DONE** | ~~typeck trait dispatch~~ **DONE** (typeck foundation; runtime vtable dispatch deferred to TD-DYN-TRAIT-RUNTIME-DISPATCH) | trait resolver ✅ |
 | TD-IMPL-TRAIT-MONO-RESOLUTION | ~~impl Trait arg 方法调用在函数体内不解析~~ **FIXED Stage 69** — TraitMethodResolutionMap + re_resolve_trait_method_calls | monomorphization 不在类型替换后重新解析 trait 方法 | ~~mono pass 重新解析 trait 方法~~ **DONE: pre-computed map in driver, re-resolve in codegen** | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-IMPL-TRAIT-CALLSITE-CHECK | typeck 不校验 call site 实参是否满足 impl Trait bound | typeck 缺少 call site bound 检查 + 无 trait_resolver 访问 | typeck validate trait bounds at call site (需 trait_resolver 访问，v0.8+ 架构变更) | TD-IMPL-TRAIT ✅ (Stage 63) |
 | TD-CFG-MACROS | cfg!/cfg_attr! 未实现 | 需配置系统 | 编译期 cfg 评估 | build system |
 | TD-ASM-MACRO | asm! 未实现 | 需 LLVM inline asm | LLVM asm 支持 | LLVM backend |
 | TD-FORMAT-ARGS-WRITE | format_args!/write! 未实现 | 需 Display trait | Display trait 依赖 | Display trait |
 | TD-ENV-MACROS | env!/option_env!/include_str! 未实现 | 需编译期 I/O | 编译期文件读取 | build system |
+| TD-DYN-TRAIT-RUNTIME-DISPATCH | dyn Trait 运行时 vtable dispatch 不完整 — codegen fat pointer arg 传递 + vtable indirect call 未正确连接 (Stage 87 完成 typeck 基础 + fat pointer emit，但 call site 仍传 thin pointer，vtable lookup 走 `@null`) | codegen/terminator.rs + codegen/dyn_trait_emit.rs 的 fat pointer arg 传递路径未连接 | 1) codegen `Dyn` 类型 alloca 为 `{ptr,ptr}` (已部分完成)；2) call site 传 fat pointer 而非 thin pointer；3) vtable indirect call 通过 fat pointer 的 vtable 字段索引方法 | TD-DYN-TRAIT-COMPLETION ✅ (Stage 87) — 发现于 Stage 87 测试编写 |
 
 ### P3 — 架构重构（非功能缺失）
 

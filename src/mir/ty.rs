@@ -136,6 +136,23 @@ pub enum TyKind {
     Param(ParamTy),
     /// Inference variable (placeholder during typeck)
     Infer(InferVar),
+    /// Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` trait object.
+    ///
+    /// Represents a trait object — a fat pointer (data_ptr + vtable_ptr).
+    /// The `DefId` is the trait's DefId (e.g., `dyn Greeter` → Dyn(Greeter_def_id)).
+    ///
+    /// Codegen lowers this to a fat pointer `{ ptr, ptr }` (data + vtable).
+    /// Typeck allows coercing `&ConcreteType` → `&dyn Trait` when the
+    /// concrete type implements the trait (checked via TraitResolver).
+    ///
+    /// Per Rust: `TyKind::Dyn(DynTy)` in rustc. We simplify to just the
+    /// trait DefId (no lifetime erasure yet — v0.9+).
+    /// Per §1.0 原則 6 (通解 > 特解): one Dyn variant for all trait objects
+    /// (Display, Clone, user-defined traits).
+    /// Per §1.0 原則 4 (显式 > 隐式): the trait DefId is explicit, not
+    /// hidden behind `Ref(Error)` placeholder (was: Stage 60 partial fix
+    /// lowered dyn Trait to Ref(Error), losing trait info).
+    Dyn(DefId),
     /// Type error (after failed unification)
     Error,
 }
@@ -326,9 +343,11 @@ pub fn is_mir_ty_copy_conservative(ty: &Ty) -> bool {
         // positives (spurious move errors) are worse than false negatives
         // (missing move errors that will be caught post-mono).
         Infer(_) | Error | Foreign | Param(_) => true,
-        // Adt, Str, Slice, Closure: conservatively non-Copy.
+        // Adt, Str, Slice, Closure, Dyn: conservatively non-Copy.
         // Use `ty_is_copy_with_resolver` for precise Adt Copy detection.
-        Adt(_, _) | Projection(_, _) | Str | Slice(_) | Closure(_, _) => false,
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer — NOT Copy (per Rust).
+        Adt(_, _) | Projection(_, _) | Str | Slice(_) | Closure(_, _) | Dyn(_) => false,
     }
 }
 
@@ -445,6 +464,10 @@ pub fn type_kind_to_string(kind: &TyKind) -> String {
         TyKind::Foreign => "<foreign type>".to_string(),
         TyKind::Param(_) => "<type param>".to_string(),
         TyKind::Infer(infer_var) => infer_var_to_string(infer_var).to_string(),
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` — placeholder
+        // name (full trait name resolution requires resolver + interner; use
+        // type_kind_to_string_with_resolver for named output).
+        TyKind::Dyn(_) => "dyn <trait>".to_string(),
         TyKind::Error => "<type error>".to_string(),
     }
 }

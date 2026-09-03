@@ -362,6 +362,13 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         // opaque pointer (function reference). Was: fell through to I32, causing
         // fn pointer params to be treated as i32 — function refs passed as `0`.
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer `{ ptr, ptr }` (data + vtable). Emit as Struct of two ptrs.
+        // Per Rust: `dyn Trait` is unsized, always behind a reference — the
+        // reference itself is the fat pointer. We model this directly as a
+        // 2-field struct.
+        // Per §1.0 原則 6 (通解 > 特解): one Dyn variant for all trait objects.
+        TyKind::Dyn(_) => EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr]),
         // Stage 18.443 (v0.5+ Phase 5 Step 3 retry): Unresolved type kinds —
         // emit warning + return I32. After Step 4 (Stage 18.442) migrated
         // function_sigs.rs to layouts variant, Adt types no longer reach here
@@ -476,6 +483,12 @@ pub fn mir_type_to_emit_type_checked(
             Ok(EmitType::Struct(fields))
         }
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => Ok(EmitType::OpaquePtr),
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer `{ ptr, ptr }` (data + vtable).
+        TyKind::Dyn(_) => Ok(EmitType::Struct(vec![
+            EmitType::OpaquePtr,
+            EmitType::OpaquePtr,
+        ])),
         // Stage 18.438: Unresolved types — return Err instead of EmitType::I32.
         // These should have been caught by param_check (Stage 18.348) before
         // reaching codegen. If they reach here, it's a bug in the pipeline.

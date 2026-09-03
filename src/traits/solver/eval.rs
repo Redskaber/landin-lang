@@ -507,6 +507,10 @@ pub fn self_type_name_for_obligation(ty: &Ty, resolver: &TraitResolver) -> Optio
         | TyKind::FnPtr(_)
         | TyKind::Projection(_, _)
         | TyKind::Foreign
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` — defer
+        // (the trait obligation on a trait object is the object's trait
+        // itself, which requires vtable-aware evaluation; deferred to v0.9+).
+        | TyKind::Dyn(_)
         | TyKind::Never => None,
     }
 }

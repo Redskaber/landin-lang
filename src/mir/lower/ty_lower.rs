@@ -735,39 +735,44 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                 span,
             )
         }
-        // Stage 60 (v0.7 — TD-DYN-TRAIT-COMPLETION): Lower TraitObject to
-        // a Ref to an Error type (placeholder). This allows the type to
-        // pass through typeck without breaking — method resolution will
-        // handle trait method dispatch via HIR lookup.
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): Lower TraitObject to
+        // `TyKind::Dyn(trait_def_id)` — a proper fat pointer type.
         //
-        // The key insight: `dyn Trait` as a type annotation (e.g., `let d: dyn Foo = ...`)
-        // should be treated as a reference type. The actual trait method
-        // dispatch happens through resolve_trait_method which searches
-        // trait impls by type name.
+        // Stage 60 (v0.7) lowered to `Ref(Error)` placeholder — this lost
+        // the trait info, so typeck couldn't verify trait impl bounds.
+        // Stage 87 introduces `TyKind::Dyn(DefId)` to carry the trait DefId,
+        // enabling:
+        //   - typeck: check `Adt` implements the trait before coercion
+        //   - codegen: emit fat pointer `{ ptr, ptr }` + vtable
         //
-        // Per §12 (最优 > 最小): root-cause fix — lower TraitObject instead
-        // of returning Error (which breaks all dyn Trait code).
-        // Per §1.0 原則 6 (通解 > 特解): one placeholder type for all
-        // trait objects — method resolution handles the rest.
-        // Per §1.0 原則 9 (正确 > 妥协): this is a simplification — full
-        // dyn Trait type tracking requires TyKind::Dyn(DefId) (v0.8+).
+        // The trait DefId is extracted from `bounds[0]` (the first trait
+        // bound — Landin v0.8 doesn't support `dyn Trait + Send + Sync`
+        // multi-bound trait objects yet; deferred to v0.9+).
+        //
+        // Per Rust: `TyKind::Dyn(DynTy)` in rustc carries lifetime + bounds.
+        // We simplify to just the trait DefId (v0.8 — lifetime erasure + Send
+        // bounds deferred to v0.9+).
+        // Per §12 (最优 > 最小): root-cause fix — proper Dyn type, not
+        // placeholder Ref(Error).
+        // Per §1.0 原則 4 (显式 > 隐式): the trait DefId is explicit in the
+        // type, enabling typeck to verify trait impl bounds.
+        // Per §1.0 原則 6 (通解 > 特解): one Dyn variant for all trait objects
+        // (Display, Clone, user-defined traits).
         HirTyKind::TraitObject { bounds, .. } => {
             if bounds.is_empty() {
                 return Ty::new(TyKind::Error, span);
             }
-            // Lower as a reference to Error — this allows the type to
-            // pass through typeck. Method resolution will use HIR
-            // to find the trait method (resolve_trait_method searches
-            // by receiver type name, not by MIR type kind).
-            let inner = Ty::new(TyKind::Error, span);
-            Ty::new(
-                TyKind::Ref(
-                    crate::mir::ty::Region::Erased,
-                    crate::mir::ty::Mutability::Immutable,
-                    Box::new(inner),
-                ),
-                span,
-            )
+            // Extract the trait DefId from the first trait bound.
+            // Stage 87 v0.8: Only single-trait-bounds supported.
+            for bound in bounds {
+                if let HirTypeBound::Trait(tb) = bound {
+                    if let crate::hir::Res::Def(trait_def_id, _) = tb.path.res {
+                        return Ty::new(TyKind::Dyn(trait_def_id), span);
+                    }
+                }
+            }
+            // Trait bound not resolved — fall back to Error.
+            Ty::new(TyKind::Error, span)
         }
         // Stage 18.62: Unsupported HirTyKind — return Error.
         _ => Ty::new(TyKind::Error, span),

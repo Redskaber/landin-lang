@@ -73,7 +73,10 @@ pub fn substitute(ty: &Ty, substs: &[Ty]) -> Ty {
         | TyKind::Str
         | TyKind::Never
         | TyKind::Foreign
-        | TyKind::Error => ty.clone(),
+        | TyKind::Error
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a leaf
+        // type — the trait DefId is not a generic parameter to substitute.
+        | TyKind::Dyn(_) => ty.clone(),
 
         // === Inference variables: not substitutable ===
         // (Infer vars are resolved by typeck, not by substitution)

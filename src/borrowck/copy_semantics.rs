@@ -49,6 +49,11 @@ pub(crate) fn is_copy_recursive(ty: &crate::mir::ty::Ty) -> bool {
         // errors when the type behind the Param isn't yet known.
         Param(_) => true,
         Str | Slice(_) | Closure(_, _) => false,
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer (data + vtable) — NOT Copy (has ownership semantics).
+        // Per Rust: `dyn Trait` is not Copy (would need to copy the vtable
+        // pointer too, but trait objects are unsized).
+        Dyn(_) => false,
     }
 }
 
@@ -136,6 +141,9 @@ pub fn ty_is_copy_with_resolver(
         // Will be resolved to concrete type during typeck.
         Projection(_, _) => false,
         Str | Slice(_) => false,
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer — NOT Copy (per Rust).
+        Dyn(_) => false,
     }
 }
 

@@ -410,6 +410,10 @@ pub fn compute_type_size_with_fallback(ty: &Ty, hir: Option<&HirCrate>, fallback
         TyKind::Slice(_) => 0,
         // Foreign types: opaque, fallback.
         TyKind::Foreign => fallback,
+        // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): `dyn Trait` is a fat
+        // pointer `{ ptr, ptr }` — size = 2 * pointer size = 16 bytes on
+        // 64-bit targets.
+        TyKind::Dyn(_) => 16,
         // Closure = { captures }; MVP approximation: pointer-sized
         // (the closure struct's actual size needs capture analysis, v0.2+).
         TyKind::Closure(_, _) => fallback,

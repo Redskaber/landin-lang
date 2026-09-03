@@ -889,6 +889,50 @@ impl UnificationTable {
             // Foreign with Foreign → OK
             (TyKind::Foreign, TyKind::Foreign) => Ok(()),
 
+            // Stage 87 (v0.8 — TD-DYN-TRAIT-COMPLETION): Unsized coercion
+            // `ConcreteType → dyn Trait` (and `&ConcreteType → &dyn Trait`).
+            //
+            // When unifying an Adt (concrete type) with a Dyn (trait object),
+            // check if the Adt implements the trait via TraitResolver. If yes,
+            // the coercion is valid (per Rust's unsized coercion rules).
+            //
+            // This handles BOTH directions:
+            //   - `Adt → Dyn` (e.g., `let g: dyn Greeter = English;` — though
+            //     this requires unsized locals, deferred to v0.9+)
+            //   - `Ref(Adt) → Ref(Dyn)` (e.g., `let g: &dyn Greeter = &e;` —
+            //     the common Rust pattern, supported in v0.8)
+            //
+            // The Ref↔Ref recursion above (line 686) calls unify_resolved on
+            // inner types, so `Ref(Adt)` vs `Ref(Dyn)` reaches this arm with
+            // `Adt` and `Dyn` as the inner types.
+            //
+            // Per Rust: unsized coercion `T → dyn Trait` requires `T: Trait`.
+            // Per §12 (最优 > 最小): root-cause fix — verify trait impl bound
+            // at the unification site, not patch later.
+            // Per §1.0 原則 4 (报错 > 静默): if Adt doesn't implement the
+            // trait, error explicitly (was: silently accepted via Error
+            // wildcard in Stage 60's Ref(Error) placeholder).
+            // Per §1.0 原則 6 (通解 > 特解): one coercion rule for all
+            // Adt → Dyn pairs (any concrete type, any trait).
+            (TyKind::Adt(adt_def_id, _), TyKind::Dyn(trait_def_id))
+            | (TyKind::Dyn(trait_def_id), TyKind::Adt(adt_def_id, _)) => {
+                if let Some(resolver) = self.resolver() {
+                    // Check if the Adt implements the trait via
+                    // `implements_by_def_ids` (existing method on
+                    // TraitResolver).
+                    if resolver.implements_by_def_ids(*trait_def_id, *adt_def_id) {
+                        Ok(())
+                    } else {
+                        Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)))
+                    }
+                } else {
+                    // No resolver — defer (accept the coercion, let later
+                    // stages verify). Per §1.0 原則 9: graceful degradation
+                    // when resolver isn't available (test contexts).
+                    Ok(())
+                }
+            }
+
             // Mismatch
             _ => Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span))),
         }

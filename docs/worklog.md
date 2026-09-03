@@ -42876,3 +42876,127 @@ Stage Summary:
 - TD-DYN-TRAIT-COMPLETION: dyn Trait typeck 完整化
 - TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
 - TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
+
+---
+Task ID: stage87
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 87 (v0.8) — TD-DYN-TRAIT-COMPLETION typeck foundation FIXED.
+Introduced `TyKind::Dyn(DefId)` to properly represent `dyn Trait` (was:
+Stage 60 placeholder `Ref(Error)` which lost trait info). 12 files updated
+for new TyKind variant. typeck now carries trait DefId + verifies trait
+impl bounds via `implements_by_def_ids`. Method resolution looks up methods
+directly in trait declaration for `Dyn` receivers. Codegen emits fat
+pointer `{ptr,ptr}`. v0.627.0. 5544 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (12 files updated, new TyKind variant, cross-module typeck+codegen)
+- 对齐: 已查 Stage 86 worklog, tech-debt-register.md (TD-DYN-TRAIT-COMPLETION
+  列为 P3, Stage 60 partial fix), ty_lower.rs (Stage 60 TraitObject lower),
+  typeck/unify.rs (existing coercion arms), method_resolution.rs (existing
+  receiver type handling), codegen/emitter/mod.rs (EmitType mapping)
+- 阻断: v0.626.0 全绿 (5540 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: dyn Trait typeck 不完整 — typeck 无 dyn Trait 代码路径。
+- WHY (根因): Stage 60 把 TraitObject 降级为 Ref(Error) 占位符 — 这让 type
+  通过 typeck，但丢失了 trait DefId。typeck 无法验证 trait impl bound
+  (Error 是通配符，与任何类型都匹配)。
+- WHO: 影响所有用 `dyn Trait` 表达 trait object 的代码。
+- WHEN: Stage 60 partial fix，剩余 deferred to v0.8+。
+- WHERE: ty_lower.rs (TraitObject lower), typeck/unify.rs (coercion),
+  method_resolution.rs (receiver type), codegen/emitter (EmitType),
+  borrowck/copy_semantics.rs (Copy), mir/drop_elaboration.rs (drop),
+  mir/lower/adt_layout.rs (size), mir/monomorphize (item + mangle),
+  mir/substitute.rs (subst), mir/ty.rs (Copy + type_to_string),
+  traits/solver/eval.rs (obligation eval).
+- HOW:
+  1. 新增 `TyKind::Dyn(DefId)` 到 MIR TyKind enum。
+  2. ty_lower.rs: TraitObject → Dyn(trait_def_id) (从 bounds[0].path.res
+     提取)。
+  3. typeck/unify.rs: (Adt, Dyn) arm 检查 implements_by_def_ids。
+  4. method_resolution.rs: Dyn(trait_def_id) receiver 直接在 trait 声明
+     中查找方法。
+  5. codegen/emitter/mod.rs: Dyn → fat pointer {ptr,ptr}。
+  6. borrowck/copy_semantics.rs: Dyn NOT Copy (per Rust)。
+  7. mir/drop_elaboration.rs: Dyn no drop (v0.9+ for vtable drop)。
+  8. mir/lower/adt_layout.rs: Dyn size = 16 bytes (2 pointers)。
+  9. mir/monomorphize/item.rs: Dyn not generic (no mono)。
+  10. mir/monomorphize/mangle.rs: Dyn mangle as "dyn_<def_id>"。
+  11. mir/substitute.rs: Dyn leaf type (no subst)。
+  12. mir/ty.rs: Dyn NOT Copy; type_to_string returns "dyn <trait>"。
+  13. traits/solver/eval.rs: Dyn defers obligation。
+- HOW MUCH: ~150 lines code change across 12 files + 4 tests + 7 stage16
+  tests updated (regression tests that asserted "compiles silently" with
+  the old invalid `let d: dyn Foo = &S;` pattern — now use valid
+  `let d: &dyn Foo = &S;` pattern) + worklog + tech-debt-register +
+  README + RELEASE_NOTES + package.
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — typeck 现在验证 trait impl bound (was: 静默接受任何
+  Adt→Dyn coercion via Error wildcard → runtime UB when vtable points to
+  wrong impl or null).
+- Zero-Cost Abstraction ✓ — Dyn 类型在编译期解析为 fat pointer；运行时
+  仅 vtable indirect call (零成本抽象的 Rust 设计).
+- Explicit > Implicit ✓ — trait DefId 显式存储在 TyKind::Dyn 中 (was:
+  隐式丢失为 Error).
+- Make Invalid States Unrepresentable ✓ — trait bound 不满足的 coercion
+  在 typeck 阶段拒绝 (was: 静默接受).
+
+决策点:
+1. 选择"新增 TyKind::Dyn(DefId)"而非"复用 Ref(Error) 占位符"
+   - 引用 §12 (最优 > 最小): 根因修复 — proper type representation，
+     而非扩展占位符 hack。
+   - 引用 §1.0 原則 4 (显式 > 隐式): trait DefId 显式存储，typeck 可验证。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 Dyn variant 适用于所有 trait
+     objects (Display, Clone, 用户自定义).
+   - 替代方案 (拒绝): 在 typeck 中 "look through" Ref(Error) 来查 trait
+     bound。这是治症不治根 — 仍然丢失 trait info，其他 codegen 路径
+     无法利用。
+
+2. 选择"stage16 测试更新为 valid &dyn pattern"而非"保留 invalid pattern"
+   - 引用 §1.0 原則 9 (正确 > 妥协): `let d: dyn Foo = &S;` 在 Rust 中
+     非法 (unsized local)，stage16 测试原本依赖 broken behavior (silent
+     accept via Error wildcard). 更新为 valid pattern 是正确的。
+   - 引用 §20 (迭代审计): 修复暴露了 7 个 stage16 测试依赖 broken
+     behavior — 一次性更新所有，避免"修一处其他处仍 broken"。
+
+3. 选择"defer runtime vtable dispatch 到 TD-DYN-TRAIT-RUNTIME-DISPATCH"
+   - 引用 §13.4 (重构判据): runtime vtable dispatch 涉及 codegen fat
+     pointer arg 传递 + vtable indirect call — L3 scope, 需要 ~200+ 行
+     codegen 改动。Stage 87 已经完成了 typeck foundation (最难的部分)，
+     runtime dispatch 可以独立 stage 推进。
+   - 引用 §1.0 原則 9 (正确 > 妥协): 不为了"完整 dyn Trait"而压缩 runtime
+     dispatch — typeck foundation 已经是有意义的进展。
+
+裁剪点:
+- L3 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (新 TyKind variant + typeck coercion，无 soundness
+  影响 — borrowck + drop + copy 都保守处理 Dyn 为 non-Copy/no-drop)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo check --all-targets --features llvm-backend ✓
+- cargo test --release --features llvm-backend ✓ (5544 tests, 0 failures, 9 ignored)
+- Verified: `let g: &dyn Greeter = &English;` compiles (Adt→Dyn coercion
+  accepted via implements_by_def_ids) ✓
+- Verified: `let g: &dyn Greeter = &Spanish;` (Spanish not impl Greeter)
+  → typeck errors ✓
+- Verified: 7 stage16 dyn_trait tests updated to valid `&dyn Foo` pattern ✓
+
+Stage Summary:
+- TD-DYN-TRAIT-COMPLETION typeck foundation FIXED (12 files updated)
+- New TD: TD-DYN-TRAIT-RUNTIME-DISPATCH (P3, v0.9+) — codegen fat pointer
+  arg passing + vtable indirect call
+- 4 new tests (1 positive + 3 negative) in stage87
+- 7 stage16 tests updated (regression tests for old broken pattern)
+- 5544 tests (898 lib + 4646 integration), 0 failures, 9 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — proper Dyn type, foundation for
+  future runtime dispatch)
+
+下一步:
+- TD-DYN-TRAIT-RUNTIME-DISPATCH: codegen fat pointer arg + vtable indirect call
+- TD-FORMAT-ARGS-WRITE: format_args!/write! 宏 (依赖 Display trait)
+- TD-GENERIC-TRAIT-METHOD-MANGLING: 泛型 trait method mangled 名
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
