@@ -1159,3 +1159,8 @@ mod stage96_ord_trait_tests;
 // TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH (P2, v0.10+) identified. ===
 #[path = "v0/stage97/plan/partial_ord_trait_tests.rs"]
 mod stage97_partial_ord_trait_tests;
+
+// === Stage 99 (v0.10): TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因调查.
+// 复现 prelude impl method body 触发 stack smashing, 定位根因。 ===
+#[path = "v0/stage99/plan/prelude_impl_body_repro_tests.rs"]
+mod stage99_prelude_impl_body_repro_tests;

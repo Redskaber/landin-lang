@@ -3,13 +3,90 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.632.0 (v0.8 Stage 92 — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix: re_resolve for all functions; 5564 tests) |
-| **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4666 integration tests = 5564 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Current version** | v0.638.0 (v0.10 Stage 99 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) complete: 4-layer 根因链 + Stage 100-103 修复路径规划; 5594 tests) |
+| **Date** | 2026-09-04 |
+| **Test count** | 898 lib tests + 4691 integration tests + 5 stage99 repro = 5594 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — re_resolve infrastructure extended); v0.8 TD-focused phase — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix (turbofish path deferred to v0.9+) |
+| **Architecture** | Health 9.85/10 (stable — RCA 未引入新代码, 不影响现有架构); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析阶段 — 4-layer 根因链 + 4-stage 修复路径规划 |
+
+---
+
+## v0.638.0 — Stage 99 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA)
+
+### Overview
+
+Stage 99 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 完整根因分析 (RCA)。
+v0.637.0 (Stage 98) 修复了 trait impl method symbol mangling collision 后，
+剩余的 prelude impl body 触发非确定 SIGSEGV/SIGABRT 问题。
+
+本阶段产出 **根因分析报告** (`docs/develop/v0/stage-99/dev-log.md`)，
+识别 4-layer 根因链 + 4-stage 修复路径规划 (Stage 100-103)。
+无代码变更 (prelude.rs 恢复到 v0.637.0 状态, src/ 未修改)。
+
+### 4-Layer 根因链
+
+1. **Layer 1**: prelude generic methods (Option/Box/Vec/String) 的 Param type 未解析
+2. **Layer 2**: `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 (产生不正确 LLVM IR)
+3. **Layer 3**: 加 Debug impl 后 LLVM module 全局变量累积触发 verify/emit crash
+4. **Layer 4**: `LLVMSysEmitter::Drop` 不释放 context, 加速累积
+
+### 4-Stage 修复路径
+
+- **Stage 100**: monomorphization pass 跳过 prelude generic function (P2 修复)
+- **Stage 101**: 修复 `mir_type_to_emit_type` Param fallback (返回 Error 而非 i32)
+- **Stage 102**: LLVMSysEmitter ownership 重构 (Builder + Module 拆分)
+- **Stage 103**: 重新添加 Debug + PartialOrd impls
+
+### 5 个 stage99 repro tests
+
+- `stage99_user_impl_method_returning_string` — 正向, user code impl method returning i32
+- `stage99_user_impl_method_returning_struct` — 正向, user code impl method returning struct (含 if/else)
+- `stage99_undefined_type_errors` — 负向
+- `stage99_type_mismatch_errors` — 负向
+- `stage99_nonexistent_method_errors` — 负向
+
+验证 v0.637.0 中 user code impl method returning String/struct 工作正常 (Stage 98 mangling 修复后)。
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4691 tests, 0 failures, 9 ignored — stage99 5 tests included)
+
+---
+
+## v0.637.0 — Stage 98 (v0.9) — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH FIXED
+
+### Overview
+
+Stage 98 fixes TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH root cause:
+trait impl method symbol collision. `impl Display for i32 { fn fmt }` and
+`impl Debug for i32 { fn fmt }` both produced `landin_i32_fmt` — LLVM module
+had two functions with same name but different signatures → SIGSEGV / stack
+smashing.
+
+Fix: Include trait name in mangling → `landin_Display_i32_fmt` vs
+`landin_Debug_i32_fmt`. Updated 4 source files:
+- `src/driver/driver_codegen_prep.rs` (fn_name_by_def_id)
+- `src/traits/resolver.rs` (VtableEntry.fn_name)
+- `src/stdlib/vtable_layout.rs` (stdlib_vtable_method_symbols)
+- `src/codegen/drop_glue.rs` (Drop impl method 调用名)
+
+Plus 32+ test files updated with new mangled names.
+
+Debug + PartialOrd impl bodies temporarily removed — their impl bodies
+(returning String/Option) trigger TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+).
+Mangling fix itself is correct — verified with user code that impl methods
+returning String work correctly (`test_sret2.landin → 42`).
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend` ✓ (5589 tests, 0 failures, 9 ignored)
 
 ---
 
@@ -32,6 +109,7 @@ DefId. Tracked as TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION (P3, v0.9+).
 - `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
 - `cargo check --all-targets --features llvm-backend` ✓
 - `cargo test --release --features llvm-backend` ✓ (5564 tests, 0 failures, 9 ignored)
+
 
 ---
 

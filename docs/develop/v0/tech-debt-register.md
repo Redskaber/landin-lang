@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.632.0 (Stage 92)
+# Landin 编译器技术债完整清单 — v0.637.0 (Stage 98)
 
-> **更新日期**: 2026-09-03
-> **版本**: v0.632.0
-> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-GENERIC-TRAIT-METHOD-MANGLING 部分修复）
+> **更新日期**: 2026-09-04
+> **版本**: v0.637.0
+> **状态**: v0.9 prelude trait coverage 阶段 (Wave 5)。Stage 94-98 完成: Default/PartialEq/Eq/Ord 添加 + trait impl symbol mangling 修复。下一阻断: TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+).
 
 ---
 
@@ -37,6 +37,10 @@
 | TD-DYN-TRAIT-DATA-PTR-EXTRACT | 90 | vtable indirect call extracts data pointer from fat pointer field 0 and passes it to the impl method (was: passed fat pointer → method read garbage → returned 0). Fix in `codegen/llvm/aggregate.rs` + `codegen/text/aggregate.rs`: GEP field 0 + load data ptr before indirect call. **First successful end-to-end dyn Trait runtime test** — `use_greeter(&e)` returns 42. |
 | TD-FORMAT-ARGS-WRITE | 91 | `format_args!` and `write!` macros now compile and run (was: linker error — `__landin_format_args` and `__landin_write` had no codegen support). Fix: `format_args!` routes to `__landin_format_v2` (same as `format!`); `write!` expands to `dst.write_str(format_args!(...))`; `write_str` added to hygiene skip list. |
 | TD-GENERIC-TRAIT-METHOD-MANGLING | 92 (partial) | `re_resolve_trait_method_calls` now runs for ALL functions (not just generic). Added `lookup_by_trait_method` + `lookup_by_method_name` fallbacks. Full turbofish path resolution still needs MIR lower fix (TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION, v0.9+). |
+| TD-PRELUDE-TRAIT-COVERAGE (Default) | 94 | Default trait added to prelude + 4 primitive impls (i32/i64/bool/usize) |
+| TD-PRELUDE-TRAIT-COVERAGE (PartialEq+Eq) | 95 | PartialEq<Rhs> + Eq traits added; Eq declared WITHOUT supertrait (avoids object safety interference) |
+| TD-PRELUDE-TRAIT-COVERAGE (Ord) | 96 | Ord marker trait added + 4 primitive impls |
+| TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH | 97+98 | Stage 97 root cause analysis; Stage 98 FIXED — trait impl method symbol collision (`landin_i32_fmt` for both Display and Debug). Fix: mangling includes trait name → `landin_Display_i32_fmt` vs `landin_Debug_i32_fmt`. 4 source files + 32+ test files updated. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -50,11 +54,11 @@
 
 ## 二、当前未修复 TD（按优先级排序）
 
-### P2 — 架构阻断，需 v0.7+ 修复
+### P2 — 架构阻断，需 v0.10+ 修复
 
 | TD ID | 描述 | 根因 | 修复方案 | 依赖 |
 |-------|------|------|---------|------|
-| *(无剩余 P2 TD — 所有 P2 TD 已在 Wave 1 中修复)* | | | | |
+| TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH | prelude impl method bodies 在 LLVM integration tests 中触发非确定 SIGSEGV/SIGABRT (signal 11/6)。User code 中相同结构 impl method returning String/struct 工作正常 (`test_sret2.landin → 42`)。导致无法添加 Debug/PartialOrd impls。 | **4-layer 根因链**: (1) prelude generic methods (Option/Box/Vec/String) 的 Param type 未解析; (2) `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 (产生不正确 LLVM IR); (3) 加 Debug impl 后 LLVM module 全局变量累积, 触发 verify/emit 阶段 crash; (4) `LLVMSysEmitter::Drop` 不释放 context, 加速累积。详见 `docs/develop/v0/stage-99/dev-log.md`。 | **4-stage 渐进重构**: Stage 100 monomorphization 跳过 prelude generic function; Stage 101 修复 Param fallback (返回 Error 而非 i32); Stage 102 LLVMSysEmitter ownership 重构 (Builder + Module 拆分); Stage 103 重新添加 Debug + PartialOrd impls | TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH ✅ (Stage 98) |
 
 ### P3 — v0.7+ trait 系统阶段
 

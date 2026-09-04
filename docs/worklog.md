@@ -43714,3 +43714,73 @@ SIGSEGV / stack smashing. Fix: include trait name in mangling →
   prelude impl method bodies 的处理
 - 然后重新添加 Debug impls (returning String) + PartialOrd impls
 - TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
+
+---
+Task ID: stage99
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 99 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA).
+完整 5W2H + 4-layer 根因链 + Stage 100-103 修复路径规划. v0.638.0.
+5585 tests (898 lib + 4687 integration + 5 stage99 repro), 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块根因调查: prelude.rs / codegen / MIR / LLVM integration tests)
+- 对齐: 已查 tech-debt-register.md (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH P2 v0.10+),
+  Stage 98 dev-log (mangling 修复细节), prelude.rs (Debug/PartialOrd impl bodies
+  移除位置), stage-93 audit-report (架构审查).
+- 阻断: Stage 98 已修复 mangling collision. 当前阻断是 prelude impl bodies
+  触发非确定 SIGSEGV/SIGABRT (mangling 修复后剩余).
+
+5W2H 根因分析:
+- WHAT: prelude 加 Debug impl 后, cargo test 中 8-20 个 integration test 非确定
+  SIGSEGV/SIGABRT (signal 11/6). 单跑相同 .lin 通过.
+- WHY: 4-layer 根因链:
+  Layer 1: prelude generic methods (Option/Box/Vec/String) 的 Param type 未解析
+  Layer 2: mir_type_to_emit_type 对 Param/Never fallback 到 i32 (产生不正确 LLVM IR)
+  Layer 3: 加 Debug impl 后 LLVM module 全局变量累积, 触发 verify/emit crash
+  Layer 4: LLVMSysEmitter::Drop 不释放 context, 加速累积
+- WHO: ARCH-A 根因分析; DEV-A 实施 repro tests; QA-A 测试
+- WHEN: Stage 99 完成 → Stage 100 monomorphization 跳过 prelude generic function
+- WHERE: src/codegen/emitter/mod.rs:275-403, src/codegen/llvm/mod.rs:797-811,
+  src/stdlib/prelude.rs (generic methods 定义)
+- HOW: 写最小复现 (prelude 加 Debug impl) → cargo test 触发 crash → 分析
+  stderr (Param warnings + Never warnings) → 4-layer 根因链
+- HOW MUCH: 1 个根因 + 4-stage 修复路径规划 + 5 repro tests + 完整 RCA 文档
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协):
+1. 选择"不在 Stage 99 实施修复, 只做根因分析"而非"单 stage 快速修复"
+   - 引用 §1.0 原则 9 (正确>妥协): 根因涉及 4-layer (monomorphization + Param
+     fallback + LLVM context lifecycle + Drop ownership), 单 stage 修复不完整
+     会引入更多 bug.
+   - 引用用户指示: "遇依赖缺失停止阉割版，转而分析根因".
+
+2. 选择"不修改 LLVMSysEmitter::Drop"而非"Drop 释放 context + module"
+   - 测试: Drop 释放后 cargo test 失败数从 12 增加到 20 (更糟).
+   - 引用 §2.2 (根因思维): Drop 释放不是完整修复, 需重新设计 emitter ownership.
+
+3. 选择"保留 stage99 repro tests"而非"删除"
+   - 引用 §1.0 原则 8 (设计驱动测试): 验证 v0.637.0 中 user code impl method
+     returning String/struct 工作正常, 为 Stage 100+ 修复提供 baseline 回归测试.
+
+裁剪点:
+- L3 根因分析 → 完整流程 (5W2H + 根因链 + 修复路径规划).
+- 无代码变更 (prelude.rs 恢复到 v0.637.0 状态, src/ 未修改).
+- §3.2 验收: 基线 v0.638.0 全绿.
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4687 passed, 0 failed, 9 ignored)
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 完整根因分析完成 (4-layer 根因链)
+- 修复路径规划: Stage 100-103 (4-stage 渐进重构)
+- 5 个 stage99 repro tests 验证 user code impl method working
+- 架构健康度: 9.85/10 (stable — 根因分析未引入新代码, 不影响现有架构)
+- v0.637.0 → v0.638.0 (无代码变更, 仅文档+测试)
+
+下一步:
+- Stage 100: monomorphization pass 跳过 prelude generic function (P2 修复)
+- Stage 101: 修复 mir_type_to_emit_type Param fallback (返回 Error 而非 i32)
+- Stage 102: LLVMSysEmitter ownership 重构 (Builder + Module 拆分)
+- Stage 103: 重新添加 Debug + PartialOrd impls

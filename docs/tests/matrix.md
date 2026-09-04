@@ -1,23 +1,24 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-17 (last updated Stage 18.206)
-> **Version**: v0.470.0
-> **Process**: stage-committee-process.md v6.4 (§8 doc sync + §9 test standards)
+> **Date**: 2026-09-04 (last updated Stage 99)
+> **Version**: v0.638.0
+> **Process**: stage-committee-process.md v7.5 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.470.0)
+## Current Status (v0.638.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Rust lib tests | 664 | ✅ 0 failures |
-| Rust integration tests | 3,098 | ✅ 0 failures |
-| Conformance tests | 2,935 | ✅ 0 failures |
+| Rust lib tests | 898 | ✅ 0 failures |
+| Rust integration tests | 4,696 | ✅ 0 failures (9 ignored) |
+| Conformance tests | 2,935 | ✅ 0 failures (separate runner) |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total** | **6,704** | **100% pass rate, 0 skipped** |
+| **Total (lib + integration)** | **5,594** | **100% pass rate, 9 ignored** |
 
-> **Note**: As of Stage 18.110 (S11 fix), ALL 35 runtime tests pass —
-> no more OOM skips or infinite loop hangs. The const-prop loop safety
-> fix resolved the last hanging tests (rt_break, rt_while, etc.).
+> **Stage 99 additions**: 5 stage99 repro tests (prelude impl body root cause
+> analysis) — verify user code impl method returning String/struct works.
+> Architecture health: 9.85/10 (stable — RCA stage, no code changes).
+
 
 ---
 

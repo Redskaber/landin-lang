@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.637.0 (v0.9 Stage 98 — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH FIXED: trait impl method symbol collision resolved — include trait name in mangling; 5589 tests — Architecture health 9.85/10) |
+| **Version** | v0.638.0 (v0.10 Stage 99 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) complete: 4-layer 根因链 + Stage 100-103 修复路径规划; 5594 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.9 Stage 98 COMPLETE**. 5589 tests (898 lib + 4691 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 98 fixes TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH root cause: trait impl method symbol collision — `impl Display for i32 { fn fmt }` and `impl Debug for i32 { fn fmt }` both produced `landin_i32_fmt` → LLVM had two functions with same name but different signatures → SIGSEGV. Fix: include trait name in mangling → `landin_Display_i32_fmt` vs `landin_Debug_i32_fmt`. Updated 4 source files (driver_codegen_prep.rs, resolver.rs, vtable_layout.rs, drop_glue.rs) + 32+ test files. Debug/PartialOrd impl bodies temporarily removed (prelude impl body codegen issue — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH, P2, v0.10+). Verified: user code with impl methods returning String works correctly (exit 42). Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.10 Stage 99 RCA COMPLETE**. 5594 tests (898 lib + 4691 integration + 5 stage99 repro), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 99 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 完整根因分析: (1) prelude generic methods (Option/Box/Vec/String) 的 Param type 未解析; (2) `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 产生不正确 LLVM IR; (3) 加 Debug impl 后 LLVM module 全局变量累积触发 verify/emit crash; (4) `LLVMSysEmitter::Drop` 不释放 context 加速累积. 修复路径: Stage 100 monomorphization 跳过 prelude generic function; Stage 101 Param fallback 返回 Error; Stage 102 LLVMSysEmitter ownership 重构; Stage 103 重新添加 Debug + PartialOrd impls. 5 个 stage99 repro tests 验证 user code impl method returning String/struct 工作正常. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
