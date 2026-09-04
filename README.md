@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.641.0 (v0.10 Stage 102 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix: LLVMSysEmitter::Drop 释放 module + context; 3 次稳定性验证全绿; 5606 tests — Architecture health 9.85/10) |
+| **Version** | v0.642.0 (v0.11 Stage 103 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 partial fix: resolve_lit_ty_from_expected for RawPtr expected types; 5613 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.10 Stage 102 COMPLETE (Layer 4)**. 5606 tests (898 lib + 4708 integration + 7 stage102), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 102 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 修复: LLVMSysEmitter::Drop 添加 LLVMDisposeModule + LLVMContextDispose (在 builder 之后). 之前 Drop 只释放 builder, 不释放 module + context → LLVM 资源累积 → cargo test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 3 次稳定性验证全绿. 新发现 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — Layer 3 残留 (加 Debug impl 仍触发 14 失败). 剩余 Layer 2 (TD-MONO-INFER) + Layer 3 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION) 待 Stage 103+ 修复. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.11 Stage 103 COMPLETE (Layer 3 partial)**. 5613 tests (898 lib + 4715 integration + 7 stage103), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 103 完成 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 部分修复: resolve_lit_ty_from_expected for RawPtr expected types. `String { ptr: 0, ... }` 中 `0` 字面量无 suffix → Infer(IntVar) → codegen i32 (4 bytes) 而非 usize (8 bytes), String struct layout 错误 → SIGSEGV. 修复后 ptr field 类型正确解析为 usize. 保守策略: 只处理 RawPtr, 不处理 Int/Uint (避免破坏 typeck validation). 加 Debug impl 后 cargo test 14 失败 → 5 失败 (改善). 剩余 Param warnings from generic prelude methods (Vec::push<T>) — TD-MONO-INFER (P3, v0.11+) 跟踪. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

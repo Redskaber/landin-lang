@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.641.0 (Stage 102)
+# Landin 编译器技术债完整清单 — v0.642.0 (Stage 103)
 
 > **更新日期**: 2026-09-04
-> **版本**: v0.641.0
-> **状态**: v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1+2+4 完成, Layer 3 待 Stage 103+)。Stage 102 完成 LLVMSysEmitter::Drop 释放 module + context, 3 次稳定性验证全绿。新发现 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — Layer 3 残留, 加 Debug impl 仍触发 14 失败。
+> **版本**: v0.642.0
+> **状态**: v0.11 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1+2+3+4 部分完成)。Stage 103 完成 resolve_lit_ty_from_expected (Layer 3 部分修复 — ptr field Infer → usize)。剩余 Layer 2 (TD-MONO-INFER — 非 turbofish FnDef substs) + Layer 3 残留 (Param warnings from generic prelude methods)。
 
 ---
 
@@ -44,6 +44,7 @@
 | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 1) | 100 | Stage 99 RCA + Stage 100 Layer 1 fix — monomorphization 跳过未实例化的 prelude generic function bodies. Param warnings 1360→24 (-98%). CompileResult 添加 user_item_count; codegen_from_mir 接收 user_item_count + collected_mono_items; 跳过条件: DefId >= user_item_count AND MIR 含 Param AND no MonoItem::Fn 实例化. 4 src + 1 test file. |
 | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 2 partial) | 101 | Stage 101 Layer 2 部分修复 — codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复. mono_names 参数传递链建立 (5 src 文件, 20+ 调用点). turbofish path (From::<i32>::from(42)) 正确 mangle; 非 turbofish path (Box::new) fallback 到 generic def name (TD-MONO-INFER 跟踪). 5 src + 1 test file. |
 | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 4) | 102 | Stage 102 Layer 4 修复 — LLVMSysEmitter::Drop 释放 module + context. 之前 Drop 只释放 builder, 不释放 module + context → LLVM 资源累积 → cargo test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 3 次稳定性验证全绿. 1 src + 1 test file. |
+| TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (Layer 3 partial) | 103 | Stage 103 Layer 3 部分修复 — resolve_lit_ty_from_expected for RawPtr expected types. 之前 `String { ptr: 0, ... }` 中 `0` 字面量无 suffix → Infer(IntVar) → codegen i32 (4 bytes) 而非 usize (8 bytes), String struct layout 错误 → SIGSEGV. 修复后 ptr field 类型正确解析为 usize. 保守策略: 只处理 RawPtr, 不处理 Int/Uint (避免破坏 typeck validation). 1 src + 1 test file. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |

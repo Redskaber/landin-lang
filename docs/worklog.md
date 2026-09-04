@@ -43984,3 +43984,67 @@ Stage Summary:
 - Stage 103: 调查 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (Layer 3 残留)
 - Stage 104: 重新添加 Debug + PartialOrd impls (依赖 Stage 103)
 - TD-MONO-INFER (P3, v0.11+): type inference back-propagation for FnDef substs
+
+---
+Task ID: stage103
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 103 (v0.11) — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 partial fix.
+resolve_lit_ty_from_expected for RawPtr expected types. v0.642.0.
+5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: mir/lower/expr_operand + 影响 codegen)
+- 对齐: 已查 Stage 99-102 dev-log (4-layer 根因链 + Layer 4 已修复),
+  docs/lang-design/06-mir.md, docs/graph/mir/data-flow.md,
+  src/mir/lower/expr_operand.rs (lower_expr_to_operand + lit_to_const)
+- 阻断: v0.641.0 全绿 (5606 tests), TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION P2
+
+5W2H:
+- WHAT: lower_expr_to_operand HirExprKind::Lit arm 使用 expected_ty;
+  新增 resolve_lit_ty_from_expected helper (RawPtr → usize)
+- WHY: Layer 3 真正根因 — Stage 102 误判为 "LLVM module 全局累积", 实际是
+  typeck writeback 对 String::new() body 中的 struct literal
+  `String { ptr: 0, len: 0usize, cap: 0usize }` 不解析 field types.
+  0 字面量无 suffix → lit_to_const 返回 Infer(IntVar). lower_expr_to_operand
+  显式忽略 expected_ty (line 224: let _ = expected_ty). codegen 中 ptr field
+  用 i32 (4 bytes) 而非 usize (8 bytes), String struct layout 错误, 运行时
+  SIGSEGV (signal 11, exit 139). 100 次跑 1 次失败 (非确定, 因 LLVM 内存布局).
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 审查; QA-A 测试
+- WHEN: Stage 103 完成 → Stage 104 (TD-MONO-INFER 修复)
+- WHERE: src/mir/lower/expr_operand.rs:212-244 (lower_expr_to_operand Lit arm),
+  src/mir/lower/expr_operand.rs:2182-2216 (resolve_lit_ty_from_expected)
+- HOW: 1) HirExprKind::Lit arm post-process lit_to_const 结果; 2) 如果 ty 是
+  Infer 且 expected_ty 是 RawPtr, 解析为 usize; 3) 保守策略 — 只处理 RawPtr,
+  不处理 Int/Uint (避免破坏 typeck validation)
+- HOW MUCH: 1 src 文件 (~50 LOC) + 1 测试文件 (~80 LOC, 7 tests)
+
+决策点 (§12 最优>最小, §1.0 原则 4 报错>静默, §1.0 原则 9 正确>妥协):
+1. 选择"只在 expected_ty 是 RawPtr 时 override"而非"处理所有 Int/Uint"
+   - 引用 §1.0 原则 4 (报错>静默): typeck 需要 validate int/uint literal value
+   - 引用 §1.0 原则 9 (正确>妥协): 不破坏 typeck validation 路径
+   - Stage 103 实验: 处理 Int/Uint 导致 16 个 typeck neg test 失败
+
+2. 选择"post-process lit_to_const 结果"而非"修改 lit_to_const 签名"
+   - 引用 §12 (最优>最小): 最小根因修复
+   - lit_to_const 保持原签名 (通用), lower_expr_to_operand 是 expected_ty 处理位置
+
+裁剪点:
+- L3 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 部分修复完成
+- resolve_lit_ty_from_expected 修复 ptr field Infer → usize
+- 加 Debug impl 后 cargo test 14 失败 → 5 失败 (改善, 但 Param warnings 仍存在)
+- Param warnings 来自 generic prelude methods (Vec::push<T>) — TD-MONO-INFER 跟踪
+- 架构健康度: 9.85/10 (stable — Layer 1+2+3+4 部分修复, Layer 2/3 残留待 TD-MONO-INFER)
+
+下一步:
+- Stage 104: TD-MONO-INFER 修复 (type inference back-propagation for FnDef substs)
+- Stage 105: 重新添加 Debug + PartialOrd impls (依赖 Stage 104 完成)

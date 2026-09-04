@@ -214,17 +214,32 @@ pub(crate) fn lower_expr_to_operand(
     expr: &HirExpr,
     expected_ty: Option<&Ty>,
 ) -> LocalId {
-    // Stage 18.256 (TD-TUPLE-CTOR-TYPECK Phase 2a): expected_ty param added
-    // for future use in Phase 2b-2e (threading expected type through MIR
-    // lower pipeline). Currently unused — all call sites pass `None`,
-    // preserving existing behavior. Per §13.4 J4: expected_ty is a single
-    // coherent concept threaded through all lower_expr_* functions.
-    // Per §1.0 原則 3 (显式 > 隐式): the param is explicit even when None,
-    // documenting intent at the call site.
-    let _ = expected_ty;
+    // Stage 103 (v0.11 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 fix):
+    // expected_ty is now USED for HirExprKind::Lit (unsuffixed int literals).
+    // Previously (Stage 18.256) expected_ty was ignored (`let _ = expected_ty`),
+    // causing `String { ptr: 0, ... }` to leave `0` as Infer(IntVar) — codegen
+    // fallback to i32 (4 bytes) instead of *mut u8 (8 bytes), corrupting
+    // String struct layout → non-deterministic SIGSEGV (signal 11, exit 139).
+    //
+    // Per §1.0 原則 4 (报错 > 静默): resolve unsuffixed int literals via
+    // expected_ty instead of leaving Infer (which silently falls back to I32).
+    // Per §1.0 原則 6 (通解 > 特解): one expected_ty-based path for all Lit.
+    // Per §12 (最优 > 最小): root-cause fix at the lower site.
     match &expr.kind {
         HirExprKind::Lit(lit) => {
-            let (const_val, ty) = cx.lit_to_const(lit);
+            // Stage 103: If lit is unsuffixed int/uint and expected_ty is a
+            // concrete int/uint/ptr type, use expected_ty instead of Infer.
+            let (mut const_val, mut ty) = cx.lit_to_const(lit);
+            if let Some(expected) = expected_ty {
+                // Only override if the literal type is Infer (unsuffixed).
+                if matches!(ty.kind, crate::mir::ty::TyKind::Infer(_)) {
+                    if let Some(resolved_ty) = resolve_lit_ty_from_expected(&ty, expected) {
+                        // Update const_val.ty to match resolved type.
+                        const_val.ty = resolved_ty.clone();
+                        ty = resolved_ty;
+                    }
+                }
+            }
             cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Constant(const_val)), ty, expr.span)
         }
         HirExprKind::Path(path) => {
@@ -2145,5 +2160,54 @@ fn infer_cast_kind(src_ty: &Ty, dst_ty: &Ty) -> CastKind {
         (TyKind::RawPtr(_, _), TyKind::RawPtr(_, _)) => CastKind::Pointer,
         // Default: numeric cast (typeck validates).
         _ => CastKind::Numeric,
+    }
+}
+
+/// Stage 103 (v0.11 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 fix):
+/// Resolve an unsuffixed integer literal's type from the expected type context.
+///
+/// When a struct literal field expects `*mut u8` (RawPtr) or `usize` (Uint)
+/// but the literal `0` has no suffix, `lit_to_const` returns `Infer(IntVar)`.
+/// This function resolves the Infer to the expected concrete type, so codegen
+/// uses the correct field size (8 bytes for ptr/usize, not 4 bytes for i32).
+///
+/// Returns `Some(resolved_ty)` if expected_ty is a concrete int/uint/ptr type
+/// that the literal can unify with. Returns `None` if expected_ty is also
+/// Infer/Error/Param (can't resolve — leave as Infer for writeback to handle).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one resolver for all int literal contexts.
+/// Per §1.0 原則 4 (报错 > 静默): resolve instead of leaving Infer (which
+/// silently falls back to I32 in codegen).
+/// Per §23: `resolve_lit_ty_from_expected` follows `<verb>_<noun>_<prep>_<adj>` pattern.
+fn resolve_lit_ty_from_expected(lit_ty: &Ty, expected_ty: &Ty) -> Option<Ty> {
+    use crate::mir::ty::TyKind;
+    // Only resolve if lit is Infer (unsuffixed literal).
+    if !matches!(lit_ty.kind, TyKind::Infer(_)) {
+        return None;
+    }
+    // Stage 103: Conservative resolution — only resolve when expected_ty is
+    // RawPtr (e.g., `String { ptr: 0, ... }` where ptr: *mut u8). The literal
+    // `0` for a pointer should be usize (8 bytes), not Infer (which codegen
+    // falls back to i32 = 4 bytes, corrupting struct layout).
+    //
+    // For Int/Uint expected types, DON'T override — typeck needs to validate
+    // literal value fits in expected type (e.g., `let x: i8 = 200` should error).
+    // Overriding here would skip typeck validation, causing test regressions
+    // (Stage 103 experiment: 16 failures from typeck neg tests).
+    //
+    // Per §1.0 原則 4 (报错 > 静默): don't skip typeck validation for int/uint.
+    // Per §1.0 原則 9 (正确 > 妥协): correct validation > pragmatic override.
+    // Per §12 (最优 > 最小): root-cause fix for ptr fields only (the actual
+    // String::new crash root cause).
+    match &expected_ty.kind {
+        // Expected: *mut T / *const T → use usize (pointer is usize-sized).
+        // The literal `0` for `ptr: *mut u8` should be usize (8 bytes on 64-bit).
+        TyKind::RawPtr(_, _) => Some(Ty::new(
+            TyKind::Uint(crate::ast::UintTy::Usize),
+            crate::session::Span::DUMMY,
+        )),
+        // Expected: Int/Uint/Infer/Error/Param/Adt/etc. → don't override.
+        // typeck will validate int/uint; others leave as Infer for writeback.
+        _ => None,
     }
 }

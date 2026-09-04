@@ -1179,3 +1179,8 @@ mod stage101_fndef_substs_mangling_tests;
 // LLVMSysEmitter::Drop releases module + context. ===
 #[path = "v0/stage102/plan/emitter_drop_ownership_tests.rs"]
 mod stage102_emitter_drop_ownership_tests;
+
+// === Stage 103 (v0.11): TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 partial fix.
+// resolve_lit_ty_from_expected for RawPtr expected types. ===
+#[path = "v0/stage103/plan/lit_ty_resolution_tests.rs"]
+mod stage103_lit_ty_resolution_tests;
