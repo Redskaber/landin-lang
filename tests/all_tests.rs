@@ -1153,3 +1153,9 @@ mod stage95_partial_eq_eq_trait_tests;
 // TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH, P3, v0.10+). ===
 #[path = "v0/stage96/plan/ord_trait_tests.rs"]
 mod stage96_ord_trait_tests;
+
+// === Stage 97 (v0.9): PartialOrd trait declared (no impls — codegen
+// crash on struct/enum return from prelude impl methods).
+// TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH (P2, v0.10+) identified. ===
+#[path = "v0/stage97/plan/partial_ord_trait_tests.rs"]
+mod stage97_partial_ord_trait_tests;

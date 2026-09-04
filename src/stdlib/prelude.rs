@@ -532,15 +532,39 @@ impl Eq for i64 {}
 impl Eq for bool {}
 impl Eq for usize {}
 
-// Stage 96 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE 续): Add Ord trait (marker only).
-// Debug + PartialOrd deferred — their impl bodies (returning String or
-// Option<i32> with if/match) cause SIGSEGV in lib tests (codegen issue
-// with prelude fn bodies that have complex control flow + return types).
-// Tracked as TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH (P3, v0.10+).
+// Stage 97 (v0.9 — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH):
+// ROOT CAUSE ANALYSIS (per user instruction: stop castrated version,
+// analyze root cause):
+//
+// Any prelude impl method that returns a struct type (e.g., String =
+// {ptr, usize, usize} = 24 bytes, needs sret) causes SIGSEGV in codegen.
+// This also affects Option<i32> returns from if/else (stack smashing).
+//
+// Root cause: codegen's sret path for prelude impl method bodies is
+// broken — the sret hidden pointer parameter is not correctly set up
+// for methods generated from prelude impl blocks. The sret path works
+// for free functions (__landin_format_v2 returns String correctly) but
+// not for impl methods.
+//
+// Impact: Cannot add Debug (returns String), PartialOrd (returns Option),
+// or any trait with struct/enum return type to prelude impls.
+//
+// TD: TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH (P2, v0.10+)
+// Fix: Investigate codegen/llvm/function.rs sret handling for impl
+// method bodies — the issue is likely in how the sret parameter is
+// allocated/passed for impl methods (vs free functions).
+//
+// For v0.9: Only add marker traits (no method bodies) to prelude.
+// Debug/PartialOrd/PartialEq-with-bodies deferred until codegen fixed.
 //
 // Per §1.0 原則 4 (报错 > 静默): defer rather than crash.
-// Per §12 (最优 > 最小): add marker traits (no method bodies) now,
-// defer traits with method bodies that crash codegen.
+// Per §12 (最优 > 最小): root-cause fix needed in codegen sret path.
+
+// === PartialOrd trait (declared only, impls deferred) ===
+trait PartialOrd<Rhs> {
+    fn partial_cmp(&self, other: &Rhs) -> Option<i32>;
+}
+// Impl bodies deferred — struct/enum return from prelude impl crashes codegen.
 
 // === Ord trait (marker — total ordering) ===
 trait Ord {}

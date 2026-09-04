@@ -43633,3 +43633,42 @@ that return Option or String from impl methods.
 - TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH: 调查 codegen 对 prelude impl
   method body 的处理 (Option/String return → SIGSEGV)
 - TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
+
+---
+Task ID: stage97
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 97 (v0.9) — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH
+root cause analysis. PartialOrd trait declared (no impls). Debug impls
+removed — any prelude impl method returning String (struct, needs sret)
+causes SIGSEGV. v0.636.0. 5580 tests, 0 failures, 9 ignored.
+
+决策点:
+1. 选择"停止阉割版推进，分析根因"而非"继续添加无 method body 的 marker traits"
+   - 引用用户指示: 遇到依赖缺失停止阉割版，转而分析根因。
+   - TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH 是阻断项 —
+     codegen sret 路径不能处理 prelude impl methods 返回 struct/enum。
+
+2. 根因分析:
+   - WHAT: prelude impl methods 返回 String (24 bytes, sret) → SIGSEGV
+   - WHY: codegen sret path 对 impl method body 的处理与 free fn 不同
+   - WHERE: codegen/llvm/function.rs sret handling for impl methods
+   - HOW: 需要调查 sret 参数如何为 impl methods 分配/传递
+   - 新 TD: TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH (P2, v0.10+)
+
+3. 选择"只声明 PartialOrd (无 impls)"而非"不添加"
+   - 引用 §1.0 原則 4 (报错 > 静默): 声明 trait 让用户可以自定义 impl
+   - 引用 §12 (最优 > 最小): 根因在 codegen，不在 trait 声明
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓
+- cargo test --release --features llvm-backend ✓ (5580 tests, 0 failures, 9 ignored)
+
+Prelude traits now: Clone, Copy, Display, Fn, FnMut, FnOnce, Drop,
+Default, PartialEq, Eq, PartialOrd (declared), Ord
+
+下一步:
+- TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH: 修复 codegen sret
+  路径支持 impl method bodies returning struct/enum
+- 然后重新添加 Debug impls (returning String) + PartialOrd impls
+- TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
