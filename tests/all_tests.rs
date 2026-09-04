@@ -1191,3 +1191,10 @@ mod stage103_lit_ty_resolution_tests;
 // with LLVM emitter (return raw value, no type prefix). ===
 #[path = "v0/stage109/plan/const_src_ty_tests.rs"]
 mod stage109_const_src_ty_tests;
+
+// === Stage 110 (v0.12): Phase 3.6 — Constant type writeback (re-introduced).
+// typeck Phase 3.6 walks all Operand::Constant(c) in statements + terminators
+// and writes unify.resolve(&c.ty) back to c.ty. Reduces Infer warnings 41→19
+// (-54%). Stage 107 + 109 fixed all codegen prerequisites. ===
+#[path = "v0/stage110/plan/phase36_const_writeback_tests.rs"]
+mod stage110_phase36_const_writeback_tests;

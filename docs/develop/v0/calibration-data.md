@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.6
+> **Version**: v1.7
 > **Status**: Active
-> **最后更新**: Stage 109 / 2026-09-05
+> **最后更新**: Stage 110 / 2026-09-05
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -47,6 +47,7 @@
 | 107 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CALL-ARG-TYPE-SOURCE 修复 — codegen call arg type 优先用 callee sig.inputs[arg_idx] (non-Param 时); 含 Param (generic) 时 fallback 到 detect_operand_type. 新增 mir_type_contains_param helper (pub(crate), 递归). 1 src 文件 (~60 LOC). v0.643.0. §3.2 全套验收通过 (898 lib + 4715 integration, 0 failures) |
 | 108 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL RCA — 重新引入 Phase 3.6 (Constant type writeback), Infer→concrete (DEBUG: Infer→I64). 但 codegen Stage 14.64 src_ty 基于 ConstVal (value fits in i32 → src=I32), 即使 Constant.ty = I64, src_ty 仍为 I32 → 不必要 sext cast → 7 回归. Revert + 记录 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL. 0 src 变更 (reverted). §3.2 验收通过 (898 lib + 4715 integration, 0 failures) |
 | 109 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复 — codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit (跳过 sext/trunc cast); 否则 fallback 到 ConstVal 路径. **同时修复 Stage 18.287 遗留 bug**: TextEmitter emit_const_typed 返回 raw value (无 type prefix), 与 LLVM emitter contract 对齐. 之前 TextEmitter 返回 `"i64 0"` (typed literal), 导致 `emit_store` 双前缀 `store i64 i64 0` + `emit_icmp` 双前缀 `icmp eq i64 2, i64 0` (invalid LLVM IR). Stage 109 路由所有 concrete-typed constants 通过 emit_const_typed, 触发 21 text IR 测试失败, 修复 contract 后全绿. 2 src 文件 (~70 LOC) + 1 test 文件 (20 tests: 8 正 + 5 text IR + 4 负 + 3 边界). v0.644.0. §3.2 全套验收通过 (898 lib + 4735 integration, 0 failures) |
+| 110 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | Phase 3.6 (Constant type writeback) 重新引入 — typeck Phase 3 后添加 Phase 3.6: 遍历所有 basic_blocks 的 statement + terminator, 对每个 Operand::Constant(c) 写回 unify.resolve(&c.ty) (Infer→concrete). 添加两个 helper: writeback_constant_ty_in_operand + writeback_constant_tys_in_rvalue. 覆盖所有 Rvalue variant (Use/BinaryOp/UnaryOp/Cast/Aggregate/Load/GetElementPtr/BinaryOp2) + 所有含 Operand 的 TerminatorKind (SwitchInt discr / Call func+args / Assert cond). Infer warnings 41→19 (-54%) on Vec<String, i32> program. 0 回归 (Stage 107 call arg type source + Stage 109 codegen src_ty + TextEmitter contract 修复了所有前置依赖). 1 src 文件 (~160 LOC) + 1 test 文件 (20 tests). v0.645.0. §3.2 全套验收通过 (898 lib + 4755 integration, 0 failures) |
 
 ---
 

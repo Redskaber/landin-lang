@@ -3,13 +3,62 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.644.0 (v0.12 Stage 109 — TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复: codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit (跳过 sext/trunc cast); 同时修复 Stage 18.287 遗留 bug — TextEmitter emit_const_typed 返回 raw value (无 type prefix), 与 LLVM emitter contract 对齐; 5633 tests) |
+| **Current version** | v0.645.0 (v0.12 Stage 110 — Phase 3.6 Constant type writeback 重新引入: typeck Phase 3 后遍历所有 Operand::Constant 写回 unify.resolve(&c.ty); Infer warnings 41→19 (-54%); 0 回归 — Stage 107+109 修复了所有前置依赖; 5653 tests) |
 | **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4735 integration tests = 5633 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4755 integration tests = 5653 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.645.0 — Stage 110 (v0.12) — Phase 3.6 (Constant type writeback) 重新引入
+
+### Overview
+
+完成 Stage 105-109 迭代式根因修复链的最后一步 — 重新引入 Phase 3.6 (Constant type writeback). typeck Phase 3 后添加 Phase 3.6: 遍历所有 basic_blocks 的 statement (Assign(_, Rvalue)) + terminator (SwitchInt discr / Call func+args / Assert cond), 对每个 Operand::Constant(c) 写回 `unify.resolve(&c.ty)` (Infer → concrete).
+
+Stage 105 RCA: 100 次跑 3/100 SIGSEGV (ASLR on), 1/100 SIGSEGV (ASLR off). LLVM IR 在成功/失败跑间完全相同 (Param=73 Infer=18 warnings). 崩溃在 LLVM codegen/object emission 阶段. 根因: typeck Phase 3 不写 Constant.ty → codegen 看到 Infer → LLVM optimizer 非确定性处理.
+
+Stage 106 尝试 Phase 3.6 → 7 回归 (TD-CODEGEN-CALL-ARG-TYPE-SOURCE). Stage 107 修复. Stage 108 重试 → 7 回归 (TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL + TextEmitter contract bug). Stage 109 修复. Stage 110 重新引入 Phase 3.6 — 所有前置依赖已修复, 0 回归, Infer warnings 减少 54%.
+
+### Changes
+
+- `src/typeck/checker.rs`: Phase 3 后添加 Phase 3.6 (~60 LOC) — 遍历 `mir.basic_blocks.iter_mut()`, 对 statement (Assign + Rvalue 递归) 和 terminator (SwitchInt/Call/Assert) 中所有 Operand::Constant 写回 resolved ty. 添加两个 helper 方法 (~100 LOC):
+  - `writeback_constant_ty_in_operand(&self, op: &mut Operand)`: 单 Operand 处理
+  - `writeback_constant_tys_in_rvalue(&self, rv: &mut Rvalue)`: 递归处理所有 Rvalue variant (Use/BinaryOp/UnaryOp/Cast/Aggregate/Load/GetElementPtr/BinaryOp2)
+- `tests/v0/stage110/plan/phase36_const_writeback_tests.rs`: 新增 20 个测试 (8 正 + 5 text IR + 4 负 + 3 边界).
+- `tests/all_tests.rs`: 注册 `stage110_phase36_const_writeback_tests` 模块.
+- `docs/develop/v0/stage-110/dev-log.md`: 详细开发日志 (5W2H + 决策点 + 裁剪点 + §3.2 验收).
+- `docs/develop/v0/tech-debt-register.md`: 添加 TD-TYPECK-WRITEBACK-INCOMPLETE Phase 3.6 (Stage 110 修复) + 更新 P2 表状态.
+- `docs/develop/v0/calibration-data.md`: 追加 Stage 110 统计行.
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协, §1.0 原则 6 通解>特解)
+
+1. **选遍历所有 statement + terminator**, 不选挑场景 — 通解覆盖所有 Operand 嵌入点, 不漏.
+2. **选 helper 方法**, 不选内联 match — 代码组织清晰, 可复用, 可测试 (§10 DRY).
+3. **选 Phase 3.6 在 Phase 4 之前**, 不选之后 — Phase 4 (TypeckResults) 不需要再次 resolve c.ty.
+
+### Verification (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` ✓ (0 warnings)
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4755 tests, 0 failures, 9 ignored)
+- Total: **5653 tests, 0 failures, 9 ignored** (Stage 109 baseline 5633 + 20 new)
+- **Infer warnings 减少**: 41 → 19 (-54%) on Vec<String, i32> program
+
+### Impact
+
+- **架构健康度**: 9.85/10 (stable — 1 src 文件, 无回归, Infer warnings 显著减少)
+- **Stage 105 非确定性 SIGSEGV 根因修复**: Phase 3.6 让 c.ty 全部 concrete, codegen 路径稳定 → 预期 Stage 111 验证 100 次跑 0 SIGSEGV
+- **迭代式根因修复链完成**: Stage 105 (RCA) → 106 (尝试 + revert + TD-A) → 107 (fix TD-A) → 108 (重试 + revert + TD-B) → 109 (fix TD-B + hidden bug) → 110 (Phase 3.6 active, 0 回归) — 6 阶段, 严格遵循 §17.6 (直到审查不出问题为止)
+
+### Next Steps
+
+- **Stage 111**: 加 Debug impl 验证 100 次跑 0 SIGSEGV — Phase 3.6 active 后 c.ty 全部 concrete, 验证非确定性 SIGSEGV 是否消除.
+- **Stage 112+**: 处理剩余 TD-TYPECK-WRITEBACK-INCOMPLETE 残留 (TD-MONO-INFER 非 turbofish path generic substs + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION LLVM module state).
 
 ---
 

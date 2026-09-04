@@ -44405,3 +44405,77 @@ Stage Summary:
 - Stage 110: 重新引入 Phase 3.6 (Constant type writeback) — Stage 107 + Stage 109
   已修复所有前置依赖 (call arg type source + codegen src_ty + TextEmitter contract)
 - Stage 111: 加 Debug impl 验证 100 次跑 0 SIGSEGV
+
+---
+Task ID: stage110
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 110 (v0.12) — Phase 3.6 (Constant type writeback) 重新引入.
+typeck Phase 3 后添加 Phase 3.6: 遍历所有 basic_blocks 的 statement +
+terminator, 对每个 Operand::Constant(c) 写回 unify.resolve(&c.ty)
+(Infer→concrete). 添加两个 helper: writeback_constant_ty_in_operand +
+writeback_constant_tys_in_rvalue. 覆盖所有 Rvalue variant + 含 Operand
+的 TerminatorKind. Infer warnings 41→19 (-54%). 0 回归.
+v0.644.0 → v0.645.0. 5653 tests (898 lib + 4755 integration), 0 failures,
+9 ignored.
+
+3秒启动自检:
+- 定位: L2 (1 src 文件 ~160 LOC + 1 test 文件 ~400 LOC)
+- 对齐: 已查 Stage 105-109 dev-log, src/typeck/checker.rs (Phase 3 + Phase 4),
+  src/typeck/unify.rs (resolve), src/mir/body.rs (MirBody basic_blocks),
+  src/mir/place.rs (Operand + Rvalue variants)
+- 阻断: v0.644.0 全绿 (5633 tests), TD-CODEGEN-CALL-ARG-TYPE-SOURCE ✅ (Stage 107)
+  + TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL ✅ (Stage 109) — 所有前置依赖已修复
+
+5W2H:
+- WHAT: 重新引入 Phase 3.6 — typeck Phase 3 后遍历所有 Operand::Constant,
+  写回 unify.resolve(&c.ty)
+- WHY: Stage 105 RCA: 100 次跑 3/100 SIGSEGV (ASLR on). 根因 typeck Phase 3
+  不写 Constant.ty → codegen 看到 Infer warnings → LLVM optimizer 非确定性
+- WHO: ARCH-A 设计 (通解遍历所有 Operand); DEV-A 实施; REV-A 自审 + 修正
+  pre-existing bug 测试; QA-A 20 tests
+- WHEN: Stage 110 完成 → Stage 111 (加 Debug impl 验证 100 次跑 0 SIGSEGV)
+- WHERE: src/typeck/checker.rs Phase 3 后 (Phase 3.6)
+- HOW: 1) 遍历 basic_blocks.iter_mut(); 2) statement Assign(_, Rvalue) 通过
+  writeback_constant_tys_in_rvalue 递归; 3) terminator SwitchInt discr /
+  Call func+args / Assert cond 通过 writeback_constant_ty_in_operand;
+  4) 0 回归; 5) Infer warnings 41→19 (-54%)
+- HOW MUCH: 1 src 文件 (~160 LOC) + 1 test 文件 (20 tests)
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协, §1.0 原则 6 通解>特解):
+1. 选择"遍历所有 statement + terminator 中所有 Operand::Constant"而非"挑场景"
+   - 引用 §1.0 原則 6 (通解 > 特解): 一条遍历覆盖所有场景
+   - 引用 §1.0 原則 9 (正确 > 妥协): 不挑场景的通解
+   - 引用 §12 (最优 > 最小): 一次到位
+
+2. 选择"helper 方法"而非"内联 match"
+   - 引用 §1.0 原則 6 (通解 > 特解): 一对 helper 覆盖所有调用点
+   - 引用 §10 (DRY)
+
+3. 选择"Phase 3.6 在 Phase 4 之前"而非"之后"
+   - 引用 §12 (最优 > 最小): Phase 3.6 在 Phase 4 之前更简单
+
+裁剪点:
+- L2 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4755 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- Phase 3.6 (Constant type writeback) 重新引入完成
+- typeck Phase 3 后添加 Phase 3.6: 遍历所有 basic_blocks 的 statement + terminator
+- 添加两个 helper: writeback_constant_ty_in_operand + writeback_constant_tys_in_rvalue
+- 覆盖所有 Rvalue variant + 含 Operand 的 TerminatorKind
+- Infer warnings 41 → 19 (-54%) on Vec<String, i32> program
+- 0 回归 (Stage 107 + 109 修复了所有前置依赖)
+- 20 个新测试覆盖正向/text IR/负向/边界
+- 架构健康度: 9.85/10 (stable — 1 src 文件, 无回归, Infer warnings 显著减少)
+- v0.645.0
+
+下一步:
+- Stage 111: 加 Debug impl 验证 100 次跑 0 SIGSEGV — Phase 3.6 active 后 c.ty
+  全部 concrete, 验证 Stage 105 非确定性 SIGSEGV 是否消除
+- Stage 112+: TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION

@@ -190,6 +190,70 @@ impl TypeChecker {
             local.ty = self.unify.resolve(&local.ty);
         }
 
+        // Stage 110 (TD-TYPECK-WRITEBACK-INCOMPLETE fix): Phase 3.6 —
+        // Constant type writeback.
+        //
+        // After Phase 3 resolves `local_decls[i].ty` from Infer to concrete,
+        // we still have `Operand::Constant(Const { ty: Infer(_), .. })` whose
+        // `c.ty` was created by `lit_to_const` at MIR lower time. typeck Phase 1
+        // unifies these Infer vars with the dest_local's resolved type (e.g.,
+        // `Int(I64)` from callee sig), but the resolved type is only stored in
+        // the unify table — `c.ty` itself remains Infer.
+        //
+        // Stage 105 RCA: LLVM codegen sees `c.ty = Infer(IntVar)` for many
+        // constants (Param=73 Infer=18 warnings). LLVM IR is identical across
+        // successful + crashed runs, but LLVM codegen's optimizer is
+        // non-deterministic when Infer/Param fallbacks (i32) appear in struct
+        // layouts → 3/100 SIGSEGV (ASLR on) / 1/100 SIGSEGV (ASLR off).
+        //
+        // Fix: Phase 3.6 walks all `Operand::Constant(c)` in statements +
+        // terminators and writes `unify.resolve(&c.ty)` back into `c.ty`.
+        // After this, c.ty is concrete → codegen emits correct LLVM types
+        // directly (Stage 109 emit_const_typed path) → LLVM optimizer sees
+        // consistent types → no non-determinism.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one pass handles all Operand::Constant
+        // sites — statements (Rvalue::Use/BinaryOp/UnaryOp/Cast/Aggregate/Load/
+        // GetElementPtr/BinaryOp2) AND terminators (SwitchInt discr / Call args
+        // + func / Assert cond). No per-call-site special-casing.
+        // Per §1.0 原則 9 (正确 > 妥协): root-cause fix — resolve Infer at the
+        // source (typeck), not the symptom (codegen fallback to i32).
+        // Per §12 (最优 > 最小): Stage 106 tried "skip cast for I32↔I64" (too
+        // broad, 301 regressions). Stage 108 retried without codegen src_ty
+        // fix (7 regressions). Stage 107 + 109 fixed the codegen prerequisites
+        // (call arg type source + emit_const_typed direct path + TextEmitter
+        // contract alignment). Stage 110 now safely resolves c.ty at typeck.
+        // Per §17.6 (直到审查不出问题为止): iterated audit cycle Stages 105→110.
+        //
+        // Walk all basic_blocks: for each statement (Assign) and terminator
+        // (SwitchInt/Call/Assert), recursively visit each Operand and resolve
+        // `Operand::Constant(c).ty`.
+        for bb in mir.basic_blocks.iter_mut() {
+            // Statements: only Assign(Place, Rvalue) contains Operands.
+            for stmt in bb.statements.iter_mut() {
+                if let StatementKind::Assign(box_assign) = &mut stmt.kind {
+                    let (_place, rvalue) = box_assign.as_mut();
+                    self.writeback_constant_tys_in_rvalue(rvalue);
+                }
+            }
+            // Terminator: SwitchInt discr / Call func+args / Assert cond.
+            match &mut bb.terminator.kind {
+                TerminatorKind::SwitchInt { discr, .. } => {
+                    self.writeback_constant_ty_in_operand(discr);
+                }
+                TerminatorKind::Call { func, args, .. } => {
+                    self.writeback_constant_ty_in_operand(func);
+                    for arg in args.iter_mut() {
+                        self.writeback_constant_ty_in_operand(arg);
+                    }
+                }
+                TerminatorKind::Assert { cond, .. } => {
+                    self.writeback_constant_ty_in_operand(cond);
+                }
+                _ => {}
+            }
+        }
+
         // Phase 3.5: Writeback field types using the pre-computed table.
         if let Some(table) = field_ty_table {
             // Stage 18.388: Phase 3.5 step 1 REMOVED (codegen resolves via AdtLayouts).
@@ -468,6 +532,55 @@ impl TypeChecker {
     /// Per §1.0 原則 9 "正确 > 妥协": must not break valid code.
     pub fn check_mir_body(&mut self, mir: &mut MirBody) {
         self.check_mir_body_with_tables(mir, None);
+    }
+
+    /// Stage 110 (Phase 3.6 helper): Recursively resolve `Operand::Constant(c).ty`
+    /// in a single Operand. Operands are immutable in `&Operand`, so we use
+    /// pattern matching to extract the `Const` and write back its resolved ty.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one helper for all Operand sites.
+    fn writeback_constant_ty_in_operand(&self, op: &mut Operand) {
+        if let Operand::Constant(c) = op {
+            // resolve recursively (handles Infer inside Tuple/Array/Ref/etc.)
+            c.ty = self.unify.resolve(&c.ty);
+        }
+    }
+
+    /// Stage 110 (Phase 3.6 helper): Walk all Operands embedded in an Rvalue
+    /// and resolve any `Operand::Constant(c).ty`. Covers every Rvalue variant
+    /// that contains an Operand.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one method handles all Rvalue variants.
+    /// Per §12 (最优 > 最小): exhaustive match ensures new Rvalue variants
+    /// added later will trigger a compile error (via the `_ =>` catch-all
+    /// being unreachable but explicit).
+    fn writeback_constant_tys_in_rvalue(&self, rv: &mut Rvalue) {
+        match rv {
+            Rvalue::Use(op)
+            | Rvalue::UnaryOp(_, op)
+            | Rvalue::Cast(_, op, _)
+            | Rvalue::Load(op, _) => {
+                self.writeback_constant_ty_in_operand(op);
+            }
+            Rvalue::BinaryOp(_, lhs, rhs) | Rvalue::BinaryOp2(_, lhs, rhs) => {
+                self.writeback_constant_ty_in_operand(lhs);
+                self.writeback_constant_ty_in_operand(rhs);
+            }
+            Rvalue::Aggregate(_, operands) => {
+                for op in operands.iter_mut() {
+                    self.writeback_constant_ty_in_operand(op);
+                }
+            }
+            Rvalue::GetElementPtr { base, indices, .. } => {
+                self.writeback_constant_ty_in_operand(base);
+                for op in indices.iter_mut() {
+                    self.writeback_constant_ty_in_operand(op);
+                }
+            }
+            // Rvalue::Ref / Rvalue::SizeOf don't contain Operands (they
+            // take Place / Ty respectively, no Operand::Constant).
+            _ => {}
+        }
     }
 
     /// Resolve an operand's type for the writeback pass (reads local_decls
