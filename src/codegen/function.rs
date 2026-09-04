@@ -150,6 +150,17 @@ pub fn codegen_mono_functions(
 /// (no HIR, no re-lowering, no re-typeck).
 /// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>`.
 /// Stage 33.1: Added type_name_by_def_id param for call-site mangle.
+/// Stage 100 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix): Added
+/// `user_item_count` param to skip prelude generic function bodies. Prelude
+/// generic functions (e.g., `Option::map<T,U>`, `Box::new<T>`, `Vec::push<T>`)
+/// have MIR containing `TyKind::Param` types that shouldn't be codegen'd —
+/// only instantiated `MonoItem::Fn` (handled by `codegen_mono_functions`)
+/// should be emitted. Skipping them eliminates the 1360+ Param fallback
+/// warnings that cause non-deterministic SIGSEGV/SIGABRT in cargo test.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one skip rule for all prelude items.
+/// Per §1.0 原則 9 (正确 > 妥协): generic defs don't emit, only instances.
+/// Per §16: user_item_count is pre-computed (no HIR access in codegen).
 #[allow(clippy::too_many_arguments)]
 pub fn codegen_from_mir(
     mirs: &[MirBody],
@@ -164,8 +175,47 @@ pub fn codegen_from_mir(
     // trait_method_map so non-generic functions (like main) can re-resolve
     // trait method calls to concrete impl methods.
     trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
+    // Stage 100 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1):
+    // user_item_count — boundary between user items (DefId 0..N-1) and
+    // prelude items (DefId N..). Prelude generic function bodies are
+    // skipped here (only MonoItem::Fn instances are emitted, via
+    // codegen_mono_functions).
+    user_item_count: usize,
+    // Stage 100: collected MonoItems — used to check if a prelude generic
+    // function has any MonoItem::Fn instantiation. If it does, the generic
+    // def body is still emitted (codegen_operand may reference it via
+    // generic def name when FnDef type substs are empty).
+    collected_mono_items: &[crate::mir::monomorphize::MonoItem],
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
+        // Stage 100 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix):
+        // Skip prelude generic function bodies that have NO MonoItem::Fn
+        // instantiation. These bodies have Param types that shouldn't be
+        // codegen'd — only instantiated MonoItem::Fn (handled by
+        // codegen_mono_functions) should be emitted.
+        //
+        // Skip condition: DefId >= user_item_count (prelude item) AND
+        // MIR body contains Param type (generic function) AND
+        // no MonoItem::Fn instantiation exists for this DefId.
+        //
+        // If a MonoItem::Fn instantiation exists, the generic def body is
+        // still emitted (because codegen_operand may reference it via
+        // generic def name when substs are empty in FnDef type — a separate
+        // issue tracked for Stage 101 codegen_operand substs mangling fix).
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one skip rule for all prelude items.
+        // Per §1.0 原則 9 (正确 > 妥协): generic defs don't emit, only instances.
+        // Per §1.0 原則 4 (报错 > 静默): don't silently fallback Param to i32.
+        if let Some(def_id) = mir.def_id {
+            if def_id.as_u32() as usize >= user_item_count
+                && mir_body_contains_param_type(mir)
+                && !mono_items_contains_fn_for_def_id(collected_mono_items, def_id)
+            {
+                // Prelude generic function with no instantiation — skip codegen.
+                continue;
+            }
+        }
+
         // Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Re-resolve
         // trait method calls in ALL functions (not just generic ones). Non-
         // generic functions (like main) may contain generic trait method
@@ -236,6 +286,132 @@ pub fn codegen_from_mir(
         )?;
     }
     Ok(())
+}
+
+/// Stage 100: Helper — check if any MonoItem::Fn instantiation exists for
+/// the given DefId. Used by `codegen_from_mir` to decide whether to skip
+/// a prelude generic function body.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one check for all MonoItem kinds.
+/// Per §23: `mono_items_contains_fn_for_def_id` follows
+/// `<noun>_<noun>_<verb>_<prep>_<noun>` pattern.
+fn mono_items_contains_fn_for_def_id(
+    mono_items: &[crate::mir::monomorphize::MonoItem],
+    def_id: crate::hir::DefId,
+) -> bool {
+    mono_items.iter().any(|item| match item {
+        crate::mir::monomorphize::MonoItem::Fn {
+            def_id: item_def_id,
+            ..
+        } => *item_def_id == def_id,
+        _ => false,
+    })
+}
+
+/// Stage 100 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1):
+/// Check if a MirBody contains any `TyKind::Param` type in type-relevant
+/// positions (local_decls, statements, terminators). Used by
+/// `codegen_from_mir` to detect prelude generic function bodies that
+/// should be skipped (only their MonoItem::Fn instances should be emitted).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one walker for all MIR positions.
+/// Per §16: reads MIR only (no HIR access).
+/// Per §23: `mir_body_contains_param_type` follows
+/// `<noun>_<noun>_<verb>_<noun>` pattern.
+fn mir_body_contains_param_type(mir: &MirBody) -> bool {
+    // 1. Check local declarations.
+    for local_decl in &mir.local_decls {
+        if type_contains_param(&local_decl.ty.kind) {
+            return true;
+        }
+    }
+
+    // 2. Check basic blocks (statements + terminators).
+    for block in &mir.basic_blocks {
+        for stmt in &block.statements {
+            if statement_contains_param(&stmt.kind) {
+                return true;
+            }
+        }
+        if terminator_contains_param(&block.terminator.kind) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Stage 100: Helper — check if a TyKind contains Param (recursively).
+fn type_contains_param(kind: &crate::mir::ty::TyKind) -> bool {
+    use crate::mir::ty::TyKind;
+    match kind {
+        TyKind::Param(_) => true,
+        TyKind::Adt(_, substs) | TyKind::FnDef(_, substs) | TyKind::Closure(_, substs) => {
+            substs.iter().any(|t| type_contains_param(&t.kind))
+        }
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param(&inner.kind)
+        }
+        TyKind::Array(inner, _) => type_contains_param(&inner.kind),
+        TyKind::Tuple(tys) => tys.iter().any(|t| type_contains_param(&t.kind)),
+        TyKind::FnPtr(sig) => {
+            sig.inputs.iter().any(|t| type_contains_param(&t.kind))
+                || type_contains_param(&sig.output.kind)
+        }
+        TyKind::Projection(_, substs) => substs.iter().any(|t| type_contains_param(&t.kind)),
+        _ => false,
+    }
+}
+
+/// Stage 100: Helper — check if a StatementKind contains Param types.
+fn statement_contains_param(stmt: &crate::mir::body::StatementKind) -> bool {
+    use crate::mir::body::StatementKind;
+    use crate::mir::place::{AggregateKind, Rvalue};
+    if let StatementKind::Assign(boxed) = stmt {
+        let (_, rvalue) = &**boxed;
+        match rvalue {
+            Rvalue::Use(op) | Rvalue::UnaryOp(_, op) => operand_contains_param(op),
+            Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+                operand_contains_param(a) || operand_contains_param(b)
+            }
+            Rvalue::Cast(_, op, ty) => operand_contains_param(op) || type_contains_param(&ty.kind),
+            Rvalue::Aggregate(kind, operands) => {
+                if let AggregateKind::Adt(_, _, substs, field_tys) = kind {
+                    if substs.iter().any(|t| type_contains_param(&t.kind)) {
+                        return true;
+                    }
+                    if field_tys.iter().any(|t| type_contains_param(&t.kind)) {
+                        return true;
+                    }
+                }
+                operands.iter().any(operand_contains_param)
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+/// Stage 100: Helper — check if an Operand contains Param types.
+fn operand_contains_param(op: &crate::mir::place::Operand) -> bool {
+    match op {
+        crate::mir::place::Operand::Constant(const_val) => type_contains_param(&const_val.ty.kind),
+        _ => false,
+    }
+}
+
+/// Stage 100: Helper — check if a TerminatorKind contains Param types.
+fn terminator_contains_param(term: &crate::mir::body::TerminatorKind) -> bool {
+    use crate::mir::body::TerminatorKind;
+    match term {
+        TerminatorKind::Call { func, args, .. } => {
+            operand_contains_param(func) || args.iter().any(operand_contains_param)
+        }
+        TerminatorKind::SwitchInt { discr, .. } => operand_contains_param(discr),
+        TerminatorKind::Assert { cond, .. } => operand_contains_param(cond),
+        _ => false,
+    }
 }
 
 /// Stage 16.16 (Task 10 Steps 3+4): Emit LLVM functions for synthesized

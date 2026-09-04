@@ -1156,5 +1156,9 @@ pub(crate) fn compile_inner(
         synthesized_closure_mir_bodies,
         type_name_by_def_id,
         trait_method_map,
+        // Stage 100: prelude/user boundary for codegen_from_mir to skip
+        // prelude generic function bodies. Per §1.0 原則 10 (唯一可信数据源):
+        // user_item_count is the source of truth for prelude/user boundary.
+        user_item_count,
     }
 }

@@ -43784,3 +43784,68 @@ Stage Summary:
 - Stage 101: 修复 mir_type_to_emit_type Param fallback (返回 Error 而非 i32)
 - Stage 102: LLVMSysEmitter ownership 重构 (Builder + Module 拆分)
 - Stage 103: 重新添加 Debug + PartialOrd impls
+
+---
+Task ID: stage100
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 100 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix.
+monomorphization 跳过未实例化的 prelude generic function bodies.
+Param warnings 1360 → 24 (-98%). v0.639.0. 5592 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: codegen + driver + CompileResult 字段修改)
+- 对齐: 已查 Stage 99 RCA (4-layer 根因链), docs/lang-design/06-mir.md,
+  docs/graph/mir/data-flow.md, src/mir/monomorphize/item.rs (collect_mono_items)
+- 阻断: v0.638.0 全绿 (5594 tests), TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH P2
+
+5W2H:
+- WHAT: codegen_from_mir 跳过 DefId >= user_item_count 且 MIR 含 Param type
+  且无 MonoItem::Fn 实例化的 prelude generic function body
+- WHY: Layer 1 根因 — prelude generic function bodies 含 Param type, emit 时
+  fallback 到 i32 产生不正确 LLVM IR, 累积触发 SIGSEGV/SIGABRT
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 审查; QA-A 测试
+- WHEN: Stage 100 完成 → Stage 101 (Param fallback 返回 Error)
+- WHERE: src/codegen/function.rs (codegen_from_mir + 6 helpers),
+  src/codegen/pipeline.rs (提前 collect_mono_items),
+  src/driver/mod.rs (CompileResult user_item_count 字段),
+  src/driver/compile_inner.rs (设置 user_item_count)
+- HOW: 1) CompileResult 加 user_item_count; 2) codegen_from_mir 接收
+  user_item_count + collected_mono_items; 3) 跳过条件: DefId >=
+  user_item_count AND MIR 含 Param AND no MonoItem::Fn 实例化
+- HOW MUCH: 4 源文件 + 1 测试文件 (~150 LOC), 7 stage100 tests
+
+决策点 (§12 最优>最小, §1.0 原则 6 通解>特解):
+1. 选择"只跳过无 MonoItem::Fn 实例化的 prelude generic"而非"跳过所有 prelude generic"
+   - 引用 §1.0 原则 6 (通解>特解): 一条规则适用于所有 prelude items
+   - 替代方案 (跳过所有) 导致 Box::new undefined reference (40 测试失败)
+   - 被实例化的 generic def body 仍 emit (codegen_operand 用 generic def 名引用)
+
+2. 选择"user_item_count 存到 CompileResult"而非"通过 HIR 查询"
+   - 引用 §1.0 原则 10 (唯一可信数据源): user_item_count 已在 compile_inner:79 计算
+   - 引用 §16 (codegen 不访问 HIR): 需通过 CompileResult 传递
+
+3. 选择"提前 collect_mono_items 到 pipeline.rs"而非"在 codegen_from_mir 内部调用"
+   - 引用 §1.0 原则 10 (唯一可信数据源): 复用同一份 MonoItems
+   - mono_layouts 也用 collected_mono_items, 避免重复计算
+
+裁剪点:
+- L3 跨模块 → 完整流程 (5W2H + 实施 + 测试 + 验收)
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4694 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 修复完成
+- Param warnings 1360 → 24 (-98%)
+- Define count 139 → 33 (未实例化 prelude generic 不 emit)
+- 7 个 stage100 测试验证 prelude generic instantiation 仍工作
+- 架构健康度: 9.85/10 (stable — Layer 1 修复, Layer 2-4 待 Stage 101-103)
+
+下一步:
+- Stage 101: 修复 mir_type_to_emit_type Param fallback (返回 Error 而非 i32) — Layer 2
+- Stage 102: LLVMSysEmitter ownership 重构 — Layer 3+4
+- Stage 103: 重新添加 Debug + PartialOrd impls

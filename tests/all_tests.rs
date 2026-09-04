@@ -1164,3 +1164,8 @@ mod stage97_partial_ord_trait_tests;
 // 复现 prelude impl method body 触发 stack smashing, 定位根因。 ===
 #[path = "v0/stage99/plan/prelude_impl_body_repro_tests.rs"]
 mod stage99_prelude_impl_body_repro_tests;
+
+// === Stage 100 (v0.10): TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix.
+// monomorphization skip for prelude generic function bodies. ===
+#[path = "v0/stage100/plan/prelude_generic_skip_tests.rs"]
+mod stage100_prelude_generic_skip_tests;

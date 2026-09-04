@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.638.0 (v0.10 Stage 99 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) complete: 4-layer 根因链 + Stage 100-103 修复路径规划; 5594 tests — Architecture health 9.85/10) |
+| **Version** | v0.639.0 (v0.10 Stage 100 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix: monomorphization 跳过未实例化的 prelude generic function; Param warnings 1360→24 -98%; 5592 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.10 Stage 99 RCA COMPLETE**. 5594 tests (898 lib + 4691 integration + 5 stage99 repro), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 99 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 完整根因分析: (1) prelude generic methods (Option/Box/Vec/String) 的 Param type 未解析; (2) `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 产生不正确 LLVM IR; (3) 加 Debug impl 后 LLVM module 全局变量累积触发 verify/emit crash; (4) `LLVMSysEmitter::Drop` 不释放 context 加速累积. 修复路径: Stage 100 monomorphization 跳过 prelude generic function; Stage 101 Param fallback 返回 Error; Stage 102 LLVMSysEmitter ownership 重构; Stage 103 重新添加 Debug + PartialOrd impls. 5 个 stage99 repro tests 验证 user code impl method returning String/struct 工作正常. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.10 Stage 100 COMPLETE (Layer 1/4)**. 5592 tests (898 lib + 4694 integration + 7 stage100), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 100 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 修复: monomorphization 跳过未实例化的 prelude generic function bodies. 跳过条件: DefId >= user_item_count AND MIR 含 Param type AND no MonoItem::Fn 实例化. CompileResult 添加 user_item_count 字段; codegen_from_mir 接收 user_item_count + collected_mono_items; pipeline.rs 提前 collect_mono_items. Param warnings 1360→24 (-98%). Define count 139→33. 被实例化的 prelude generic (Box::new, Vec::new) 仍 emit generic def body. 剩余 Layer 2-4 待 Stage 101-103 修复. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

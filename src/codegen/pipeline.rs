@@ -152,11 +152,19 @@ pub fn run_codegen_pipeline(
     // mir_type_to_emit_type_with_layouts calls with
     // mir_type_to_emit_type_with_layouts_and_mono.
     //
+    // Stage 100 (TD-PRELUDE-IMPL-BODY-CRASH Layer 1): collect_mono_items
+    // here (before codegen_from_mir) so we can pass it to codegen_from_mir
+    // for the prelude generic skip check.
+    //
     // Per §16: builds from MIR + HIR (allowed at pipeline start).
     // Per §1.0 原則 6 "通用 > 特例": one pipeline for all backends.
+    let collected_mono_items: Vec<crate::mir::monomorphize::MonoItem> = if result.hir.is_some() {
+        crate::mir::collect_mono_items(&result.mirs)
+    } else {
+        Vec::new()
+    };
     let mono_layouts: crate::mir::MonoLayoutMap = if let Some(hir) = &result.hir {
-        let mono_items = crate::mir::collect_mono_items(&result.mirs);
-        crate::mir::build_mono_layouts(&mono_items, hir)
+        crate::mir::build_mono_layouts(&collected_mono_items, hir)
     } else {
         std::collections::HashMap::new()
     };
@@ -177,6 +185,13 @@ pub fn run_codegen_pipeline(
         // Stage 92: Pass trait_method_map so non-generic functions can
         // re-resolve trait method calls to concrete impl methods.
         &result.trait_method_map,
+        // Stage 100: Pass user_item_count so codegen_from_mir can skip
+        // prelude generic function bodies (only MonoItem::Fn instances are
+        // emitted, via codegen_mono_functions).
+        result.user_item_count,
+        // Stage 100: Pass collected MonoItems so codegen_from_mir can check
+        // if a prelude generic function has any MonoItem::Fn instantiation.
+        &collected_mono_items,
     )?;
 
     // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each

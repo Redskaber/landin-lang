@@ -3,13 +3,59 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.638.0 (v0.10 Stage 99 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) complete: 4-layer 根因链 + Stage 100-103 修复路径规划; 5594 tests) |
+| **Current version** | v0.639.0 (v0.10 Stage 100 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix: monomorphization 跳过未实例化的 prelude generic function; Param warnings 1360→24 -98%; 5592 tests) |
 | **Date** | 2026-09-04 |
-| **Test count** | 898 lib tests + 4691 integration tests + 5 stage99 repro = 5594 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4694 integration tests + 7 stage100 = 5592 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — RCA 未引入新代码, 不影响现有架构); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析阶段 — 4-layer 根因链 + 4-stage 修复路径规划 |
+| **Architecture** | Health 9.85/10 (stable — Layer 1/4 修复完成, Layer 2-4 待 Stage 101-103); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 100 Layer 1 完成, Param warnings -98% |
+
+---
+
+## v0.639.0 — Stage 100 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix
+
+### Overview
+
+Stage 100 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH **Layer 1** 修复:
+monomorphization 跳过未实例化的 prelude generic function bodies。
+
+v0.638.0 (Stage 99) 完成根因分析 (4-layer 根因链), 本阶段实施 Layer 1 修复。
+
+### Layer 1 修复内容
+
+**跳过条件** (codegen_from_mir):
+```
+DefId >= user_item_count (prelude item)
+AND MIR body contains Param type (generic function)
+AND no MonoItem::Fn instantiation exists for this DefId
+```
+
+**修改文件**:
+- `src/driver/mod.rs`: CompileResult 添加 `user_item_count: usize` 字段
+- `src/driver/compile_inner.rs`: 设置 user_item_count 到 CompileResult
+- `src/codegen/function.rs`: `codegen_from_mir` 接收 user_item_count + collected_mono_items; 添加跳过逻辑 + 6 helper 函数
+- `src/codegen/pipeline.rs`: 提前 collect_mono_items; 传 user_item_count + collected_mono_items 到 codegen_from_mir
+
+### 效果
+
+- **Param warnings**: 1360 → 24 (**-98%**)
+- **Define count**: 139 → 33 (未实例化的 prelude generic 不 emit)
+- **测试全绿**: 898 lib + 4694 integration = 5592 tests, 0 failures, 9 ignored
+- **被实例化的 prelude generic** (Box::new, Vec::new) 仍 emit generic def body — codegen_operand 用 generic def 名引用 (Stage 101 修复 FnDef substs mangling)
+
+### 决策点 (§12 最优>最小, §1.0 原则 6 通解>特解)
+
+1. **只跳过无 MonoItem::Fn 实例化的 prelude generic** — 而非跳过所有 prelude generic (会导致 Box::new undefined reference)
+2. **user_item_count 存到 CompileResult** — 而非通过 HIR 查询 (codegen 不访问 HIR, §16)
+3. **提前 collect_mono_items 到 pipeline.rs** — 复用同一份 MonoItems (§1.0 原则 10)
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4694 tests, 0 failures, 9 ignored — stage100 7 tests included)
 
 ---
 

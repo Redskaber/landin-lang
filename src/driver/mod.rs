@@ -489,6 +489,18 @@ pub struct CompileResult {
     /// calls during monomorphization.
     /// Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
     pub trait_method_map: crate::mir::monomorphize::TraitMethodResolutionMap,
+    /// Stage 100 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix):
+    /// Number of user items before prelude was injected. DefId(0..user_item_count-1)
+    /// are user items; DefId(user_item_count..) are prelude items.
+    ///
+    /// Used by `codegen_from_mir` to skip prelude generic function bodies
+    /// (their MIR contains Param types that shouldn't be codegen'd — only
+    /// instantiated MonoItem::Fn should be emitted).
+    ///
+    /// Per §1.0 原則 10 (唯一可信数据源): user_item_count is the source of truth
+    /// for prelude/user boundary. Pre-computed in compile_inner.rs:79.
+    /// Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
+    pub user_item_count: usize,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -529,6 +541,7 @@ impl CompileResult {
             synthesized_closure_mir_bodies: Vec::new(),
             type_name_by_def_id: std::collections::HashMap::new(),
             trait_method_map: crate::mir::monomorphize::TraitMethodResolutionMap::default(),
+            user_item_count: 0,
         }
     }
 }
