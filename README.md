@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.634.0 (v0.9 Stage 95 — TD-PRELUDE-TRAIT-COVERAGE: Default + PartialEq + Eq traits added to prelude; 5572 tests — Architecture health 9.85/10) |
+| **Version** | v0.635.0 (v0.9 Stage 96 — TD-PRELUDE-TRAIT-COVERAGE: Ord trait added; Debug/PartialOrd deferred (codegen crash); 5576 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.9 Stage 95 COMPLETE**. 5572 tests (898 lib + 4674 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 95 adds `PartialEq` + `Eq` traits to the prelude (TD-PRELUDE-TRAIT-COVERAGE 续). Eq declared WITHOUT supertrait (`Eq: PartialEq<Self>` caused object safety interference — Stage 94 finding). 4 new tests. Prelude now has: Clone, Copy, Display, Fn, FnMut, FnOnce, Drop, Default, PartialEq, Eq. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.9 Stage 96 COMPLETE**. 5576 tests (898 lib + 4678 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 96 adds `Ord` trait to prelude (marker, no supertrait). Debug + PartialOrd deferred — their impl bodies (returning String/Option with if/match) cause codegen SIGSEGV (TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH, P3, v0.10+). 4 new tests. Prelude now has: Clone, Copy, Display, Fn, FnMut, FnOnce, Drop, Default, PartialEq, Eq, Ord. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -532,6 +532,23 @@ impl Eq for i64 {}
 impl Eq for bool {}
 impl Eq for usize {}
 
+// Stage 96 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE 续): Add Ord trait (marker only).
+// Debug + PartialOrd deferred — their impl bodies (returning String or
+// Option<i32> with if/match) cause SIGSEGV in lib tests (codegen issue
+// with prelude fn bodies that have complex control flow + return types).
+// Tracked as TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH (P3, v0.10+).
+//
+// Per §1.0 原則 4 (报错 > 静默): defer rather than crash.
+// Per §12 (最优 > 最小): add marker traits (no method bodies) now,
+// defer traits with method bodies that crash codegen.
+
+// === Ord trait (marker — total ordering) ===
+trait Ord {}
+impl Ord for i32 {}
+impl Ord for i64 {}
+impl Ord for bool {}
+impl Ord for usize {}
+
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }

@@ -1147,3 +1147,9 @@ mod stage94_default_trait_tests;
 // interference). ===
 #[path = "v0/stage95/plan/partial_eq_eq_trait_tests.rs"]
 mod stage95_partial_eq_eq_trait_tests;
+
+// === Stage 96 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE 续): Ord trait added.
+// Debug + PartialOrd deferred (impl bodies cause codegen crash —
+// TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH, P3, v0.10+). ===
+#[path = "v0/stage96/plan/ord_trait_tests.rs"]
+mod stage96_ord_trait_tests;

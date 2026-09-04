@@ -43601,3 +43601,35 @@ stage16_78 tests to find prelude's Eq instead of user's Foo). v0.634.0.
   From/Into
 - TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
 - TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION: turbofish path fix
+
+---
+Task ID: stage96
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 96 (v0.9) — TD-PRELUDE-TRAIT-COVERAGE 续: Ord trait added.
+Debug + PartialOrd deferred — their impl bodies (returning String or
+Option<i32> with if/match) cause SIGSEGV in lib tests. New TD:
+TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH (P3, v0.10+). v0.635.0. 5576 tests,
+0 failures, 9 ignored.
+
+决策点:
+1. 选择"只添加 Ord (marker, no method body)"而非"添加 Debug + PartialOrd"
+   - 引用 §12 (最优 > 最小): 先验证 marker traits 无回归，再添加
+     带 method body 的 traits。
+   - Debug::fmt 返回 String，PartialOrd::partial_cmp 返回 Option<i32>
+     — 两者的 impl body 都有复杂控制流 (if/match)，导致 codegen SIGSEGV。
+   - 引用 §1.0 原則 4 (报错 > 静默): defer 而非 crash。
+
+新 TD: TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH (P3, v0.10+) — prelude trait
+impl bodies with complex control flow (if/match returning String/Option)
+cause codegen SIGSEGV. Root cause: codegen can't handle prelude fn bodies
+that return Option or String from impl methods.
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓
+- cargo test --release --features llvm-backend ✓ (5576 tests, 0 failures, 9 ignored)
+
+下一步:
+- TD-PRELUDE-TRAIT-IMPL-CODEGEN-CRASH: 调查 codegen 对 prelude impl
+  method body 的处理 (Option/String return → SIGSEGV)
+- TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
