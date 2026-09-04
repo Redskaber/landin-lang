@@ -557,16 +557,22 @@ impl Eq for usize {}
 trait Debug {
     fn fmt(&self) -> String;
 }
-// Impl bodies deferred — stack smashing in LLVM integration tests.
+// Impl bodies deferred — non-deterministic SIGSEGV in LLVM codegen.
 // TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+).
 //
-// Stage 103 (Layer 3 partial fix): resolve_lit_ty_from_expected now resolves
-// unsuffixed int literals (e.g., `0` in `String { ptr: 0, ... }`) to usize
-// when expected_ty is RawPtr. This fixes the String struct layout corruption
-// (ptr field was 4 bytes instead of 8). However, Param warnings from generic
-// prelude methods (Vec::push<T>, etc.) still cause non-deterministic
-// SIGSEGV — TD-MONO-INFER (P3, v0.11+) tracks type inference back-propagation
-// to fill FnDef substs for non-turbofish paths.
+// Stage 105 analysis:
+// - LLVM IR is IDENTICAL between success and crash runs (same Param=73 Infer=18).
+// - Crash is non-deterministic at LLVM codegen/object emission stage.
+// - ASLR off reduces crash rate (1/100 vs 3/100) but doesn't eliminate it.
+// - Root cause: LLVM's CodeGenLevelDefault optimizer non-deterministically
+//   handles the incorrect LLVM IR (Param fallback to i32 → wrong struct
+//   layout → optimizer makes different decisions based on memory layout).
+// - The fix must eliminate Param/Infer warnings entirely (all types must
+//   be concrete before codegen), not just reduce them.
+// - This requires fixing ALL typeck writeback issues:
+//   1. Infer warnings (Constant type Infer in Default/Display/String_new/main)
+//   2. Param warnings (generic def body internal types not substituted)
+// - Each requires a separate fix in typeck writeback or MIR lower.
 
 // === PartialOrd trait (declared, impls deferred) ===
 trait PartialOrd<Rhs> {

@@ -403,8 +403,47 @@ pub(crate) fn codegen_terminator(
 
             // Process the remaining args from the terminator.
             for (arg_idx, a) in args.iter().enumerate() {
-                let ty =
-                    detect_operand_type(mir, a, layouts, mono_layouts).unwrap_or(EmitType::I32);
+                // Stage 107 (v0.12 — TD-CODEGEN-CALL-ARG-TYPE-SOURCE):
+                // Use the callee's sig.inputs[arg_idx] as the authoritative
+                // arg type, NOT the operand's own type (detect_operand_type).
+                //
+                // Root cause (Stage 106 RCA): when Constant.ty is Infer (from
+                // lit_to_const for unsuffixed literals like `0` or `42`),
+                // detect_operand_type falls back to I32 — which happens to
+                // match the callee sig in some cases. But when Constant.ty
+                // is resolved to a concrete type (e.g., I32 after typeck
+                // default_unresolved), detect_operand_type returns I32 even
+                // when the callee expects i64. This produces `sext i32 42 to
+                // i64` instead of `i64 42`, changing the IR structure and
+                // breaking codegen tests.
+                //
+                // Fix: Prefer callee sig for arg type. But the callee sig may
+                // contain Param(N) for generic functions — in that case, fall
+                // back to detect_operand_type (which reads the operand's own
+                // type, which has been resolved by typeck/writeback).
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one rule for all call args.
+                // Per §1.0 原則 4 (报错 > 静默): use authoritative sig when
+                // available and concrete.
+                // Per §12 (最优 > 最小): root-cause fix at the type source.
+                let callee_param_ty = callee_def_id_early
+                    .and_then(|did| fn_sigs.get(&did))
+                    .and_then(|sig| sig.inputs.get(arg_idx));
+                let ty = if let Some(param_ty) = callee_param_ty {
+                    // Check if param_ty contains Param (generic function).
+                    // If so, don't use it — the operand's own type (resolved
+                    // by typeck/writeback) is more accurate.
+                    if !mir_type_contains_param(param_ty) {
+                        mir_type_to_emit_type_with_layouts_and_mono(param_ty, layouts, mono_layouts)
+                    } else {
+                        // Generic param — fallback to operand type.
+                        detect_operand_type(mir, a, layouts, mono_layouts).unwrap_or(EmitType::I32)
+                    }
+                } else {
+                    // Fallback: use operand's own type when callee sig
+                    // is unavailable (e.g., external fns, closures).
+                    detect_operand_type(mir, a, layouts, mono_layouts).unwrap_or(EmitType::I32)
+                };
                 // Stage 18.335 (P1 soundness fix): Skip ZST args (EmitType::Void).
                 // LLVM IR requires first-class types for call args; `void` is only
                 // allowed as a function *return* type. Without this filter, calling
@@ -1204,6 +1243,30 @@ fn codegen_print_call(
         mono_names,
         type_name_by_def_id,
     )
+}
+
+/// Stage 107 (v0.12 — TD-CODEGEN-CALL-ARG-TYPE-SOURCE): Check if a MIR Ty
+/// contains any `TyKind::Param` (recursively). Used to determine whether the
+/// callee's sig param type is generic (contains Param) — if so, fallback to
+/// operand type instead of using the sig type directly (which would produce
+/// wrong EmitType via Param→I32 fallback).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one recursive walker for all type kinds.
+/// Per §23: `mir_type_contains_param` follows `<noun>_<noun>_<verb>_<noun>` pattern.
+pub(crate) fn mir_type_contains_param(ty: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            mir_type_contains_param(inner)
+        }
+        TyKind::Array(elem, _) => mir_type_contains_param(elem),
+        TyKind::Tuple(tys) => tys.iter().any(mir_type_contains_param),
+        TyKind::Adt(_, substs) => substs.iter().any(mir_type_contains_param),
+        TyKind::Closure(_, substs) => substs.iter().any(mir_type_contains_param),
+        TyKind::FnDef(_, substs) => substs.iter().any(mir_type_contains_param),
+        _ => false,
+    }
 }
 
 #[cfg(test)]

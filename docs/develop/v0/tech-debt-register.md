@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.642.0 (Stage 103)
+# Landin 编译器技术债完整清单 — v0.642.0 (Stage 104)
 
 > **更新日期**: 2026-09-04
 > **版本**: v0.642.0
-> **状态**: v0.11 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1+2+3+4 部分完成)。Stage 103 完成 resolve_lit_ty_from_expected (Layer 3 部分修复 — ptr field Infer → usize)。剩余 Layer 2 (TD-MONO-INFER — 非 turbofish FnDef substs) + Layer 3 残留 (Param warnings from generic prelude methods)。
+> **状态**: v0.11 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1+2+3+4 部分完成)。Stage 104 完成 TD-MONO-INFER 根因分析 — writeback_fndef_substs 已实现 type inference back-propagation, 手动推断在 MIR lower 导致 typeck false mismatch。残留: generic def body 仍 emit (Stage 100 跳过条件未覆盖被实例化的 generic)。
 
 ---
 

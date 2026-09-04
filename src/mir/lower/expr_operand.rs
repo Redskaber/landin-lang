@@ -1959,7 +1959,11 @@ pub(crate) fn lower_expr_to_operand(
 /// nesting depths (Outer<Inner<T>>, *mut T, &T, [T; N], (T, U), etc.).
 /// Per §12 (最优 > 最小): root-cause fix at the inference site.
 /// Per §20 (iterative audit): same class as Stage 18.347/18.358.
-fn collect_param_bindings(field_ty: &Ty, operand_ty: &Ty, bindings: &mut Vec<(u32, Ty)>) {
+pub(crate) fn collect_param_bindings(
+    field_ty: &Ty,
+    operand_ty: &Ty,
+    bindings: &mut Vec<(u32, Ty)>,
+) {
     // Stage 18.376 (TD-ARCH-NESTED-GENERIC-FIELD-ACCESS): Skip if operand_ty
     // contains Infer or Error — these are unresolved types that would pollute
     // the inferred substs. typeck will resolve them later via unify, but at

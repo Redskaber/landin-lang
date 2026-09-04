@@ -898,6 +898,13 @@ pub(super) fn lower_call_expr(
         // Per §1.6 终极检验: this IS the root-cause fix.
         // Per §12 (最优 > 最小): root-cause fix at the lower site.
         // Per §1.0 原則 6 (通解 > 特解): one expected_ty path for all call dests.
+        //
+        // Stage 104 (v0.11 — TD-MONO-INFER): FnDef substs inference is handled
+        // by writeback_fndef_substs (driver/compile_inner.rs:1017), which runs
+        // AFTER typeck. We do NOT infer substs here because typeck would see
+        // FnDef(def_id, [i32]) (inferred) vs FnDef(def_id, []) (from other
+        // sources) as a mismatch. The writeback pass correctly handles this
+        // post-typeck, avoiding the false mismatch.
         let dest_ty = expected_ty
             .cloned()
             .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));

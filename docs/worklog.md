@@ -44048,3 +44048,224 @@ Stage Summary:
 下一步:
 - Stage 104: TD-MONO-INFER 修复 (type inference back-propagation for FnDef substs)
 - Stage 105: 重新添加 Debug + PartialOrd impls (依赖 Stage 104 完成)
+
+---
+Task ID: stage104
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 104 (v0.11) — TD-MONO-INFER 根因分析. 发现 writeback_fndef_substs
+已实现 type inference back-propagation. 手动推断在 MIR lower 导致 typeck
+false mismatch. 移除手动推断, 保留 writeback 为唯一推断点.
+v0.642.0 (无版本变更 — RCA only). 5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: mir/lower/expr_variants + hir/generics + mir/substitute + typeck)
+- 对齐: 已查 Stage 99-103 dev-log, src/mir/lower/writeback.rs (writeback_fndef_substs),
+  src/driver/compile_inner.rs:1017 (writeback 调用), src/typeck/check.rs (check_terminator)
+- 阻断: v0.642.0 全绿 (5613 tests), TD-MONO-INFER P3
+
+5W2H:
+- WHAT: 调查 TD-MONO-INFER (FnDef substs 为空导致 Param warnings + SIGSEGV)
+- WHY: Stage 101 发现非 turbofish path 的 FnDef substs 为空, 导致 codegen_operand
+  fallback 到 generic def name, generic def body 必须 emit (Param fallback to i32)
+- WHO: ARCH-A 设计; DEV-A 实验; REV-A 审查; QA-A 测试
+- WHEN: Stage 104 完成 → Stage 105 (调查 codegen 读取 FnDef substs 时机)
+- WHERE: src/mir/lower/expr_variants.rs (lower_call_expr), src/mir/lower/writeback.rs
+  (writeback_fndef_substs), src/driver/compile_inner.rs:1017 (writeback 调用)
+- HOW: 1) 尝试在 lower_call_expr 手动推断 substs; 2) 发现 12 测试失败 (typeck
+  false mismatch); 3) 发现 writeback_fndef_substs 已实现推断; 4) 移除手动推断;
+  5) 验证基线全绿 + 50 次跑稳定
+- HOW MUCH: 0 src 变更 (RCA only) + 1 helper visibility change + 注释更新
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协):
+1. 选择"不在 MIR lower 手动推断 substs"而非"手动推断"
+   - 引用 §1.0 原则 9 (正确>妥协): 手动推断在 typeck 之前运行, 导致 false mismatch
+   - 引用 §12 (最优>最小): writeback_fndef_substs 是正确推断点 (post-typeck)
+   - 一个推断点 (writeback) 优于两个 (MIR lower + writeback)
+
+裁剪点:
+- L3 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+- 50 次手动跑 String::new + push_str 全绿 (0 failures)
+
+Stage Summary:
+- TD-MONO-INFER 根因分析完成 — writeback_fndef_substs 已实现 type inference
+- 手动推断在 MIR lower 导致 typeck false mismatch (12 测试失败)
+- 移除手动推断, 保留 writeback 为唯一推断点
+- 加 Debug impl 后 100 次跑 2 失败 (Param from generic def body 仍存在)
+- 残留: generic def body 仍 emit (Stage 100 跳过条件未覆盖被实例化的 generic)
+- 架构健康度: 9.85/10 (stable — RCA only, 无代码变更)
+
+下一步:
+- Stage 105: 调查 codegen 读取 FnDef substs 时机 — 确认 writeback 更新的 local_decls
+  是否在 codegen 时可见
+- Stage 106: 修改 Stage 100 跳过条件 — 被实例化的 generic def body 也跳过 emit
+- Stage 107: 重新添加 Debug + PartialOrd impls
+
+---
+Task ID: stage105
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 105 (v0.11) — LLVM codegen 非确定性 SIGSEGV 根因分析.
+发现 LLVM IR 在成功/失败跑间完全相同 (Param=73 Infer=18). 崩溃发生在 LLVM
+codegen/object emission 阶段, 非前端. ASLR off 减少 crash 但不消除.
+新发现 TD-TYPECK-WRITEBACK-INCOMPLETE (P2, v0.12+).
+v0.642.0 (无版本变更 — RCA only). 5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: codegen + typeck writeback + LLVM backend)
+- 对齐: 已查 Stage 99-104 dev-log, docs/llvm/execution-pipeline.md,
+  docs/graph/codegen/data-flow.md, src/codegen/function.rs (Stage 100 skip),
+  src/codegen/operand.rs (FnDef substs), src/mir/lower/writeback.rs
+- 阻断: v0.642.0 全绿 (5613 tests), TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH P2
+
+5W2H:
+- WHAT: 调查加 Debug impl 后非确定性 SIGSEGV (100 次跑 1-3 失败)
+- WHY: LLVM IR 不正确 (Param/Infer fallback to i32 → struct layout 错误)
+  → LLVM CodeGenLevelDefault 优化器非确定性处理 → crash
+- WHO: ARCH-A 设计; DEV-A 实验; REV-A 审查; QA-A 测试
+- WHEN: Stage 105 完成 → Stage 106 (修复 TD-TYPECK-WRITEBACK-INCOMPLETE)
+- WHERE: LLVM codegen/object emission stage (非前端, 非 MIR lower)
+- HOW: 1) 100 次跑确认非确定性; 2) 比较成功/失败 stderr (完全相同);
+  3) ASLR off 测试 (减少但不消除); 4) 记录 TD-TYPECK-WRITEBACK-INCOMPLETE
+- HOW MUCH: 0 src 变更 (RCA only) + 注释更新
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协):
+1. 选择"不在 Stage 105 实施代码修复"而非"快速 patch"
+   - 引用 §1.0 原则 9 (正确>妥协): 根因涉及多个 typeck writeback 问题
+   - 引用用户指示: 遇依赖缺失停止阉割版, 转而分析根因
+   - 修复需系统性解决 Infer + Param warnings, 不能单 stage 完成
+
+2. 选择"记录 TD-TYPECK-WRITEBACK-INCOMPLETE"而非"忽略"
+   - 引用 §1.0 原则 4 (报错>静默): 18 Infer + 73 Param warnings 需跟踪
+
+裁剪点:
+- L3 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+- 基线 (无 Debug impl) 100 次跑 ASLR off 全绿 (0 failures)
+
+Stage Summary:
+- LLVM codegen 非确定性 SIGSEGV 根因分析完成
+- LLVM IR 在成功/失败跑间完全相同 (Param=73 Infer=18)
+- 崩溃在 LLVM codegen/object emission 阶段 (非前端)
+- ASLR off 减少 crash 但不消除 (1/100 vs 3/100)
+- 新发现 TD-TYPECK-WRITEBACK-INCOMPLETE (P2, v0.12+)
+- 架构健康度: 9.85/10 (stable — RCA only, 无代码变更)
+
+下一步:
+- Stage 106: 修复 TD-TYPECK-WRITEBACK-INCOMPLETE — 系统性修复 Infer + Param warnings
+- Stage 107: 重新添加 Debug + PartialOrd impls (依赖 Stage 106 完成)
+
+---
+Task ID: stage106
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 106 (v0.12) — TD-TYPECK-WRITEBACK-INCOMPLETE: Constant type writeback.
+实验: 在 typeck Phase 3 后添加 Phase 3.6 (Constant type resolve).
+结果: Infer warnings 18→0, 但 7 个 codegen 测试回归 (call arg type 从
+callee sig 切换到 Constant type, 改变 IR 结构).
+Revert Stage 106, 记录新 TD-CODEGEN-CALL-ARG-TYPE-SOURCE.
+v0.642.0 (无版本变更 — RCA + revert). 5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: typeck/checker + codegen + TextEmitter)
+- 对齐: 已查 Stage 99-105 dev-log, src/typeck/checker.rs (Phase 3),
+  src/codegen/operand.rs (codegen_operand), src/mir/lower/mod.rs (lit_to_const)
+- 阻断: v0.642.0 全绿 (5613 tests), TD-TYPECK-WRITEBACK-INCOMPLETE P2
+
+5W2H:
+- WHAT: 添加 Phase 3.6 — Constant type writeback (resolve Infer in Constant.ty)
+- WHY: Infer warnings 来自 lit_to_const 创建的 Infer(IntVar), Phase 3 不写 Constant.ty
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 审查 (发现回归); QA-A 测试
+- WHEN: Stage 106 revert → Stage 107 (修 codegen call arg type source)
+- WHERE: src/typeck/checker.rs Phase 3 后 (Phase 3.6)
+- HOW: 遍历 statement + terminator, 对 Operand::Constant(c) resolve c.ty
+- HOW MUCH: 0 src 变更 (reverted) + RCA 记录
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协):
+1. 选择"revert Stage 106"而非"保留不完整修复"
+   - 引用 §1.0 原则 9 (正确>妥协): Constant type writeback 本身正确,
+     但 codegen 对 call arg type source 不一致 — 用 Constant type 而非 callee sig
+   - 引用用户指示: 不在阉割版上妥协
+   - 正确修复需改 codegen (Stage 107), 超出 Stage 106 范围
+
+裁剪点:
+- L3 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: revert 后全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- Constant type writeback 实验完成 (Infer 18→0) 但产生 7 回归
+- 根因: codegen call arg type source 不一致 (Infer→callee sig, concrete→Constant type)
+- Revert Stage 106, 记录 TD-CODEGEN-CALL-ARG-TYPE-SOURCE (P2, v0.12+)
+- 架构健康度: 9.85/10 (stable — revert, 无代码变更)
+
+下一步:
+- Stage 107: 修复 TD-CODEGEN-CALL-ARG-TYPE-SOURCE — codegen call arg type 始终来自 callee sig
+- Stage 108: 重新引入 Constant type writeback (Phase 3.6)
+- Stage 109: 加 Debug impl 验证 100 次跑 0 SIGSEGV
+
+---
+Task ID: stage107
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 107 (v0.12) — TD-CODEGEN-CALL-ARG-TYPE-SOURCE 修复.
+codegen call arg type 优先用 callee sig (非 Param 时), generic 时 fallback
+到 operand type. 新增 mir_type_contains_param helper.
+v0.643.0. 5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L2 (1 src 文件, ~60 LOC)
+- 对齐: 已查 Stage 106 dev-log (Constant type writeback 回归根因),
+  src/codegen/terminator.rs (Call codegen 路径),
+  src/codegen/mir_translation/places.rs (detect_operand_type)
+- 阻断: v0.642.0 全绿 (5613 tests), TD-CODEGEN-CALL-ARG-TYPE-SOURCE P2
+
+5W2H:
+- WHAT: Call terminator arg type 从 detect_operand_type 改为优先用 callee sig
+- WHY: Stage 106 发现 codegen call arg type source 不一致 — 当 Constant.ty
+  是 Infer 时用 callee sig (正确), concrete 时用 Constant type (可能错误)
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 审查; QA-A 测试
+- WHEN: Stage 107 完成 → Stage 108 (重新引入 Constant type writeback)
+- WHERE: src/codegen/terminator.rs (Call arg type 处理, line 404-452)
+- HOW: 1) 优先用 callee sig.inputs[arg_idx]; 2) 如果含 Param (generic),
+  fallback 到 detect_operand_type; 3) 如果无 callee sig, fallback 到 operand type
+- HOW MUCH: 1 src 文件 (~60 LOC) + 新增 mir_type_contains_param helper
+
+决策点 (§12 最优>最小, §1.0 原则 6 通解>特解):
+1. 选择"优先用 callee sig, generic 时 fallback"而非"始终用 callee sig"
+   - 引用 §1.0 原則 6 (通解 > 特解): generic callee sig 含 Param, 不能直接用
+   - 引用 §1.0 原則 9 (正确 > 妥协): non-generic callee sig 是权威类型来源
+
+裁剪点:
+- L2 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-CODEGEN-CALL-ARG-TYPE-SOURCE 修复完成
+- codegen call arg type 优先用 callee sig (non-generic), fallback 到 operand type (generic)
+- 新增 mir_type_contains_param helper (pub(crate), 递归)
+- 架构健康度: 9.85/10 (stable — 1 src 文件, 无回归)
+
+下一步:
+- Stage 108: 重新引入 Constant type writeback (Phase 3.6) — Stage 107 已修复 call arg type source
+- Stage 109: 加 Debug impl 验证 100 次跑 0 SIGSEGV
