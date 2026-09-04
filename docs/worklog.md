@@ -43485,3 +43485,91 @@ Stage Summary:
 - TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
 - TD-CFG-MACROS/TD-ENV-MACROS: build system macros
 - TD-ASM-MACRO: LLVM inline asm
+
+---
+Task ID: stage93
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 93 (v0.8) — 架构审查 (4 维度) + TD 规划。产出审查报告文档
+`docs/develop/v0/stage-93/architecture-audit-report.md` + 13 个新 TD 同步到
+tech-debt-register.md。v0.632.0 (无代码变更)。
+
+3秒启动自检:
+- 定位: L3 (跨模块架构审查 — 4 维度: 类型系统/特解通解/runtime/宏系统)
+- 对齐: 已查 tech-debt-register.md (所有 TD), src/mir/ty.rs (TyKind enum),
+  src/codegen/runtime.rs (C wrappers), src/parser/macro_expand/ (macros),
+  src/stdlib/prelude.rs (trait/type coverage)
+- 阻断: v0.632.0 全绿 (5564 tests), 0 P0/P1
+
+5W2H:
+- WHAT: 审查类型系统、特解转通解、runtime.rs C wrapper、宏系统完整性。
+- WHY: 用户要求系统性审查所有特解并规划转通解 (参考 Rust 设计)。
+- WHO: ARCH-A 角色执行审查。
+- WHEN: v0.8 阶段末尾。
+- WHERE: 产出报告在 docs/develop/v0/stage-93/architecture-audit-report.md。
+- HOW: 逐维度扫描代码 + 对比 Rust 设计 + 产出 TD 规划。
+- HOW Much: 审查报告 1 份 + 13 个新 TD。
+
+决策点:
+1. 选择"产出审查报告 + TD 规划"而非"直接修复特解"
+   - 引用 §13.4 (重构判据): 先规划后执行 — 13 个 TD 需要按优先级排序，
+     分批次推进。直接修复会失控。
+   - 引用 §12 (最优 > 最小): 根因修复 — 系统审查所有特解，识别根因模式
+     (codegen intercept / MIR intrinsic / OpaquePtr fallback)，统一规划
+     转通解路径。
+
+裁剪点:
+- L3 架构审查 — 产出报告 + TD 规划，不涉及代码变更。
+- 无 §3.2 验收 (无代码变更，5564 tests 不变)。
+
+Stage Summary:
+- 4 维度架构审查完成 (类型系统/特解通解/runtime/宏系统)
+- 审查报告: docs/develop/v0/stage-93/architecture-audit-report.md
+- 13 个新 TD 同步到 tech-debt-register.md
+- 架构健康度: 9.85/10 (stable — 审查未发现 P0/P1)
+- 通解转换路线图: v0.9 高影响 → v0.9-0.10 中影响 → v0.10+ 低影响
+
+下一步:
+- 按 v0.9 路线图推进: TD-PRINT-CODEGEN-INTERCEPT-TO-MACRO (最高影响)
+- 或: TD-VEC-STRING-INTRINSIC-TO-METHOD-DISPATCH (消除 MIR intrinsic)
+- 或: TD-PRELUDE-TRAIT-COVERAGE (添加 Debug/Eq/Hash/Ord/Default)
+
+---
+Task ID: stage94
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 94 (v0.9) — TD-PRELUDE-TRAIT-COVERAGE partial: Default trait
+added to prelude with impls for i32/i64/bool/usize. PartialEq/Eq deferred
+(object safety impact). v0.633.0. 5568 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L2 (~20 行 prelude.rs + 4 tests + docs sync)
+- 对齐: 已查 Stage 93 审查报告 (TD-PRELUDE-TRAIT-COVERAGE P3 v0.9+),
+  prelude.rs (现有 trait 位置), Rust prelude trait 列表
+- 阻断: v0.632.0 全绿 (5564 tests), 0 P0/P1
+
+5W2H:
+- WHAT: 添加 Default trait 到 prelude (i32/i64/bool/usize impls)。
+- WHY: Rust prelude 有 Default — 缺失导致用户无法 T::default()。
+- WHO: 影响所有需要默认值的代码。
+- WHERE: src/stdlib/prelude.rs (trait + impls)。
+- HOW: 在 Drop trait 后添加 Default trait + 4 个 primitive impls。
+- HOW Much: ~20 行 prelude + 4 tests。
+
+决策点:
+1. 选择"只添加 Default (不含 PartialEq/Eq)"而非"添加全部 3 个 trait"
+   - 引用 §12 (最优 > 最小): 先验证 Default 无回归再添加其他。
+   - PartialEq/Eq 有 supertrait (Eq: PartialEq<Self>) 影响 object safety
+     分析 — 2 个 lib test 失败 (stage16_78_supertrait*)。需要先修复
+     object safety 分析才能添加 Eq。
+
+裁剪点:
+- L2 — §7.3 gate review per §1.2.1
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓
+- cargo test --release --features llvm-backend ✓ (5568 tests, 0 failures, 9 ignored)
+
+下一步:
+- TD-PRELUDE-TRAIT-COVERAGE 续: 添加 PartialEq/Eq (需先修复 object safety)
+- TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION: Default::default() 需要 turbofish
+- TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法

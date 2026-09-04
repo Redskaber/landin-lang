@@ -1133,3 +1133,11 @@ mod stage91_format_args_write_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
 #[path = "v0/stage92/plan/generic_trait_method_tests.rs"]
 mod stage92_generic_trait_method_tests;
+
+// === Stage 94 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE partial): Default trait
+// added to prelude with impls for i32/i64/bool/usize. PartialEq/Eq
+// deferred (object safety impact). ===
+// Per §12 (最优 > 最小): root-cause fix — add to prelude.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative tests.
+#[path = "v0/stage94/plan/default_trait_tests.rs"]
+mod stage94_default_trait_tests;

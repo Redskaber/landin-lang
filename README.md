@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.632.0 (v0.8 Stage 92 — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix: re_resolve_trait_method_calls now runs for ALL functions; added lookup_by_trait_method + lookup_by_method_name fallbacks; 5564 tests — Architecture health 9.85/10) |
+| **Version** | v0.633.0 (v0.9 Stage 94 — TD-PRELUDE-TRAIT-COVERAGE partial: Default trait added to prelude; 5568 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.8 Stage 92 COMPLETE**. 5564 tests (898 lib + 4666 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 92 partially fixes TD-GENERIC-TRAIT-METHOD-MANGLING: `re_resolve_trait_method_calls` now runs for ALL functions (was: only generic ones). Added `lookup_by_trait_method` (DefId-only) + `lookup_by_method_name` (name-based fallback) to `TraitMethodResolutionMap`. Removed `substs.is_empty()` guard. Full turbofish path resolution (`From::<i32>::from(42)`) still needs MIR lower fix — tracked as TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION (P3, v0.9+). 4 new tests (1 positive + 3 negative). Architecture health: 9.85/10 (stable — re_resolve infrastructure extended). |
+| **Status** | ✅ **v0.9 Stage 94 COMPLETE**. 5568 tests (898 lib + 4670 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 94 adds the `Default` trait to the prelude (TD-PRELUDE-TRAIT-COVERAGE partial) with impls for i32/i64/bool/usize. PartialEq/Eq deferred — their supertrait (`Eq: PartialEq<Self>`) impacts object safety analysis (2 lib tests failed). 4 new tests. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

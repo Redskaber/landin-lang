@@ -237,3 +237,25 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 - 原 `tech-debt-register.md` (v0.510.0, Stage 18.500) — v0.4 FINAL 历史数据，已归档到第五节
 
 合并完成后，版本化文件 (`tech-debt-register-v0.604.md` 等) 已移除。
+
+---
+
+## 七、Stage 93 架构审查新发现 TD (2026-09-03)
+
+### 新发现 TD — 架构审查 (Stage 93)
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PRELUDE-METHOD-COVERAGE | prelude 类型方法覆盖率不完整 (i32/str/String/Vec/Box/Option 缺多个方法) | prelude 只实现了 MVP 方法 | 扩展 prelude 方法覆盖 | P3, v0.9+ |
+| TD-PRELUDE-TRAIT-COVERAGE | prelude trait 覆盖率不完整 (缺 Debug, Eq, Hash, Ord, Default, From/Into) | 只实现了 Clone/Copy/Display/Fn/Drop | 添加缺失 trait + impls | P3, v0.9+ |
+| TD-PRINT-CODEGEN-INTERCEPT-TO-MACRO | println!/print! 用 codegen intercept 而非 macro expansion | Stage 18.18 特解 | 转为 macro expansion to printf call | P3, v0.9 |
+| TD-OPAQUE-PTR-UNCHECKED-MIGRATION | OpaquePtr unchecked variant 用特解 (all Adt→OpaquePtr) | Stage 14.63 特解 | 迁移到 with_layouts variant | P3, v0.9 |
+| TD-EMPTY-CLOSURE-OPAQUE-PTR-SPECIAL-CASE | 空 Closure → OpaquePtr 特解 (Stage 82 fix) | Closure coercion 特解 | FnPtr 类型直接 emit | P3, v0.9 |
+| TD-DYN-TRAIT-VTABLE-HARDCODED-GLOBAL | dyn Trait vtable dispatch 用 hardcoded global name | Stage 5.79 特解 | 使用 fat pointer 值 (not global) | P3, v0.9 |
+| TD-VEC-STRING-INTRINSIC-TO-METHOD-DISPATCH | String::push_str / Vec::push 用 MIR intrinsic 而非 method dispatch | Stage 18.229-230 特解 | 转 regular impl method dispatch | P3, v0.9 |
+| TD-FORMAT-VARIADIC-INTRINSIC-TO-DISPLAY | __landin_format_variadic 用 MIR intrinsic 而非 Display trait | Stage 18.231 特解 | 转 Display trait dispatch | P3, v0.9 |
+| TD-RUNTIME-PANIC-TO-LANDIN | Panic C wrappers 可转 Landin prelude fns (仅保留 abort 基石) | C wrapper 特解 | 格式化→Landin fn, abort→C 基石 | P3, v0.9+ |
+| TD-COMPILE-ERROR-MACRO | compile_error! 未完整实现 | macro body 不完整 | 完整实现 compile_error! | P3, v0.9+ |
+| TD-MATCHES-MACRO | matches! 未完整实现 | macro body 不完整 | 完整实现 matches! | P3, v0.9+ |
+| TD-TRACE-MACROS-MACRO | trace_macros! 未完整实现 | macro body 不完整 | 完整实现 trace_macros! | P3, v0.9+ |
+| TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION | turbofish path `From::<i32>::from` 在 MIR lower 中解析为错误 DefId | MIR lower path resolution bug | 修复 turbofish path resolution | P3, v0.9+ |

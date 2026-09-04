@@ -3,13 +3,35 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.631.0 (v0.8 Stage 91 — TD-FORMAT-ARGS-WRITE FIXED: `format_args!` and `write!` macros now compile and run; 5560 tests) |
+| **Current version** | v0.632.0 (v0.8 Stage 92 — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix: re_resolve for all functions; 5564 tests) |
 | **Date** | 2026-09-03 |
-| **Test count** | 898 lib tests + 4662 integration tests = 5560 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4666 integration tests = 5564 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — format_args!/write! work); v0.8 TD-focused phase — TD-FORMAT-ARGS-WRITE closed |
+| **Architecture** | Health 9.85/10 (stable — re_resolve infrastructure extended); v0.8 TD-focused phase — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix (turbofish path deferred to v0.9+) |
+
+---
+
+## v0.632.0 — Stage 92 (v0.8) — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix
+
+### Overview
+
+Stage 92 partially fixes TD-GENERIC-TRAIT-METHOD-MANGLING: `re_resolve_trait_method_calls`
+now runs for ALL functions (not just generic ones). Added `lookup_by_trait_method`
+(DefId-only) + `lookup_by_method_name` (name-based fallback) to
+`TraitMethodResolutionMap`.
+
+**Remaining gap**: Full turbofish path resolution (`From::<i32>::from(42)`) still
+needs MIR lower fix — the MIR lower resolves the turbofish path to the wrong
+DefId. Tracked as TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION (P3, v0.9+).
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo check --all-targets --features llvm-backend` ✓
+- `cargo test --release --features llvm-backend` ✓ (5564 tests, 0 failures, 9 ignored)
 
 ---
 

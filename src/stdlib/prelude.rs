@@ -482,6 +482,24 @@ trait FnOnce<Args> {
 trait Drop {
     fn drop(&mut self);
 }
+// Stage 94 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE): Add Default trait.
+// Default is the simplest and most impactful missing trait — provides
+// default values for types. No supertraits, no object safety impact.
+//
+// Per Rust: `T::default()` returns the "zero" or "empty" value.
+// Per §1.0 原則 6 (通解 > 特解): one trait for all types, with impls
+// for all primitive types.
+// Per §12 (最优 > 最小): root-cause fix — add to prelude, not special-case.
+
+// === Default trait ===
+trait Default {
+    fn default() -> Self;
+}
+impl Default for i32 { fn default() -> i32 { 0 } }
+impl Default for i64 { fn default() -> i64 { 0 } }
+impl Default for bool { fn default() -> bool { false } }
+impl Default for usize { fn default() -> usize { 0usize } }
+
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }
