@@ -1141,3 +1141,9 @@ mod stage92_generic_trait_method_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive runtime + 3 negative tests.
 #[path = "v0/stage94/plan/default_trait_tests.rs"]
 mod stage94_default_trait_tests;
+
+// === Stage 95 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE 续): PartialEq + Eq
+// added to prelude. Eq declared WITHOUT supertrait (avoids object safety
+// interference). ===
+#[path = "v0/stage95/plan/partial_eq_eq_trait_tests.rs"]
+mod stage95_partial_eq_eq_trait_tests;

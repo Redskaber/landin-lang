@@ -43573,3 +43573,31 @@ added to prelude with impls for i32/i64/bool/usize. PartialEq/Eq deferred
 - TD-PRELUDE-TRAIT-COVERAGE 续: 添加 PartialEq/Eq (需先修复 object safety)
 - TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION: Default::default() 需要 turbofish
 - TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
+
+---
+Task ID: stage95
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A
+Task: Stage 95 (v0.9) — TD-PRELUDE-TRAIT-COVERAGE 续: PartialEq + Eq
+traits added to prelude. Eq declared WITHOUT supertrait (avoids object
+safety interference — Stage 94 found that `Eq: PartialEq<Self>` caused
+stage16_78 tests to find prelude's Eq instead of user's Foo). v0.634.0.
+5572 tests, 0 failures, 9 ignored.
+
+决策点:
+1. 选择"Eq 不带 supertrait"而非"Eq: PartialEq<Self>"
+   - 引用 §12 (最优 > 最小): 根因修复 — Landin 没有 automatic trait
+     resolution, supertrait 仅影响 object safety 分析。不带 supertrait
+     避免干扰，用户独立 impl PartialEq + Eq。
+   - 引用 §1.0 原則 9 (正确 > 妥协): 正确的 v0.9 MVP — trait 存在且
+     可 impl，== operator 过载推迟到 v0.10+ (需要 operator overloading)。
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓
+- cargo test --release --features llvm-backend ✓ (5572 tests, 0 failures, 9 ignored)
+
+下一步:
+- TD-PRELUDE-TRAIT-COVERAGE 续: 添加 Debug, Hash, Ord, Default (已有),
+  From/Into
+- TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
+- TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION: turbofish path fix

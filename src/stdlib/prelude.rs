@@ -500,6 +500,38 @@ impl Default for i64 { fn default() -> i64 { 0 } }
 impl Default for bool { fn default() -> bool { false } }
 impl Default for usize { fn default() -> usize { 0usize } }
 
+// Stage 95 (v0.9 — TD-PRELUDE-TRAIT-COVERAGE 续): Add PartialEq + Eq traits.
+// Per Rust: PartialEq enables == and !=, Eq marks reflexive equality.
+// Per §1.0 原則 6 (通解 > 特解): one trait for each concern.
+//
+// Note: In Rust, `Eq: PartialEq<Self>` is a supertrait constraint. In
+// Landin v0.9, we declare Eq WITHOUT supertrait (Landin doesn't have
+// automatic trait resolution — the constraint would only affect object
+// safety analysis, not type checking). Users who want Eq can impl both
+// PartialEq and Eq independently.
+// Per §12 (最优 > 最小): root-cause fix — declare without supertrait
+// to avoid object safety interference (Stage 94 found that supertrait
+// causes stage16_78 tests to find prelude's Eq instead of user's Foo).
+
+// === PartialEq trait ===
+trait PartialEq<Rhs> {
+    fn eq(&self, other: &Rhs) -> bool;
+}
+impl PartialEq<i32> for i32 { fn eq(&self, other: &i32) -> bool { *self == *other } }
+impl PartialEq<i64> for i64 { fn eq(&self, other: &i64) -> bool { *self == *other } }
+impl PartialEq<bool> for bool { fn eq(&self, other: &bool) -> bool { *self == *other } }
+impl PartialEq<usize> for usize { fn eq(&self, other: &usize) -> bool { *self == *other } }
+
+// === Eq trait (marker — no supertrait, no methods) ===
+// Per Rust: Eq is a marker trait. In Rust it has `Eq: PartialEq<Self>`
+// as a supertrait bound, but in Landin v0.9 we declare it standalone
+// to avoid object safety analysis interference.
+trait Eq {}
+impl Eq for i32 {}
+impl Eq for i64 {}
+impl Eq for bool {}
+impl Eq for usize {}
+
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }

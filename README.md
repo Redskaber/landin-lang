@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.633.0 (v0.9 Stage 94 — TD-PRELUDE-TRAIT-COVERAGE partial: Default trait added to prelude; 5568 tests — Architecture health 9.85/10) |
+| **Version** | v0.634.0 (v0.9 Stage 95 — TD-PRELUDE-TRAIT-COVERAGE: Default + PartialEq + Eq traits added to prelude; 5572 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.9 Stage 94 COMPLETE**. 5568 tests (898 lib + 4670 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 94 adds the `Default` trait to the prelude (TD-PRELUDE-TRAIT-COVERAGE partial) with impls for i32/i64/bool/usize. PartialEq/Eq deferred — their supertrait (`Eq: PartialEq<Self>`) impacts object safety analysis (2 lib tests failed). 4 new tests. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.9 Stage 95 COMPLETE**. 5572 tests (898 lib + 4674 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 95 adds `PartialEq` + `Eq` traits to the prelude (TD-PRELUDE-TRAIT-COVERAGE 续). Eq declared WITHOUT supertrait (`Eq: PartialEq<Self>` caused object safety interference — Stage 94 finding). 4 new tests. Prelude now has: Clone, Copy, Display, Fn, FnMut, FnOnce, Drop, Default, PartialEq, Eq. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
