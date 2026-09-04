@@ -1169,3 +1169,8 @@ mod stage99_prelude_impl_body_repro_tests;
 // monomorphization skip for prelude generic function bodies. ===
 #[path = "v0/stage100/plan/prelude_generic_skip_tests.rs"]
 mod stage100_prelude_generic_skip_tests;
+
+// === Stage 101 (v0.10): TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 fix.
+// codegen_operand FnDef substs mangling. ===
+#[path = "v0/stage101/plan/fndef_substs_mangling_tests.rs"]
+mod stage101_fndef_substs_mangling_tests;

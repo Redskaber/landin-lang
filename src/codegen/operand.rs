@@ -10,6 +10,7 @@ use super::mir_translation::{codegen_place_load_typed, detect_place_type};
 use super::*;
 use crate::mir::place::*;
 use crate::mir::ty::ConstVal;
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub(crate) fn codegen_operand(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -18,6 +19,16 @@ pub(crate) fn codegen_operand(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    // Stage 101 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2):
+    // mono_names + type_name_by_def_id — used to mangle FnDef substs into
+    // specialized instance names (e.g., `landin_Box_new` → `Box_new_i32`).
+    // Without this, generic def body must still be emitted (causing Param
+    // warnings + non-deterministic SIGSEGV/SIGABRT in cargo test).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one mangling path for all FnDef operands.
+    // Per §1.0 原則 10 (唯一可信数据源): mono_names built in pipeline.rs.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> EmitValue {
     match op {
         Operand::Constant(c) => match c.val {
@@ -86,12 +97,60 @@ pub(crate) fn codegen_operand(
                 // silently returning wrong DefId). Per §1.0 原則 1 (内存安全决不能妥协):
                 // silent truncation u128→u32 could mask a corrupted ConstVal.
                 // Per §2 原则 3 (显式 > 隐式): expect documents the FnDef invariant.
-                if let crate::mir::ty::TyKind::FnDef(_, _) = &c.ty.kind {
+                //
+                // Stage 101 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2):
+                // When FnDef has non-empty substs (generic function instantiation),
+                // use mono_item_name to compute the specialized mangled name (e.g.,
+                // `Box_new_i32` for `Box::new<i32>`). This avoids referencing the
+                // generic def body (which contains Param types that shouldn't be
+                // codegen'd).
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one mangling path for all FnDef operands.
+                // Per §1.0 原則 4 (报错 > 静默): don't silently fallback to generic def name.
+                if let crate::mir::ty::TyKind::FnDef(_, substs) = &c.ty.kind {
                     if let crate::mir::ty::ConstVal::Uint(n) = &c.val {
                         let def_id = crate::hir::DefId(
                             u32::try_from(*n)
                                 .expect("FnDef ConstVal::Uint must fit u32 (DefId is u32)"),
                         );
+                        // Stage 101: If substs are non-empty and concrete, use mono_item_name.
+                        // Note: MIR lower currently only fills substs for turbofish paths
+                        // (e.g., `From::<i32>::from(42)`). Non-turbofish generic calls
+                        // (e.g., `Box::new(42i32)`) have empty substs — TD-MONO-INFER
+                        // tracks type inference back-propagation to fill them.
+                        // For empty substs, codegen_operand falls back to generic def name,
+                        // and codegen_mono_functions handles instance emission.
+                        if !substs.is_empty()
+                            && substs.iter().all(|t| {
+                                !matches!(
+                                    t.kind,
+                                    crate::mir::ty::TyKind::Param(_)
+                                        | crate::mir::ty::TyKind::Error
+                                        | crate::mir::ty::TyKind::Infer(_)
+                                )
+                            })
+                        {
+                            let mono_item = crate::mir::monomorphize::MonoItem::Fn {
+                                def_id,
+                                substs: substs.clone(),
+                            };
+                            if let Some(specialized) = mono_names.get(&mono_item) {
+                                return format!("@{}", specialized);
+                            }
+                            // Fallback: compute mono_item_name directly.
+                            let base = fn_name_by_def_id
+                                .get(&def_id)
+                                .map(|n| n.strip_prefix("landin_").unwrap_or(n).to_string())
+                                .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
+                            let specialized = crate::mir::monomorphize::mono_item_name(
+                                &mono_item,
+                                &base,
+                                type_name_by_def_id,
+                                interner,
+                            );
+                            return format!("@{}", specialized);
+                        }
+                        // substs empty or non-concrete: use generic def name.
                         if let Some(name) = fn_name_by_def_id.get(&def_id) {
                             return format!("@{}", name);
                         }

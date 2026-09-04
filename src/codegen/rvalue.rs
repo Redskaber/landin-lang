@@ -17,6 +17,7 @@ use crate::mir::place::*;
 /// Per §2 原则 4 (报错>静默): codegen errors are reported, not panicked.
 /// Per §2 原则 9 (正确>妥协): full Result propagation, no `unwrap()` stubs.
 /// Per §12 (最优>最小): root-cause fix, not a workaround.
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub(crate) fn codegen_rvalue(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -25,6 +26,9 @@ pub(crate) fn codegen_rvalue(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    // Stage 101: mono_names + type_name_by_def_id for FnDef substs mangling.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<EmitValue> {
     Ok(match rv {
         Rvalue::Use(op) => codegen_operand(
@@ -35,6 +39,8 @@ pub(crate) fn codegen_rvalue(
             layouts,
             mono_layouts,
             fn_name_by_def_id,
+            mono_names,
+            type_name_by_def_id,
         ),
         Rvalue::BinaryOp(op, a, b) => {
             let a_val = codegen_operand(
@@ -45,6 +51,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let b_val = codegen_operand(
                 emitter,
@@ -54,6 +62,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             // Stage 18.109 (S10 fix): For Div/Rem, ensure operand values are
             // stored to their local allocas before the DivisionByZero assert
@@ -242,6 +252,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let ty =
                 detect_operand_type(mir, operand, layouts, mono_layouts).unwrap_or(EmitType::I32);
@@ -322,6 +334,8 @@ pub(crate) fn codegen_rvalue(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 )
             } else {
                 let field_tys: Vec<EmitType> = operands
@@ -341,6 +355,8 @@ pub(crate) fn codegen_rvalue(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     let val_ty = &field_tys[i];
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, val_ty, &val, i as u32);
@@ -392,6 +408,8 @@ pub(crate) fn codegen_rvalue(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &elem_emit_ty, &val, i as u32);
             }
@@ -464,6 +482,8 @@ pub(crate) fn codegen_rvalue(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 let discr_ty = detect_operand_type(mir, discr_op, layouts, mono_layouts)
                     .unwrap_or(EmitType::I32);
@@ -483,6 +503,8 @@ pub(crate) fn codegen_rvalue(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     // field_tys[i] is this operand's type (field_tys[0]=discr,
                     // field_tys[1]=payload_field_0, ...).
@@ -589,6 +611,8 @@ pub(crate) fn codegen_rvalue(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
@@ -662,6 +686,8 @@ pub(crate) fn codegen_rvalue(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
@@ -677,6 +703,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let src_ty =
                 detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32);
@@ -801,6 +829,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let pointee_emit_ty =
                 mir_type_to_emit_type_with_layouts_and_mono(pointee_ty, layouts, mono_layouts);
@@ -853,6 +883,8 @@ pub(crate) fn codegen_rvalue(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             for idx_op in indices {
                 // Per §1.0 原則 6 (通解>特例): one path for const and runtime
@@ -866,6 +898,8 @@ pub(crate) fn codegen_rvalue(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &elem_emit_ty, &idx_val);
             }
@@ -960,6 +994,9 @@ mod intrinsic_ops_tests {
     struct CodegenCtx {
         interner: Rodeo,
         fn_names: HashMap<crate::hir::DefId, String>,
+        // Stage 101: mono_names + type_names for FnDef substs mangling.
+        mono_names: HashMap<crate::mir::monomorphize::MonoItem, String>,
+        type_names: HashMap<crate::hir::DefId, crate::lexer::Symbol>,
     }
 
     impl CodegenCtx {
@@ -967,6 +1004,8 @@ mod intrinsic_ops_tests {
             Self {
                 interner: Rodeo::new(),
                 fn_names: HashMap::new(),
+                mono_names: HashMap::new(),
+                type_names: HashMap::new(),
             }
         }
     }
@@ -1008,6 +1047,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Load should codegen successfully");
 
@@ -1054,6 +1095,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         );
 
         assert!(
@@ -1096,6 +1139,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Load i64 should codegen successfully");
 
@@ -1145,6 +1190,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("GEP should codegen successfully");
 
@@ -1198,6 +1245,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("GEP with const index should codegen successfully");
 
@@ -1256,6 +1305,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Chained GEP should codegen successfully");
 
@@ -1311,6 +1362,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Store should codegen successfully");
 
@@ -1359,6 +1412,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Store i64 should codegen successfully");
 
@@ -1465,6 +1520,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("GEP should codegen successfully");
 
@@ -1480,6 +1537,8 @@ mod intrinsic_ops_tests {
             &mir.adt_layouts,
             None,
             &ctx.fn_names,
+            &ctx.mono_names,
+            &ctx.type_names,
         )
         .expect("Load after GEP should codegen successfully");
 

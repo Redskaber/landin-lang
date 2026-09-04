@@ -3,13 +3,78 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.639.0 (v0.10 Stage 100 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix: monomorphization 跳过未实例化的 prelude generic function; Param warnings 1360→24 -98%; 5592 tests) |
+| **Current version** | v0.640.0 (v0.10 Stage 101 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 partial fix: codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复; 5599 tests) |
 | **Date** | 2026-09-04 |
-| **Test count** | 898 lib tests + 4694 integration tests + 7 stage100 = 5592 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4701 integration tests + 7 stage101 = 5599 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — Layer 1/4 修复完成, Layer 2-4 待 Stage 101-103); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 100 Layer 1 完成, Param warnings -98% |
+| **Architecture** | Health 9.85/10 (stable — Layer 1 完成, Layer 2 部分完成, Layer 3-4 待 Stage 102-103); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 101 Layer 2 部分完成, turbofish path mangle, 非 turbofish path 待 TD-MONO-INFER |
+
+---
+
+## v0.640.0 — Stage 101 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 partial fix
+
+### Overview
+
+Stage 101 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH **Layer 2 部分修复**:
+codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复。
+
+v0.639.0 (Stage 100) 完成 Layer 1 修复 (跳过未实例化的 prelude generic)。
+本阶段建立 Layer 2 mangling 基础设施, turbofish path 已正确 mangle。
+
+### Layer 2 部分修复内容
+
+**修改文件 (5 src + 1 test)**:
+- `src/codegen/operand.rs`: `codegen_operand` 接收 `mono_names` + `type_name_by_def_id`; FnDef substs 非空时用 `mono_item_name` mangle
+- `src/codegen/function.rs`: `codegen_from_mir` + `codegen_function` + `codegen_synthesized_closure_functions` + `codegen_mono_functions` 接收 `mono_names`
+- `src/codegen/statement.rs`: `codegen_statement` + `emit_printf_call` 接收新参数
+- `src/codegen/rvalue.rs`: `codegen_rvalue` 接收新参数 + test CodegenCtx 扩展
+- `src/codegen/terminator.rs`: `codegen_terminator` + `codegen_print_call` 接收新参数
+- `src/codegen/pipeline.rs`: 提前 `build_mono_item_names`; 传 `mono_names` 给所有 codegen 函数
+
+**FnDef substs mangle 逻辑**:
+```
+codegen_operand:
+  if FnDef substs 非空 AND substs 全 concrete:
+    lookup mono_names[MonoItem::Fn{def_id, substs}]
+    if found: return "@" + specialized_name
+    else: compute mono_item_name directly
+  else (substs empty or non-concrete):
+    return "@" + generic_def_name  // fallback
+```
+
+### 效果
+
+- **turbofish path**: FnDef substs 正确 mangle 到实例化名 (新功能)
+- **非 turbofish path**: 仍依赖 codegen_mono_functions 实例化 (与 Stage 100 行为一致)
+- **Param warnings**: 24 (unchanged — TD-MONO-INFER 未修, 非 turbofish path 仍 emit generic def body)
+- **测试全绿**: 898 lib + 4701 integration = 5599 tests, 0 failures, 9 ignored
+
+### 新发现 TD
+
+#### TD-MONO-INFER (P3, v0.11+) — type inference back-propagation for FnDef substs
+
+**现象**: 非 turbofish path 的 generic call (e.g., `Box::new(42i32)`) 在 MIR lower 时 FnDef substs 为空。
+
+**根因**: `lower_path_generic_args` 只看 turbofish (`<i32>`)，对 inference 推断的 substs 不填充。typeck 未反向传播 inferred substs 到 FnDef 类型的 call sites。
+
+**修复方案**: 在 typeck 完成后, 反向传播 inferred substs 到 FnDef 类型的 call sites。参考 rustc `InferCtxt` + `TypeVariable` 设计。
+
+**影响**: 修复后 Param warnings 24 → 0, 可完全消除 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 残余。
+
+### 决策点 (§12 最优>最小, §1.0 原则 6 通解>特解, §1.0 原则 10 唯一可信数据源)
+
+1. **建立 mono_names 参数传递链** — 而非 thread-local 全局变量 (§1.0 原则 3 显式>隐式 + §1.0 原则 10 唯一可信数据源)
+2. **turbofish path mangle, 非 turbofish path fallback** — 而非强行 mangle 空 substs (§1.0 原则 9 正确>妥协)
+3. **不修复 TD-MONO-INFER** — 涉及 MIR lower + typeck 跨模块, 单 stage 修复不完整 (用户指示: 遇依赖缺失停止阉割版)
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4701 tests, 0 failures, 9 ignored — stage101 7 tests included)
 
 ---
 

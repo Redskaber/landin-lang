@@ -27,6 +27,8 @@ pub(crate) fn codegen_terminator(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    // Stage 101: mono_names for FnDef substs mangling in codegen_operand.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
 ) -> CodegenResult<()> {
     match &term.kind {
         TerminatorKind::Return => {
@@ -82,6 +84,8 @@ pub(crate) fn codegen_terminator(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let is_bool_switch = targets
                 .iter()
@@ -511,6 +515,8 @@ pub(crate) fn codegen_terminator(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 arg_pairs.push((ty, val));
             }
@@ -594,6 +600,8 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     )?;
                     // The print macros return void/unit — no return value
                     // to store. Branch to the target block if present.
@@ -651,6 +659,8 @@ pub(crate) fn codegen_terminator(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 // Determine return type from fn_sigs or dest local
                 let call_ret_ty = if let PlaceKind::Local(id) = &destination.kind {
@@ -725,6 +735,8 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     let rhs_val = codegen_operand(
                         emitter,
@@ -734,6 +746,8 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     match op {
                         crate::mir::place::BinOp::Shl | crate::mir::place::BinOp::Shr => {
@@ -816,6 +830,8 @@ pub(crate) fn codegen_terminator(
                             layouts,
                             mono_layouts,
                             fn_name_by_def_id,
+                            mono_names,
+                            type_name_by_def_id,
                         );
                         let rhs_ty = detect_operand_type(mir, rhs, layouts, mono_layouts)
                             .unwrap_or(EmitType::I32);
@@ -853,6 +869,8 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     let op_ty = detect_operand_type(mir, operand, layouts, mono_layouts)
                         .unwrap_or(EmitType::I32);
@@ -888,6 +906,8 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
+                        mono_names,
+                        type_name_by_def_id,
                     );
                     emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
                 }
@@ -1135,6 +1155,9 @@ fn codegen_print_call(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    // Stage 101: mono_names + type_name_by_def_id for FnDef substs mangling.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     // Derive newline/stderr from the function name.
     let (newline, stderr) = match name {
@@ -1178,6 +1201,8 @@ fn codegen_print_call(
         layouts,
         mono_layouts,
         fn_name_by_def_id,
+        mono_names,
+        type_name_by_def_id,
     )
 }
 

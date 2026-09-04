@@ -43849,3 +43849,75 @@ Stage Summary:
 - Stage 101: 修复 mir_type_to_emit_type Param fallback (返回 Error 而非 i32) — Layer 2
 - Stage 102: LLVMSysEmitter ownership 重构 — Layer 3+4
 - Stage 103: 重新添加 Debug + PartialOrd impls
+
+---
+Task ID: stage101
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 101 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 fix.
+codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复.
+v0.640.0. 5599 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L3 (跨模块: codegen/operand + function + statement + rvalue + terminator + pipeline)
+- 对齐: 已查 Stage 99 RCA (4-layer 根因链), Stage 100 dev-log (Layer 1 完成),
+  docs/lang-design/08-codegen.md, docs/graph/codegen/data-flow.md,
+  calibration-data.md (校准数据池), src/mir/monomorphize/mangle.rs (mono_item_name)
+- 阻断: v0.639.0 全绿 (5592 tests), TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2
+
+5W2H:
+- WHAT: 1) codegen_operand 接收 mono_names + type_name_by_def_id 参数;
+  2) FnDef substs 非空时用 mono_item_name mangle 实例化名;
+  3) turbofish path 已正确 mangle, 非 turbofish path fallback 到 generic def name
+- WHY: Layer 2 根因 — codegen_operand FnDef substs 不 mangle 导致 generic def body
+  必须仍 emit (产生 Param warnings)
+- WHO: ARCH-A 设计; DEV-A 实施 (批量参数传递链); REV-A 审查; QA-A 测试
+- WHEN: Stage 101 完成 → Stage 102 (LLVMSysEmitter ownership 重构)
+- WHERE: src/codegen/operand.rs (FnDef substs mangle), src/codegen/function.rs
+  (codegen_from_mir/function/synthesized_closure/mono_functions 接收 mono_names),
+  src/codegen/statement.rs (codegen_statement + emit_printf_call),
+  src/codegen/rvalue.rs (codegen_rvalue + test CodegenCtx),
+  src/codegen/terminator.rs (codegen_terminator + codegen_print_call),
+  src/codegen/pipeline.rs (提前 build_mono_item_names)
+- HOW: 1) pipeline.rs 提前 build_mono_item_names 构建 mono_names; 2) 通过参数
+  链传递 mono_names + type_name_by_def_id 给所有 codegen_* 函数; 3) codegen_operand
+  FnDef substs 非空且全 concrete 时用 mono_item_name mangle; 4) 空 substs fallback
+- HOW MUCH: 5 src 文件 + 1 测试文件 (~120 LOC), 7 stage101 tests
+
+决策点 (§12 最优>最小, §1.0 原则 6 通解>特解, §1.0 原则 10 唯一可信数据源):
+1. 选择"建立 mono_names 参数传递链"而非"thread-local 全局变量"
+   - 引用 §1.0 原则 10 (唯一可信数据源): mono_names 在 pipeline.rs 构建一次
+   - 引用 §1.0 原则 3 (显式>隐式): 20+ 调用点显式传递
+   - 替代方案 (thread-local) 违反显式原则
+
+2. 选择"turbofish path mangle, 非 turbofish path fallback"而非"强行 mangle 空 substs"
+   - 引用 §1.0 原则 9 (正确>妥协): turbofish substs 已填正确 mangle; 空 substs
+     fallback 避免错误名 (e.g., `Box_new_` 无意义)
+   - TD-MONO-INFER 跟踪非 turbofish path substs 填充 (P3, v0.11+)
+
+3. 选择"不修复 TD-MONO-INFER"而非"单 stage 强行修复"
+   - 引用 §1.0 原则 9 (正确>妥协): TD-MONO-INFER 涉及 MIR lower + typeck 跨模块
+   - 引用用户指示: 遇依赖缺失停止阉割版，转而分析根因
+   - 本阶段建立 mangling 基础设施, TD-MONO-INFER 修复后即可立即生效
+
+裁剪点:
+- L3 跨模块 → 完整流程 (5W2H + 实施 + 测试 + 验收)
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4701 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 部分修复完成 (turbofish path)
+- codegen_operand FnDef substs mangling 基础设施建立
+- 5 src 文件 + 1 测试文件 (~120 LOC)
+- Param warnings: 24 (unchanged — TD-MONO-INFER blocks further reduction)
+- 新发现 TD: TD-MONO-INFER (P3, v0.11+) — type inference back-propagation
+- 架构健康度: 9.85/10 (stable — Layer 2 部分修复, Layer 3-4 待 Stage 102-103)
+
+下一步:
+- Stage 102: LLVMSysEmitter ownership 重构 (Builder + Module 拆分) — Layer 3+4
+- Stage 103: 重新添加 Debug + PartialOrd impls
+- TD-MONO-INFER: type inference back-propagation (P3, v0.11+) — 完全消除 Param warnings

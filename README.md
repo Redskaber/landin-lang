@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.639.0 (v0.10 Stage 100 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix: monomorphization 跳过未实例化的 prelude generic function; Param warnings 1360→24 -98%; 5592 tests — Architecture health 9.85/10) |
+| **Version** | v0.640.0 (v0.10 Stage 101 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 partial fix: codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复; 5599 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.10 Stage 100 COMPLETE (Layer 1/4)**. 5592 tests (898 lib + 4694 integration + 7 stage100), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 100 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 修复: monomorphization 跳过未实例化的 prelude generic function bodies. 跳过条件: DefId >= user_item_count AND MIR 含 Param type AND no MonoItem::Fn 实例化. CompileResult 添加 user_item_count 字段; codegen_from_mir 接收 user_item_count + collected_mono_items; pipeline.rs 提前 collect_mono_items. Param warnings 1360→24 (-98%). Define count 139→33. 被实例化的 prelude generic (Box::new, Vec::new) 仍 emit generic def body. 剩余 Layer 2-4 待 Stage 101-103 修复. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.10 Stage 101 COMPLETE (Layer 2 partial)**. 5599 tests (898 lib + 4701 integration + 7 stage101), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 101 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 部分修复: codegen_operand FnDef substs mangling 基础设施建立 (mono_names 参数传递链, 5 src 文件, 20+ 调用点). turbofish path (`From::<i32>::from(42)`) 正确 mangle 到实例化名; 非 turbofish path (`Box::new(42i32)`) fallback 到 generic def name (TD-MONO-INFER 跟踪, P3 v0.11+). 新发现 TD-MONO-INFER — type inference back-propagation for FnDef substs. 剩余 Layer 3-4 待 Stage 102-103 修复. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

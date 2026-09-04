@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.1
+> **Version**: v1.2
 > **Status**: Active
-> **最后更新**: Stage 18.135 / 2026-08-16
+> **最后更新**: Stage 101 / 2026-09-04
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -36,6 +36,9 @@
 | 18.133 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MIR-LOWER-EXPR 完成修复 (§13.4 J1-J6): 提取 expr_variants.rs (1016 LOC, 4 个最大 match arm: Path + Call + For + MethodCall), expr_operand.rs 2171→1156; J1-J6 全部通过 (4 文件全部 < 1500); 修正 Stage 18.132 MethodCall arm 类型签名 (Ident + HirBlock); §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 | 18.134 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-DRIVER 部分修复 (§13.4 J1-J6): driver.rs → driver/ 目录模块 + 提取 driver_validations.rs (936) + driver_scan.rs (618) + driver_object_safety.rs (164), driver/mod.rs 4038→2351 (降 42%, 仍超 1500); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 | 18.135 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MACRO-EXPAND 部分修复 (§13.4 J1-J6): 提取 builtin_macros.rs (2069 LOC, 27 builtin macro 函数), macro_expand.rs 5962→3904 (降 35%, 仍超 1500); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
+| 99 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) — 4-layer 根因链识别 + 4-stage 修复路径规划. 无代码变更 (RCA only). 5 stage99 repro tests 验证 user code impl method working. §3.2 全套验收通过 (898 lib + 4687 integration, 0 failures) |
+| 100 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix — monomorphization 跳过未实例化的 prelude generic function bodies. Param warnings 1360→24 (-98%). CompileResult 添加 user_item_count; codegen_from_mir 接收 user_item_count + collected_mono_items. 4 src + 1 test file. §3.2 全套验收通过 (898 lib + 4694 integration, 0 failures) |
+| 101 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 部分修复 — codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复. mono_names 参数传递链建立 (5 src 文件, 20+ 调用点). turbofish path 正确 mangle; 非 turbofish path fallback (TD-MONO-INFER 跟踪). 5 src + 1 test file. 新发现 TD-MONO-INFER (P3, v0.11+). §3.2 全套验收通过 (898 lib + 4701 integration, 0 failures) |
 
 ---
 

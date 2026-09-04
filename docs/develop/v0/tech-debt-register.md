@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.639.0 (Stage 100)
+# Landin 编译器技术债完整清单 — v0.640.0 (Stage 101)
 
 > **更新日期**: 2026-09-04
-> **版本**: v0.639.0
-> **状态**: v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1/4 完成)。Stage 100 完成 monomorphization 跳过 prelude generic function, Param warnings 1360→24 (-98%)。下一阻断: Layer 2 Param fallback 修复 (Stage 101)。
+> **版本**: v0.640.0
+> **状态**: v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 (Layer 1 完成, Layer 2 部分完成)。Stage 101 完成 codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复。新发现 TD-MONO-INFER (P3, v0.11+) — type inference back-propagation。下一阻断: Layer 3+4 LLVMSysEmitter ownership 重构 (Stage 102)。
 
 ---
 
@@ -42,6 +42,7 @@
 | TD-PRELUDE-TRAIT-COVERAGE (Ord) | 96 | Ord marker trait added + 4 primitive impls |
 | TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH | 97+98 | Stage 97 root cause analysis; Stage 98 FIXED — trait impl method symbol collision (`landin_i32_fmt` for both Display and Debug). Fix: mangling includes trait name → `landin_Display_i32_fmt` vs `landin_Debug_i32_fmt`. 4 source files + 32+ test files updated. |
 | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 1) | 100 | Stage 99 RCA + Stage 100 Layer 1 fix — monomorphization 跳过未实例化的 prelude generic function bodies. Param warnings 1360→24 (-98%). CompileResult 添加 user_item_count; codegen_from_mir 接收 user_item_count + collected_mono_items; 跳过条件: DefId >= user_item_count AND MIR 含 Param AND no MonoItem::Fn 实例化. 4 src + 1 test file. |
+| TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 2 partial) | 101 | Stage 101 Layer 2 部分修复 — codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复. mono_names 参数传递链建立 (5 src 文件, 20+ 调用点). turbofish path (From::<i32>::from(42)) 正确 mangle; 非 turbofish path (Box::new) fallback 到 generic def name (TD-MONO-INFER 跟踪). 5 src + 1 test file. |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -59,7 +60,9 @@
 
 | TD ID | 描述 | 根因 | 修复方案 | 依赖 |
 |-------|------|------|---------|------|
-| TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 2-4) | prelude impl method bodies 在 LLVM integration tests 中触发非确定 SIGSEGV/SIGABRT (signal 11/6)。User code 中相同结构 impl method returning String/struct 工作正常 (`test_sret2.landin → 42`)。导致无法添加 Debug/PartialOrd impls。**Layer 1 已修复 (Stage 100)**, 剩余 Layer 2-4. | **4-layer 根因链** (Stage 99 RCA): (1) ✅ Layer 1 prelude generic methods 的 Param type 未解析 — Stage 100 修复 (跳过未实例化的 prelude generic, Param warnings 1360→24 -98%); (2) Layer 2 `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 产生不正确 LLVM IR; (3) Layer 3 加 Debug impl 后 LLVM module 全局变量累积触发 verify/emit crash; (4) Layer 4 `LLVMSysEmitter::Drop` 不释放 context 加速累积. 详见 `docs/develop/v0/stage-99/dev-log.md`. | **4-stage 渐进重构**: ✅ Stage 100 Layer 1 完成; Stage 101 修复 Param fallback (返回 Error 而非 i32); Stage 102 LLVMSysEmitter ownership 重构 (Builder + Module 拆分); Stage 103 重新添加 Debug + PartialOrd impls | TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH ✅ (Stage 98) |
+| TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 2-4) | prelude impl method bodies 在 LLVM integration tests 中触发非确定 SIGSEGV/SIGABRT (signal 11/6)。User code 中相同结构 impl method returning String/struct 工作正常 (`test_sret2.landin → 42`)。导致无法添加 Debug/PartialOrd impls。**Layer 1 已修复 (Stage 100)**, **Layer 2 部分修复 (Stage 101 — turbofish path)**, 剩余 Layer 2 (非 turbofish path, TD-MONO-INFER) + Layer 3-4. | **4-layer 根因链** (Stage 99 RCA): (1) ✅ Layer 1 prelude generic methods 的 Param type 未解析 — Stage 100 修复 (跳过未实例化的 prelude generic, Param warnings 1360→24 -98%); (2) ⚠️ Layer 2 `mir_type_to_emit_type` 对 Param/Never fallback 到 i32 产生不正确 LLVM IR — Stage 101 部分修复 (turbofish path FnDef substs mangling, 非 turbofish path 待 TD-MONO-INFER); (3) Layer 3 加 Debug impl 后 LLVM module 全局变量累积触发 verify/emit crash; (4) Layer 4 `LLVMSysEmitter::Drop` 不释放 context 加速累积. 详见 `docs/develop/v0/stage-99/dev-log.md`. | **4-stage 渐进重构**: ✅ Stage 100 Layer 1 完成; ⚠️ Stage 101 Layer 2 部分完成 (turbofish path); Stage 102 LLVMSysEmitter ownership 重构 (Builder + Module 拆分) — Layer 3+4; Stage 103 重新添加 Debug + PartialOrd impls; TD-MONO-INFER (P3, v0.11+) 完全消除 Param warnings | TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH ✅ (Stage 98) |
+| TD-MONO-INFER | 非 turbofish path 的 generic call (e.g., `Box::new(42i32)`) 在 MIR lower 时 FnDef substs 为空。导致 codegen_operand 无法 mangle 到实例化名, generic def body 必须仍 emit (产生 24 个 Param warnings). | `lower_path_generic_args` 只看 turbofish (`<i32>`), 对 inference 推断的 substs 不填充. typeck 未反向传播 inferred substs 到 FnDef 类型的 call sites. | 在 typeck 完成后, 反向传播 inferred substs 到 FnDef 类型的 call sites. 参考 rustc `InferCtxt` + `TypeVariable` 设计. | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (Layer 2) ✅ partial (Stage 101) |
+
 
 ### P3 — v0.7+ trait 系统阶段
 

@@ -141,6 +141,8 @@ pub fn codegen_mono_functions(
                 matches!(sig.output.kind, crate::mir::ty::TyKind::Tuple(ref tys) if tys.is_empty()),
                 crate::ast::Abi::Landin,
                 type_name_by_def_id,
+                // Stage 101: pass mono_names for FnDef substs mangling.
+                &mono_names,
             )?;
         }
     }
@@ -186,6 +188,10 @@ pub fn codegen_from_mir(
     // def body is still emitted (codegen_operand may reference it via
     // generic def name when FnDef type substs are empty).
     collected_mono_items: &[crate::mir::monomorphize::MonoItem],
+    // Stage 101: mono_names — MonoItem → specialized name map, used by
+    // codegen_operand for FnDef substs mangling (e.g., `landin_Box_new` →
+    // `Box_new_i32`). Built in pipeline.rs (single source of truth).
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
         // Stage 100 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix):
@@ -283,6 +289,8 @@ pub fn codegen_from_mir(
             meta.is_void,
             meta.abi,
             type_name_by_def_id,
+            // Stage 101: pass mono_names for FnDef substs mangling.
+            mono_names,
         )?;
     }
     Ok(())
@@ -435,6 +443,7 @@ fn terminator_contains_param(term: &crate::mir::body::TerminatorKind) -> bool {
 /// so it must be available for the text-only build too. The gate was a bug
 /// that broke `cargo check` without `--features llvm-backend`.
 /// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>`.
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub(crate) fn codegen_synthesized_closure_functions(
     synthesized_mirs: &[MirBody],
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
@@ -443,6 +452,8 @@ pub(crate) fn codegen_synthesized_closure_functions(
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    // Stage 101: mono_names for FnDef substs mangling in codegen_operand.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
 ) -> CodegenResult<()> {
     for mir in synthesized_mirs {
         // Stage 16.17: Use the DefId stored on MirBody (set during
@@ -496,6 +507,8 @@ pub(crate) fn codegen_synthesized_closure_functions(
             meta.is_void,
             meta.abi,
             type_name_by_def_id,
+            // Stage 101: pass mono_names for FnDef substs mangling.
+            mono_names,
         )?;
     }
     Ok(())
@@ -520,6 +533,8 @@ pub(crate) fn codegen_function(
     is_void: bool,
     abi: crate::ast::Abi,
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    // Stage 101: mono_names for FnDef substs mangling in codegen_operand.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
 ) -> CodegenResult<()> {
     // The entry point `fn main()` is codegen'd as `landin_main` and is called
     // by the C wrapper which declares `extern int landin_main(void)`.
@@ -719,6 +734,8 @@ pub(crate) fn codegen_function(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             )?;
         }
         codegen_terminator(
@@ -732,6 +749,7 @@ pub(crate) fn codegen_function(
             layouts,
             mono_layouts,
             type_name_by_def_id,
+            mono_names,
         )?;
     }
 

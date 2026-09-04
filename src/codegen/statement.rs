@@ -48,6 +48,7 @@ fn detect_place_type_for_sign(mir: &MirBody, place: &Place) -> Option<crate::mir
 /// (e.g., BinaryOp2 reaching codegen).
 ///
 /// Per §2 原则 9 (正确>妥协): full Result propagation, no `unwrap()` stubs.
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub(crate) fn codegen_statement(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -56,6 +57,9 @@ pub(crate) fn codegen_statement(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    // Stage 101: mono_names + type_name_by_def_id for FnDef substs mangling.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
@@ -68,6 +72,8 @@ pub(crate) fn codegen_statement(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             )?;
             match &place.kind {
                 PlaceKind::Local(id) => {
@@ -356,6 +362,8 @@ pub(crate) fn codegen_statement(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
+                mono_names,
+                type_name_by_def_id,
             );
             let val_emit_ty =
                 mir_type_to_emit_type_with_layouts_and_mono(val_ty, layouts, mono_layouts);
@@ -430,6 +438,9 @@ pub(crate) fn emit_printf_call(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    // Stage 101: mono_names + type_name_by_def_id for FnDef substs mangling.
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> CodegenResult<()> {
     let _ = newline; // already encoded in `msg` (trailing "\n")
 
@@ -472,6 +483,8 @@ pub(crate) fn emit_printf_call(
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 // Determine the C conversion specifier + cast
                 match &arg_ty {

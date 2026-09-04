@@ -168,6 +168,24 @@ pub fn run_codegen_pipeline(
     } else {
         std::collections::HashMap::new()
     };
+    // Stage 101: Build mono_names (MonoItem → specialized name) once and reuse
+    // across codegen_from_mir + codegen_synthesized_closure_functions.
+    // codegen_operand uses mono_names for FnDef substs mangling (e.g.,
+    // `landin_Box_new` → `Box_new_i32`).
+    //
+    // Per §1.0 原則 10 (唯一可信数据源): single source of truth for mono_names.
+    // Per §16: pre-computed from MIR + HIR (data flows downstream, no HIR in codegen).
+    let mono_names: std::collections::HashMap<crate::mir::monomorphize::MonoItem, String> =
+        if result.hir.is_some() {
+            crate::mir::monomorphize::build_mono_item_names(
+                &collected_mono_items,
+                &result.fn_name_by_def_id,
+                &result.type_name_by_def_id,
+                &result.interner,
+            )
+        } else {
+            std::collections::HashMap::new()
+        };
 
     // 5. Main MIR function bodies
     // Stage 33.1: Pass type_name_by_def_id so call sites can mangle
@@ -192,6 +210,8 @@ pub fn run_codegen_pipeline(
         // Stage 100: Pass collected MonoItems so codegen_from_mir can check
         // if a prelude generic function has any MonoItem::Fn instantiation.
         &collected_mono_items,
+        // Stage 101: Pass mono_names for FnDef substs mangling in codegen_operand.
+        &mono_names,
     )?;
 
     // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each
@@ -223,6 +243,8 @@ pub fn run_codegen_pipeline(
         &mono_layouts,
         emitter,
         &result.type_name_by_def_id,
+        // Stage 101: Pass mono_names for FnDef substs mangling.
+        &mono_names,
     )?;
     Ok(())
 }

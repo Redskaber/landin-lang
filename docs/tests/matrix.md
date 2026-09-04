@@ -1,24 +1,25 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-09-04 (last updated Stage 100)
-> **Version**: v0.639.0
+> **Date**: 2026-09-04 (last updated Stage 101)
+> **Version**: v0.640.0
 > **Process**: stage-committee-process.md v7.5 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.639.0)
+## Current Status (v0.640.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
 | Rust lib tests | 898 | ✅ 0 failures |
-| Rust integration tests | 4,701 | ✅ 0 failures (9 ignored) |
+| Rust integration tests | 4,708 | ✅ 0 failures (9 ignored) |
 | Conformance tests | 2,935 | ✅ 0 failures (separate runner) |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total (lib + integration)** | **5,599** | **100% pass rate, 9 ignored** |
+| **Total (lib + integration)** | **5,606** | **100% pass rate, 9 ignored** |
 
-> **Stage 100 additions**: 7 stage100 tests (prelude generic skip) — verify
-> monomorphization 跳过未实例化的 prelude generic function bodies 后,
-> Box::new/Vec::new 实例化仍工作. Param warnings 1360→24 (-98%).
-> Architecture health: 9.85/10 (Layer 1/4 修复完成, Layer 2-4 待 Stage 101-103).
+> **Stage 101 additions**: 7 stage101 tests (FnDef substs mangling) — verify
+> codegen_operand turbofish path mangle + 非 turbofish path fallback.
+> Param warnings: 24 (unchanged — TD-MONO-INFER blocks further reduction).
+> Architecture health: 9.85/10 (Layer 1 完成, Layer 2 部分完成, Layer 3-4 待 Stage 102-103).
+
 
 
 
