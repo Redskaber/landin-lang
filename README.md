@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.642.0 (v0.11 Stage 103 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 partial fix: resolve_lit_ty_from_expected for RawPtr expected types; 5613 tests — Architecture health 9.85/10) |
+| **Version** | v0.644.0 (v0.12 Stage 109 — TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复: codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit (跳过 sext/trunc cast); 同时修复 Stage 18.287 遗留 bug — TextEmitter emit_const_typed 返回 raw value, 与 LLVM emitter contract 对齐; 5633 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.11 Stage 103 COMPLETE (Layer 3 partial)**. 5613 tests (898 lib + 4715 integration + 7 stage103), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 103 完成 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 部分修复: resolve_lit_ty_from_expected for RawPtr expected types. `String { ptr: 0, ... }` 中 `0` 字面量无 suffix → Infer(IntVar) → codegen i32 (4 bytes) 而非 usize (8 bytes), String struct layout 错误 → SIGSEGV. 修复后 ptr field 类型正确解析为 usize. 保守策略: 只处理 RawPtr, 不处理 Int/Uint (避免破坏 typeck validation). 加 Debug impl 后 cargo test 14 失败 → 5 失败 (改善). 剩余 Param warnings from generic prelude methods (Vec::push<T>) — TD-MONO-INFER (P3, v0.11+) 跟踪. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.12 Stage 109 COMPLETE (TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL)**. 5633 tests (898 lib + 4735 integration + 20 stage109), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 109 修复 Stage 108 RCA 发现的 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL — codegen Stage 14.64 src_ty 用 c.ty 而非 ConstVal. 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit, 跳过 sext/trunc cast. 同时修复 Stage 18.287 遗留 bug: TextEmitter emit_const_typed 返回 raw value (无 type prefix), 对齐 LLVM emitter contract — 之前 TextEmitter 返回 `"i64 0"` 导致 `store i64 i64 0` 双类型前缀 (invalid LLVM IR). Stage 107 (call arg type source) + Stage 109 (codegen src_ty + TextEmitter contract) 已修复所有 Phase 3.6 引入所需的前置依赖, Stage 110 可安全重新引入 Phase 3.6 (Constant type writeback). Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

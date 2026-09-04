@@ -1184,3 +1184,10 @@ mod stage102_emitter_drop_ownership_tests;
 // resolve_lit_ty_from_expected for RawPtr expected types. ===
 #[path = "v0/stage103/plan/lit_ty_resolution_tests.rs"]
 mod stage103_lit_ty_resolution_tests;
+
+// === Stage 109 (v0.12): TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL fix.
+// codegen operand.rs uses c.ty (not ConstVal) as src_ty for concrete
+// integer-like constants; TextEmitter emit_const_typed contract aligned
+// with LLVM emitter (return raw value, no type prefix). ===
+#[path = "v0/stage109/plan/const_src_ty_tests.rs"]
+mod stage109_const_src_ty_tests;

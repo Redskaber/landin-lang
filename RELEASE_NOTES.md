@@ -3,13 +3,55 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.641.0 (v0.10 Stage 102 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix: LLVMSysEmitter::Drop 释放 module + context; 3 次稳定性验证全绿; 5606 tests) |
-| **Date** | 2026-09-04 |
-| **Test count** | 898 lib tests + 4708 integration tests + 7 stage102 = 5606 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Current version** | v0.644.0 (v0.12 Stage 109 — TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复: codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit (跳过 sext/trunc cast); 同时修复 Stage 18.287 遗留 bug — TextEmitter emit_const_typed 返回 raw value (无 type prefix), 与 LLVM emitter contract 对齐; 5633 tests) |
+| **Date** | 2026-09-05 |
+| **Test count** | 898 lib tests + 4735 integration tests = 5633 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.644.0 — Stage 109 (v0.12) — TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复
+
+### Overview
+
+修复 Stage 108 RCA 发现的 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL — codegen Stage 14.64 cast 逻辑的 `src_ty` 派生来源错误。Stage 108 尝试重新引入 Phase 3.6 (Constant type writeback) 时发现: Phase 3.6 resolves `Constant.ty` Infer→concrete (I32/I64), 但 codegen `src_ty` 基于 `ConstVal` 值大小 (i32 if `42 <= i32::MAX`), `target_ty` 来自 `c.ty` (可能 I64) → 不必要 `sext i32 42 to i64` cast → 7 个 codegen 测试回归。
+
+Stage 109 修复方案: 当 `c.ty` 为 concrete Int/Uint/Bool/Char 时, 用 `emit_const_typed` 直接 emit (跳过 sext/trunc cast); 否则 fallback 到 ConstVal 路径 (preserves Stage 107 behavior — 当 c.ty 为 Infer 时无变化, 因 Phase 3.6 未应用)。
+
+同时修复 Stage 18.287 遗留 bug — TextEmitter `emit_const_typed` 返回 typed literal `"i64 0"` (与 LLVM emitter contract 不一致, LLVM emitter 返回 SSA name `%v3`, 无 type prefix), 导致 consumer 双类型前缀: `emit_store` 产生 `store i64 i64 0` + `emit_icmp` 产生 `icmp eq i64 2, i64 0` (invalid LLVM IR). Stage 109 路由所有 concrete-typed constants 通过 `emit_const_typed`, 触发 21 text IR 测试失败, 修复 contract 后全绿 + baseline text IR 也修复。
+
+### Changes
+
+- `src/codegen/operand.rs`: Stage 14.64 cast 块添加 concrete int-like c.ty 检测 — 当 `c.ty.kind` 为 `Int(_)/Uint(_)/Bool/Char` 时用 `emit_const_typed(value, &emit_type)` 直接 emit, 跳过 sext/trunc cast 完全; 否则 fallback 到原 ConstVal 路径 (preserves Stage 107 behavior). ~70 LOC (含详细注释).
+- `src/codegen/text/arithmetic.rs`: TextEmitter `emit_const_typed` 返回 raw value (`"1"` 而非 `"i64 1"`), 对齐 LLVM emitter contract. 这是 Stage 18.287 遗留 bug — 之前没有 text IR 测试 exercise 这些路径, 所以未被发现.
+- `tests/v0/stage109/plan/const_src_ty_tests.rs`: 新增 20 个测试 (8 正 + 5 text IR + 4 负 + 3 边界).
+- `tests/all_tests.rs`: 注册 `stage109_const_src_ty_tests` 模块.
+- `docs/develop/v0/stage-109/dev-log.md`: 详细开发日志 (5W2H + 决策点 + 裁剪点 + §3.2 验收).
+- `docs/develop/v0/tech-debt-register.md`: 添加 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL (Stage 109 修复) + 更新 TD-TYPECK-WRITEBACK-INCOMPLETE 状态.
+- `docs/develop/v0/calibration-data.md`: 追加 Stage 105-109 统计行.
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协)
+
+1. **选 `emit_const_typed` 直接 emit**, 不选改 `src_ty` 派生 — 后者会因 `emit_const` 仍 emit i32 (LLVMConstInt(I32Type, 42)) 但 src_ty=I64 导致 LLVM verify 失败 (i32 constant in i64 context).
+2. **选 TextEmitter contract 对齐**, 不选 per-caller workaround — 修改 TextEmitter `emit_const_typed` 返回 raw value (`"1"` 而非 `"i64 1"`), 对齐 LLVM emitter contract. 这同时修复了 Stage 18.287 遗留 bug (`store i64 i64 0` 双类型前缀 → `store i64 0`).
+3. **选 fallback 路径保留**, 不选强制要求 c.ty 为 concrete — 当前 Phase 3.6 未应用 (Stage 108 revert), 所有 unsuffixed literal 的 c.ty 都是 Infer. Stage 110 重新引入 Phase 3.6 后, c.ty 自然变 concrete, 新路径自动启用.
+
+### Verification (§3.2)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` ✓ (0 warnings)
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4735 tests, 0 failures, 9 ignored)
+- Total: **5633 tests, 0 failures, 9 ignored** (Stage 107 baseline 5613 + 20 new)
+
+### Impact
+
+- **架构健康度**: 9.85/10 (stable — 2 src 文件, 无回归, 修复 +1 hidden bug)
+- **为 Stage 110 铺平道路**: Stage 107 (call arg type source) + Stage 109 (codegen src_ty + TextEmitter contract) 已修复所有 Phase 3.6 引入所需的前置依赖. Stage 110 可安全重新引入 Phase 3.6.
+- **同时修复 Stage 18.287 遗留 bug**: TextEmitter contract bug 自 Stage 18.287 (TD-NEGOVERFLOW-I32 fix) 引入, 但从未被 text IR 测试 exercise. Stage 109 修复后, baseline text IR 也修复 (`icmp eq i64 2, i64 0` → `icmp eq i64 2, 0`).
 
 ---
 

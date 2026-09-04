@@ -3,5 +3,5 @@
 # Re-run: bash scripts/switch-llvm-version.sh
 
 [env]
-LLVM_SYS_221_PREFIX = "/nix/store/jlyp0f7r0yaxfygnv0lid2carnsf3v1p-llvm-22.1.8-dev"
+LLVM_SYS_221_PREFIX = "/tmp/llvm-22-prefix"
 LLVM_LINK_SHARED = "1"

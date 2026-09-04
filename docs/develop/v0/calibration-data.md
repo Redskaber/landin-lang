@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.5
+> **Version**: v1.6
 > **Status**: Active
-> **最后更新**: Stage 104 / 2026-09-04
+> **最后更新**: Stage 109 / 2026-09-05
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -42,6 +42,11 @@
 | 102 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 修复 — LLVMSysEmitter::Drop 释放 module + context. 之前 Drop 只释放 builder, 不释放 module + context → LLVM 资源累积 → cargo test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 3 次稳定性验证全绿. 1 src + 1 test file. 新发现 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — Layer 3 残留. §3.2 全套验收通过 (898 lib + 4708 integration, 0 failures) |
 | 103 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION Layer 3 部分修复 — resolve_lit_ty_from_expected for RawPtr expected types. 之前 `String { ptr: 0, ... }` 中 `0` 字面量无 suffix → Infer(IntVar) → codegen i32 (4 bytes) 而非 usize (8 bytes), String struct layout 错误 → SIGSEGV. 修复后 ptr field 类型正确解析为 usize. 保守策略: 只处理 RawPtr. 1 src + 1 test file. §3.2 全套验收通过 (898 lib + 4715 integration, 0 failures) |
 | 104 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-MONO-INFER 根因分析 — 发现 writeback_fndef_substs 已实现 type inference back-propagation (driver/compile_inner.rs:1017). 手动推断在 MIR lower 导致 typeck false mismatch (12 测试失败). 移除手动推断, 保留 writeback 为唯一推断点. 50 次手动跑 String::new + push_str 全绿. §3.2 全套验收通过 (898 lib + 4715 integration, 0 failures) |
+| 105 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-TYPECK-WRITEBACK-INCOMPLETE 根因分析 — 100 次跑确认非确定性 SIGSEGV (3/100 ASLR on, 1/100 ASLR off). LLVM IR 在成功/失败跑间完全相同 (Param=73 Infer=18). 崩溃在 LLVM codegen/object emission 阶段. 0 src 变更 (RCA only). §3.2 全套验收通过 (898 lib + 4715 integration, 0 failures) |
+| 106 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-TYPECK-WRITEBACK-INCOMPLETE 尝试修复 — Phase 3.6 (Constant type writeback) resolves Infer→concrete. Infer warnings 18→0, 但 7 个 codegen 测试回归 (call arg type 从 callee sig 切换到 Constant type, 改变 IR 结构). Revert + 记录 TD-CODEGEN-CALL-ARG-TYPE-SOURCE. 0 src 变更 (reverted). §3.2 验收通过 (898 lib + 4715 integration, 0 failures) |
+| 107 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CALL-ARG-TYPE-SOURCE 修复 — codegen call arg type 优先用 callee sig.inputs[arg_idx] (non-Param 时); 含 Param (generic) 时 fallback 到 detect_operand_type. 新增 mir_type_contains_param helper (pub(crate), 递归). 1 src 文件 (~60 LOC). v0.643.0. §3.2 全套验收通过 (898 lib + 4715 integration, 0 failures) |
+| 108 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL RCA — 重新引入 Phase 3.6 (Constant type writeback), Infer→concrete (DEBUG: Infer→I64). 但 codegen Stage 14.64 src_ty 基于 ConstVal (value fits in i32 → src=I32), 即使 Constant.ty = I64, src_ty 仍为 I32 → 不必要 sext cast → 7 回归. Revert + 记录 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL. 0 src 变更 (reverted). §3.2 验收通过 (898 lib + 4715 integration, 0 failures) |
+| 109 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复 — codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed 直接 emit (跳过 sext/trunc cast); 否则 fallback 到 ConstVal 路径. **同时修复 Stage 18.287 遗留 bug**: TextEmitter emit_const_typed 返回 raw value (无 type prefix), 与 LLVM emitter contract 对齐. 之前 TextEmitter 返回 `"i64 0"` (typed literal), 导致 `emit_store` 双前缀 `store i64 i64 0` + `emit_icmp` 双前缀 `icmp eq i64 2, i64 0` (invalid LLVM IR). Stage 109 路由所有 concrete-typed constants 通过 emit_const_typed, 触发 21 text IR 测试失败, 修复 contract 后全绿. 2 src 文件 (~70 LOC) + 1 test 文件 (20 tests: 8 正 + 5 text IR + 4 负 + 3 边界). v0.644.0. §3.2 全套验收通过 (898 lib + 4735 integration, 0 failures) |
 
 ---
 

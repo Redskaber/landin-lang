@@ -44269,3 +44269,139 @@ Stage Summary:
 下一步:
 - Stage 108: 重新引入 Constant type writeback (Phase 3.6) — Stage 107 已修复 call arg type source
 - Stage 109: 加 Debug impl 验证 100 次跑 0 SIGSEGV
+
+---
+Task ID: stage108
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 108 (v0.12) — Constant type writeback (Phase 3.6) 重新引入 +
+codegen constant cast 根因分析. Phase 3.6 resolves Infer→concrete, 但
+codegen Stage 14.64 用 ConstVal 确定 src_ty (不用 Constant.ty) →
+不必要的 sext cast → 7 回归. Revert + 记录 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL.
+v0.643.0 (无版本变更 — RCA + revert). 5613 tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L2→L3 (跨模块: typeck/checker.rs + codegen/operand.rs + tests)
+- 对齐: 已查 Stage 106-107 dev-log, src/typeck/checker.rs (Phase 3),
+  src/codegen/operand.rs (Stage 14.64 cast 逻辑, src_ty 基于 ConstVal)
+- 阻断: v0.643.0 全绿 (5613 tests), TD-TYPECK-WRITEBACK-INCOMPLETE P2
+
+5W2H:
+- WHAT: 重新引入 Phase 3.6 (Constant type writeback) + 修复 codegen 回归
+- WHY: Stage 107 修复了 call arg type source, 预期 Phase 3.6 不再回归
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 发现回归; QA-A 测试
+- WHEN: Stage 108 revert → Stage 109 (修 src_ty)
+- WHERE: src/typeck/checker.rs (Phase 3.6), src/codegen/operand.rs (Stage 14.64 src_ty)
+- HOW: 1) 重新引入 Phase 3.6; 2) 发现 7 回归 (sext cast); 3) DEBUG 确认
+  Constant.ty 正确 resolve 到 I64, 但 src_ty 仍为 I32 (from ConstVal);
+  4) 尝试跳过 I32↔I64 cast → 301 回归 (太激进); 5) revert
+- HOW MUCH: 0 src 变更 (reverted) + RCA 记录
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协):
+1. 选择"revert Stage 108"而非"保留不完整修复"
+   - Phase 3.6 正确 (Infer→concrete), 但 codegen src_ty 基于 ConstVal 不基于 Constant.ty
+   - 引用 §1.0 原則 9 (正确>妥协): 不在阉割版上妥协
+   - 正确修复: codegen src_ty 用 Constant.ty (Stage 109)
+
+裁剪点:
+- L3 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: revert 后全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4715 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- Phase 3.6 正确 resolve Infer→concrete (DEBUG: Infer→I64)
+- 但 codegen Stage 14.64 src_ty 基于 ConstVal (value fits in i32 → src=I32)
+- 即使 Constant.ty = I64, src_ty 仍为 I32 → 不必要 sext cast → 7 回归
+- Revert + 记录 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL (P2, v0.12+)
+- 架构健康度: 9.85/10 (stable — revert, 无代码变更)
+
+下一步:
+- Stage 109: 修复 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL — src_ty 用 Constant.ty
+- Stage 110: 重新引入 Phase 3.6 (Constant type writeback)
+- Stage 111: 加 Debug impl 验证 100 次跑 0 SIGSEGV
+
+---
+Task ID: stage109
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 109 (v0.12) — TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复.
+codegen operand.rs 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed
+直接 emit (跳过 sext/trunc cast); 否则 fallback 到 ConstVal 路径. 同时修复
+Stage 18.287 遗留 bug: TextEmitter emit_const_typed 返回 raw value (无 type
+prefix), 与 LLVM emitter contract 对齐 (LLVM emitter 返回 SSA name).
+v0.643.0 → v0.644.0. 5633 tests (898 lib + 4735 integration), 0 failures,
+9 ignored.
+
+3秒启动自检:
+- 定位: L2 (2 src 文件 + 1 test 文件, ~70 LOC src + ~400 LOC test)
+- 对齐: 已查 Stage 106-108 dev-log, src/codegen/operand.rs (Stage 14.64
+  cast 块, src_ty 基于 ConstVal), src/codegen/text/arithmetic.rs
+  (emit_const_typed 返回 typed literal), src/codegen/llvm/arithmetic.rs
+  (emit_const_typed 返回 SSA name)
+- 阻断: v0.643.0 全绿 (5613 tests), TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL P2
+
+5W2H:
+- WHAT: 修复 TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL — codegen src_ty 用 c.ty
+  (非 ConstVal). 当 c.ty 为 concrete Int/Uint/Bool/Char, 用 emit_const_typed
+  直接 emit; 否则 fallback 到 ConstVal 路径
+- WHY: Stage 108 RCA: Phase 3.6 resolves Constant.ty Infer→concrete (I32/I64),
+  但 codegen src_ty 基于 ConstVal (value fits in i32 → src=I32), target_ty
+  来自 c.ty (可能 I64) → 不必要 sext cast → 7 回归
+- WHO: ARCH-A 设计 (选 emit_const_typed 直接 emit, 不选改 src_ty 派生);
+  DEV-A 实施; REV-A 发现并修复 TextEmitter contract bug; QA-A 20 tests
+- WHEN: Stage 109 完成 → Stage 110 (重新引入 Phase 3.6)
+- WHERE: src/codegen/operand.rs (Stage 14.64 cast 块),
+  src/codegen/text/arithmetic.rs (emit_const_typed contract)
+- HOW: 1) cast 块开头检测 c.ty 为 concrete int-like; 2) 用 emit_const_typed
+  直接 emit (LLVM backend: LLVMConstInt 正确类型; TextEmitter: raw value);
+  3) 否则 fallback 到原 ConstVal 路径; 4) 发现 21 text IR 测试失败
+  (双类型前缀 `store i64 i64 1`); 5) 修复 TextEmitter emit_const_typed
+  返回 raw value (无 type prefix), 对齐 LLVM emitter contract; 6) 修复后
+  全绿 + baseline text IR 也修复 (`icmp eq i64 2, i64 0` → `icmp eq i64 2, 0`)
+- HOW MUCH: 2 src 文件 (~70 LOC) + 1 test 文件 (20 tests: 8 正 + 5 text IR
+  + 4 负 + 3 边界) + 文档更新
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协, §1.0 原则 6 通解>特解):
+1. 选择"emit_const_typed 直接 emit"而非"仅改 src_ty 派生"
+   - 引用 §12 (最优>最小): 一步到位, 避免 cast
+   - 引用 §1.0 原則 9 (正确>妥协): emit_const 仍 emit i32, 仅改 src_ty 会导致
+     LLVM verify 失败 (i32 constant in i64 context)
+   - 引用 §1.0 原則 6 (通解>特解): 一条路径覆盖所有 concrete int-like type
+
+2. 选择"TextEmitter contract 对齐"而非"per-caller workaround"
+   - 引用 §1.0 原則 6 (通解>特解): 一条 contract 覆盖两个 emitter
+   - 引用 §1.0 原則 9 (正确>妥协): 修复 Stage 18.287 contract bug, 非 workaround
+   - 引用 §17.6 (直到审查不出问题为止): 21 失败触发的深挖, 发现并修复
+     Stage 18.287 遗留 bug
+
+3. 选择"fallback 路径保留"而非"强制要求 c.ty 为 concrete"
+   - 引用 §1.0 原則 9 (正确>妥协): Phase 3.6 未应用时 c.ty 仍为 Infer,
+     fallback 保留 Stage 107 行为; Stage 110 引入 Phase 3.6 后自动启用新路径
+
+裁剪点:
+- L2 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4735 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL 修复完成
+- codegen operand.rs: 当 c.ty 为 concrete Int/Uint/Bool/Char 时用 emit_const_typed
+  直接 emit, 跳过 sext/trunc cast
+- TextEmitter emit_const_typed contract 对齐 LLVM emitter (返回 raw value, 无 type prefix)
+- 同时修复 Stage 18.287 遗留 bug (store i64 i64 0 双类型前缀 → store i64 0)
+- 20 个新测试覆盖正向/text IR/负向/边界
+- 架构健康度: 9.85/10 (stable — 2 src 文件, 无回归, 修复 +1 hidden bug)
+- v0.644.0
+
+下一步:
+- Stage 110: 重新引入 Phase 3.6 (Constant type writeback) — Stage 107 + Stage 109
+  已修复所有前置依赖 (call arg type source + codegen src_ty + TextEmitter contract)
+- Stage 111: 加 Debug impl 验证 100 次跑 0 SIGSEGV

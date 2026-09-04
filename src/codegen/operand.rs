@@ -156,7 +156,37 @@ pub(crate) fn codegen_operand(
                         }
                     }
                 }
-                // Stage 14.64: Cast INTEGER constants to their declared type.
+                // Stage 109 (TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL fix):
+                //
+                // When `c.ty` is a concrete integer-like type (Int/Uint/Bool/Char),
+                // emit the constant directly in `c.ty`'s LLVM type via
+                // `emit_const_typed`, bypassing the i32-default `emit_const` and
+                // the subsequent sext/trunc cast.
+                //
+                // Stage 108 RCA: `emit_const` always picks i32 for small values
+                // (`ConstVal::Int(42)` → `i32 42`), regardless of `c.ty`. The
+                // old Stage 14.64 logic then derived `src_ty` from `ConstVal`
+                // (i32), and `target_ty` from `c.ty` (could be i64) → sext cast
+                // inserted (`sext i32 42 to i64`) → 7 regressions when Phase 3.6
+                // (Constant type writeback) resolves `c.ty` to concrete types.
+                //
+                // This Stage 109 fix is transparent when `c.ty` is Infer (current
+                // state — no Phase 3.6): falls back to old ConstVal-based path,
+                // preserving Stage 107 behavior. When Stage 110 re-introduces
+                // Phase 3.6, `c.ty` becomes concrete → new path emits the constant
+                // in the correct LLVM type directly, avoiding the sext cast
+                // entirely (root-cause fix per §12 最优>最小).
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one rule for all concrete
+                // integer-like constants (Int/Uint/Bool/Char), regardless of
+                // width or signedness.
+                // Per §1.0 原則 9 (正确 > 妥协): emit the right type upfront
+                // (root cause), not via cast (symptom patch).
+                // Per §12 (最优 > 最小): Stage 108 tried "skip cast for I32↔I64"
+                // → 301 regressions (too broad). Stage 109 narrows to:
+                // concrete c.ty → emit_const_typed; otherwise fallback.
+                //
+                // Stage 14.64 (legacy): Cast INTEGER constants to their declared type.
                 //
                 // `emit_const` always creates an i32 constant for `ConstVal::Int`
                 // (because it doesn't know the target type). When the constant's
@@ -177,6 +207,43 @@ pub(crate) fn codegen_operand(
                 // explicitly tracked in `c.ty` and used for the cast.
                 // Per §1.0 原则 6 "通用 > 特例": one rule for all integer
                 // constants, regardless of width.
+                //
+                // Stage 109: detect concrete int-like c.ty and use emit_const_typed.
+                use crate::mir::ty::TyKind as TyKind_109;
+                let concrete_int_ty_109 = match &c.ty.kind {
+                    TyKind_109::Int(_)
+                    | TyKind_109::Uint(_)
+                    | TyKind_109::Bool
+                    | TyKind_109::Char => Some(mir_type_to_emit_type_with_layouts_and_mono(
+                        &c.ty,
+                        layouts,
+                        mono_layouts,
+                    )),
+                    _ => None,
+                };
+                if let Some(int_emit_ty) = concrete_int_ty_109 {
+                    // c.ty is a concrete int-like type. Emit the constant
+                    // directly in c.ty's LLVM type. This bypasses the
+                    // i32-default emit_const + sext/trunc cast path entirely.
+                    //
+                    // Note: ConstVal::Int/Uint are u128; emit_const_typed takes
+                    // i64. For values > i64::MAX (only possible for I128 consts),
+                    // the high bits are lost — but this is a pre-existing
+                    // limitation of emit_const too (`*n as u64`), not a
+                    // regression introduced by Stage 109.
+                    let n_val: i64 = match &c.val {
+                        ConstVal::Int(n) | ConstVal::Uint(n) => *n as i64,
+                        ConstVal::Bool(b) => *b as i64,
+                        ConstVal::Char(ch) => *ch as i64,
+                        // Unevaluated/Str/Float shouldn't reach here (Float has
+                        // its own path; Str is matched earlier; Unevaluated
+                        // falls through to old path). Defensive: emit 0.
+                        _ => 0,
+                    };
+                    return emitter.emit_const_typed(n_val, &int_emit_ty);
+                }
+                // Fallback: c.ty is Infer/Param/etc. (Phase 3.6 not applied).
+                // Preserve Stage 107 behavior: emit_const (i32-default) + cast.
                 let raw = emitter.emit_const(&c.val);
                 let target_ty =
                     mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, mono_layouts);

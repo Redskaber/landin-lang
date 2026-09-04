@@ -307,21 +307,31 @@ impl ArithmeticEmitter for TextEmitter {
 
     /// Stage 18.287 (TD-NEGOVERFLOW-I32 fix): Emit a typed integer constant.
     ///
-    /// Text emitter: just emit the value with the type string. This is used
-    /// by the text backend for debugging/testing — the LLVM backend is the
-    /// primary path for actual codegen.
+    /// Stage 109 (TD-CODEGEN-CONST-SRC-TY-FROM-CONSTVAL fix): Align
+    /// TextEmitter contract with LLVM emitter — return just the value
+    /// (no type prefix), matching `emit_const`'s contract.
+    ///
+    /// Stage 18.287 bug: previously returned `"i64 0"` (with type prefix),
+    /// causing broken LLVM IR when the consuming instruction also prepends
+    /// the type (e.g., `emit_store` → `store i64 i64 0`; `emit_icmp` →
+    /// `icmp eq i64 2, i64 0`). The LLVM backend's `emit_const_typed`
+    /// returns just the SSA name (`%v3`) without type info — the type is
+    /// implicit in the LLVMValueRef. TextEmitter must match this contract.
+    ///
+    /// Why the bug wasn't caught earlier: Stage 18.287-288 added
+    /// `emit_const_typed` callers in `terminator.rs` (overflow asserts)
+    /// and `rvalue.rs` (SizeOf), but no text IR test exercised these
+    /// paths. Stage 109 routes ALL concrete-typed constants through
+    /// `emit_const_typed`, surfacing the contract bug in 21 text IR tests.
+    ///
+    /// Per §1.0 原则 6 (通解 > 特解): one contract for both emitters.
+    /// Per §1.0 原则 9 (正确 > 妥协): align contract, not add workarounds.
+    /// Per §12 (最优 > 最小): root-cause fix, not per-caller patches.
+    /// Per §17.6 (直到审查不出问题为止): surfaced by Stage 109 audit.
     fn emit_const_typed(&mut self, val: i64, ty: &EmitType) -> EmitValue {
-        let ty_str = match ty {
-            EmitType::I1 => "i1",
-            EmitType::I8 => "i8",
-            EmitType::I16 => "i16",
-            EmitType::I32 => "i32",
-            EmitType::I64 => "i64",
-            EmitType::I128 => "i128",
-            EmitType::F32 => "f32",
-            EmitType::F64 => "f64",
-            _ => "i64",
-        };
-        format!("{} {}", ty_str, val)
+        // Type is implicit in the consumer's instruction context
+        // (e.g., `store i64 <val>, ...`). Return just the value.
+        let _ = ty; // type info unused in text mode (preserved for API compat)
+        format!("{}", val)
     }
 }
