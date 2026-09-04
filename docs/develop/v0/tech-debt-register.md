@@ -1,8 +1,8 @@
-# Landin 编译器技术债完整清单 — v0.631.0 (Stage 91)
+# Landin 编译器技术债完整清单 — v0.632.0 (Stage 92)
 
 > **更新日期**: 2026-09-03
-> **版本**: v0.631.0
-> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-FORMAT-ARGS-WRITE 完成）
+> **版本**: v0.632.0
+> **状态**: v0.8 trait 系统阶段，TD 聚焦修复（TD-GENERIC-TRAIT-METHOD-MANGLING 部分修复）
 
 ---
 
@@ -36,6 +36,7 @@
 | TD-DYN-TRAIT-FAT-PTR-COERCION | 89 | Call site fat pointer construction — `&Concrete → &dyn Trait` coercion at call sites now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs`: detect Ref(Dyn) callee param + Ref(Adt) arg, construct dynptr symbol. Also fixed `build_type_name_by_def_id` to include Trait DefIds. |
 | TD-DYN-TRAIT-DATA-PTR-EXTRACT | 90 | vtable indirect call extracts data pointer from fat pointer field 0 and passes it to the impl method (was: passed fat pointer → method read garbage → returned 0). Fix in `codegen/llvm/aggregate.rs` + `codegen/text/aggregate.rs`: GEP field 0 + load data ptr before indirect call. **First successful end-to-end dyn Trait runtime test** — `use_greeter(&e)` returns 42. |
 | TD-FORMAT-ARGS-WRITE | 91 | `format_args!` and `write!` macros now compile and run (was: linker error — `__landin_format_args` and `__landin_write` had no codegen support). Fix: `format_args!` routes to `__landin_format_v2` (same as `format!`); `write!` expands to `dst.write_str(format_args!(...))`; `write_str` added to hygiene skip list. |
+| TD-GENERIC-TRAIT-METHOD-MANGLING | 92 (partial) | `re_resolve_trait_method_calls` now runs for ALL functions (not just generic). Added `lookup_by_trait_method` + `lookup_by_method_name` fallbacks. Full turbofish path resolution still needs MIR lower fix (TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION, v0.9+). |
 | TD-SPECIAL-11 | 18.334 | variadic 检测从签名解析 (已通解) |
 | TD-LEXER-UNDERSCORE | 39.3 | `_` → TokenKind::Underscore |
 | TD-PAT-IDENT-VARIANT | 39.3 | resolver 转换单段 variant Ident → Path |
@@ -65,7 +66,8 @@
 | TD-FN-UNIT-ARGS | ~~`Fn<()>` unit tuple arg 不支持~~ **FIXED Stage 85** — `build_fn_sigs_map` filters `EmitType::Void` from sig map (mirrors ZST elision in codegen_function + terminator.rs) | ~~typeck/codegen 不支持 () as Args~~ **DONE** | ~~typeck/codegen 支持 unit tuple as Fn<Args>~~ **DONE** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-ASSOC-TYPE-SCOPE | ~~associated type `Output` 在 2 impls 中冲突~~ **FIXED Stage 73** — resolver skips impl assoc types in global namespace | resolver 未按 impl 块 scope assoc types | ~~resolver scope assoc types per impl block~~ **DONE: pre-collect impl assoc type DefIds, skip in registration** | TD-FN-TRAITS ✅ (Stage 62) |
 | TD-FN-IMPL-SIG-VALIDATION | ~~typeck 不校验 impl sig 匹配 Args/Output~~ **FIXED Stage 78+86** — param check (Stage 78: substitute trait generic args) + return check (Stage 86: resolve Self::Output projection via resolve_projection_in_ty_pub + fix find_assoc_type_def_id to match by name AND owner trait) | ~~typeck 缺少 impl signature 检查~~ **DONE** | ~~typeck validate impl fn sig vs trait Args/Output~~ **DONE** | TD-FN-TRAITS ✅ (Stage 62) |
-| TD-GENERIC-TRAIT-METHOD-MANGLING | 泛型 trait method 调用 mangled 名错误 | `From::<i32>::from(42)` 产生 `fn_0_i32` (未定义) | 修复 generic trait method mangling | trait resolver |
+| TD-GENERIC-TRAIT-METHOD-MANGLING | ~~泛型 trait method 调用 mangled 名错误~~ **PARTIAL FIX Stage 92** — `re_resolve_trait_method_calls` 现在为所有函数运行 (was: 仅泛型函数)。添加 `lookup_by_trait_method` + `lookup_by_method_name` 回退。完整 turbofish path resolution 仍需 MIR lower 修复。 | ~~`From::<i32>::from(42)` 产生 `fn_0_i32`~~ **PARTIAL** (re_resolve 基础设施修复; turbofish path 解析仍 broken) | ~~修复 generic trait method mangling~~ **PARTIAL** | trait resolver ✅ |
+| TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION | `From::<i32>::from(42)` turbofish path 在 MIR lower 中解析为错误的 DefId (DefId(85) = landin_String_push_str 而非 trait 方法 DefId)。导致 re_resolve 找不到正确的 impl method。 | MIR lower 的 path resolution 对 turbofish trait method path 解析错误 — 返回了无关的 fn DefId 而非 trait 声明方法的 DefId | 1) 修复 MIR lower 的 turbofish path resolution; 2) 正确解析 `From::<i32>::from` 为 trait 方法 DefId + substs [i32] | TD-GENERIC-TRAIT-METHOD-MANGLING ✅ (Stage 92) — 发现于 Stage 92 调查 |
 | TD-FN-ASSOC-TYPE-CALL | `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法不支持 | parser/typeck 未支持 explicit trait dispatch | parser/typeck 支持 explicit trait dispatch syntax | typeck |
 | TD-DYN-TRAIT-COMPLETION | ~~dyn Trait typeck 不完整~~ **FIXED Stage 60+87** — Stage 60 partial (TraitObject → Ref(Error) placeholder) replaced by Stage 87 proper `TyKind::Dyn(DefId)`. typeck carries trait DefId + verifies trait impl bounds via `implements_by_def_ids`. Method resolution looks up methods in trait declaration for `Dyn` receivers. | ~~typeck 无 dyn Trait 代码~~ **DONE** | ~~typeck trait dispatch~~ **DONE** (typeck foundation; runtime vtable dispatch deferred to TD-DYN-TRAIT-RUNTIME-DISPATCH) | trait resolver ✅ |
 | TD-IMPL-TRAIT-MONO-RESOLUTION | ~~impl Trait arg 方法调用在函数体内不解析~~ **FIXED Stage 69** — TraitMethodResolutionMap + re_resolve_trait_method_calls | monomorphization 不在类型替换后重新解析 trait 方法 | ~~mono pass 重新解析 trait 方法~~ **DONE: pre-computed map in driver, re-resolve in codegen** | TD-IMPL-TRAIT ✅ (Stage 63) |

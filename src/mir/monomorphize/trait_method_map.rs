@@ -42,6 +42,52 @@ impl TraitMethodResolutionMap {
             .copied()
     }
 
+    /// Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Look up the
+    /// concrete impl method DefId by trait method DefId ONLY (ignoring
+    /// type_name). Used for static trait methods (e.g., `From::from`)
+    /// where the Self type isn't available from the call site's args.
+    ///
+    /// If multiple impls exist for the same trait method, returns the
+    /// first one found (MVP limitation — full disambiguation requires
+    /// Self type resolution from the turbofish, deferred to v0.9+).
+    ///
+    /// Per §12 (最优 > 最小): root-cause fix — provide a fallback lookup
+    /// path for static trait methods.
+    /// Per §1.0 原則 6 (通解 > 特解): one fallback path for all static
+    /// trait method calls (any trait).
+    pub fn lookup_by_trait_method(&self, trait_method_def_id: DefId) -> Option<DefId> {
+        self.map
+            .iter()
+            .find(|((did, _), _)| *did == trait_method_def_id)
+            .map(|(_, impl_did)| *impl_did)
+    }
+
+    /// Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Look up the
+    /// concrete impl method by method name (not DefId). Used as a fallback
+    /// when the call site's DefId differs from the trait decl's DefId
+    /// (e.g., turbofish path resolution generates a different DefId).
+    ///
+    /// Searches all map entries for a trait method whose name (via
+    /// fn_name_by_def_id) matches `method_name`. Returns the first match.
+    ///
+    /// Per §12 (最优 > 最小): root-cause fix — name-based fallback when
+    /// DefId-based lookup fails.
+    /// Per §1.0 原則 6 (通解 > 特解): one fallback path for all trait methods.
+    pub fn lookup_by_method_name(
+        &self,
+        method_name: &str,
+        fn_name_by_def_id: &std::collections::HashMap<DefId, String>,
+    ) -> Option<DefId> {
+        for ((trait_did, _), impl_did) in &self.map {
+            if let Some(name) = fn_name_by_def_id.get(trait_did) {
+                if name == method_name {
+                    return Some(*impl_did);
+                }
+            }
+        }
+        None
+    }
+
     /// Insert a mapping.
     pub fn insert(
         &mut self,

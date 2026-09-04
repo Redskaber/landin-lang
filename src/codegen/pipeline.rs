@@ -174,6 +174,9 @@ pub fn run_codegen_pipeline(
         &mono_layouts,
         emitter,
         &result.type_name_by_def_id,
+        // Stage 92: Pass trait_method_map so non-generic functions can
+        // re-resolve trait method calls to concrete impl methods.
+        &result.trait_method_map,
     )?;
 
     // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each

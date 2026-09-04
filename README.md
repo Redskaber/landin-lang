@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.631.0 (v0.8 Stage 91 — TD-FORMAT-ARGS-WRITE FIXED: `format_args!` and `write!` macros now compile and run; format_args! routes to `__landin_format_v2`; write! expands to `dst.write_str(format_args!(...))`; 5560 tests — Architecture health 9.85/10) |
+| **Version** | v0.632.0 (v0.8 Stage 92 — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix: re_resolve_trait_method_calls now runs for ALL functions; added lookup_by_trait_method + lookup_by_method_name fallbacks; 5564 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.8 Stage 91 COMPLETE**. 5560 tests (898 lib + 4662 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 91 fixes TD-FORMAT-ARGS-WRITE: `format_args!` and `write!` macros now compile and run (was: linker error — `__landin_format_args` and `__landin_write` had no codegen support). Fix: `format_args!` routes to `__landin_format_v2` (same as `format!`); `write!` expands to `dst.write_str(format_args!(...))`; `write_str` added to hygiene skip list (was: renamed to `__landin_macro_write_str_0`). 4 new tests (1 positive + 3 negative). Architecture health: 9.85/10 (stable — format_args!/write! work). |
+| **Status** | ✅ **v0.8 Stage 92 COMPLETE**. 5564 tests (898 lib + 4666 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 92 partially fixes TD-GENERIC-TRAIT-METHOD-MANGLING: `re_resolve_trait_method_calls` now runs for ALL functions (was: only generic ones). Added `lookup_by_trait_method` (DefId-only) + `lookup_by_method_name` (name-based fallback) to `TraitMethodResolutionMap`. Removed `substs.is_empty()` guard. Full turbofish path resolution (`From::<i32>::from(42)`) still needs MIR lower fix — tracked as TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION (P3, v0.9+). 4 new tests (1 positive + 3 negative). Architecture health: 9.85/10 (stable — re_resolve infrastructure extended). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

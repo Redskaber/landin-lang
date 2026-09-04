@@ -43391,3 +43391,97 @@ Stage Summary:
 - TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
 - TD-CFG-MACROS/TD-ENV-MACROS: build system macros
 - TD-ASM-MACRO: LLVM inline asm
+
+---
+Task ID: stage92
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 92 (v0.8) — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix.
+re_resolve_trait_method_calls now runs for ALL functions (not just generic
+ones). Added lookup_by_trait_method + lookup_by_method_name fallbacks for
+static trait methods. Full turbofish path resolution still needs MIR lower
+fix (TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION, v0.9+). v0.632.0. 5564
+tests, 0 failures, 9 ignored.
+
+3秒启动自检:
+- 定位: L2-L3 (codegen re_resolve infrastructure + trait_method_map new methods)
+- 对齐: 已查 Stage 91 worklog, tech-debt-register.md (TD-GENERIC-TRAIT-METHOD-MANGLING
+  列为 P3, 根因 "From::<i32>::from(42) 产生 fn_0_i32"), codegen/function.rs
+  (re_resolve_trait_method_calls), codegen/pipeline.rs (codegen_from_mir call)
+- 阻断: v0.631.0 全绿 (5560 tests), 0 P0/P1
+
+5W2H 根因分析:
+- WHAT: 泛型 trait method 调用 `From::<i32>::from(42)` 产生 linker error
+  (undefined reference to `fn_0_i32`)。调用点用了 trait 声明方法的 mangled
+  名而非具体 impl 方法的 mangled 名。
+- WHY (根因 — 2 处):
+  1. re_resolve_trait_method_calls 只在 codegen_mono_functions 中调用 (泛型
+     函数)。非泛型函数 (如 main) 的 trait method 调用从未被 re-resolve。
+  2. re_resolve 内的 `substs.is_empty()` guard 跳过了所有非泛型函数。
+  3. (新发现) MIR lower 对 turbofish path `From::<i32>::from` 解析为错误
+     的 DefId (DefId(85) = landin_String_push_str 而非 trait 方法 DefId)。
+     导致 re_resolve 找不到正确的 impl method。
+- WHO: 影响所有 turbofish 泛型 trait method 调用。
+- WHEN: 列为 P3。
+- WHERE: codegen/function.rs (re_resolve_trait_method_calls) +
+  codegen/pipeline.rs (codegen_from_mir call) +
+  mir/monomorphize/trait_method_map.rs (new lookup methods)
+- HOW:
+  1. codegen_from_mir 中为每个函数调用 re_resolve_trait_method_calls
+  2. 移除 re_resolve 中的 substs.is_empty() guard
+  3. 添加 lookup_by_trait_method (DefId-only lookup) 和
+     lookup_by_method_name (name-based fallback) 到 TraitMethodResolutionMap
+  4. 在 re_resolve 中添加 fallback chain: (DefId, type_name) →
+     lookup_by_trait_method → lookup_by_method_name
+- HOW MUCH: ~100 行 codegen 改动 + 4 tests + worklog + tech-debt-register +
+  README + RELEASE_NOTES + package。
+
+Rust 设计哲学验证:
+- Memory Safety ✓ — re_resolve 避免了错误的 mangled 名 (linker error → UB)
+- Zero-Cost Abstraction ✓ — re_resolve 在编译期运行，无运行时开销
+- Explicit > Implicit ✓ — trait method resolution 现在显式覆盖所有函数
+- Make Invalid States Unrepresentable ✓ — 3 层 fallback chain 确保尽可能
+  找到正确的 impl method
+
+决策点:
+1. 选择"在 codegen_from_mir 中为所有函数调用 re_resolve"而非"仅在
+   codegen_mono_functions 中调用"
+   - 引用 §12 (最优 > 最小): 根因修复 — codegen_from_mir 处理所有函数
+     (包括非泛型)，应在其中也 re-resolve。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 re-resolution 路径适用于所有函数。
+
+2. 选择"3 层 fallback chain"而非"单一直接 lookup"
+   - 引用 §12 (最优 > 最小): 根因修复 — 对不同场景 (instance method vs
+     static method vs turbofish path) 提供不同 fallback path。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 fallback chain 适用于所有
+     trait method call 形式。
+
+3. 选择"defer turbofish path resolution 到 TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION"
+   - 引用 §13.4 (重构判据): turbofish path resolution 涉及 MIR lower 的
+     path 解析逻辑 — L3 scope, 需要 ~200+ 行改动。Stage 92 已完成
+     re_resolve 基础设施 (最难的部分)，turbofish path 可独立 stage 推进。
+
+裁剪点:
+- L2-L3 — §7.3 gate review per §1.2.1 (跳过 §14.5/§14.6 深度审查)
+- 跳过 §14.5 deep review (codegen re_resolve 基础设施，无 soundness 影响 —
+  仅影响 trait method call 的 mangled 名)
+
+§3.2 验收检查:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings (0 warnings) ✓
+- cargo test --release --features llvm-backend ✓ (5564 tests, 0 failures, 9 ignored)
+
+Stage Summary:
+- TD-GENERIC-TRAIT-METHOD-MANGLING PARTIAL FIX (re_resolve infrastructure)
+- New TD: TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION (P3, v0.9+) — MIR lower
+  turbofish path resolution 解析为错误 DefId
+- 4 new tests (1 positive + 3 negative) in stage92
+- 5564 tests (898 lib + 4666 integration), 0 failures, 9 ignored
+- fmt clean, 0 clippy warnings
+- Architecture health: 9.85/10 (stable — re_resolve infrastructure extended)
+
+下一步:
+- TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION: 修复 MIR lower 的 turbofish path
+  解析 — `From::<i32>::from` 应解析为 trait 方法 DefId + substs [i32]
+- TD-FN-ASSOC-TYPE-CALL: `<F as Fn<(Args,)>>::call(&f, args)` 显式调用语法
+- TD-CFG-MACROS/TD-ENV-MACROS: build system macros
+- TD-ASM-MACRO: LLVM inline asm

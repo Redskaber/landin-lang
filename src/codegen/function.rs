@@ -160,8 +160,40 @@ pub fn codegen_from_mir(
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    // Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Pass
+    // trait_method_map so non-generic functions (like main) can re-resolve
+    // trait method calls to concrete impl methods.
+    trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
+        // Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Re-resolve
+        // trait method calls in ALL functions (not just generic ones). Non-
+        // generic functions (like main) may contain generic trait method
+        // calls (e.g., `From::<i32>::from(42)`) that need re-resolution to
+        // the concrete impl method.
+        //
+        // Before Stage 92: re_resolve_trait_method_calls was only called in
+        // codegen_mono_functions (for generic functions with non-empty
+        // substs). Non-generic functions' trait method calls were left as
+        // trait declaration DefIds → call sites used mangled names like
+        // `fn_0_i32` (trait decl DefId 0 + substs) instead of
+        // `landin_Wrapper_from` (the concrete impl method).
+        //
+        // Per §12 (最优 > 最小): root-cause fix — re-resolve in
+        // codegen_from_mir too (the path that handles ALL functions).
+        // Per §1.0 原則 6 (通解 > 特解): one re-resolution path for all
+        // functions (generic + non-generic).
+        // Per §1.0 原則 4 (报错 > 静默): avoid linker errors from wrong
+        // mangled names.
+        let mut mir_resolved = mir.clone();
+        re_resolve_trait_method_calls(
+            &mut mir_resolved,
+            &[],
+            trait_method_map,
+            fn_name_by_def_id,
+            interner,
+        );
+
         // Stage 18.348 (P2 soundness fix): Pre-codegen diagnostic —
         // check for unresolved type kinds (Param/Infer/Error/Projection)
         // in type-relevant positions. For non-generic functions (handled
@@ -173,7 +205,7 @@ pub fn codegen_from_mir(
         // silently mapping them to EmitType::I32.
         // Per §1.0 原則 6 (通解 > 特解): one param_check for all functions.
         // Per §20 (iterative audit): same class as Stage 18.347 (Param leak).
-        let type_errors = crate::mir::param_check::check_unresolved_types(mir);
+        let type_errors = crate::mir::param_check::check_unresolved_types(&mir_resolved);
         if !type_errors.is_empty() {
             // Emit a warning to stderr (non-fatal — codegen continues
             // with potentially wrong types, but the user sees the error).
@@ -189,14 +221,14 @@ pub fn codegen_from_mir(
         codegen_function(
             emitter,
             &meta.fn_name,
-            mir,
+            &mir_resolved,
             fn_name_by_def_id,
             fn_sigs,
             meta.param_count,
             interner,
             // Stage 15.8: Arc<AdtLayouts> auto-derefs to &AdtLayouts.
-            // Per clippy::explicit_auto_deref, use &mir.adt_layouts (auto-deref).
-            &mir.adt_layouts,
+            // Per clippy::explicit_auto_deref, use &mir_resolved.adt_layouts (auto-deref).
+            &mir_resolved.adt_layouts,
             Some(mono_layouts),
             meta.is_void,
             meta.abi,
@@ -629,11 +661,19 @@ fn re_resolve_trait_method_calls(
     use crate::mir::place::Operand;
     use crate::mir::ty::TyKind;
 
-    let _ = (fn_name_by_def_id, interner); // Reserved for future ADT type lookup.
+    let _ = (substs, interner); // Reserved for future use.
 
-    if substs.is_empty() {
-        return;
-    }
+    // Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Removed the
+    // `if substs.is_empty() { return; }` guard. Non-generic functions
+    // (called from codegen_from_mir with empty substs) may still contain
+    // generic trait method calls (e.g., `From::<i32>::from(42)`) that
+    // need re-resolution. The guard was too aggressive — it skipped
+    // re-resolution for ALL non-generic functions, including main.
+    //
+    // Per §12 (最优 > 最小): root-cause fix — always try re-resolution,
+    // regardless of the function's own substs.
+    // Per §1.0 原則 6 (通解 > 特解): one re-resolution path for all
+    // functions (generic + non-generic).
 
     // Clone local_decls to avoid borrow conflict with the mutable iteration
     // over basic_blocks. This is O(n) but only runs on generic functions.
@@ -652,19 +692,56 @@ fn re_resolve_trait_method_calls(
 
         // Get the receiver type (first arg or first input local).
         let receiver_ty = get_receiver_type(&local_decls, args);
-        let Some(recv_ty) = receiver_ty else {
-            continue;
-        };
-
-        // Get the concrete type name.
-        let type_name = get_concrete_type_name(&recv_ty, interner);
-        if type_name.is_empty() {
-            continue;
-        }
+        let type_name = receiver_ty
+            .as_ref()
+            .map(|ty| get_concrete_type_name(ty, interner))
+            .unwrap_or_default();
 
         // Look up in the trait method map.
-        let Some(impl_method_def_id) = trait_method_map.lookup(*trait_method_def_id, &type_name)
-        else {
+        // Stage 92: If type_name is empty (static trait method — no receiver),
+        // fall back to lookup_by_trait_method. If that also fails (call site's
+        // DefId differs from trait decl's DefId due to turbofish), try
+        // matching by method name via fn_name_by_def_id.
+        let impl_method_def_id = if type_name.is_empty() {
+            // Static trait method (no receiver) — try DefId-only lookup,
+            // then fall back to name-based matching.
+            let result = trait_method_map.lookup_by_trait_method(*trait_method_def_id);
+            if result.is_some() {
+                result
+            } else {
+                let call_name = fn_name_by_def_id.get(trait_method_def_id);
+                if let Some(call_name) = call_name {
+                    trait_method_map.lookup_by_method_name(call_name, fn_name_by_def_id)
+                } else {
+                    None
+                }
+            }
+        } else {
+            // Instance method — try (DefId, type_name) lookup first.
+            let result = trait_method_map.lookup(*trait_method_def_id, &type_name);
+            if result.is_some() {
+                result
+            } else {
+                // Stage 92: If (DefId, type_name) lookup fails, the type_name
+                // might be the arg type (e.g., i32) instead of Self type
+                // (e.g., Wrapper) — this happens for static trait methods
+                // where get_receiver_type returns the first arg's type.
+                // Fall back to DefId-only lookup (ignores type_name).
+                let fallback = trait_method_map.lookup_by_trait_method(*trait_method_def_id);
+                if fallback.is_some() {
+                    fallback
+                } else {
+                    // Last resort: name-based matching.
+                    let call_name = fn_name_by_def_id.get(trait_method_def_id);
+                    if let Some(call_name) = call_name {
+                        trait_method_map.lookup_by_method_name(call_name, fn_name_by_def_id)
+                    } else {
+                        None
+                    }
+                }
+            }
+        };
+        let Some(impl_method_def_id) = impl_method_def_id else {
             continue;
         };
 

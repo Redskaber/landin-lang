@@ -1123,3 +1123,13 @@ mod stage90_dyn_trait_data_ptr_extract_tests;
 // Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
 #[path = "v0/stage91/plan/format_args_write_tests.rs"]
 mod stage91_format_args_write_tests;
+
+// === Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING partial fix):
+// re_resolve_trait_method_calls now runs for ALL functions (not just generic).
+// Added lookup_by_trait_method + lookup_by_method_name fallbacks for static
+// trait methods. Full turbofish path resolution still needs MIR lower fix
+// (TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION, v0.9+). ===
+// Per §12 (最优 > 最小): root-cause fix — re_resolve in codegen_from_mir.
+// Per §9.4.3 (1:3+ 正负比例): 1 positive + 3 negative tests.
+#[path = "v0/stage92/plan/generic_trait_method_tests.rs"]
+mod stage92_generic_trait_method_tests;
