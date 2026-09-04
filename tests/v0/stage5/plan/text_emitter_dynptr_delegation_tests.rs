@@ -82,7 +82,7 @@ fn test_text_emitter_dynptr_delegation_no_regression() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("bar"),
-                fn_name: interner.get_or_intern("landin_S_bar"),
+                fn_name: interner.get_or_intern("landin_Foo_S_bar"),
             }],
         },
     );

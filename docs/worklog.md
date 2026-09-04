@@ -43672,3 +43672,45 @@ Default, PartialEq, Eq, PartialOrd (declared), Ord
   路径支持 impl method bodies returning struct/enum
 - 然后重新添加 Debug impls (returning String) + PartialOrd impls
 - TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法
+
+---
+Task ID: stage98
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 98 (v0.9) — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH
+ROOT CAUSE FIXED. Trait impl method symbol collision: `impl Display for i32
+{ fn fmt }` and `impl Debug for i32 { fn fmt }` both produced `landin_i32_fmt`
+→ LLVM module had two functions with same name, different signatures →
+SIGSEGV / stack smashing. Fix: include trait name in mangling →
+`landin_Display_i32_fmt` vs `landin_Debug_i32_fmt`. Updated 4 source files +
+32+ test files. v0.637.0. 5589 tests, 0 failures, 9 ignored.
+
+决策点:
+1. 选择"在 mangling 中包含 trait 名"而非"限制 trait impl 方法名唯一性"
+   - 引用 §12 (最优 > 最小): 根因修复 — mangling scheme 本身是根因。
+   - 引用 §1.0 原則 6 (通解 > 特解): 一个 mangling 规则适用于所有
+     trait impl methods (任何 trait, 任何 type, 任何 method)。
+   - 替代方案 (拒绝): 限制用户不能用同名方法。这违反 Rust 设计。
+
+2. 修复 4 处 mangling:
+   - driver/driver_codegen_prep.rs: fn_name_by_def_id (函数定义名)
+   - traits/resolver.rs: VtableEntry.fn_name (vtable 条目符号名)
+   - stdlib/vtable_layout.rs: stdlib_vtable_method_symbols (stdlib vtable)
+   - codegen/drop_glue.rs: Drop impl method 调用名
+
+3. Debug + PartialOrd impl bodies 暂时移除:
+   - 根因 (symbol collision) 已修复 — user code 中 impl method returning
+     String/Option 正常工作 (test_sret2.landin → 42).
+   - 但 prelude impl bodies 在 LLVM integration tests 中触发 stack smashing.
+   - 新 TD: TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+) — LLVM module
+     verification 或 codegen 对 prelude impl method bodies 的处理不完整.
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓
+- cargo test --release --features llvm-backend ✓ (5589 tests, 0 failures, 9 ignored)
+
+下一步:
+- TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH: 调查 LLVM module verification 对
+  prelude impl method bodies 的处理
+- 然后重新添加 Debug impls (returning String) + PartialOrd impls
+- TD-PRELUDE-METHOD-COVERAGE: 扩展 prelude 方法

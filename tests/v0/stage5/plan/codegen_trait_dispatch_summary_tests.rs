@@ -72,7 +72,7 @@ fn test_build_trait_dispatch_emission_summary_empty() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let s = build_trait_dispatch_emission_summary(&resolver, &interner);
     assert_eq!(s.vtable_count, 1);
@@ -91,7 +91,7 @@ fn test_build_trait_dispatch_emission_summary_single() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
@@ -136,7 +136,7 @@ fn test_build_trait_dispatch_emission_summary_multi() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_vtable_count() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let s = build_trait_dispatch_emission_summary(&resolver, &interner);
     assert_eq!(s.vtable_count, 1);
 }
@@ -145,7 +145,7 @@ fn test_build_trait_dispatch_emission_summary_vtable_count() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_dynptr_count() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let s = build_trait_dispatch_emission_summary(&resolver, &interner);
     assert_eq!(s.dynptr_count, s.vtable_count);
 }
@@ -154,7 +154,7 @@ fn test_build_trait_dispatch_emission_summary_dynptr_count() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_total_global_count() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let s = build_trait_dispatch_emission_summary(&resolver, &interner);
     assert_eq!(s.total_global_count, s.vtable_count + s.dynptr_count);
     assert_eq!(s.total_global_count, 2);
@@ -224,7 +224,7 @@ fn test_build_trait_dispatch_emission_summary_total_method_slots() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
     // Add Drop with 1 method
     let trait_spur = interner.get_or_intern("Drop");
@@ -237,7 +237,7 @@ fn test_build_trait_dispatch_emission_summary_total_method_slots() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: interner.get_or_intern("landin_S_drop"),
+                fn_name: interner.get_or_intern("landin_Drop_S_drop"),
             }],
         },
     );
@@ -280,7 +280,7 @@ fn test_build_trait_dispatch_emission_summary_unresolved_interner() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let vtables_count_before = resolver.vtables.len();
 
     let _s = build_trait_dispatch_emission_summary(&resolver, &interner);
@@ -300,8 +300,11 @@ fn test_build_trait_dispatch_emission_summary_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -338,7 +341,7 @@ fn test_build_trait_dispatch_emission_summary_real_scenario() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_struct_eq() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let s1 = build_trait_dispatch_emission_summary(&resolver, &interner);
     let s2 = build_trait_dispatch_emission_summary(&resolver, &interner);
@@ -350,7 +353,7 @@ fn test_build_trait_dispatch_emission_summary_struct_eq() {
 #[test]
 fn test_build_trait_dispatch_emission_summary_struct_field_access() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let s: CodegenTraitDispatchEmissionSummary =
         build_trait_dispatch_emission_summary(&resolver, &interner);
     assert_eq!(s.vtable_count, 1);

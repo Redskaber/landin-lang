@@ -68,7 +68,7 @@ fn test_build_dynptr_global_specs_empty() {
 #[test]
 fn test_build_dynptr_global_specs_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let specs = build_dynptr_global_specs(&resolver, &interner);
     assert_eq!(specs.len(), 1);
@@ -85,7 +85,7 @@ fn test_build_dynptr_global_specs_single() {
 #[test]
 fn test_build_dynptr_global_specs_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     // Add second vtable for (Bar, T)
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
@@ -139,7 +139,8 @@ fn test_build_dynptr_global_specs_data_symbol() {
 #[test]
 fn test_build_dynptr_global_specs_vtable_symbol() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
 
     let specs = build_dynptr_global_specs(&resolver, &interner);
     assert_eq!(specs[0].vtable_symbol, ".vtable.Clone.S");
@@ -181,7 +182,7 @@ fn test_build_dynptr_global_specs_unresolved_interner() {
 #[test]
 fn test_build_dynptr_global_specs_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let vtables_count_before = resolver.vtables.len();
 
     let _specs = build_dynptr_global_specs(&resolver, &interner);
@@ -193,7 +194,7 @@ fn test_build_dynptr_global_specs_no_side_effects() {
 #[test]
 fn test_build_dynptr_global_specs_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let specs1 = build_dynptr_global_specs(&resolver, &interner);
     let specs2 = build_dynptr_global_specs(&resolver, &interner);
@@ -223,7 +224,7 @@ fn test_build_dynptr_global_specs_match_emit_dyn_trait_ptrs() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     // Manually inline the emit_dyn_trait_ptrs() construction logic
@@ -260,7 +261,7 @@ fn test_build_dynptr_global_specs_match_emit_dyn_trait_ptrs() {
 fn test_build_dynptr_global_specs_then_emit() {
     use landin_compiler::codegen::emit_dynptr_global_text;
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
 
     let specs = build_dynptr_global_specs(&resolver, &interner);
     assert_eq!(specs.len(), 1);
@@ -289,8 +290,11 @@ fn test_build_dynptr_global_specs_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);

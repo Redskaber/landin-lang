@@ -75,7 +75,7 @@ fn test_build_trait_dispatch_emission_plan_empty() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     assert_eq!(plan.vtable_specs.len(), 1);
@@ -93,7 +93,7 @@ fn test_build_trait_dispatch_emission_plan_single() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
@@ -126,7 +126,7 @@ fn test_build_trait_dispatch_emission_plan_multi() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_vtable_specs() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let separate = build_vtable_global_specs(&resolver, &interner);
@@ -142,7 +142,7 @@ fn test_build_trait_dispatch_emission_plan_vtable_specs() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_dynptr_specs() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let separate = build_dynptr_global_specs(&resolver, &interner);
@@ -157,7 +157,7 @@ fn test_build_trait_dispatch_emission_plan_dynptr_specs() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_summary() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let separate = build_trait_dispatch_emission_summary(&resolver, &interner);
@@ -178,7 +178,7 @@ fn test_build_trait_dispatch_emission_plan_match_separate_calls() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
@@ -210,7 +210,7 @@ fn test_build_trait_dispatch_emission_plan_match_separate_calls() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let vtables_count_before = resolver.vtables.len();
 
     let _plan = build_trait_dispatch_emission_plan(&resolver, &interner);
@@ -230,8 +230,11 @@ fn test_build_trait_dispatch_emission_plan_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -305,7 +308,7 @@ fn test_build_trait_dispatch_emission_plan_unresolved_interner() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_struct_eq() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let plan1 = build_trait_dispatch_emission_plan(&resolver, &interner);
     let plan2 = build_trait_dispatch_emission_plan(&resolver, &interner);
@@ -321,7 +324,7 @@ fn test_build_trait_dispatch_emission_plan_struct_eq() {
 #[test]
 fn test_build_trait_dispatch_emission_plan_field_access() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
 
     let plan: CodegenTraitDispatchEmissionPlan =
         build_trait_dispatch_emission_plan(&resolver, &interner);

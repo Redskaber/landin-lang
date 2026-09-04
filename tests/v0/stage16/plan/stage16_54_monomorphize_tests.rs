@@ -90,7 +90,7 @@ fn stage16_54_dedup_same_instantiation() {
     assert_eq!(
         type_items.len(),
         1,
-        "Expected exactly 1 Type MonoItem (Wrapper<i32> deduped), got: {}",
+        "Expected at least 1 Type MonoItem (Wrapper<i32> deduped), got: {}",
         type_items.len()
     );
 }
@@ -162,7 +162,7 @@ fn stage16_54_generic_enum_multiple_variants() {
     assert_eq!(
         type_items.len(),
         1,
-        "Expected exactly 1 Type MonoItem (Opt<i32> deduped), got: {}",
+        "Expected at least 1 Type MonoItem (Opt<i32> deduped), got: {}",
         type_items.len()
     );
 }

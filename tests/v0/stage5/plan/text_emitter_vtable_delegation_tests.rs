@@ -21,13 +21,13 @@ use landin_compiler::codegen::{emit_vtable_global_text, ModuleEmitter, TextEmitt
 #[test]
 fn test_text_emitter_vtable_global_delegation_basic() {
     let mut emitter = TextEmitter::new();
-    let symbols = vec!["landin_S_bar".to_string()];
+    let symbols = vec!["landin_Foo_S_bar".to_string()];
     let result = emitter.emit_vtable_global(".vtable.Foo.S", &symbols);
     let output = emitter.output_with_globals();
 
     assert_eq!(result, ".vtable.Foo.S");
     assert!(output.contains("@.vtable.Foo.S = internal unnamed_addr constant"));
-    assert!(output.contains("ptr @landin_S_bar"));
+    assert!(output.contains("ptr @landin_Foo_S_bar"));
 }
 
 /// Empty symbols → zeroinitializer (delegated correctly).
@@ -45,12 +45,12 @@ fn test_text_emitter_vtable_global_delegation_empty() {
 #[test]
 fn test_text_emitter_vtable_global_delegation_single() {
     let mut emitter = TextEmitter::new();
-    let symbols = vec!["landin_S_drop".to_string()];
+    let symbols = vec!["landin_Drop_S_drop".to_string()];
     let _ = emitter.emit_vtable_global(".vtable.Drop.S", &symbols);
     let output = emitter.output_with_globals();
 
     assert!(output.contains(
-        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_Drop_S_drop]"
     ));
 }
 
@@ -59,15 +59,15 @@ fn test_text_emitter_vtable_global_delegation_single() {
 fn test_text_emitter_vtable_global_delegation_multi() {
     let mut emitter = TextEmitter::new();
     let symbols = vec![
-        "landin_S_clone".to_string(),
-        "landin_S_clone_from".to_string(),
+        "landin_Clone_S_clone".to_string(),
+        "landin_Clone_S_clone_from".to_string(),
     ];
     let _ = emitter.emit_vtable_global(".vtable.Clone.S", &symbols);
     let output = emitter.output_with_globals();
 
     assert!(output.contains("[2 x ptr]"));
-    assert!(output.contains("ptr @landin_S_clone"));
-    assert!(output.contains("ptr @landin_S_clone_from"));
+    assert!(output.contains("ptr @landin_Clone_S_clone"));
+    assert!(output.contains("ptr @landin_Clone_S_clone_from"));
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ fn test_text_emitter_vtable_global_delegation_multi() {
 #[test]
 fn test_text_emitter_vtable_global_delegation_null() {
     let mut emitter = TextEmitter::new();
-    let symbols = vec!["landin_S_clone".to_string(), "null".to_string()];
+    let symbols = vec!["landin_Clone_S_clone".to_string(), "null".to_string()];
     let _ = emitter.emit_vtable_global(".vtable.Clone.S", &symbols);
     let output = emitter.output_with_globals();
 
@@ -112,7 +112,7 @@ fn test_text_emitter_vtable_global_delegation_no_regression() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("bar"),
-                fn_name: interner.get_or_intern("landin_S_bar"),
+                fn_name: interner.get_or_intern("landin_Foo_S_bar"),
             }],
         },
     );
@@ -123,7 +123,7 @@ fn test_text_emitter_vtable_global_delegation_no_regression() {
 
     // Should still produce correct vtable global
     assert!(output.contains("@.vtable.Foo.S"));
-    assert!(output.contains("ptr @landin_S_bar"));
+    assert!(output.contains("ptr @landin_Foo_S_bar"));
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ fn test_text_emitter_vtable_global_delegation_no_regression() {
 #[test]
 fn test_text_emitter_vtable_global_delegation_match_free_fn() {
     let global_name = ".vtable.Foo.S";
-    let symbols = vec!["landin_S_bar".to_string(), "landin_S_baz".to_string()];
+    let symbols = vec!["landin_Foo_S_bar".to_string(), "landin_S_baz".to_string()];
 
     // Get free function output
     let free_fn_ir = emit_vtable_global_text(global_name, &symbols);
@@ -160,7 +160,7 @@ fn test_text_emitter_vtable_global_delegation_match_free_fn() {
 #[test]
 fn test_text_emitter_vtable_global_delegation_emitter_globals() {
     let mut emitter = TextEmitter::new();
-    let symbols = vec!["landin_S_bar".to_string()];
+    let symbols = vec!["landin_Foo_S_bar".to_string()];
     let _ = emitter.emit_vtable_global(".vtable.Foo.S", &symbols);
     let output = emitter.output_with_globals();
 
@@ -176,7 +176,7 @@ fn test_text_emitter_vtable_global_delegation_emitter_globals() {
 #[test]
 fn test_text_emitter_vtable_global_delegation_return_value() {
     let mut emitter = TextEmitter::new();
-    let symbols = vec!["landin_S_bar".to_string()];
+    let symbols = vec!["landin_Foo_S_bar".to_string()];
     let result = emitter.emit_vtable_global(".vtable.Foo.S", &symbols);
 
     assert_eq!(result, ".vtable.Foo.S");
@@ -195,9 +195,9 @@ fn test_text_emitter_vtable_global_delegation_real_scenario() {
     let cases = [
         (
             ".vtable.Clone.S",
-            vec!["landin_S_clone", "landin_S_clone_from"],
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
         ),
-        (".vtable.Drop.S", vec!["landin_S_drop"]),
+        (".vtable.Drop.S", vec!["landin_Drop_S_drop"]),
         (".vtable.Display.S", vec!["landin_S_fmt"]),
     ];
 
@@ -217,10 +217,10 @@ fn test_text_emitter_vtable_global_delegation_real_scenario() {
 
     // Verify each vtable's content
     assert!(output.contains("@.vtable.Clone.S"));
-    assert!(output.contains("ptr @landin_S_clone"));
-    assert!(output.contains("ptr @landin_S_clone_from"));
+    assert!(output.contains("ptr @landin_Clone_S_clone"));
+    assert!(output.contains("ptr @landin_Clone_S_clone_from"));
     assert!(output.contains("@.vtable.Drop.S"));
-    assert!(output.contains("ptr @landin_S_drop"));
+    assert!(output.contains("ptr @landin_Drop_S_drop"));
     assert!(output.contains("@.vtable.Display.S"));
     assert!(output.contains("ptr @landin_S_fmt"));
 }

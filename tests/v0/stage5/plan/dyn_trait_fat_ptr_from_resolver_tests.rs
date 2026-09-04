@@ -50,7 +50,7 @@ fn test_emit_fat_ptrs_batch_from_resolver_empty() {
 #[test]
 fn test_emit_fat_ptrs_batch_from_resolver_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let lines = emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(lines.len(), 1);
     assert!(lines[0].starts_with("@.dynptr.Foo.S"));
@@ -60,7 +60,8 @@ fn test_emit_fat_ptrs_batch_from_resolver_single() {
 #[test]
 fn test_emit_fat_ptrs_batch_from_resolver_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let mut resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let trait_spur = interner.get_or_intern("Drop");
     let type_spur = interner.get_or_intern("T");
     resolver.vtables.insert(
@@ -87,7 +88,7 @@ fn test_emit_fat_ptrs_batch_from_resolver_multi() {
 #[test]
 fn test_emit_fat_ptrs_batch_from_resolver_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let count_before = resolver.vtables.len();
     let _ = emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(resolver.vtables.len(), count_before);
@@ -99,8 +100,11 @@ fn test_emit_fat_ptrs_batch_from_resolver_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -135,7 +139,7 @@ fn test_emit_fat_ptrs_batch_from_resolver_real_scenario() {
 #[test]
 fn test_emit_fat_ptrs_batch_from_resolver_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let l1 = emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&resolver, &interner);
     let l2 = emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(l1, l2);
@@ -156,7 +160,7 @@ fn test_emit_fat_ptrs_batch_from_resolver_valid_ir() {
 #[test]
 fn test_emit_fat_ptrs_batch_from_resolver_no_emitter() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let lines = emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&resolver, &interner);
     assert!(!lines.is_empty());
     // Works without any Emitter trait object

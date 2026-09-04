@@ -24,7 +24,7 @@ fn test_stdlib_vtable_emission_clone_complete() {
     assert_eq!(e.global_name, ".vtable.Clone.S");
     assert_eq!(
         e.method_symbols,
-        vec!["landin_S_clone", "landin_S_clone_from"]
+        vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"]
     );
     assert_eq!(e.slot_count, 2);
     assert_eq!(e.byte_size_32, 8);
@@ -38,7 +38,7 @@ fn test_stdlib_vtable_emission_clone_complete() {
 fn test_stdlib_vtable_emission_clone_partial() {
     let e = stdlib_vtable_emission("Clone", "S", &["clone"]).unwrap();
     assert_eq!(e.slot_count, 2);
-    assert_eq!(e.method_symbols, vec!["landin_S_clone", "null"]);
+    assert_eq!(e.method_symbols, vec!["landin_Clone_S_clone", "null"]);
     assert!(!e.is_complete);
     assert!(!e.is_marker);
 }
@@ -48,7 +48,7 @@ fn test_stdlib_vtable_emission_clone_partial() {
 fn test_stdlib_vtable_emission_drop() {
     let e = stdlib_vtable_emission("Drop", "S", &["drop"]).unwrap();
     assert_eq!(e.slot_count, 1);
-    assert_eq!(e.method_symbols, vec!["landin_S_drop"]);
+    assert_eq!(e.method_symbols, vec!["landin_Drop_S_drop"]);
     assert_eq!(e.byte_size_32, 4);
     assert_eq!(e.byte_size_64, 8);
     assert!(e.is_complete);
@@ -148,7 +148,7 @@ fn test_stdlib_vtable_emission_arith() {
     assert_eq!(e.trait_name, "Add");
     assert_eq!(e.type_name, "Vec");
     assert_eq!(e.global_name, ".vtable.Add.Vec");
-    assert_eq!(e.method_symbols, vec!["landin_Vec_add"]);
+    assert_eq!(e.method_symbols, vec!["landin_Add_Vec_add"]);
     assert_eq!(e.slot_count, 1);
     assert!(e.is_complete);
     assert!(!e.is_marker);
@@ -229,7 +229,7 @@ fn test_stdlib_vtable_emission_struct_field_access() {
     assert_eq!(e.trait_name, "Drop");
     assert_eq!(e.type_name, "Vec");
     assert_eq!(e.global_name, ".vtable.Drop.Vec");
-    assert_eq!(e.method_symbols, vec!["landin_Vec_drop"]);
+    assert_eq!(e.method_symbols, vec!["landin_Drop_Vec_drop"]);
     assert_eq!(e.slot_count, 1);
     assert_eq!(e.byte_size_32, 4);
     assert_eq!(e.byte_size_64, 8);

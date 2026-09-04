@@ -71,12 +71,15 @@ fn test_build_vtable_global_specs_empty() {
 #[test]
 fn test_build_vtable_global_specs_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let specs = build_vtable_global_specs(&resolver, &interner);
     assert_eq!(specs.len(), 1);
     assert_eq!(specs[0].global_name, ".vtable.Foo.S");
-    assert_eq!(specs[0].method_symbols, vec!["landin_S_bar".to_string()]);
+    assert_eq!(
+        specs[0].method_symbols,
+        vec!["landin_Foo_S_bar".to_string()]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +90,7 @@ fn test_build_vtable_global_specs_single() {
 #[test]
 fn test_build_vtable_global_specs_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     // Add second vtable for (Bar, T)
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
@@ -133,13 +136,13 @@ fn test_build_vtable_global_specs_method_symbols() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     let specs = build_vtable_global_specs(&resolver, &interner);
     assert_eq!(specs[0].method_symbols.len(), 2);
-    assert_eq!(specs[0].method_symbols[0], "landin_S_clone");
-    assert_eq!(specs[0].method_symbols[1], "landin_S_clone_from");
+    assert_eq!(specs[0].method_symbols[0], "landin_Clone_S_clone");
+    assert_eq!(specs[0].method_symbols[1], "landin_Clone_S_clone_from");
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +180,7 @@ fn test_build_vtable_global_specs_unresolved_interner() {
 #[test]
 fn test_build_vtable_global_specs_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     // Snapshot the vtables count before
     let vtables_count_before = resolver.vtables.len();
@@ -192,8 +195,12 @@ fn test_build_vtable_global_specs_no_side_effects() {
 #[test]
 fn test_build_vtable_global_specs_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver =
-        make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar", "landin_S_baz"]);
+    let resolver = make_resolver_with_vtable(
+        &mut interner,
+        "Foo",
+        "S",
+        &["landin_Foo_S_bar", "landin_S_baz"],
+    );
 
     let specs1 = build_vtable_global_specs(&resolver, &interner);
     let specs2 = build_vtable_global_specs(&resolver, &interner);
@@ -226,7 +233,7 @@ fn test_build_vtable_global_specs_match_emit_vtables_inline() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     // Manually inline the emit_vtables() construction logic
@@ -273,7 +280,7 @@ fn test_build_vtable_global_specs_match_emit_vtables_inline() {
 #[test]
 fn test_build_vtable_global_specs_then_batch_emit() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
 
     let specs = build_vtable_global_specs(&resolver, &interner);
     let ir_lines = emit_vtable_globals_batch(&specs);
@@ -281,7 +288,7 @@ fn test_build_vtable_global_specs_then_batch_emit() {
     assert_eq!(ir_lines.len(), 1);
     assert_eq!(
         ir_lines[0],
-        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_Drop_S_drop]"
     );
 }
 
@@ -316,8 +323,11 @@ fn test_build_vtable_global_specs_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);

@@ -33,13 +33,13 @@ fn test_emit_vtable_globals_batch_empty() {
 fn test_emit_vtable_globals_batch_single() {
     let specs = vec![StdlibVtableGlobalSpec {
         global_name: ".vtable.Drop.S".to_string(),
-        method_symbols: vec!["landin_S_drop".to_string()],
+        method_symbols: vec!["landin_Drop_S_drop".to_string()],
     }];
     let result = emit_vtable_globals_batch(&specs);
     assert_eq!(result.len(), 1);
     assert_eq!(
         result[0],
-        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_Drop_S_drop]"
     );
 }
 
@@ -50,13 +50,13 @@ fn test_emit_vtable_globals_batch_multi() {
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(),
             method_symbols: vec![
-                "landin_S_clone".to_string(),
-                "landin_S_clone_from".to_string(),
+                "landin_Clone_S_clone".to_string(),
+                "landin_Clone_S_clone_from".to_string(),
             ],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Drop.S".to_string(),
-            method_symbols: vec!["landin_S_drop".to_string()],
+            method_symbols: vec!["landin_Drop_S_drop".to_string()],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Add.Vec".to_string(),
@@ -83,8 +83,8 @@ fn test_emit_vtable_globals_batch_matches_individual() {
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(),
             method_symbols: vec![
-                "landin_S_clone".to_string(),
-                "landin_S_clone_from".to_string(),
+                "landin_Clone_S_clone".to_string(),
+                "landin_Clone_S_clone_from".to_string(),
             ],
         },
         StdlibVtableGlobalSpec {
@@ -158,7 +158,7 @@ fn test_emit_vtable_globals_batch_with_marker() {
 fn test_emit_vtable_globals_batch_with_null() {
     let specs = vec![StdlibVtableGlobalSpec {
         global_name: ".vtable.Clone.S".to_string(),
-        method_symbols: vec!["landin_S_clone".to_string(), "null".to_string()],
+        method_symbols: vec!["landin_Clone_S_clone".to_string(), "null".to_string()],
     }];
     let result = emit_vtable_globals_batch(&specs);
     assert_eq!(result.len(), 1);
@@ -176,18 +176,18 @@ fn test_emit_vtable_globals_batch_mixed() {
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(),
-            method_symbols: vec!["landin_S_clone".to_string(), "null".to_string()],
+            method_symbols: vec!["landin_Clone_S_clone".to_string(), "null".to_string()],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Drop.S".to_string(),
-            method_symbols: vec!["landin_S_drop".to_string()],
+            method_symbols: vec!["landin_Drop_S_drop".to_string()],
         },
     ];
     let result = emit_vtable_globals_batch(&specs);
     assert_eq!(result.len(), 3);
     assert!(result[0].contains("zeroinitializer"));
     assert!(result[1].contains("ptr null"));
-    assert!(result[2].contains("ptr @landin_S_drop"));
+    assert!(result[2].contains("ptr @landin_Drop_S_drop"));
 }
 
 // ---------------------------------------------------------------------------
@@ -199,10 +199,10 @@ fn test_emit_vtable_globals_batch_mixed() {
 fn test_stdlib_vtable_global_spec_struct() {
     let spec = StdlibVtableGlobalSpec {
         global_name: ".vtable.Foo.S".to_string(),
-        method_symbols: vec!["landin_S_bar".to_string()],
+        method_symbols: vec!["landin_Foo_S_bar".to_string()],
     };
     assert_eq!(spec.global_name, ".vtable.Foo.S");
-    assert_eq!(spec.method_symbols, vec!["landin_S_bar".to_string()]);
+    assert_eq!(spec.method_symbols, vec!["landin_Foo_S_bar".to_string()]);
 }
 
 /// `StdlibVtableGlobalSpec` derives PartialEq/Eq.
@@ -210,17 +210,17 @@ fn test_stdlib_vtable_global_spec_struct() {
 fn test_stdlib_vtable_global_spec_eq() {
     let s1 = StdlibVtableGlobalSpec {
         global_name: ".vtable.Foo.S".to_string(),
-        method_symbols: vec!["landin_S_bar".to_string()],
+        method_symbols: vec!["landin_Foo_S_bar".to_string()],
     };
     let s2 = StdlibVtableGlobalSpec {
         global_name: ".vtable.Foo.S".to_string(),
-        method_symbols: vec!["landin_S_bar".to_string()],
+        method_symbols: vec!["landin_Foo_S_bar".to_string()],
     };
     assert_eq!(s1, s2);
 
     let s3 = StdlibVtableGlobalSpec {
         global_name: ".vtable.Foo.T".to_string(), // different
-        method_symbols: vec!["landin_S_bar".to_string()],
+        method_symbols: vec!["landin_Foo_S_bar".to_string()],
     };
     assert_ne!(s1, s3);
 }
@@ -238,13 +238,13 @@ fn test_emit_vtable_globals_batch_real_vtables() {
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(),
             method_symbols: vec![
-                "landin_S_clone".to_string(),
-                "landin_S_clone_from".to_string(),
+                "landin_Clone_S_clone".to_string(),
+                "landin_Clone_S_clone_from".to_string(),
             ],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Drop.S".to_string(),
-            method_symbols: vec!["landin_S_drop".to_string()],
+            method_symbols: vec!["landin_Drop_S_drop".to_string()],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Add.S".to_string(),
@@ -267,11 +267,11 @@ fn test_emit_vtable_globals_batch_dedup_not_required() {
     let specs = vec![
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(),
-            method_symbols: vec!["landin_S_clone".to_string()],
+            method_symbols: vec!["landin_Clone_S_clone".to_string()],
         },
         StdlibVtableGlobalSpec {
             global_name: ".vtable.Clone.S".to_string(), // duplicate
-            method_symbols: vec!["landin_S_clone".to_string()],
+            method_symbols: vec!["landin_Clone_S_clone".to_string()],
         },
     ];
     let result = emit_vtable_globals_batch(&specs);

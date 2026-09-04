@@ -27,7 +27,7 @@ fn test_emit_vtable_global_from_emission_clone() {
     assert_eq!(
         ir,
         "@.vtable.Clone.S = internal unnamed_addr constant \
-         [2 x ptr] [ptr @landin_S_clone, ptr @landin_S_clone_from]"
+         [2 x ptr] [ptr @landin_Clone_S_clone, ptr @landin_Clone_S_clone_from]"
     );
 }
 
@@ -38,7 +38,7 @@ fn test_emit_vtable_global_from_emission_drop() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_Drop_S_drop]"
     );
 }
 
@@ -61,7 +61,7 @@ fn test_emit_vtable_global_from_emission_partial() {
     assert_eq!(
         ir,
         "@.vtable.Clone.S = internal unnamed_addr constant \
-         [2 x ptr] [ptr @landin_S_clone, ptr null]"
+         [2 x ptr] [ptr @landin_Clone_S_clone, ptr null]"
     );
 }
 
@@ -72,7 +72,7 @@ fn test_emit_vtable_global_from_emission_arith() {
     let ir = emit_vtable_global_from_emission(&e);
     assert_eq!(
         ir,
-        "@.vtable.Add.Vec = internal unnamed_addr constant [1 x ptr] [ptr @landin_Vec_add]"
+        "@.vtable.Add.Vec = internal unnamed_addr constant [1 x ptr] [ptr @landin_Add_Vec_add]"
     );
 }
 
@@ -102,10 +102,10 @@ fn test_emit_vtable_global_from_emission_format_entries() {
     let e = stdlib_vtable_emission("Clone", "S", &["clone", "clone_from"]).unwrap();
     let ir = emit_vtable_global_from_emission(&e);
     assert!(
-        ir.contains("ptr @landin_S_clone"),
-        "missing ptr @landin_S_clone in: {ir}"
+        ir.contains("ptr @landin_Clone_S_clone"),
+        "missing ptr @landin_Clone_S_clone in: {ir}"
     );
-    assert!(ir.contains("ptr @landin_S_clone_from"));
+    assert!(ir.contains("ptr @landin_Clone_S_clone_from"));
 }
 
 /// "null" symbol → `ptr null` literal.
@@ -141,8 +141,8 @@ fn test_emit_vtable_global_from_emission_match_text_emitter() {
         type_name: "S".to_string(),
         global_name: ".vtable.Clone.S".to_string(),
         method_symbols: vec![
-            "landin_S_clone".to_string(),
-            "landin_S_clone_from".to_string(),
+            "landin_Clone_S_clone".to_string(),
+            "landin_Clone_S_clone_from".to_string(),
         ],
         slot_count: 2,
         byte_size_32: 8,
@@ -207,6 +207,6 @@ fn test_emit_vtable_global_from_emission_partial_eq() {
     assert_eq!(
         ir,
         "@.vtable.PartialEq.S = internal unnamed_addr constant \
-         [2 x ptr] [ptr @landin_S_eq, ptr null]"
+         [2 x ptr] [ptr @landin_PartialEq_S_eq, ptr null]"
     );
 }

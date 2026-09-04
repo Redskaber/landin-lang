@@ -583,8 +583,21 @@ impl TraitResolver {
                                     method_names.push(f.ident.name);
                                     // Stage 15.9: Intern the resolved symbol name
                                     // instead of allocating a String. Closes HP-B16.
-                                    let fn_name_str =
-                                        format!("landin_{}_{}", self_ty_str, method_str);
+                                    // Stage 98 (v0.9): Include trait name in
+                                    // mangled name for trait impl methods to
+                                    // avoid collisions (e.g., Display::fmt and
+                                    // Debug::fmt on i32 both were landin_i32_fmt).
+                                    let trait_str = trait_name
+                                        .and_then(|s| interner.try_resolve(&s))
+                                        .unwrap_or("Self");
+                                    let fn_name_str = if trait_str != "Self" {
+                                        format!(
+                                            "landin_{}_{}_{}",
+                                            trait_str, self_ty_str, method_str
+                                        )
+                                    } else {
+                                        format!("landin_{}_{}", self_ty_str, method_str)
+                                    };
                                     let fn_name_spur = interner.get_or_intern(fn_name_str);
                                     vtable_entries.push(VtableEntry {
                                         method_name: f.ident.name,

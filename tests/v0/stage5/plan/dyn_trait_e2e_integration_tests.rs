@@ -114,7 +114,7 @@ fn test_e2e_impl_emits_vtable_global() {
         ir
     );
     assert!(
-        ir.contains("@landin_S_bar"),
+        ir.contains("@landin_Foo_S_bar"),
         "expected method symbol, got: {}",
         ir
     );
@@ -140,8 +140,8 @@ fn test_e2e_vtable_references_method_symbol() {
     let result = compile(src);
     let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(ir.contains("@.vtable.Foo.S"));
-    assert!(ir.contains("@landin_S_bar"));
-    assert!(ir.contains("@landin_S_baz"));
+    assert!(ir.contains("@landin_Foo_S_bar"));
+    assert!(ir.contains("@landin_Foo_S_baz"));
 }
 
 // ============================================================

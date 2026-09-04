@@ -77,7 +77,7 @@ fn test_emit_trait_dispatch_globals_from_plan_empty() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let mut emitter = TextEmitter::new();
 
@@ -96,7 +96,7 @@ fn test_emit_trait_dispatch_globals_from_plan_single() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
@@ -138,7 +138,7 @@ fn test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     // Call resolver-based orchestrator (Stage 5.51)
@@ -169,7 +169,7 @@ fn test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_no_side_effects_on_plan() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let vtable_specs_count_before = plan.vtable_specs.len();
     let dynptr_specs_count_before = plan.dynptr_specs.len();
@@ -189,7 +189,7 @@ fn test_emit_trait_dispatch_globals_from_plan_no_side_effects_on_plan() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_vtable_emitted() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let mut emitter = TextEmitter::new();
 
@@ -197,14 +197,14 @@ fn test_emit_trait_dispatch_globals_from_plan_vtable_emitted() {
 
     let output = emitter.output_with_globals();
     assert!(output.contains("@.vtable.Drop.S = internal unnamed_addr constant"));
-    assert!(output.contains("ptr @landin_S_drop"));
+    assert!(output.contains("ptr @landin_Drop_S_drop"));
 }
 
 /// Dynptr globals are emitted.
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_dynptr_emitted() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let mut emitter = TextEmitter::new();
 
@@ -220,7 +220,7 @@ fn test_emit_trait_dispatch_globals_from_plan_dynptr_emitted() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_count_matches() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     for (trait_name, type_name) in [("Bar", "T"), ("Baz", "U")] {
         let trait_spur = interner.get_or_intern(trait_name);
         let type_spur = interner.get_or_intern(type_name);
@@ -262,7 +262,7 @@ fn test_emit_trait_dispatch_globals_from_plan_count_matches() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_order() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let mut emitter = TextEmitter::new();
 
@@ -291,8 +291,11 @@ fn test_emit_trait_dispatch_globals_from_plan_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -345,7 +348,7 @@ fn test_emit_trait_dispatch_globals_from_plan_real_scenario() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_composes_plan_and_emit() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
     let mut emitter = TextEmitter::new();
 
@@ -361,7 +364,7 @@ fn test_emit_trait_dispatch_globals_from_plan_composes_plan_and_emit() {
 #[test]
 fn test_emit_trait_dispatch_globals_from_plan_deterministic_count() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let plan = build_trait_dispatch_emission_plan(&resolver, &interner);
 
     let mut emitter1 = TextEmitter::new();

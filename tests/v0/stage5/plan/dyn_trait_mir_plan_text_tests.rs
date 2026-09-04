@@ -82,7 +82,7 @@ fn test_plan_text_from_resolver() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: interner.get_or_intern("landin_S_drop"),
+                fn_name: interner.get_or_intern("landin_Drop_S_drop"),
             }],
         },
     );
@@ -131,8 +131,11 @@ fn test_plan_text_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);

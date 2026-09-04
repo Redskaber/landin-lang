@@ -342,11 +342,11 @@ fn test_build_dyn_trait_method_calls_populates_param_kinds() {
             entries: vec![
                 VtableEntry {
                     method_name: interner.get_or_intern("clone"),
-                    fn_name: interner.get_or_intern("landin_S_clone"),
+                    fn_name: interner.get_or_intern("landin_Clone_S_clone"),
                 },
                 VtableEntry {
                     method_name: interner.get_or_intern("clone_from"),
-                    fn_name: interner.get_or_intern("landin_S_clone_from"),
+                    fn_name: interner.get_or_intern("landin_Clone_S_clone_from"),
                 },
             ],
         },

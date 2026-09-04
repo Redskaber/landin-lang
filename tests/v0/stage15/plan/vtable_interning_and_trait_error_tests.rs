@@ -63,8 +63,8 @@ fn stage15_9_vtable_fn_name_interned() {
         .try_resolve(&vtable.entries[0].fn_name)
         .expect("fn_name should resolve");
     assert_eq!(
-        fn_name_str, "landin_S_bar",
-        "fn_name should resolve to landin_S_bar"
+        fn_name_str, "landin_Foo_S_bar",
+        "fn_name should resolve to landin_Foo_S_bar"
     );
 }
 
@@ -101,7 +101,11 @@ fn stage15_9_multiple_vtable_entries_interned() {
     assert_eq!(vtable.entries.len(), 3, "should have 3 entries");
 
     // All fn_name Spurs should resolve to the expected symbols.
-    let expected = ["landin_T_alpha", "landin_T_beta", "landin_T_gamma"];
+    let expected = [
+        "landin_Multi_T_alpha",
+        "landin_Multi_T_beta",
+        "landin_Multi_T_gamma",
+    ];
     for (i, entry) in vtable.entries.iter().enumerate() {
         let fn_name_str = result
             .interner

@@ -50,7 +50,8 @@ fn test_method_calls_from_resolver_empty() {
 #[test]
 fn test_method_calls_from_resolver_clone() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let lines = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     // Clone has 2 methods (clone + clone_from) in stdlib registry
     assert_eq!(lines.len(), 2);
@@ -62,7 +63,7 @@ fn test_method_calls_from_resolver_clone() {
 #[test]
 fn test_method_calls_from_resolver_drop() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let lines = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("; dyn Drop.S::drop"));
@@ -72,7 +73,8 @@ fn test_method_calls_from_resolver_drop() {
 #[test]
 fn test_method_calls_from_resolver_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let count_before = resolver.vtables.len();
     let _ = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(resolver.vtables.len(), count_before);
@@ -84,8 +86,11 @@ fn test_method_calls_from_resolver_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -120,7 +125,8 @@ fn test_method_calls_from_resolver_real_scenario() {
 #[test]
 fn test_method_calls_from_resolver_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let l1 = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     let l2 = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     assert_eq!(l1, l2);
@@ -143,7 +149,8 @@ fn test_method_calls_from_resolver_valid_ir() {
 #[test]
 fn test_method_calls_from_resolver_no_emitter() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let lines = emit_dyn_trait_method_calls_text_batch_from_resolver(&resolver, &interner);
     assert!(!lines.is_empty());
 }

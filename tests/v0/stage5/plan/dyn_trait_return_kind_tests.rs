@@ -332,7 +332,7 @@ fn test_build_dyn_trait_method_calls_populates_return_kind() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: interner.get_or_intern("landin_S_drop"),
+                fn_name: interner.get_or_intern("landin_Drop_S_drop"),
             }],
         },
     );

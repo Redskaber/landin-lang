@@ -73,7 +73,7 @@ fn test_emit_dynptrs_from_resolver_empty() {
 #[test]
 fn test_emit_dynptrs_from_resolver_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let mut emitter = TextEmitter::new();
 
     emit_dynptrs_from_resolver(&resolver, &interner, &mut emitter);
@@ -92,7 +92,7 @@ fn test_emit_dynptrs_from_resolver_single() {
 #[test]
 fn test_emit_dynptrs_from_resolver_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     // Add second vtable for (Bar, T)
     let trait_spur = interner.get_or_intern("Bar");
@@ -131,7 +131,7 @@ fn test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
 
     // Call emit_dyn_trait_ptrs() (existing path)
@@ -157,7 +157,7 @@ fn test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs() {
 #[test]
 fn test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     // Add second vtable
     let trait_spur = interner.get_or_intern("Drop");
     let type_spur = interner.get_or_intern("S");
@@ -169,7 +169,7 @@ fn test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs_multi() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: interner.get_or_intern("landin_S_drop"),
+                fn_name: interner.get_or_intern("landin_Drop_S_drop"),
             }],
         },
     );
@@ -193,7 +193,7 @@ fn test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs_multi() {
 #[test]
 fn test_emit_dynptrs_from_resolver_no_side_effects_on_resolver() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let vtables_count_before = resolver.vtables.len();
     let mut emitter = TextEmitter::new();
 
@@ -222,7 +222,7 @@ fn test_emit_dynptrs_from_resolver_unresolved_interner() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: trait_spur,
-                fn_name: interner_with_spur.get_or_intern("landin_S_bar"),
+                fn_name: interner_with_spur.get_or_intern("landin_Foo_S_bar"),
             }],
         },
     );
@@ -250,7 +250,7 @@ fn test_emit_dynptrs_from_resolver_emitter_called_correctly() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
     let mut emitter = TextEmitter::new();
 
@@ -268,7 +268,7 @@ fn test_emit_dynptrs_from_resolver_emitter_called_correctly() {
 #[test]
 fn test_emit_dynptrs_from_resolver_count_matches_vtables() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     // Add 2 more vtables
     for (trait_name, type_name) in [("Bar", "T"), ("Baz", "U")] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -302,7 +302,7 @@ fn test_emit_dynptrs_from_resolver_count_matches_vtables() {
 #[test]
 fn test_emit_dynptrs_from_resolver_composes_build_and_emit() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let mut emitter = TextEmitter::new();
 
     emit_dynptrs_from_resolver(&resolver, &interner, &mut emitter);
@@ -321,7 +321,7 @@ fn test_emit_dynptrs_from_resolver_composes_build_and_emit() {
 #[test]
 fn test_emit_dynptrs_from_resolver_deterministic_count() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
 
     let mut emitter1 = TextEmitter::new();
     emit_dynptrs_from_resolver(&resolver, &interner, &mut emitter1);
@@ -349,8 +349,11 @@ fn test_emit_dynptrs_from_resolver_real_scenario() {
 
     // S impls Clone + Drop + Display
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);

@@ -22,14 +22,14 @@ use landin_compiler::codegen::{emit_vtable_global_text, ModuleEmitter, TextEmitt
 #[test]
 fn test_emit_vtable_global_text_basic() {
     let symbols = vec![
-        "landin_S_clone".to_string(),
-        "landin_S_clone_from".to_string(),
+        "landin_Clone_S_clone".to_string(),
+        "landin_Clone_S_clone_from".to_string(),
     ];
     let ir = emit_vtable_global_text(".vtable.Clone.S", &symbols);
     assert_eq!(
         ir,
         "@.vtable.Clone.S = internal unnamed_addr constant \
-         [2 x ptr] [ptr @landin_S_clone, ptr @landin_S_clone_from]"
+         [2 x ptr] [ptr @landin_Clone_S_clone, ptr @landin_Clone_S_clone_from]"
     );
 }
 
@@ -46,11 +46,11 @@ fn test_emit_vtable_global_text_empty() {
 /// Single symbol.
 #[test]
 fn test_emit_vtable_global_text_single() {
-    let symbols = vec!["landin_S_drop".to_string()];
+    let symbols = vec!["landin_Drop_S_drop".to_string()];
     let ir = emit_vtable_global_text(".vtable.Drop.S", &symbols);
     assert_eq!(
         ir,
-        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_S_drop]"
+        "@.vtable.Drop.S = internal unnamed_addr constant [1 x ptr] [ptr @landin_Drop_S_drop]"
     );
 }
 
@@ -85,12 +85,12 @@ fn test_emit_vtable_global_text_null_symbol() {
 /// Mixed: real symbol + null.
 #[test]
 fn test_emit_vtable_global_text_mixed_null() {
-    let symbols = vec!["landin_S_clone".to_string(), "null".to_string()];
+    let symbols = vec!["landin_Clone_S_clone".to_string(), "null".to_string()];
     let ir = emit_vtable_global_text(".vtable.Clone.S", &symbols);
     assert_eq!(
         ir,
         "@.vtable.Clone.S = internal unnamed_addr constant \
-         [2 x ptr] [ptr @landin_S_clone, ptr null]"
+         [2 x ptr] [ptr @landin_Clone_S_clone, ptr null]"
     );
 }
 
@@ -133,8 +133,8 @@ fn test_emit_vtable_global_text_no_leading_at_in_input() {
 fn test_emit_vtable_global_text_match_text_emitter() {
     let global_name = ".vtable.Clone.S";
     let symbols = vec![
-        "landin_S_clone".to_string(),
-        "landin_S_clone_from".to_string(),
+        "landin_Clone_S_clone".to_string(),
+        "landin_Clone_S_clone_from".to_string(),
     ];
 
     // Get the free function output.
@@ -180,7 +180,7 @@ fn test_emit_vtable_global_text_match_text_emitter_empty() {
 #[test]
 fn test_emit_vtable_global_text_null_path_diverges_from_text_emitter() {
     let global_name = ".vtable.Clone.S";
-    let symbols = vec!["landin_S_clone".to_string(), "null".to_string()];
+    let symbols = vec!["landin_Clone_S_clone".to_string(), "null".to_string()];
 
     let free_fn_ir = emit_vtable_global_text(global_name, &symbols);
     // Free function emits `ptr null` (correct).

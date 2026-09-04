@@ -52,17 +52,6 @@ pub(super) fn populate_fn_name_by_def_id(
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                    // Stage 18.287 (TD-NEGOVERFLOW-I32 fix continuation): Handle
-                    // primitive variant self_tys (`impl i32`, `impl bool`, etc.)
-                    // by using `name_of_primitive_hir_ty` to get the source name.
-                    // Previously, non-Path self_tys defaulted to "Self", causing
-                    // `impl i32 { fn abs }` and `impl i64 { fn abs }` to both
-                    // resolve to `landin_Self_abs` — a duplicate symbol crash.
-                    //
-                    // Per §1.0 原則 6 (通解 > 特解): one name-resolution path
-                    // for both Path and primitive-variant self_tys.
-                    // Per §12 (最优 > 最小): reuse `name_of_primitive_hir_ty`
-                    // (already exists for method resolution).
                     let self_ty_name =
                         if let crate::hir::HirTyKind::Path(_, p) = &impl_block.self_ty.kind {
                             if let Some(seg) = p.segments.last() {
@@ -71,17 +60,42 @@ pub(super) fn populate_fn_name_by_def_id(
                                 "Self"
                             }
                         } else {
-                            // Primitive variant (Int/Uint/Bool/Char/Float).
                             crate::mir::lower::name_of_primitive_hir_ty(&impl_block.self_ty.kind)
                                 .unwrap_or("Self")
                         };
                     let self_stripped =
                         self_ty_name.strip_prefix("landin_").unwrap_or(self_ty_name);
                     let method_stripped = method.strip_prefix("landin_").unwrap_or(method);
-                    fn_name_by_def_id.insert(
-                        f.hir_id.owner,
-                        format!("landin_{}_{}", self_stripped, method_stripped),
-                    );
+
+                    // Stage 98 (v0.9 — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH):
+                    // For TRAIT impl methods, include the trait name in the mangled
+                    // name to avoid collisions between different trait impls on
+                    // the same type (e.g., `impl Display for i32 { fn fmt }` and
+                    // `impl Debug for i32 { fn fmt }` both produced `landin_i32_fmt`).
+                    //
+                    // Per §12 (最优 > 最小): root-cause fix — trait name in mangling.
+                    // Per §1.0 原則 6 (通解 > 特解): one mangling rule for all
+                    // trait impl methods.
+                    // Per §1.0 原則 4 (显式 > 隐式): trait name is explicit in the
+                    // mangled name, avoiding silent symbol collisions.
+                    let mangled_name = if let Some(trait_path) = &impl_block.of_trait {
+                        // Trait impl method: landin_{trait}_{self}_{method}
+                        let trait_name = trait_path
+                            .segments
+                            .last()
+                            .and_then(|s| interner.try_resolve(&s.ident.name))
+                            .unwrap_or("Trait");
+                        let trait_stripped =
+                            trait_name.strip_prefix("landin_").unwrap_or(trait_name);
+                        format!(
+                            "landin_{}_{}_{}",
+                            trait_stripped, self_stripped, method_stripped
+                        )
+                    } else {
+                        // Inherent impl method: landin_{self}_{method}
+                        format!("landin_{}_{}", self_stripped, method_stripped)
+                    };
+                    fn_name_by_def_id.insert(f.hir_id.owner, mangled_name);
                 }
             }
         }

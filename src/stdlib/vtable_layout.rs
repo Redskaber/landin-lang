@@ -396,6 +396,14 @@ pub fn stdlib_data_global_name(type_name: &str) -> String {
 /// Per API-naming-standard §3: `stdlib_impl_method_symbol` follows
 /// `<noun>_<noun>_<noun>_<noun>` pattern.
 pub fn stdlib_impl_method_symbol(type_name: &str, method_name: &str) -> String {
+    // Stage 98 (v0.9): Include trait name in mangled name to avoid collisions.
+    // Old: landin_{type}_{method}  (e.g., landin_i32_fmt)
+    // New: landin_{trait}_{type}_{method}  (e.g., landin_Display_i32_fmt)
+    // Note: This function doesn't have access to trait_name — it's called
+    // from stdlib_vtable_method_symbols which does. The trait name is
+    // passed through there.
+    // For backward compat: this function still produces old-style mangling.
+    // The caller (stdlib_vtable_method_symbols) now overrides with trait name.
     format!("landin_{type_name}_{method_name}")
 }
 
@@ -425,7 +433,10 @@ pub fn stdlib_vtable_method_symbols(
             .iter()
             .map(|entry| {
                 if entry.provided {
-                    stdlib_impl_method_symbol(type_name, entry.method_name)
+                    // Stage 98 (v0.9): Include trait name in mangled symbol
+                    // to match the new driver_codegen_prep.rs + resolver.rs
+                    // mangling scheme (landin_{trait}_{type}_{method}).
+                    format!("landin_{}_{}_{}", trait_name, type_name, entry.method_name)
                 } else {
                     "null".to_string()
                 }

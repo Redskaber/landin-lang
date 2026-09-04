@@ -43,7 +43,7 @@ fn make_resolver_with_vtable(
 #[test]
 fn test_emit_dyn_trait_ptrs_delegation_basic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let mut emitter = TextEmitter::new();
     emit_dyn_trait_ptrs(&resolver, &interner, &mut emitter);
     let output = emitter.output_with_globals();
@@ -67,7 +67,7 @@ fn test_emit_dyn_trait_ptrs_delegation_empty() {
 #[test]
 fn test_emit_dyn_trait_ptrs_delegation_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let mut emitter = TextEmitter::new();
     emit_dyn_trait_ptrs(&resolver, &interner, &mut emitter);
     let output = emitter.output_with_globals();
@@ -82,7 +82,7 @@ fn test_emit_dyn_trait_ptrs_delegation_single() {
 #[test]
 fn test_emit_dyn_trait_ptrs_delegation_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
     resolver.vtables.insert(
@@ -115,7 +115,7 @@ fn test_emit_dyn_trait_ptrs_delegation_match_orchestrator() {
         &mut interner,
         "Clone",
         "S",
-        &["landin_S_clone", "landin_S_clone_from"],
+        &["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
     );
     let mut emitter1 = TextEmitter::new();
     emit_dyn_trait_ptrs(&resolver, &interner, &mut emitter1);
@@ -134,8 +134,11 @@ fn test_emit_dyn_trait_ptrs_delegation_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -171,7 +174,7 @@ fn test_emit_dyn_trait_ptrs_delegation_real_scenario() {
 #[test]
 fn test_emit_dyn_trait_ptrs_delegation_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let mut emitter1 = TextEmitter::new();
     emit_dyn_trait_ptrs(&resolver, &interner, &mut emitter1);
     let output1 = emitter1.output_with_globals();

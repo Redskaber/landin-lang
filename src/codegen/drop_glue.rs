@@ -128,7 +128,9 @@ pub(crate) fn emit_drop_glue_functions(
         // is the root-cause fix.
         // Per §20 (iterative audit): found via §20 Round 4 audit.
         if has_drop_impl {
-            let _drop_method_name = format!("landin_{}_drop", type_name);
+            // Stage 98 (v0.9): Include trait name in mangled name — Drop
+            // impl methods are now `landin_Drop_{type}_drop` (was: `landin_{type}_drop`).
+            let _drop_method_name = format!("landin_Drop_{}_drop", type_name);
             // (No emit_declare — the define from codegen_function handles it.)
         }
 
@@ -240,7 +242,9 @@ pub(crate) fn emit_drop_glue_functions(
 
         // If the type has impl Drop, call the user's Drop::drop method.
         if has_drop_impl {
-            let drop_method_name = format!("landin_{}_drop", type_name);
+            // Stage 98 (v0.9): Include trait name in mangled name — Drop
+            // impl methods are now `landin_Drop_{type}_drop` (was: `landin_{type}_drop`).
+            let drop_method_name = format!("landin_Drop_{}_drop", type_name);
             emitter.emit_call(
                 &drop_method_name,
                 &[(EmitType::OpaquePtr, &self_str)],

@@ -22,8 +22,8 @@ fn test_resolve_vtable_method() {
         .resolve_vtable_method(&result.interner, foo_spur, s_spur, bar_spur)
         .expect("should resolve bar");
     assert_eq!(
-        fn_name, "landin_S_bar",
-        "resolved fn_name should be landin_S_bar"
+        fn_name, "landin_Foo_S_bar",
+        "resolved fn_name should be landin_Foo_S_bar"
     );
 }
 
@@ -75,12 +75,12 @@ fn test_vtable_method_names() {
         .vtable_method_names(&result.interner, foo_spur, s_spur);
     assert_eq!(names.len(), 2, "should have 2 method names");
     assert!(
-        names.contains(&"landin_S_bar"),
-        "should contain landin_S_bar"
+        names.contains(&"landin_Foo_S_bar"),
+        "should contain landin_Foo_S_bar"
     );
     assert!(
-        names.contains(&"landin_S_baz"),
-        "should contain landin_S_baz"
+        names.contains(&"landin_Foo_S_baz"),
+        "should contain landin_Foo_S_baz"
     );
 }
 
@@ -147,20 +147,20 @@ fn test_resolve_multiple_methods() {
             .trait_resolver
             .resolve_vtable_method(&result.interner, foo_spur, s_spur, bar_spur)
             .unwrap(),
-        "landin_S_bar"
+        "landin_Foo_S_bar"
     );
     assert_eq!(
         result
             .trait_resolver
             .resolve_vtable_method(&result.interner, foo_spur, s_spur, baz_spur)
             .unwrap(),
-        "landin_S_baz"
+        "landin_Foo_S_baz"
     );
     assert_eq!(
         result
             .trait_resolver
             .resolve_vtable_method(&result.interner, foo_spur, s_spur, qux_spur)
             .unwrap(),
-        "landin_S_qux"
+        "landin_Foo_S_qux"
     );
 }

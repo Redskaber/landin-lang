@@ -52,7 +52,8 @@ fn test_summary_from_resolver_empty() {
 #[test]
 fn test_summary_from_resolver_clone() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let s = build_dyn_trait_mir_summary_from_resolver(&resolver, &interner);
     assert_eq!(s.fat_ptr_count, 1);
     assert_eq!(s.method_call_count, 2); // clone + clone_from
@@ -65,7 +66,7 @@ fn test_summary_from_resolver_clone() {
 #[test]
 fn test_summary_from_resolver_drop() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_S_drop"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Drop", "S", &["landin_Drop_S_drop"]);
     let s = build_dyn_trait_mir_summary_from_resolver(&resolver, &interner);
     assert_eq!(s.fat_ptr_count, 1);
     assert_eq!(s.method_call_count, 1);
@@ -76,7 +77,8 @@ fn test_summary_from_resolver_drop() {
 #[test]
 fn test_summary_from_resolver_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let count_before = resolver.vtables.len();
     let _ = build_dyn_trait_mir_summary_from_resolver(&resolver, &interner);
     assert_eq!(resolver.vtables.len(), count_before);
@@ -88,8 +90,11 @@ fn test_summary_from_resolver_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -123,7 +128,8 @@ fn test_summary_from_resolver_real_scenario() {
 #[test]
 fn test_summary_from_resolver_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_S_clone"]);
+    let resolver =
+        make_resolver_with_vtable(&mut interner, "Clone", "S", &["landin_Clone_S_clone"]);
     let s1 = build_dyn_trait_mir_summary_from_resolver(&resolver, &interner);
     let s2 = build_dyn_trait_mir_summary_from_resolver(&resolver, &interner);
     assert_eq!(s1, s2);

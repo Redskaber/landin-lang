@@ -51,7 +51,7 @@ fn test_build_dyn_trait_fat_ptrs_empty() {
 #[test]
 fn test_build_dyn_trait_fat_ptrs_single() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(&resolver, &interner);
     assert_eq!(fat_ptrs.len(), 1);
     assert_eq!(fat_ptrs[0].trait_name, "Foo");
@@ -65,7 +65,7 @@ fn test_build_dyn_trait_fat_ptrs_single() {
 #[test]
 fn test_build_dyn_trait_fat_ptrs_multi() {
     let mut interner = Rodeo::new();
-    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let mut resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let trait_spur = interner.get_or_intern("Bar");
     let type_spur = interner.get_or_intern("T");
     resolver.vtables.insert(
@@ -114,7 +114,7 @@ fn test_build_dyn_trait_fat_ptrs_unresolved_interner() {
 #[test]
 fn test_build_dyn_trait_fat_ptrs_no_side_effects() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let count_before = resolver.vtables.len();
     let _ = build_dyn_trait_fat_ptrs_from_resolver(&resolver, &interner);
     assert_eq!(resolver.vtables.len(), count_before);
@@ -147,8 +147,11 @@ fn test_build_dyn_trait_fat_ptrs_real_scenario() {
     let mut interner = Rodeo::new();
     let mut resolver = TraitResolver::new();
     for (trait_name, methods) in [
-        ("Clone", vec!["landin_S_clone", "landin_S_clone_from"]),
-        ("Drop", vec!["landin_S_drop"]),
+        (
+            "Clone",
+            vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"],
+        ),
+        ("Drop", vec!["landin_Drop_S_drop"]),
         ("Display", vec!["landin_S_fmt"]),
     ] {
         let trait_spur = interner.get_or_intern(trait_name);
@@ -191,7 +194,7 @@ fn test_build_dyn_trait_fat_ptrs_real_scenario() {
 #[test]
 fn test_build_dyn_trait_fat_ptrs_deterministic() {
     let mut interner = Rodeo::new();
-    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_S_bar"]);
+    let resolver = make_resolver_with_vtable(&mut interner, "Foo", "S", &["landin_Foo_S_bar"]);
     let fps1 = build_dyn_trait_fat_ptrs_from_resolver(&resolver, &interner);
     let fps2 = build_dyn_trait_fat_ptrs_from_resolver(&resolver, &interner);
     assert_eq!(fps1.len(), fps2.len());

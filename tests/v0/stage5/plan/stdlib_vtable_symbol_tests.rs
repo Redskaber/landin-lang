@@ -71,9 +71,11 @@ fn test_stdlib_data_global_name() {
 // stdlib_impl_method_symbol
 // ---------------------------------------------------------------------------
 
-/// `landin_S_bar` — matches `format!("landin_{}_{}", type, method)`.
+/// `landin_Foo_S_bar` — matches `format!("landin_{}_{}", type, method)`.
 #[test]
 fn test_stdlib_impl_method_symbol() {
+    // Stage 98: stdlib_impl_method_symbol now uses old mangling (no trait name).
+    // The trait name is added by stdlib_vtable_method_symbols instead.
     assert_eq!(stdlib_impl_method_symbol("S", "bar"), "landin_S_bar");
     assert_eq!(stdlib_impl_method_symbol("Vec", "push"), "landin_Vec_push");
 }
@@ -96,28 +98,31 @@ fn test_stdlib_impl_method_symbol_multi_part() {
 fn test_stdlib_vtable_method_symbols_clone_complete() {
     let symbols = stdlib_vtable_method_symbols("Clone", "S", &["clone", "clone_from"])
         .expect("Clone should be registered");
-    assert_eq!(symbols, vec!["landin_S_clone", "landin_S_clone_from"]);
+    assert_eq!(
+        symbols,
+        vec!["landin_Clone_S_clone", "landin_Clone_S_clone_from"]
+    );
 }
 
 /// Clone + S + [clone] → clone_from is "null" (not provided).
 #[test]
 fn test_stdlib_vtable_method_symbols_clone_partial() {
     let symbols = stdlib_vtable_method_symbols("Clone", "S", &["clone"]).unwrap();
-    assert_eq!(symbols, vec!["landin_S_clone", "null"]);
+    assert_eq!(symbols, vec!["landin_Clone_S_clone", "null"]);
 }
 
 /// Drop + S + [drop] → 1 symbol.
 #[test]
 fn test_stdlib_vtable_method_symbols_drop() {
     let symbols = stdlib_vtable_method_symbols("Drop", "S", &["drop"]).unwrap();
-    assert_eq!(symbols, vec!["landin_S_drop"]);
+    assert_eq!(symbols, vec!["landin_Drop_S_drop"]);
 }
 
 /// PartialEq + S + [eq] → ne is "null".
 #[test]
 fn test_stdlib_vtable_method_symbols_partial_eq() {
     let symbols = stdlib_vtable_method_symbols("PartialEq", "S", &["eq"]).unwrap();
-    assert_eq!(symbols, vec!["landin_S_eq", "null"]);
+    assert_eq!(symbols, vec!["landin_PartialEq_S_eq", "null"]);
 }
 
 /// Marker trait → empty Vec.
@@ -140,8 +145,8 @@ fn test_stdlib_vtable_method_symbols_unknown_trait() {
 fn test_stdlib_vtable_method_symbols_ordered() {
     let symbols = stdlib_vtable_method_symbols("PartialEq", "S", &["eq", "ne"]).unwrap();
     // eq → slot 0, ne → slot 1
-    assert_eq!(symbols[0], "landin_S_eq");
-    assert_eq!(symbols[1], "landin_S_ne");
+    assert_eq!(symbols[0], "landin_PartialEq_S_eq");
+    assert_eq!(symbols[1], "landin_PartialEq_S_ne");
 }
 
 /// Generated strings match codegen's `format!` byte-for-byte (cross-check).
@@ -151,15 +156,15 @@ fn test_stdlib_vtable_method_symbols_match_codegen_format() {
     let symbols =
         stdlib_vtable_method_symbols("Clone", type_str, &["clone", "clone_from"]).unwrap();
     // Each provided entry should equal format!("landin_{}_{}", type, method)
-    assert_eq!(symbols[0], format!("landin_{type_str}_clone"));
-    assert_eq!(symbols[1], format!("landin_{type_str}_clone_from"));
+    assert_eq!(symbols[0], format!("landin_Clone_{type_str}_clone"));
+    assert_eq!(symbols[1], format!("landin_Clone_{type_str}_clone_from"));
 }
 
 /// Arith op symbol matches codegen convention.
 #[test]
 fn test_stdlib_vtable_method_symbols_arith() {
     let symbols = stdlib_vtable_method_symbols("Add", "Vec", &["add"]).unwrap();
-    assert_eq!(symbols, vec!["landin_Vec_add"]);
+    assert_eq!(symbols, vec!["landin_Add_Vec_add"]);
 }
 
 /// Extra method names in `provided` that don't match trait methods are
@@ -174,5 +179,5 @@ fn test_stdlib_vtable_method_symbols_extra_ignored() {
     .unwrap();
     // bogus/another_extra are not in Clone's method table — ignored.
     // clone_from is NOT in provided → "null".
-    assert_eq!(symbols, vec!["landin_S_clone", "null"]);
+    assert_eq!(symbols, vec!["landin_Clone_S_clone", "null"]);
 }

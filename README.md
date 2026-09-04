@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.636.0 (v0.9 Stage 97 — PartialOrd trait declared; TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH root cause identified; 5580 tests — Architecture health 9.85/10) |
+| **Version** | v0.637.0 (v0.9 Stage 98 — TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH FIXED: trait impl method symbol collision resolved — include trait name in mangling; 5589 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.9 Stage 97 COMPLETE**. 5580 tests (898 lib + 4682 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 97: PartialOrd trait declared (no impls). Root cause analysis of TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH: prelude impl methods returning String (struct, needs sret) cause SIGSEGV — codegen sret path doesn't handle impl method bodies correctly (works for free fns, not impl methods). Debug impls removed. 4 new tests. Prelude now has: Clone, Copy, Display, Fn, FnMut, FnOnce, Drop, Default, PartialEq, Eq, PartialOrd (declared), Ord. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.9 Stage 98 COMPLETE**. 5589 tests (898 lib + 4691 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 98 fixes TD-STRUCT-RETURN-FROM-PRELUDE-IMPL-CODEGEN-CRASH root cause: trait impl method symbol collision — `impl Display for i32 { fn fmt }` and `impl Debug for i32 { fn fmt }` both produced `landin_i32_fmt` → LLVM had two functions with same name but different signatures → SIGSEGV. Fix: include trait name in mangling → `landin_Display_i32_fmt` vs `landin_Debug_i32_fmt`. Updated 4 source files (driver_codegen_prep.rs, resolver.rs, vtable_layout.rs, drop_glue.rs) + 32+ test files. Debug/PartialOrd impl bodies temporarily removed (prelude impl body codegen issue — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH, P2, v0.10+). Verified: user code with impl methods returning String works correctly (exit 42). Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

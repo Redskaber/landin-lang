@@ -15,7 +15,7 @@ use landin_compiler::codegen::codegen_crate;
 use landin_compiler::compile;
 
 /// When `impl Foo for S` exists, the LLVM IR must contain a
-/// `@.vtable.Foo.S` global with one `ptr @landin_S_bar` entry.
+/// `@.vtable.Foo.S` global with one `ptr @landin_Foo_S_bar` entry.
 #[test]
 fn test_vtable_global_emitted_for_impl() {
     let result =
@@ -31,8 +31,8 @@ fn test_vtable_global_emitted_for_impl() {
 
     // The vtable should reference the concrete impl method symbol.
     assert!(
-        ir.contains("@landin_S_bar"),
-        "expected vtable to reference `@landin_S_bar`, got:\n{}",
+        ir.contains("@landin_Foo_S_bar"),
+        "expected vtable to reference `@landin_Foo_S_bar`, got:\n{}",
         ir
     );
 }
@@ -73,13 +73,13 @@ fn test_multiple_vtable_globals_emitted() {
 
     // Each vtable should reference its own method symbol.
     assert!(
-        ir.contains("@landin_S_bar"),
-        "expected `@landin_S_bar` reference, got:\n{}",
+        ir.contains("@landin_Foo_S_bar"),
+        "expected `@landin_Foo_S_bar` reference, got:\n{}",
         ir
     );
     assert!(
-        ir.contains("@landin_S_qux"),
-        "expected `@landin_S_qux` reference, got:\n{}",
+        ir.contains("@landin_Baz_S_qux"),
+        "expected `@landin_Baz_S_qux` reference, got:\n{}",
         ir
     );
 }
