@@ -1174,3 +1174,8 @@ mod stage100_prelude_generic_skip_tests;
 // codegen_operand FnDef substs mangling. ===
 #[path = "v0/stage101/plan/fndef_substs_mangling_tests.rs"]
 mod stage101_fndef_substs_mangling_tests;
+
+// === Stage 102 (v0.10): TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix.
+// LLVMSysEmitter::Drop releases module + context. ===
+#[path = "v0/stage102/plan/emitter_drop_ownership_tests.rs"]
+mod stage102_emitter_drop_ownership_tests;

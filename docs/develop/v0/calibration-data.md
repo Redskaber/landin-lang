@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.2
+> **Version**: v1.3
 > **Status**: Active
-> **最后更新**: Stage 101 / 2026-09-04
+> **最后更新**: Stage 102 / 2026-09-04
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -39,6 +39,7 @@
 | 99 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 根因分析 (RCA) — 4-layer 根因链识别 + 4-stage 修复路径规划. 无代码变更 (RCA only). 5 stage99 repro tests 验证 user code impl method working. §3.2 全套验收通过 (898 lib + 4687 integration, 0 failures) |
 | 100 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix — monomorphization 跳过未实例化的 prelude generic function bodies. Param warnings 1360→24 (-98%). CompileResult 添加 user_item_count; codegen_from_mir 接收 user_item_count + collected_mono_items. 4 src + 1 test file. §3.2 全套验收通过 (898 lib + 4694 integration, 0 failures) |
 | 101 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 部分修复 — codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复. mono_names 参数传递链建立 (5 src 文件, 20+ 调用点). turbofish path 正确 mangle; 非 turbofish path fallback (TD-MONO-INFER 跟踪). 5 src + 1 test file. 新发现 TD-MONO-INFER (P3, v0.11+). §3.2 全套验收通过 (898 lib + 4701 integration, 0 failures) |
+| 102 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 修复 — LLVMSysEmitter::Drop 释放 module + context. 之前 Drop 只释放 builder, 不释放 module + context → LLVM 资源累积 → cargo test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 3 次稳定性验证全绿. 1 src + 1 test file. 新发现 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — Layer 3 残留. §3.2 全套验收通过 (898 lib + 4708 integration, 0 failures) |
 
 ---
 

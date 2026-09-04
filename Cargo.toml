@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.640.0"
+version = "0.641.0"
 edition = "2021"
 license = "MIT"
 description = "Landin compiler — Rust-inspired systems language (LLVM 22 backend)"

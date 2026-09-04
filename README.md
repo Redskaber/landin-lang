@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.640.0 (v0.10 Stage 101 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 partial fix: codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复; 5599 tests — Architecture health 9.85/10) |
+| **Version** | v0.641.0 (v0.10 Stage 102 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix: LLVMSysEmitter::Drop 释放 module + context; 3 次稳定性验证全绿; 5606 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.10 Stage 101 COMPLETE (Layer 2 partial)**. 5599 tests (898 lib + 4701 integration + 7 stage101), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 101 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 部分修复: codegen_operand FnDef substs mangling 基础设施建立 (mono_names 参数传递链, 5 src 文件, 20+ 调用点). turbofish path (`From::<i32>::from(42)`) 正确 mangle 到实例化名; 非 turbofish path (`Box::new(42i32)`) fallback 到 generic def name (TD-MONO-INFER 跟踪, P3 v0.11+). 新发现 TD-MONO-INFER — type inference back-propagation for FnDef substs. 剩余 Layer 3-4 待 Stage 102-103 修复. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.10 Stage 102 COMPLETE (Layer 4)**. 5606 tests (898 lib + 4708 integration + 7 stage102), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 102 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 修复: LLVMSysEmitter::Drop 添加 LLVMDisposeModule + LLVMContextDispose (在 builder 之后). 之前 Drop 只释放 builder, 不释放 module + context → LLVM 资源累积 → cargo test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 3 次稳定性验证全绿. 新发现 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — Layer 3 残留 (加 Debug impl 仍触发 14 失败). 剩余 Layer 2 (TD-MONO-INFER) + Layer 3 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION) 待 Stage 103+ 修复. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

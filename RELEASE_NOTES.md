@@ -3,13 +3,99 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.640.0 (v0.10 Stage 101 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 2 partial fix: codegen_operand FnDef substs mangling 基础设施 + turbofish path 修复; 5599 tests) |
+| **Current version** | v0.641.0 (v0.10 Stage 102 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix: LLVMSysEmitter::Drop 释放 module + context; 3 次稳定性验证全绿; 5606 tests) |
 | **Date** | 2026-09-04 |
-| **Test count** | 898 lib tests + 4701 integration tests + 7 stage101 = 5599 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4708 integration tests + 7 stage102 = 5606 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — Layer 1 完成, Layer 2 部分完成, Layer 3-4 待 Stage 102-103); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 101 Layer 2 部分完成, turbofish path mangle, 非 turbofish path 待 TD-MONO-INFER |
+| **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.641.0 — Stage 102 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix
+
+### Overview
+
+Stage 102 完成 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH **Layer 4** 修复:
+LLVMSysEmitter::Drop 释放 module + context。
+
+v0.640.0 (Stage 101) 完成 Layer 2 部分修复 (turbofish path)。
+本阶段修复 Layer 4 — Drop 不释放 context 导致 LLVM 资源累积。
+
+### Layer 4 修复内容
+
+**修改文件 (1 src + 1 test)**:
+- `src/codegen/llvm/mod.rs`: `Drop for LLVMSysEmitter` 添加 `LLVMDisposeModule(self.module)` + `LLVMContextDispose(self.ctx)` (在 builder 之后)
+- `tests/v0/stage102/plan/emitter_drop_ownership_tests.rs`: 7 tests (4 positive + 3 negative)
+
+**Drop impl 修复**:
+```rust
+impl Drop for LLVMSysEmitter {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.builder.is_null() {
+                LLVMDisposeBuilder(self.builder);
+                self.builder = std::ptr::null_mut();
+            }
+            // Stage 102: Dispose module + context (Layer 4 fix)
+            if !self.module.is_null() {
+                LLVMDisposeModule(self.module);
+                self.module = std::ptr::null_mut();
+            }
+            if !self.ctx.is_null() {
+                LLVMContextDispose(self.ctx);
+                self.ctx = std::ptr::null_mut();
+            }
+        }
+    }
+}
+```
+
+### 效果
+
+- **3 次稳定性验证全绿**: lib + all_tests 跑 3 次均 0 failures
+- **测试全绿**: 898 lib + 4708 integration = 5606 tests, 0 failures, 9 ignored
+- **LLVM 资源不再累积**: Drop 正确释放 module + context
+
+### Stage 102 验证实验: 加 Debug impl 测试 Layer 3 残留
+
+**实验**: 在 prelude 中添加 `impl Debug for i32 { fn fmt(&self) -> String { String::from_str("debug_i32") } }`, 跑 cargo test。
+
+**结果**: 14 个 cargo test 失败 — Debug impl 加回后仍触发 crash。
+
+**分析**:
+- Layer 4 (Drop 不释放 context) 已修复 ✓
+- Layer 3 (LLVM module 全局变量累积) 仍未完全修复 ✗
+- 14 个失败说明 prelude impl body 触发的 LLVM module 全局变量累积不仅由 context 泄漏导致, 还有 module 本身的全局状态 (vtable/dynptr globals + function defs) 在 cargo test 多次 compile() 间累积。
+
+### 新发现 TD
+
+#### TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) — LLVM module 全局状态累积
+
+**现象**: 加 Debug impl 后 cargo test 14 个失败 (Drop 修复 Layer 4 不够)。
+
+**根因**: LLVM module 中的全局变量 (vtable/dynptr globals + function defs) 在 cargo test 多次 compile() 间累积。即使 Drop 释放 context, LLVM 内部全局状态 (type table, target machine registry) 仍累积。
+
+**修复方案**:
+1. 隔离每次 compile() 的 LLVM module state — 每次创建独立 LLVMContext (已实现)
+2. 减少全局状态依赖 — prelude impl body 触发的 vtable/dynptr globals 在 module 间共享
+3. 考虑 LLVM 22 的 `LLVMRustExecutionContext` (LLVM 19+ 的 per-thread context)
+
+**影响**: 修复后可重新添加 Debug + PartialOrd impls (Stage 103 前置依赖)。
+
+### 决策点 (§12 最优>最小, §1.0 原则 1 内存安全决不能妥协)
+
+1. **Drop 释放 module + context** — 而非保持现状 (§1.0 原则 1 内存安全决不能妥协)
+2. **不拆分 LLVMSysEmitter 类型** — 单一 Drop 修复足够, 避免 over-engineering (§12 最优>最小)
+
+### §3.2 acceptance
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` (0 warnings) ✓
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4708 tests, 0 failures, 9 ignored — stage102 7 tests included)
+- 3 次稳定性验证全绿
 
 ---
 

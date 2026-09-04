@@ -1,24 +1,24 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-09-04 (last updated Stage 101)
-> **Version**: v0.640.0
+> **Date**: 2026-09-04 (last updated Stage 102)
+> **Version**: v0.641.0
 > **Process**: stage-committee-process.md v7.5 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.640.0)
+## Current Status (v0.641.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
 | Rust lib tests | 898 | ✅ 0 failures |
-| Rust integration tests | 4,708 | ✅ 0 failures (9 ignored) |
+| Rust integration tests | 4,715 | ✅ 0 failures (9 ignored) |
 | Conformance tests | 2,935 | ✅ 0 failures (separate runner) |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total (lib + integration)** | **5,606** | **100% pass rate, 9 ignored** |
+| **Total (lib + integration)** | **5,613** | **100% pass rate, 9 ignored** |
 
-> **Stage 101 additions**: 7 stage101 tests (FnDef substs mangling) — verify
-> codegen_operand turbofish path mangle + 非 turbofish path fallback.
-> Param warnings: 24 (unchanged — TD-MONO-INFER blocks further reduction).
-> Architecture health: 9.85/10 (Layer 1 完成, Layer 2 部分完成, Layer 3-4 待 Stage 102-103).
+> **Stage 102 additions**: 7 stage102 tests (LLVMSysEmitter::Drop ownership) —
+> verify Drop releases module + context, 3 次稳定性验证全绿.
+> Architecture health: 9.85/10 (Layer 1+2+4 完成, Layer 3 待 Stage 103+).
+
 
 
 

@@ -559,6 +559,12 @@ trait Debug {
 }
 // Impl bodies deferred — stack smashing in LLVM integration tests.
 // TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+).
+//
+// Stage 102 verification: LLVMSysEmitter::Drop now releases module + context
+// (Layer 4 fix). However, adding Debug impl still triggers 14 cargo test
+// failures — Layer 3 (LLVM module global accumulation) is NOT fully fixed
+// by Drop alone. Layer 3 requires Stage 103+ deeper investigation of LLVM
+// module verification + emit path for prelude impl bodies.
 
 // === PartialOrd trait (declared, impls deferred) ===
 trait PartialOrd<Rhs> {

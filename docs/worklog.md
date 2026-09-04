@@ -43921,3 +43921,66 @@ Stage Summary:
 - Stage 102: LLVMSysEmitter ownership 重构 (Builder + Module 拆分) — Layer 3+4
 - Stage 103: 重新添加 Debug + PartialOrd impls
 - TD-MONO-INFER: type inference back-propagation (P3, v0.11+) — 完全消除 Param warnings
+
+---
+Task ID: stage102
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 102 (v0.10) — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix.
+LLVMSysEmitter::Drop 释放 module + context. v0.641.0.
+5606 tests, 0 failures, 9 ignored. 3 次稳定性验证全绿.
+
+3秒启动自检:
+- 定位: L2 (聚焦: 1 src 文件 Drop impl + 1 测试文件)
+- 对齐: 已查 docs/llvm/backend-architecture.md (LLVM C API ownership),
+  docs/llvm/execution-pipeline.md (execution pipeline), Stage 99-101 dev-log
+  (4-layer 根因链)
+- 阻断: v0.640.0 全绿 (5599 tests), TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 3+4
+
+5W2H:
+- WHAT: LLVMSysEmitter::Drop 添加 LLVMDisposeModule + LLVMContextDispose
+  (Layer 4 修复 — 在 builder 之后释放)
+- WHY: Layer 4 根因 — Drop 不释放 module + context → LLVM 资源累积 → cargo
+  test 多次 compile() 后 SIGSEGV/SIGABRT. 修复后 LLVM context 正确释放,
+  与 rustc LLVMContext 释放模式一致.
+- WHO: ARCH-A 设计 (验证调用者安全); DEV-A 实施; REV-A 审查; QA-A 测试
+- WHEN: Stage 102 完成 → Stage 103 (调查 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION)
+- WHERE: src/codegen/llvm/mod.rs:797-833 (Drop impl); 调用者: src/bin/main.rs,
+  src/bin/landinc.rs, src/codegen/llvm/tests.rs (全部在 Drop 前 to_module/to_object_file)
+- HOW: 1) 验证所有 to_module() + to_object_file() 调用均在 Drop 前; 2) Drop 中
+  LLVMDisposeModule + LLVMContextDispose; 3) 3 次稳定性验证全绿
+- HOW MUCH: 1 src 文件 (~25 LOC Drop impl) + 1 测试文件 (~110 LOC, 7 tests)
+
+决策点 (§12 最优>最小, §1.0 原则 1 内存安全决不能妥协):
+1. 选择"Drop 释放 module + context"而非"保持现状 (不释放)"
+   - 引用 §1.0 原则 1 (内存安全决不能妥协): LLVM 资源泄漏是不安全的
+   - 引用 §12 (最优>最小): 根因修复 — 释放 LLVM 资源, 不依赖进程退出清理
+   - 替代方案 (保持现状) 治症不治根
+
+2. 选择"不拆分 LLVMSysEmitter 类型"而非"拆分为 Builder + Module"
+   - 引用 §12 (最优>最小): 单一 Drop 修复 Layer 4 根因
+   - 引用 §1.0 原则 6 (通解>特解): 避免 over-engineering
+   - 验证调用者安全后即可实施
+
+裁剪点:
+- L2 → §7.3 门审查替代 §14.5 深度审查
+- §3.2 验收: 全绿 + 3 次稳定性验证
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4708 tests, 0 failures, 9 ignored)
+- 3 次稳定性验证全绿
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 修复完成
+- LLVMSysEmitter::Drop 释放 module + context
+- 3 次稳定性验证全绿 (无累积 crash)
+- 新发现 TD: TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+) —
+  Layer 3 残留, 加 Debug impl 仍触发 14 失败, 需 Stage 103+ 调查
+- 架构健康度: 9.85/10 (stable — Layer 1+2+4 修复, Layer 3 待 Stage 103+)
+
+下一步:
+- Stage 103: 调查 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (Layer 3 残留)
+- Stage 104: 重新添加 Debug + PartialOrd impls (依赖 Stage 103)
+- TD-MONO-INFER (P3, v0.11+): type inference back-propagation for FnDef substs

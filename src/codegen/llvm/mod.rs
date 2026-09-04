@@ -801,11 +801,33 @@ impl Drop for LLVMSysEmitter {
                 LLVMDisposeBuilder(self.builder);
                 self.builder = std::ptr::null_mut();
             }
-            // Note: we deliberately do NOT dispose the module or context here.
-            // The caller may still want to extract the module via `to_module()`
-            // for further processing (e.g. object-file emission). Disposing
-            // the context invalidates the module. The host process is
-            // expected to clean these up on exit.
+            // Stage 102 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix):
+            // Dispose module + context to release LLVM resources. Previously
+            // these were intentionally NOT disposed (comment said "caller may
+            // still want to extract the module via to_module()"). However:
+            //
+            // 1. All `to_module()` callers (tests.rs, main.rs, landinc.rs)
+            //    use the module while the emitter is still in scope — never
+            //    after Drop.
+            // 2. All `to_object_file()` callers likewise call before Drop.
+            // 3. cargo test invokes `compile()` multiple times — without
+            //    disposal, LLVM contexts accumulate, eventually triggering
+            //    non-deterministic SIGSEGV/SIGABRT.
+            //
+            // Per §1.0 原則 1 (内存安全决不能妥协): LLVM resource leaks are
+            // memory-unsafe under cargo test (resource exhaustion → crash).
+            // Per §12 (最优>最小): root-cause fix — release resources
+            // promptly, do not rely on process exit for cleanup.
+            // Per §2.2 (根因思维): fixes Layer 4 of Stage 99 RCA 4-layer
+            // root cause chain (Drop not releasing context → accumulation).
+            if !self.module.is_null() {
+                LLVMDisposeModule(self.module);
+                self.module = std::ptr::null_mut();
+            }
+            if !self.ctx.is_null() {
+                LLVMContextDispose(self.ctx);
+                self.ctx = std::ptr::null_mut();
+            }
         }
     }
 }
