@@ -553,26 +553,57 @@ impl Eq for usize {}
 // The mangling fix itself is correct — verified with user code that
 // impl methods returning String work correctly (test_sret2.landin → 42).
 
-// === Debug trait (declared, impls deferred) ===
+// === Debug trait (declared, impls deferred — Stage 111 RCA confirms dependency gap) ===
 trait Debug {
     fn fmt(&self) -> String;
 }
-// Impl bodies deferred — non-deterministic SIGSEGV in LLVM codegen.
-// TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH (P2, v0.10+).
+// Stage 111 (v0.12): Debug impl bodies re-add attempted + REVERTED.
 //
-// Stage 105 analysis:
-// - LLVM IR is IDENTICAL between success and crash runs (same Param=73 Infer=18).
-// - Crash is non-deterministic at LLVM codegen/object emission stage.
-// - ASLR off reduces crash rate (1/100 vs 3/100) but doesn't eliminate it.
-// - Root cause: LLVM's CodeGenLevelDefault optimizer non-deterministically
-//   handles the incorrect LLVM IR (Param fallback to i32 → wrong struct
-//   layout → optimizer makes different decisions based on memory layout).
-// - The fix must eliminate Param/Infer warnings entirely (all types must
-//   be concrete before codegen), not just reduce them.
-// - This requires fixing ALL typeck writeback issues:
-//   1. Infer warnings (Constant type Infer in Default/Display/String_new/main)
-//   2. Param warnings (generic def body internal types not substituted)
-// - Each requires a separate fix in typeck writeback or MIR lower.
+// Experiment: After Stage 107 (call arg type source) + Stage 109 (codegen
+// src_ty + TextEmitter contract) + Stage 110 (Phase 3.6 Constant type
+// writeback), all known codegen prerequisites were fixed. Re-attempted
+// Debug impl bodies for i32/i64/bool/usize (mimicking Display impls).
+//
+// Result: cargo test --test all_tests produced 10-18 non-deterministic
+// failures across 3 runs (10/18/13 different test sets each run). Single
+// tests pass in isolation. This confirms Stage 99 Layer 3 root cause is
+// STILL active: LLVM module global state accumulation from prelude impl
+// bodies (vtable/dynptr globals + function defs) → LLVM CodeGenLevelDefault
+// optimizer non-deterministically crashes.
+//
+// Root cause analysis (Stage 111 RCA, deeper than Stage 105):
+// - Stage 105 baseline (no Debug impl): 3/100 SIGSEGV
+// - Stage 111 (Debug impl added): 10-18/4755 non-deterministic failures
+// - Phase 3.6 (Stage 110) reduced Infer warnings 41→19 (-54%), but the
+//   remaining 19 Param warnings (from prelude generic def bodies like
+//   Vec::push<T>, Vec::new<T>, Option::map<T,U>, etc.) STILL trigger
+//   the non-determinism when combined with Debug impl bodies.
+// - Debug impl bodies add vtable + dynptr globals per type → pushes LLVM
+//   module global count past the crash threshold.
+//
+// Dependency gap (blocking Debug impl re-add):
+// 1. TD-MONO-INFER (P3, v0.11+): non-turbofish path generic call FnDef
+//    substs not inferred → generic def bodies (Vec::push<T>) emit with
+//    Param types → 19 Param warnings remain → LLVM module state instability.
+// 2. TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION (P2, v0.11+): LLVM module
+//    global state (type table, target machine registry) accumulates across
+//    cargo test subprocess compile() calls → non-deterministic LLVM
+//    codegen crashes.
+//
+// Decision: Revert Stage 111 Debug impl bodies (preserve Stage 110 Phase
+// 3.6 — it's correct and reduces Infer warnings). Debug impl re-add is
+// blocked until BOTH TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION
+// are resolved.
+//
+// Per §1.0 原則 9 (正确 > 妥协): don't ship non-deterministic crashes.
+// Per user instruction (tech-debt workflow): stop making 阉割版 forward
+// progress when dependency gap exists; analyze + sync to tech-debt register.
+// Per §17.6 (直到审查不出问题为止): iterated audit cycle continues.
+// Per §12 (最优 > 最小): root-cause fix is at TD-MONO-INFER + Module
+// Accumulation, not at prelude (the prelude impl is correct Rust code).
+//
+// Impl bodies REMOVED — re-add blocked by TD-MONO-INFER +
+// TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION.
 
 // === PartialOrd trait (declared, impls deferred) ===
 trait PartialOrd<Rhs> {

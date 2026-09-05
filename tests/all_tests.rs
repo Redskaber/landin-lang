@@ -1198,3 +1198,20 @@ mod stage109_const_src_ty_tests;
 // (-54%). Stage 107 + 109 fixed all codegen prerequisites. ===
 #[path = "v0/stage110/plan/phase36_const_writeback_tests.rs"]
 mod stage110_phase36_const_writeback_tests;
+
+// === Stage 111 (v0.12): Debug impl bodies re-add attempted + REVERTED.
+// RCA confirms dependency gap: TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE
+// -ACCUMULATION must be resolved before Debug impl re-add. Stage 110 Phase
+// 3.6 reduced Infer warnings but 19 Param warnings from prelude generic
+// def bodies still trigger non-deterministic SIGSEGV (10-18/4755 failures). ===
+#[path = "v0/stage111/plan/debug_impl_readd_reverted_tests.rs"]
+mod stage111_debug_impl_readd_reverted_tests;
+
+// === Stage 112 (v0.12): TD-MONO-INFER RCA — attempted fix + REVERTED.
+// Two-part fix (codegen skip rule + writeback secondary pass) caused either
+// 43 linker errors (fix #1 alone) or 6 impl Trait --emit-obj crashes (fix #1+#2).
+// New TD discovered: TD-LLVM-OBJ-EMIT-CRASH (deterministic SIGSEGV in
+// LLVMTargetMachineEmitToFile for IR with inferred FnDef substs in Constants).
+// Stage 111 baseline preserved (5663 tests, 0 failures). ===
+#[path = "v0/stage112/plan/td_mono_infer_rca_tests.rs"]
+mod stage112_td_mono_infer_rca_tests;

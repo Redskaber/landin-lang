@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.645.0 (v0.12 Stage 110 — Phase 3.6 Constant type writeback 重新引入: typeck Phase 3 后遍历所有 Operand::Constant 写回 unify.resolve(&c.ty); Infer warnings 41→19 (-54%); 0 回归 — Stage 107+109 修复了所有前置依赖; 5653 tests — Architecture health 9.85/10) |
+| **Version** | v0.645.0 (v0.12 Stage 112 — TD-MONO-INFER fix attempted + REVERTED: two-part fix caused 43 linker errors or 6 impl Trait --emit-obj crashes; new TD discovered: TD-LLVM-OBJ-EMIT-CRASH; Stage 111 baseline preserved; 5673 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 110 COMPLETE (Phase 3.6 重新引入)**. 5653 tests (898 lib + 4755 integration + 20 stage110), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 110 完成 Stage 105-109 迭代式根因修复链的最后一步 — Phase 3.6 (Constant type writeback) 重新引入. typeck Phase 3 后遍历所有 basic_blocks 的 statement + terminator, 对每个 Operand::Constant(c) 写回 unify.resolve(&c.ty) (Infer→concrete). 添加两个 helper: writeback_constant_ty_in_operand + writeback_constant_tys_in_rvalue. 覆盖所有 Rvalue variant + 含 Operand 的 TerminatorKind. Infer warnings 41→19 (-54%) on Vec<String, i32> program. 0 回归 (Stage 107 call arg type source + Stage 109 codegen src_ty + TextEmitter contract 修复了所有前置依赖). 为 Stage 111 (加 Debug impl 验证 100 次跑 0 SIGSEGV) 铺平道路. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.12 Stage 112 COMPLETE (TD-MONO-INFER RCA + revert)**. 5673 tests (898 lib + 4775 integration + 10 stage112 RCA), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 112 attempted TD-MONO-INFER fix via two-part approach: (1) codegen skip rule strengthening; (2) writeback_fndef_substs secondary pass. Fix #1 alone: 43 linker errors. Fix #1+#2: 6 impl Trait --emit-obj crashes (deterministic SIGSEGV in LLVMTargetMachineEmitToFile). IR valid (llvm-as + llc work) but in-memory LLVMModule crashes via C API. New TD: TD-LLVM-OBJ-EMIT-CRASH (P2, v0.13+). Revert both fixes, preserve Stage 111 baseline. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

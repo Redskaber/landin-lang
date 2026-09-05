@@ -3,13 +3,127 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.645.0 (v0.12 Stage 110 — Phase 3.6 Constant type writeback 重新引入: typeck Phase 3 后遍历所有 Operand::Constant 写回 unify.resolve(&c.ty); Infer warnings 41→19 (-54%); 0 回归 — Stage 107+109 修复了所有前置依赖; 5653 tests) |
+| **Current version** | v0.645.0 (v0.12 Stage 112 — TD-MONO-INFER fix attempted + REVERTED: two-part fix caused 43 linker errors (fix #1 alone) or 6 impl Trait --emit-obj crashes (fix #1+#2); new TD discovered: TD-LLVM-OBJ-EMIT-CRASH; Stage 111 baseline preserved; 5673 tests) |
 | **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4755 integration tests = 5653 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4775 integration tests = 5673 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.645.0 — Stage 112 (v0.12) — TD-MONO-INFER fix attempted + REVERTED (RCA)
+
+### Overview
+
+Stage 111 RCA identified TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION as the dependency gap blocking Debug impl re-add. Stage 112 attempted a two-part fix:
+
+1. **codegen/function.rs skip rule strengthening**: Skip ALL prelude generic def bodies (regardless of MonoItem::Fn instantiation). codegen_mono_functions handles all instantiated versions via substitute_mir_body.
+
+2. **writeback_fndef_substs secondary pass**: Propagate inferred substs from `local_decls[idx].ty` (updated by terminator_changes) into the `Operand::Constant(c).ty` in Assign statements (where `c.ty` was `FnDef(def_id, [])` with empty substs).
+
+### Result: REVERTED
+
+- **Fix #1 alone** (skip rule): 43 linker errors. Generic def not emitted, call sites reference `@landin_Vec_new` which is undefined.
+- **Fix #1 + #2 together**: 6 impl Trait tests crash in `--emit-obj` (deterministic SIGSEGV in LLVMTargetMachineEmitToFile). The IR is valid (llvm-as + llc both work), but the in-memory LLVMModule crashes when emitted via the C API.
+
+### New TD Discovered
+
+- **TD-LLVM-OBJ-EMIT-CRASH** (P2, v0.13+): Deterministic SIGSEGV in `LLVMTargetMachineEmitToFile` when emitting object files for IR with `Operand::Constant` FnDef types that have non-empty inferred substs. The IR is valid (llvm-as + llc both work), but the in-memory LLVMModule crashes via the C API. Likely use-after-free or module state issue in `LLVMSysEmitter::emit_to_object_file`.
+
+### Changes
+
+- `src/codegen/function.rs`: Fix #1 (skip rule) — REVERTED. Detailed RCA comment added documenting the dependency gap.
+- `src/mir/lower/writeback.rs`: Fix #2 (secondary pass) — REVERTED. Detailed RCA comment added.
+- `tests/v0/stage112/plan/td_mono_infer_rca_tests.rs`: 新增 10 个 RCA tests (3 positive + 3 negative + 4 RCA documentation).
+- `tests/all_tests.rs`: 注册 `stage112_td_mono_infer_rca_tests` 模块.
+- `docs/develop/v0/stage-112/dev-log.md`: 详细 RCA 开发日志 (5W2H + 决策点 + 裁剪点 + §3.2 验收).
+- `docs/develop/v0/tech-debt-register.md`: 添加 TD-LLVM-OBJ-EMIT-CRASH (P2, v0.13+) + 更新 TD-MONO-INFER 状态.
+- `docs/develop/v0/calibration-data.md`: 追加 Stage 112 统计行.
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协, 用户指示 tech-debt workflow)
+
+1. **选 revert both fixes** — don't ship deterministic crash. Per §1.0 原則 9 + user instruction.
+2. **选记录新 TD (TD-LLVM-OBJ-EMIT-CRASH)** — sync to tech-debt register. Per user instruction + §1.0 原則 4.
+3. **选保留 Stage 111 baseline** — minimal revert, preserve Phase 3.6. Per §12 + §1.0 原則 9.
+
+### Verification (§3.2 — reverted baseline)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` ✓ (0 warnings)
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4775 tests, 0 failures, 9 ignored)
+- Total: **5673 tests, 0 failures, 9 ignored** (Stage 111 baseline 5663 + 10 stage112 RCA tests)
+
+### Impact
+
+- **架构健康度**: 9.85/10 (stable — RCA + revert, 无代码变更, 依赖 gap 记录)
+- **新发现 TD**: TD-LLVM-OBJ-EMIT-CRASH 阻断 TD-MONO-INFER fix → 阻断 Debug impl re-add
+- **迭代式根因修复链继续**: Stage 105 (RCA) → 106-110 (修复 + Phase 3.6) → 111 (Debug impl re-add RCA + revert) → 112 (TD-MONO-INFER fix RCA + revert + new TD) → 113 (TD-LLVM-OBJ-EMIT-CRASH 调查) → 114 (TD-MONO-INFER fix retry) → 115 (Debug impl re-add retry)
+
+### Next Steps
+
+- **Stage 113**: 调查 TD-LLVM-OBJ-EMIT-CRASH — LLVM C API binding path 的 use-after-free 或 module state issue. 需要用 lldb/valgrind 调试 `LLVMSysEmitter::emit_to_object_file`. 参考 LLVM 22 的 `LLVMRustExecutionContext` (LLVM 19+ per-thread context) 作为隔离方案.
+- **Stage 114**: 修复 TD-LLVM-OBJ-EMIT-CRASH 后, 重新应用 Stage 112 fix #1 + #2, 验证 0 回归.
+- **Stage 115**: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV (依赖 Stage 113 + 114 完成).
+
+---
+
+## v0.645.0 — Stage 111 (v0.12) — Debug impl bodies re-add attempted + REVERTED (RCA)
+
+### Overview
+
+After Stage 110 (Phase 3.6 Constant type writeback re-introduced, Infer warnings 41→19 -54%, 0 回归), Stage 111 attempted to re-add Debug impl bodies for i32/i64/bool/usize to the prelude (mimicking existing Display impl patterns). The hypothesis: with all 4 layers (Stage 99 RCA) addressed + Phase 3.6 active, the non-deterministic SIGSEGV root cause should be eliminated.
+
+### Result: REVERTED
+
+- Single tests pass in isolation.
+- Full test suite (`cargo test --test all_tests`) produced 10-18 non-deterministic failures across 3 runs (different test sets each run: 10/18/13).
+- Confirms Stage 99 Layer 3 (LLVM module global state accumulation) is STILL active when combined with remaining 19 Param warnings from prelude generic def bodies.
+
+### Dependency Gap (blocking Debug impl re-add)
+
+1. **TD-MONO-INFER** (P3, v0.11+): non-turbofish path generic call FnDef substs not inferred → generic def bodies (Vec::push<T>, Vec::new<T>, Option::map<T,U>) emit with Param types → 19 Param warnings remain → LLVM module state instability.
+2. **TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION** (P2, v0.11+): LLVM module global state (type table, target machine registry) accumulates across cargo test subprocess compile() calls → non-deterministic LLVM codegen crashes.
+
+Debug impl bodies add vtable + dynptr globals per type → pushes LLVM module global count past the crash threshold → LLVM CodeGenLevelDefault optimizer non-deterministically crashes.
+
+### Changes
+
+- `src/stdlib/prelude.rs`: Debug impl bodies REVERTED. Trait declaration preserved. Detailed RCA comment added documenting the dependency gap + Stage 111 RCA findings.
+- `tests/v0/stage111/plan/debug_impl_readd_reverted_tests.rs`: 新增 10 个 RCA tests (3 positive + 4 negative + 3 RCA documentation).
+- `tests/all_tests.rs`: 注册 `stage111_debug_impl_readd_reverted_tests` 模块.
+- `scripts/stability_v2.sh`: 新增稳定性测试脚本 (per-run logging, supports N iterations).
+- `docs/develop/v0/stage-111/dev-log.md`: 详细 RCA 开发日志 (5W2H + 决策点 + 裁剪点 + §3.2 验收).
+- `docs/develop/v0/tech-debt-register.md`: 升级 TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION 为 Debug impl re-add 硬阻断.
+- `docs/develop/v0/calibration-data.md`: 追加 Stage 111 统计行.
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协, 用户指示 tech-debt workflow)
+
+1. **选 revert Debug impl bodies + 保留 Phase 3.6** — Phase 3.6 是正确的根因修复 (Infer warnings 41→19 -54%), 不引入回归. 仅 Debug impl bodies 触发 crash. Don't ship non-deterministic crashes.
+2. **选记录依赖 TD** — 同步升级 TD-MONO-INFER + TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION 为 Debug impl re-add 硬阻断. 用户指示: 发现依赖缺失及时同步 TD.
+3. **选写 stability script** — `scripts/stability_v2.sh` 覆盖未来所有稳定性验证 (§1.0 原則 6 通解 > 特解).
+
+### Verification (§3.2 — reverted baseline)
+
+- `cargo fmt --check` ✓
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` ✓ (0 warnings)
+- `cargo test --release --features llvm-backend --lib` ✓ (898 tests, 0 failures, 0 ignored)
+- `cargo test --release --features llvm-backend --test all_tests` ✓ (4765 tests, 0 failures, 9 ignored)
+- Total: **5663 tests, 0 failures, 9 ignored** (Stage 110 baseline 5653 + 10 stage111 RCA tests)
+
+### Impact
+
+- **架构健康度**: 9.85/10 (stable — RCA + revert, 无代码变更, 依赖 gap 记录)
+- **Stage 105 非确定性 SIGSEGV 根因**: Phase 3.6 (Stage 110) 部分 fix (Infer -54%), 但 Param warnings (TD-MONO-INFER) + Module Accumulation 仍需 Stage 112+113 解决
+- **迭代式根因修复链继续**: Stage 105 (RCA) → 106-110 (修复 + Phase 3.6) → 111 (Debug impl re-add RCA + revert) → 112+113 (TD-MONO-INFER + Module Accumulation) → 114 (Debug impl 重试)
+
+### Next Steps
+
+- **Stage 112**: 修复 TD-MONO-INFER — non-turbofish path generic call FnDef substs 推断 (writeback_fndef_substs back-propagation). 参考 rustc `InferCtxt` + `TypeVariable` 设计. 预期消除 19 Param warnings 中的大部分.
+- **Stage 113**: 调查 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION — LLVM module 全局状态隔离. 考虑 LLVM 22 的 `LLVMRustExecutionContext` (LLVM 19+ per-thread context).
+- **Stage 114**: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV (依赖 Stage 112 + 113 完成).
 
 ---
 
