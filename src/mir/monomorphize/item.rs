@@ -95,7 +95,18 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
     for mir in mirs {
         collect_from_mir_body(mir, &mut collected);
     }
-    collected.into_iter().collect()
+    // Stage 115 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION fix):
+    // Sort collected items for deterministic emission order. Without this,
+    // HashSet iteration order (random SipHash seed) produces different LLVM
+    // module states between runs → non-deterministic SIGSEGV in
+    // LLVMTargetMachineEmitToFile.
+    //
+    // Per §1.0 原則 3 (显式 > 隐式): deterministic emission order is explicit.
+    // Per §1.0 原則 9 (正确 > 妥协): deterministic codegen > random HashSet order.
+    let mut items: Vec<MonoItem> = collected.into_iter().collect();
+    // Sort by a string key for deterministic order (MonoItem doesn't impl Ord).
+    items.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+    items
 }
 
 /// Collect MonoItems from a single MIR body.

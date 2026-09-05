@@ -1223,3 +1223,21 @@ mod stage112_td_mono_infer_rca_tests;
 // skip ALL prelude generic def bodies. 5673 tests, 0 failures. ===
 #[path = "v0/stage113/plan/td_llvm_obj_emit_crash_fix_tests.rs"]
 mod stage113_td_llvm_obj_emit_crash_fix_tests;
+
+// === Stage 114 (v0.12): Debug impl bodies re-add attempted + REVERTED.
+// RCA: TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION still active — Debug impl
+// bodies add vtable + dynptr globals → LLVM module state accumulation →
+// non-deterministic SIGSEGV (9-23/4788 failures per run). New TD:
+// TD-TRAIT-METHOD-AMBIGUITY (Display::fmt vs Debug::fmt method resolution).
+// Stage 113 baseline preserved (5686 tests, 0 failures, 3/3 stable). ===
+#[path = "v0/stage114/plan/debug_impl_readd_rca_tests.rs"]
+mod stage114_debug_impl_readd_rca_tests;
+
+// === Stage 115 (v0.12): TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix.
+// Root cause: Rust HashMap random SipHash seed → different vtable/dynptr/
+// drop_glue/mono_items emission orders → different LLVM module states →
+// non-deterministic SIGSEGV. Fix: sort all HashMap iterations in codegen
+// pipeline. Reduced failures from 9-23 to 0-3. Debug impl bodies still
+// REVERTED (0-3 > 0, §3.2 red line). New TD: TD-LLVM-INTERNAL-NONDETERMINISM. ===
+#[path = "v0/stage115/plan/td_module_accumulation_fix_tests.rs"]
+mod stage115_td_module_accumulation_fix_tests;

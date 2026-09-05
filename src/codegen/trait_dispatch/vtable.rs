@@ -284,6 +284,18 @@ pub fn build_vtable_global_specs(
             method_symbols,
         });
     }
+
+    // Stage 115 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION fix):
+    // Sort specs by global_name for deterministic emission order.
+    // Without this, HashMap iteration order (random SipHash seed) produces
+    // different LLVM module states between runs → non-deterministic
+    // SIGSEGV in LLVMTargetMachineEmitToFile.
+    //
+    // Per §1.0 原則 3 (显式 > 隐式): deterministic emission order is explicit.
+    // Per §1.0 原則 9 (正确 > 妥协): deterministic codegen > random HashMap order.
+    // Per §12 (最优 > 最小): root-cause fix — sort at the data layer, not
+    // work around by skipping Debug impls.
+    specs.sort_by(|a, b| a.global_name.cmp(&b.global_name));
     specs
 }
 

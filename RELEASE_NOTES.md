@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.646.0 (v0.12 Stage 113 — TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix: root cause = build_fn_sigs_map missing specialized function sigs → variadic forward decl → type mismatch → SIGSEGV; three-part fix: fn_sigs_map + writeback secondary pass + skip ALL prelude generics; 5686 tests) |
+| **Current version** | v0.647.0 (v0.12 Stage 115 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix: root cause = Rust HashMap random SipHash seed → non-deterministic emission order; 4 sort fixes (vtable, dynptr, drop_glue, mono_items) reduced failures from 9-23 to 0-3; Debug impl reverted; new TD: TD-LLVM-INTERNAL-NONDETERMINISM; 5706 tests) |
 | **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4788 integration tests = 5686 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4808 integration tests = 5706 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |

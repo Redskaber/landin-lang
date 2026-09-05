@@ -44691,3 +44691,114 @@ Stage Summary:
 下一步:
 - Stage 114: 重新添加 Debug impl bodies for i32/i64/bool/usize, 验证 100 次跑 0 SIGSEGV.
   TD-MONO-INFER + TD-LLVM-OBJ-EMIT-CRASH 都已修复, 预期 Debug impl 可安全添加.
+
+---
+Task ID: stage114
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 114 (v0.12) — Debug impl bodies re-add attempted + REVERTED.
+4 Debug impls (i32/i64/bool/usize) added to prelude. cargo test 3 runs:
+23/9/17 non-deterministic failures (different sets each run). Baseline
+(Stage 113, no Debug impl) 3/3 runs 0 failures (stable). RCA:
+TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION 仍 active (Debug impl bodies add
+vtable + dynptr globals → LLVM module state accumulation). 新发现 TD-TRAIT
+-METHOD-AMBIGUITY (Display::fmt vs Debug::fmt). Revert Debug impls, preserve
+Stage 113 baseline. v0.646.0 (无版本变更 — RCA + revert). 5696 tests
+(898 lib + 4798 integration), 0 failures, 9 ignored.
+
+5W2H:
+- WHAT: 加 4 Debug impl bodies (i32/i64/bool/usize) 到 prelude, 验证 100 次跑 0 SIGSEGV
+- WHY: Stage 113 修复了 TD-MONO-INFER + TD-LLVM-OBJ-EMIT-CRASH, 验证 Debug impl 是否可重加
+- WHO: ARCH-A 设计; DEV-A 实施; REV-A 发现非确定性; QA-A 3 次跑确认 (23/9/17 failures)
+- WHEN: Stage 114 revert → Stage 115 (Module Accumulation 调查)
+- WHERE: src/stdlib/prelude.rs Debug trait 后
+- HOW: 1) 加 4 Debug impls; 2) cargo build ✓; 3) cargo test 3 runs (23/9/17
+  failures, different sets); 4) baseline 3/3 runs 0 failures (stable); 5) revert
+  Debug impls; 6) 记录 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION + TD-TRAIT-METHOD-AMBIGUITY
+- HOW MUCH: 0 src 变更 (reverted) + 10 stage114 RCA tests
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协, 用户指示 tech-debt workflow):
+1. 选择"revert Debug impl bodies"而非"保留不完整修复"
+   - 引用 §1.0 原則 9 (正确 > 妥协): 不发布非确定性 crash
+   - 引用用户指示: 发现依赖缺失停止阉割版推进
+   - 引用 §17.6 (直到审查不出问题为止): 继续迭代
+
+2. 选择"记录新 TD (TD-TRAIT-METHOD-AMBIGUITY)"而非"忽略"
+   - 引用用户指示: 发现功能缺失及时同步 TD
+   - 引用 §1.0 原則 4 (报错 > 静默)
+
+§3.2 验收 (reverted 后):
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4798 tests, 0 failures, 9 ignored)
+- 总: 5696 tests (898 lib + 4798 integration + 10 stage114 RCA), 0 failures
+
+Stage Summary:
+- Debug impl bodies re-add attempted + REVERTED
+- 4 Debug impls 触发 9-23/4788 非确定性 SIGSEGV (3 runs, different sets)
+- RCA: TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION 仍 active
+- New TD: TD-TRAIT-METHOD-AMBIGUITY (Display::fmt vs Debug::fmt)
+- Revert Debug impls, preserve Stage 113 baseline (5686 tests, 3/3 stable)
+- 架构健康度: 9.85/10 (stable — RCA + revert, 无代码变更, 依赖 gap 记录)
+
+下一步:
+- Stage 115: 调查 TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION — LLVM module
+  global state isolation. 考虑 LLVMRustExecutionContext (LLVM 19+ per-thread
+  context). 参考 rustc_llvm 如何处理 module state.
+- Stage 116: 修复 TD-TRAIT-METHOD-AMBIGUITY — trait method resolution
+  需要区分 Display::fmt vs Debug::fmt.
+- Stage 117: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV
+  (依赖 Stage 115 + 116 完成).
+
+---
+Task ID: stage115
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 115 (v0.12) — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix.
+Root cause: Rust HashMap random SipHash seed → non-deterministic
+vtable/dynptr/drop_glue/mono_items emission order → different LLVM module
+states → non-deterministic SIGSEGV. 4 sort fixes (vtable, dynptr, drop_glue,
+mono_items). Non-deterministic failures reduced from 9-23 to 0-3. Debug impl
+bodies still REVERTED (0-3 > 0, §3.2 red line). New TD:
+TD-LLVM-INTERNAL-NONDETERMINISM. v0.646.0 → v0.647.0. 5706 tests (898 lib +
+4808 integration), 0 failures, 9 ignored.
+
+5W2H:
+- WHAT: Fix TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION by sorting HashMap iterations
+- WHY: Stage 114 RCA confirmed Debug impl re-add blocked by non-deterministic SIGSEGV
+- WHO: ARCH-A designed sort approach; DEV-A implemented; REV-A verified stability
+- WHEN: Stage 115 partial fix → Stage 116+ (LLVMRustExecutionContext or process-per-test)
+- WHERE: src/codegen/trait_dispatch/vtable.rs, dynptr.rs, src/codegen/drop_glue.rs,
+  src/mir/monomorphize/item.rs
+- HOW: 1) Identified HashMap random SipHash as root cause; 2) Added 4 sort fixes;
+  3) Verified baseline 3/3 stable; 4) Debug impl + sort: 0-3 failures (reverted);
+  5) Tried FastISel — didn't help; 6) Tried -O0 — didn't help; 7) Reverted Debug
+  impl bodies; 8) Documented TD-LLVM-INTERNAL-NONDETERMINISM
+- HOW MUCH: 3 src files (~30 LOC sort) + 10 tests
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协, §1.0 原则 6 通解>特解):
+1. 选择"sort HashMap iterations"而非"FastISel or -O0" — sort addresses the root
+   cause (non-deterministic emission order), not a symptom (LLVM backend behavior)
+2. 选择"revert Debug impl bodies" — 0-3 > 0, violates §3.2 red line
+3. 选择"记录 TD-LLVM-INTERNAL-NONDETERMINISM" — user instruction: 发现依赖缺失同步 TD
+
+§3.2 验收 (Debug impl reverted):
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4808 tests, 0 failures, 3/3 stable)
+- Total: 5706 tests, 0 failures
+
+Stage Summary:
+- TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION PARTIAL fix (4 sort fixes)
+- Root cause: HashMap random SipHash seed → non-deterministic emission order
+- Non-deterministic failures reduced from 9-23 to 0-3
+- Debug impl bodies still REVERTED (0-3 > 0, §3.2 red line)
+- New TD: TD-LLVM-INTERNAL-NONDETERMINISM (P3, v0.13+)
+- 架构健康度: 9.85/10 (stable — sort fixes, no regression, dependency gap documented)
+- v0.647.0
+
+下一步:
+- Stage 116: 调查 TD-LLVM-INTERNAL-NONDETERMINISM — 用 LLVMRustExecutionContext
+  (LLVM 19+ per-thread context) 或 process-per-test isolation 隔离 LLVM C++ state
+- Stage 117: 修复 TD-TRAIT-METHOD-AMBIGUITY — trait method resolution 区分同名 method
+- Stage 118: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV

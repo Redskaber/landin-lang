@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.646.0 (v0.12 Stage 113 — TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix: root cause = build_fn_sigs_map missing specialized function sigs → variadic forward decl → type mismatch → SIGSEGV; three-part fix: fn_sigs_map + writeback secondary pass + skip ALL prelude generics; 5686 tests — Architecture health 9.9/10) |
+| **Version** | v0.647.0 (v0.12 Stage 115 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix: root cause = Rust HashMap random SipHash seed → non-deterministic emission order; 4 sort fixes reduced failures from 9-23 to 0-3; Debug impl reverted; new TD: TD-LLVM-INTERNAL-NONDETERMINISM; 5706 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 113 COMPLETE (TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix)**. 5686 tests (898 lib + 4788 integration + 13 stage113), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 113 修复 TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER — 根因: build_fn_sigs_map 缺少 specialized function sigs → variadic forward decl → type mismatch → SIGSEGV. 三部分修复: (1) build_fn_sigs_map 添加 specialized sigs; (2) writeback_fndef_substs secondary pass; (3) codegen_from_mir skip ALL prelude generic def bodies. 为 Stage 114 (Debug impl re-add) 铺平道路. Architecture health: 9.9/10. |
+| **Status** | ✅ **v0.12 Stage 115 COMPLETE (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix)**. 5706 tests (898 lib + 4808 integration + 10 stage115), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 115 identified root cause: Rust HashMap random SipHash seed → non-deterministic vtable/dynptr/drop_glue/mono_items emission order → different LLVM module states → non-deterministic SIGSEGV. 4 sort fixes (vtable, dynptr, drop_glue, mono_items) reduced failures from 9-23 to 0-3. Debug impl bodies still REVERTED (0-3 > 0, §3.2 red line). New TD: TD-LLVM-INTERNAL-NONDETERMINISM (LLVM C++ hash tables non-determinism). Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -84,7 +84,15 @@ pub(crate) fn emit_drop_glue_functions(
     // 1. Types WITH `impl Drop`: call user's drop + recursively drop fields.
     // 2. Types WITHOUT `impl Drop` but with fields needing drop: recursively
     //    drop fields only.
-    for (&def_id, &type_spur) in &resolver.type_by_def_id {
+    // Stage 115 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION fix):
+    // Sort type_by_def_id entries by def_id for deterministic drop glue
+    // emission order. Without this, HashMap iteration order (random SipHash
+    // seed) produces different LLVM module states between runs →
+    // non-deterministic SIGSEGV in LLVMTargetMachineEmitToFile.
+    let mut sorted_types: Vec<(&crate::hir::DefId, &crate::lexer::Symbol)> =
+        resolver.type_by_def_id.iter().collect();
+    sorted_types.sort_by_key(|(def_id, _)| def_id.as_u32());
+    for (&def_id, &type_spur) in &sorted_types {
         let ty = Ty::new(
             TyKind::Adt(def_id, Vec::new().into()),
             crate::session::Span::DUMMY,

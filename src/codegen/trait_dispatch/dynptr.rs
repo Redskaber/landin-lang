@@ -176,6 +176,15 @@ pub fn build_dynptr_global_specs(
             vtable_symbol,
         });
     }
+
+    // Stage 115 (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION fix):
+    // Sort specs by global_name for deterministic emission order.
+    // Without this, HashMap iteration order (random SipHash seed) produces
+    // different LLVM module states between runs → non-deterministic SIGSEGV.
+    //
+    // Per §1.0 原則 3 (显式 > 隐式): deterministic emission order is explicit.
+    // Per §1.0 原則 9 (正确 > 妥协): deterministic codegen > random HashMap order.
+    specs.sort_by(|a, b| a.global_name.cmp(&b.global_name));
     specs
 }
 
