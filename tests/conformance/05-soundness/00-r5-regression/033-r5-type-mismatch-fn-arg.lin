@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: type mismatch fn arg
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn g(x:i32){} fn main(){g(true);}

@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: mut borrow of immutable var
+// EXPECTED: compile_error
+// ERROR_PATTERN: borrow
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { let x = 0; let r = &mut x; }

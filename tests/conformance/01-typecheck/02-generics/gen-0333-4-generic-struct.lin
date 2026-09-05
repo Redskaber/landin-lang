@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic struct variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S<T>{x:T}
+fn main(){ 0 }

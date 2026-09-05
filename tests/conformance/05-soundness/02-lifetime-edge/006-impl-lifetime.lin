@@ -1,0 +1,8 @@
+// CATEGORY: soundness
+// DESCRIPTION: impl with lifetime
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation)
+
+struct S<'a> { x: &'a i32 } impl<'a> S<'a> { fn get(&self) -> &'a i32 { self.x } }
+fn main(){ let _ref_0 = 0; let _ = S{x:&_ref_0}; }

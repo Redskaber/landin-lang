@@ -1,0 +1,6 @@
+//! PASS
+//! category: patterns
+//! description: or-pattern with mixed literals
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { 1 | 2 | 3 => 1, _ => 0 } }
+fn main(){ let _ = f(0); }

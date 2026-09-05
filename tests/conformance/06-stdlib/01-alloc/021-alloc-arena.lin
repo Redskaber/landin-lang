@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: arena
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Arena{data:[i32;100],pos:i32} fn main(){let a=Arena{data:[0;100],pos:0};}

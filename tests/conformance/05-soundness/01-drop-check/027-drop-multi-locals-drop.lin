@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: multi locals drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let a=1;let b=2;let c=3;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: while condition not bool
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){while 42{}}

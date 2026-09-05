@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait with &mut self
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait T{fn f(&mut self);} struct S; impl T for S{fn f(&mut self){}}
+fn main(){ let _ = S; }

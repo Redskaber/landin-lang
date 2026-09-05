@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: let alloca variant 7
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x=1;}

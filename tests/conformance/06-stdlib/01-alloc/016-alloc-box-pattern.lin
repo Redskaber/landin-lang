@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: box pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Box<T>{val:T} fn main(){let b=Box{val:42};}

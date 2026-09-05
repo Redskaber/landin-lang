@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: fib with memoization pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn fib(n:i32)->i32{if n<2{n}else{fib(n-1)+fib(n-2)}}
+fn main(){ let _ = fib(0); }

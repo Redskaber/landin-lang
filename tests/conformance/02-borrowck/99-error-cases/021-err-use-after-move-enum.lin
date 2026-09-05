@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: use after move enum
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 11.2 borrowck expansion
+
+enum E{A} fn main() { let e=E::A; let e2=e; let e3=e; }

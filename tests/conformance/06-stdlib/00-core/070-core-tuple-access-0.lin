@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: tuple access 0
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let t=(1,2,3);let x=t.0;}

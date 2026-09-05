@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: type mismatch variant 24
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn main(){let x:i32=true;}

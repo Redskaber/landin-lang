@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of moved value
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let x = 1; let y = x; let r = &x; }

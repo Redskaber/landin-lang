@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of struct field
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+struct S { x: i32 } fn main() { let s = S { x: 1 }; let r = &s.x; }

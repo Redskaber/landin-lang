@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: array access (bounds check at runtime)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let arr = [1, 2, 3]; let x = arr[0]; }

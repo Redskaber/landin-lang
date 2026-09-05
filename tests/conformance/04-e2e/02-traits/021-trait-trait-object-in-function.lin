@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: trait object in function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} fn g(t:&dyn T)->i32{t.f()}
+fn main(){ 0 }

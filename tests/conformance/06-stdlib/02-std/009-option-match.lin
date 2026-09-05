@@ -1,0 +1,7 @@
+// CATEGORY: stdlib
+// DESCRIPTION: matching Option-like enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+enum Opt { Some(i32), None } fn f(o: Opt) -> i32 { match o { Opt::Some(v) => v, Opt::None => 0 } }
+fn main(){ let _ = Opt::Some(0); }

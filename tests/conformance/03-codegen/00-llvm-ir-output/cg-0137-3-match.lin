@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: match variant 3
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){match 1{0=>0,_=>1}}

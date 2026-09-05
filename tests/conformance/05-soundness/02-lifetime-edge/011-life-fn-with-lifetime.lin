@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: fn with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f<'a>(x:&'a i32)->&'a i32{x}
+fn main(){ 0 }

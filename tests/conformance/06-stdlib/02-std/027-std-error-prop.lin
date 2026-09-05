@@ -1,0 +1,7 @@
+// CATEGORY: stdlib
+// DESCRIPTION: error prop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+enum Res{Ok(i32),Err(i32)} fn f(r:Res)->i32{match r{Res::Ok(v)=>v,Res::Err(_)=>-1}}
+fn main(){ let _ = Res::Ok(0); }

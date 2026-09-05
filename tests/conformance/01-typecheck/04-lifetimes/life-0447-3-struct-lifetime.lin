@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: struct lifetime variant 3
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S<'a>{x:&'a i32}
+fn main(){ let _ref_0 = 0; let _ = S{x:&_ref_0}; }

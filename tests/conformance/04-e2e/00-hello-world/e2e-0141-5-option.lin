@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: option variant 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+enum Opt{Some(i32),None} fn f(o:Opt)->i32{match o{Opt::Some(v)=>v,Opt::None=>0}}
+fn main(){ let _ = Opt::Some(0); }

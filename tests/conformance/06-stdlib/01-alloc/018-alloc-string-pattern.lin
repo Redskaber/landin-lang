@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: string pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct String{data:[i8;0],len:i32} fn main(){let s=String{data:[],len:0};}

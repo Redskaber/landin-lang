@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with associated const
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+trait T { const C: i32; } struct S; impl T for S { const C: i32 = 42; }
+fn main(){ let _ = S; }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: struct variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S{x:i32,y:i32} fn main(){let s=S{x:1,y:2};}

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: typed let binding
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn main() { let x: i32 = 42; }

@@ -1,0 +1,8 @@
+// CATEGORY: stdlib
+// DESCRIPTION: iter trait
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 11.6+11.7 expansion
+
+trait Iterator{fn next(&mut self)->i32;} struct C{n:i32} impl Iterator for C{fn next(&mut self)->i32{self.n+=1;self.n}}
+fn main(){ let _ = C{n: 0}; }

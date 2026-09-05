@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic default variant 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S<T=i32>{x:T}
+fn main(){ 0 }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: nested closures
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion (Stage 0 — closure compiles but not callable)
+
+fn main() { let f = |x| |y| x + y; }

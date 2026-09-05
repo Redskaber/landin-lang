@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: cast variant 17
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i32=42;let y=x as i64;}

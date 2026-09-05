@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: tuple elem access drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let t=(1,2);let x=t.0;}

@@ -1,0 +1,7 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct variant 0
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S{x:i32}
+fn main(){ let _ = S{x: 0}; }

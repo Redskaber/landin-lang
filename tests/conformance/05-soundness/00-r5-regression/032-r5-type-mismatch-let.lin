@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: type mismatch let
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn main(){let x:i32=true;}

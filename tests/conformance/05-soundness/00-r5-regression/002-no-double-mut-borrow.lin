@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: double mutable borrow should be caught
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let mut x = 1; let r1 = &mut x; let r2 = &mut x; }

@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: return string from int fn
+// EXPECTED: compile_error
+// ERROR_PATTERN: type
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() -> i32 { "hello" }

@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: copy then use variant 10
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn main(){let x=1;let y=x;let z=x;}

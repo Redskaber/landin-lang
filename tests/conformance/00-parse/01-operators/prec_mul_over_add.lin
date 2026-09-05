@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: * higher than + (precedence)
+//! source: Stage 9.2 conformance expansion
+fn main() { let _ = 1 + 2 * 3; }

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod fn variant 6
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+mod m{fn main(){ 0 }}

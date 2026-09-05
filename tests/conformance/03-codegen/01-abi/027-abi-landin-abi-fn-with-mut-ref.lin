@@ -1,0 +1,7 @@
+// CATEGORY: codegen
+// DESCRIPTION: landin abi fn with mut ref
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(r:&mut i32){*r=2;}
+fn main(){ let mut _r0 = 0; f(&mut _r0); }

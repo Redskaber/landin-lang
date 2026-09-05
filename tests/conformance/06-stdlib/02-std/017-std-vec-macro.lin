@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: vec macro
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let v=vec![];}

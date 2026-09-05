@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross fn variant 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+mod a{pub fn main()->i32{42}} mod b{pub fn g()->i32{a::f()}}

@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait object param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} fn g(t:&dyn T)->i32{t.f()}
+fn main(){ 0 }

@@ -1,0 +1,7 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+trait T<'a>{fn f(&self,x:&'a i32);}
+fn main(){ 0 }

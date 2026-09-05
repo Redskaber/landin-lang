@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u16 cmp eq inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:u16=1;let y:x<x;}

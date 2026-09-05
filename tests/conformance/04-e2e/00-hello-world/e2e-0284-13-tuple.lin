@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: tuple variant 13
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let t=(1,2,3);}

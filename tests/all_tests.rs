@@ -1256,3 +1256,9 @@ mod stage116_td_llvm_nondeterminism_rca_tests;
 // compile_src to use subprocess (structured error serialization needed). ===
 #[path = "v0/stage117/plan/td_process_per_test_rca_tests.rs"]
 mod stage117_td_process_per_test_rca_tests;
+
+// === Stage 118 (v0.12): Process-per-test isolation infrastructure investigation.
+// Stage 117 baseline verified stable after clean rebuild. --check-errors flag
+// tested. Debug impl re-add deferred to Stage 119. ===
+#[path = "v0/stage118/plan/process_per_test_isolation_tests.rs"]
+mod stage118_process_per_test_isolation_tests;

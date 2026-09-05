@@ -1,0 +1,7 @@
+// CATEGORY: integration
+// DESCRIPTION: mod struct variant 16
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+mod m{struct S{x:i32}}
+fn main(){ let _ = S{x: 0}; }

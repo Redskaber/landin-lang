@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: attr variant 12
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+#[foo] fn main(){ 0 }

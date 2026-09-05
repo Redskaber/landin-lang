@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: inline attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[inline] fn main(){ 0 }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: hello variant 0
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){ 0 }

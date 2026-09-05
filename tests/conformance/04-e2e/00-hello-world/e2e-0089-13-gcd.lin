@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: gcd variant 13
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn gcd(a:i32,b:i32)->i32{if b==0{a}else{gcd(b,a%b)}}
+fn main(){ let _ = gcd(0,0); }

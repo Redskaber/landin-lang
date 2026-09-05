@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: drop after match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x=1;match x{0=>{},_=>{}}let y=x;}

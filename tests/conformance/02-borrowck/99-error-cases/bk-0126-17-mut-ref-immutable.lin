@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut ref immutable variant 17
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x=0;let r=&mut x;}

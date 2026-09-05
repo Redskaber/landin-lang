@@ -1,0 +1,6 @@
+//! PASS
+//! category: patterns
+//! description: tuple pattern in match
+//! source: Stage 9.4 conformance expansion
+fn f(a: i32, b: i32) -> i32 { match (a, b) { (1, 2) => 1, _ => 0 } }
+fn main(){ let _ = f(0,0); }

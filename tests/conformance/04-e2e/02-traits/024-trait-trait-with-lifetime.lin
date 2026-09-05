@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: trait with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+trait T<'a>{fn f(&self,x:&'a i32);}
+fn main(){ 0 }

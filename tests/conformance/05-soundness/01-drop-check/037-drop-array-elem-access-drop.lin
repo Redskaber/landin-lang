@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: array elem access drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let arr=[1,2,3];let x=arr[0];}

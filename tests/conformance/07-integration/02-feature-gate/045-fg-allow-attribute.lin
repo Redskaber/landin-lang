@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: allow attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[allow(dead_code)] fn main(){ 0 }

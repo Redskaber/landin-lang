@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: deprecated attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[deprecated] fn main(){ 0 }

@@ -1,0 +1,8 @@
+// CATEGORY: soundness
+// DESCRIPTION: combined lifetime generic
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn f<'a,T>(x:&'a T)->&'a T{x}
+fn main(){ 0 }

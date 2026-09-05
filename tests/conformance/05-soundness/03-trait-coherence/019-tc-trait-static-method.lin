@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait static method
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait Factory{fn new()->i32;} struct S; impl Factory for S{fn new()->i32{0}}
+fn main(){ let _ = S; }
