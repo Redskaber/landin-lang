@@ -544,6 +544,14 @@ impl CompileResult {
             user_item_count: 0,
         }
     }
+
+    /// Stage 119 (TD-PROCESS-PER-TEST-ISOLATION): Create a completely empty
+    /// CompileResult for subprocess path. Used when `--check-errors` returns
+    /// `{"has_errors":false}` — no structured data needed, just `has_errors()`
+    /// returns false.
+    pub fn empty_result() -> Self {
+        Self::empty(Rodeo::new(), CompileErrors::default())
+    }
 }
 
 /// Compile a source string through the full pipeline **with MIR optimization**.

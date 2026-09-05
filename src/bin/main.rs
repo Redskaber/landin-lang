@@ -55,6 +55,13 @@ struct Cli {
     /// Examples: aarch64-unknown-linux-gnu, x86_64-pc-windows-gnu
     #[arg(long, value_name = "TRIPLE")]
     target: Option<String>,
+
+    /// Stage 119 (TD-PROCESS-PER-TEST-ISOLATION): Check errors and output
+    /// counts as JSON to stdout. Enables process-per-test isolation —
+    /// tests call `landin-stage0 --check-errors <file>` in a subprocess,
+    /// getting fresh LLVM C++ state each time.
+    #[arg(long)]
+    check_errors: bool,
 }
 
 fn main() {
@@ -109,14 +116,38 @@ fn main() {
         std::process::exit(1);
     }
 
-    // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, or --run, run full pipeline
-    if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin || cli.run {
-        // Stage 18.73 P1-G: Use compile_binary to validate main exists.
-        // Note: `mut` is required for the codegen error path (line ~217:
-        // `result.errors.codegen.push(e)` in the --emit-obj/--emit-bin error branch).
-        // cargo check may warn about unused_mut when the error branch is not
-        // reached in some configurations — this is a false positive.
+    // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, --run, or --check-errors, run full pipeline
+    if cli.compile
+        || cli.emit_llvm_ir
+        || cli.emit_obj
+        || cli.emit_bin
+        || cli.run
+        || cli.check_errors
+    {
         let mut result = driver::compile_binary(&source_file.src);
+
+        // Stage 119 (TD-PROCESS-PER-TEST-ISOLATION): --check-errors outputs
+        // error counts as JSON to stdout, then exits. This gives each test
+        // fresh LLVM C++ state (subprocess isolation).
+        if cli.check_errors {
+            let has_errors = result.has_errors();
+            println!(
+                r#"{{"has_errors":{},"lex":{},"parse":{},"lower":{},"resolve":{},"typeck":{},"borrowck":{},"trait_errors":{},"macro_errors":{},"codegen":{},"module_load":{},"total":{}}}"#,
+                has_errors,
+                result.errors.lex.len(),
+                result.errors.parse.len(),
+                result.errors.lower.len(),
+                result.errors.resolve.len(),
+                result.errors.typeck.len(),
+                result.errors.borrowck.len(),
+                result.errors.trait_errors.len(),
+                result.errors.macro_errors.len(),
+                result.errors.codegen.len(),
+                result.errors.module_load.len(),
+                result.errors.total_count(),
+            );
+            std::process::exit(if has_errors { 1 } else { 0 });
+        }
 
         if result.has_errors() {
             // Stage 15.19: Color output with --color flag (auto/always/never).

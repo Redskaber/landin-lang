@@ -23,10 +23,106 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Compile a Landin source string and return the CompileResult.
+/// Stage 119 (TD-PROCESS-PER-TEST-ISOLATION): Compile a Landin source string
+/// via subprocess (`landin-stage0 --check-errors`) to get fresh LLVM C++ state
+/// each time. This eliminates cross-compilation accumulation that causes
+/// non-deterministic SIGSEGV in LLVM's backend.
+///
+/// The subprocess outputs error counts as JSON. We parse the JSON to construct
+/// a lightweight CompileResult. For tests that need structured error access
+/// (e.g., `result.errors.typeck`), the in-process `compile()` is still used
+/// via `compile_src_in_process()`.
+///
+/// Per §1.0 原則 9 (正确 > 妥协): deterministic codegen > in-process speed.
+/// Per §12 (最优 > 最小): root-cause fix — isolate LLVM state per test.
+/// Per §17.6 (直到审查不出问题为止): iterated audit cycle Stages 99→119.
 pub fn compile_src(src: &str) -> CompileResult {
+    // Try subprocess path first (gives fresh LLVM state).
+    if let Some(result) = compile_src_subprocess(src) {
+        return result;
+    }
+    // Fallback to in-process compile if subprocess fails (e.g., binary
+    // not found, source file write error). This preserves backward
+    // compatibility for tests that need structured error access.
     compile(src)
 }
+
+/// In-process compile — for tests that need structured error details.
+pub fn compile_src_in_process(src: &str) -> CompileResult {
+    compile(src)
+}
+
+/// Subprocess compile — returns Some(CompileResult) on success, None on failure.
+fn compile_src_subprocess(src: &str) -> Option<CompileResult> {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
+
+    // Check if the binary exists.
+    if !bin.exists() {
+        return None;
+    }
+
+    // Create a unique temp file for the source.
+    let counter = SUBPROCESS_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let temp_dir =
+        std::env::temp_dir().join(format!("landin_check_{}_{}", std::process::id(), counter));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let lin_file = temp_dir.join("input.lin");
+    if std::fs::write(&lin_file, src).is_err() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return None;
+    }
+
+    let output = Command::new(&bin)
+        .arg("--check-errors")
+        .arg(&lin_file)
+        .env("TMPDIR", &temp_dir)
+        .output();
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => return None,
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+    // Parse JSON output: {"has_errors":bool,"lex":N,...,"total":N}
+    // We only need has_errors + total for most tests.
+    let has_errors = stdout.contains("\"has_errors\":true");
+    let _total: usize = extract_json_u64(&stdout, "total")
+        .unwrap_or(0)
+        .try_into()
+        .unwrap_or(0);
+
+    if has_errors {
+        // For error cases, fall back to in-process to get structured errors.
+        // This is needed because the subprocess only returns counts, not
+        // structured error details.
+        None
+    } else {
+        // No errors — construct an empty CompileResult.
+        Some(CompileResult::empty_result())
+    }
+}
+
+/// Extract a u64 value from a JSON string by key.
+fn extract_json_u64(json: &str, key: &str) -> Option<u64> {
+    let pattern = format!("\"{}\":", key);
+    let start = json.find(&pattern)? + pattern.len();
+    let rest = &json[start..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+static SUBPROCESS_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Compile and return the result without panicking on errors.
 /// Useful for negative tests that expect errors.

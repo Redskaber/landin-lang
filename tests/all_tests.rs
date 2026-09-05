@@ -1262,3 +1262,9 @@ mod stage117_td_process_per_test_rca_tests;
 // tested. Debug impl re-add deferred to Stage 119. ===
 #[path = "v0/stage118/plan/process_per_test_isolation_tests.rs"]
 mod stage118_process_per_test_isolation_tests;
+
+// === Stage 119 (v0.12): Process-per-test isolation implemented — compile_src
+// uses subprocess for error-free compilations. Debug impl re-add attempted +
+// REVERTED (0-2 residual non-determinism from run_program tests). ===
+#[path = "v0/stage119/plan/process_per_test_isolation_tests.rs"]
+mod stage119_process_per_test_isolation_tests;
