@@ -44802,3 +44802,42 @@ Stage Summary:
   (LLVM 19+ per-thread context) 或 process-per-test isolation 隔离 LLVM C++ state
 - Stage 117: 修复 TD-TRAIT-METHOD-AMBIGUITY — trait method resolution 区分同名 method
 - Stage 118: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV
+
+---
+Task ID: stage116
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 116 (v0.12) — TD-LLVM-INTERNAL-NONDETERMINISM RCA + LLVMShutdown fix.
+LLVMShutdown() added to Drop (reset LLVM C++ ManagedStatic). Debug impl re-add
+attempted + REVERTED — LLVM C++ heap allocator DenseMap pointer-address hashing
+still non-deterministic (0-5 failures per run). New TD: TD-PROCESS-PER-TEST-ISOLATION.
+v0.647.0 → v0.648.0. 5714 tests (898 lib + 4815 integration), 0 failures, 9 ignored.
+
+5W2H:
+- WHAT: Fix TD-LLVM-INTERNAL-NONDETERMINISM by calling LLVMShutdown() in Drop
+- WHY: Stage 115 sort fixes reduced failures from 9-23 to 0-3, but 0-3 > 0 (§3.2 red line)
+- HOW: 1) Added LLVMShutdown() to Drop; 2) Verified baseline 3/3 stable; 3) Added
+  Debug impl bodies; 4) Tested 5 runs: 0-5 failures (2/5 pass, 3/5 fail); 5) Reverted
+  Debug impls; 6) Verified baseline 3/3 stable again; 7) Documented TD-PROCESS-PER-TEST-ISOLATION
+
+决策点:
+1. 选择"LLVMShutdown() in Drop"而非"process-per-test isolation" — simpler fix, but
+   incomplete (LLVM C++ heap allocator state persists). Kept LLVMShutdown (no regression).
+2. 选择"revert Debug impl bodies" — 0-5 > 0, §3.2 red line violated.
+3. 选择"记录 TD-PROCESS-PER-TEST-ISOLATION" — user instruction: 发现依赖缺失同步 TD.
+
+§3.2 验收 (Debug impl reverted):
+- cargo fmt --check ✓; cargo clippy -- -D warnings ✓ (0 warnings)
+- cargo test --lib ✓ (898 tests, 0 failures)
+- cargo test --test all_tests ✓ (4815 tests, 0 failures, 3/3 stable)
+- Total: 5714 tests, 0 failures
+
+Stage Summary:
+- LLVMShutdown() added to Drop (resets LLVM C++ ManagedStatic — no regression)
+- Debug impl bodies still REVERTED (0-5 > 0, §3.2 red line)
+- New TD: TD-PROCESS-PER-TEST-ISOLATION (P3, v0.13+)
+- 架构健康度: 9.85/10 (stable — LLVMShutdown fix preserved, dependency gap documented)
+- v0.648.0
+
+下一步:
+- Stage 117: Implement process-per-test isolation — wrap compile() in subprocess
+- Stage 118: Re-add Debug impl bodies, verify 100 runs 0 SIGSEGV

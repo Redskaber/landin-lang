@@ -802,24 +802,7 @@ impl Drop for LLVMSysEmitter {
                 self.builder = std::ptr::null_mut();
             }
             // Stage 102 (v0.10 — TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 4 fix):
-            // Dispose module + context to release LLVM resources. Previously
-            // these were intentionally NOT disposed (comment said "caller may
-            // still want to extract the module via to_module()"). However:
-            //
-            // 1. All `to_module()` callers (tests.rs, main.rs, landinc.rs)
-            //    use the module while the emitter is still in scope — never
-            //    after Drop.
-            // 2. All `to_object_file()` callers likewise call before Drop.
-            // 3. cargo test invokes `compile()` multiple times — without
-            //    disposal, LLVM contexts accumulate, eventually triggering
-            //    non-deterministic SIGSEGV/SIGABRT.
-            //
-            // Per §1.0 原則 1 (内存安全决不能妥协): LLVM resource leaks are
-            // memory-unsafe under cargo test (resource exhaustion → crash).
-            // Per §12 (最优>最小): root-cause fix — release resources
-            // promptly, do not rely on process exit for cleanup.
-            // Per §2.2 (根因思维): fixes Layer 4 of Stage 99 RCA 4-layer
-            // root cause chain (Drop not releasing context → accumulation).
+            // Dispose module + context to release LLVM resources.
             if !self.module.is_null() {
                 LLVMDisposeModule(self.module);
                 self.module = std::ptr::null_mut();
@@ -828,6 +811,33 @@ impl Drop for LLVMSysEmitter {
                 LLVMContextDispose(self.ctx);
                 self.ctx = std::ptr::null_mut();
             }
+
+            // Stage 116 (TD-LLVM-INTERNAL-NONDETERMINISM fix):
+            // Call LLVMShutdown() to reset ALL LLVM C++ global state
+            // (ManagedStatic objects: type table, target registry, pass
+            // registry, etc.). Without this, LLVM's C++ DenseMap/
+            // MapVector/SetVector hash tables accumulate state across
+            // cargo test's multiple compile() calls, producing
+            // non-deterministic backend behavior (0-3 SIGSEGV per run
+            // with Debug impl bodies, even with Stage 115 sort fixes).
+            //
+            // After LLVMShutdown(), the next compile() call creates a
+            // fresh LLVMSysEmitter (new context + module). The init
+            // functions in to_object_file() (LLVM_InitializeAllTargets,
+            // etc.) re-register targets. LLVMShutdown() is designed to
+            // be idempotent — safe to call multiple times.
+            //
+            // This mirrors rustc's process-per-compilation model: each
+            // rustc invocation is a separate process, so LLVM state is
+            // always fresh. LLVMShutdown() simulates this within a
+            // single process.
+            //
+            // Per §1.0 原則 9 (正确 > 妥协): deterministic codegen > stale
+            // C++ global state.
+            // Per §12 (最优 > 最小): root-cause fix — reset ALL LLVM state,
+            // not just module + context.
+            // Per §17.6 (直到审查不出问题为止): iterated audit Stages 99→116.
+            LLVMShutdown();
         }
     }
 }

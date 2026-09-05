@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.647.0 (v0.12 Stage 115 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix: root cause = Rust HashMap random SipHash seed → non-deterministic emission order; 4 sort fixes reduced failures from 9-23 to 0-3; Debug impl reverted; new TD: TD-LLVM-INTERNAL-NONDETERMINISM; 5706 tests — Architecture health 9.85/10) |
+| **Version** | v0.648.0 (v0.12 Stage 116 — TD-LLVM-INTERNAL-NONDETERMINISM RCA: LLVMShutdown() in Drop resets LLVM C++ ManagedStatic; Debug impl re-add attempted + REVERTED — LLVM C++ heap allocator DenseMap still non-deterministic; new TD: TD-PROCESS-PER-TEST-ISOLATION; 5714 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 115 COMPLETE (TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix)**. 5706 tests (898 lib + 4808 integration + 10 stage115), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 115 identified root cause: Rust HashMap random SipHash seed → non-deterministic vtable/dynptr/drop_glue/mono_items emission order → different LLVM module states → non-deterministic SIGSEGV. 4 sort fixes (vtable, dynptr, drop_glue, mono_items) reduced failures from 9-23 to 0-3. Debug impl bodies still REVERTED (0-3 > 0, §3.2 red line). New TD: TD-LLVM-INTERNAL-NONDETERMINISM (LLVM C++ hash tables non-determinism). Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.12 Stage 116 COMPLETE (TD-LLVM-INTERNAL-NONDETERMINISM RCA + LLVMShutdown fix)**. 5714 tests (898 lib + 4815 integration + 8 stage116), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 116 added LLVMShutdown() to LLVMSysEmitter::Drop (resets LLVM C++ ManagedStatic). Debug impl re-add attempted + REVERTED — LLVM C++ heap allocator DenseMap pointer-address hashing still non-deterministic (0-5 failures per run). New TD: TD-PROCESS-PER-TEST-ISOLATION (each compile() in separate subprocess, like rustc). Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

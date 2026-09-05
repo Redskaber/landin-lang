@@ -1241,3 +1241,10 @@ mod stage114_debug_impl_readd_rca_tests;
 // REVERTED (0-3 > 0, §3.2 red line). New TD: TD-LLVM-INTERNAL-NONDETERMINISM. ===
 #[path = "v0/stage115/plan/td_module_accumulation_fix_tests.rs"]
 mod stage115_td_module_accumulation_fix_tests;
+
+// === Stage 116 (v0.12): TD-LLVM-INTERNAL-NONDETERMINISM RCA — LLVMShutdown()
+// attempted + Debug impl re-add REVERTED. LLVMShutdown resets ManagedStatic
+// but not C++ heap allocator → DenseMap pointer-address hashing still
+// non-deterministic. New TD: TD-PROCESS-PER-TEST-ISOLATION. ===
+#[path = "v0/stage116/plan/td_llvm_nondeterminism_rca_tests.rs"]
+mod stage116_td_llvm_nondeterminism_rca_tests;

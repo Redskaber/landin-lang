@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.647.0 (v0.12 Stage 115 — TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION partial fix: root cause = Rust HashMap random SipHash seed → non-deterministic emission order; 4 sort fixes (vtable, dynptr, drop_glue, mono_items) reduced failures from 9-23 to 0-3; Debug impl reverted; new TD: TD-LLVM-INTERNAL-NONDETERMINISM; 5706 tests) |
+| **Current version** | v0.648.0 (v0.12 Stage 116 — TD-LLVM-INTERNAL-NONDETERMINISM RCA: LLVMShutdown() in Drop resets LLVM C++ ManagedStatic; Debug impl re-add attempted + REVERTED — LLVM C++ heap allocator DenseMap pointer-address hashing still non-deterministic (0-5 failures per run); new TD: TD-PROCESS-PER-TEST-ISOLATION; 5714 tests) |
 | **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4808 integration tests = 5706 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4815 integration tests = 5714 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
