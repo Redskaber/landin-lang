@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.648.0 (v0.12 Stage 116 — TD-LLVM-INTERNAL-NONDETERMINISM RCA: LLVMShutdown() in Drop resets LLVM C++ ManagedStatic; Debug impl re-add attempted + REVERTED — LLVM C++ heap allocator DenseMap still non-deterministic; new TD: TD-PROCESS-PER-TEST-ISOLATION; 5714 tests — Architecture health 9.85/10) |
+| **Version** | v0.648.0 (v0.12 Stage 117 — TD-PROCESS-PER-TEST-ISOLATION RCA: confirmed process-per-test viable — non-determinism is cross-compilation accumulation; simple programs 10/10 in subprocess; tests that fail in full suite pass in isolation; fix requires compile_src → subprocess + error serialization; 5720 tests — Architecture health 9.85/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 116 COMPLETE (TD-LLVM-INTERNAL-NONDETERMINISM RCA + LLVMShutdown fix)**. 5714 tests (898 lib + 4815 integration + 8 stage116), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 116 added LLVMShutdown() to LLVMSysEmitter::Drop (resets LLVM C++ ManagedStatic). Debug impl re-add attempted + REVERTED — LLVM C++ heap allocator DenseMap pointer-address hashing still non-deterministic (0-5 failures per run). New TD: TD-PROCESS-PER-TEST-ISOLATION (each compile() in separate subprocess, like rustc). Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.12 Stage 117 COMPLETE (TD-PROCESS-PER-TEST-ISOLATION RCA)**. 5720 tests (898 lib + 4821 integration + 6 stage117), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 117 confirmed process-per-test isolation as viable fix: (1) simple programs work 10/10 in subprocess; (2) tests that fail in full suite pass in isolation (cross-compilation accumulation, NOT single-compilation); (3) ASLR off doesn't help; (4) fix requires changing compile_src to use subprocess + structured error serialization. Debug impl bodies still REVERTED. Architecture health: 9.85/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -1248,3 +1248,11 @@ mod stage115_td_module_accumulation_fix_tests;
 // non-deterministic. New TD: TD-PROCESS-PER-TEST-ISOLATION. ===
 #[path = "v0/stage116/plan/td_llvm_nondeterminism_rca_tests.rs"]
 mod stage116_td_llvm_nondeterminism_rca_tests;
+
+// === Stage 117 (v0.12): TD-PROCESS-PER-TEST-ISOLATION RCA — confirmed
+// process-per-test viable (non-determinism is cross-compilation accumulation,
+// NOT single-compilation). Simple programs work 10/10 in subprocess. Tests
+// that fail in full suite pass in isolation. Fix requires changing
+// compile_src to use subprocess (structured error serialization needed). ===
+#[path = "v0/stage117/plan/td_process_per_test_rca_tests.rs"]
+mod stage117_td_process_per_test_rca_tests;
