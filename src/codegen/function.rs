@@ -183,41 +183,37 @@ pub fn codegen_from_mir(
     // skipped here (only MonoItem::Fn instances are emitted, via
     // codegen_mono_functions).
     user_item_count: usize,
-    // Stage 100: collected MonoItems — used to check if a prelude generic
-    // function has any MonoItem::Fn instantiation. If it does, the generic
-    // def body is still emitted (codegen_operand may reference it via
-    // generic def name when FnDef type substs are empty).
-    collected_mono_items: &[crate::mir::monomorphize::MonoItem],
+    // Stage 100: collected MonoItems — previously used to check if a prelude
+    // generic function has any MonoItem::Fn instantiation. Stage 113: now
+    // UNUSED (skip ALL prelude generic def bodies). Kept for API stability.
+    // Prefixed with underscore to suppress unused-variable warning.
+    _collected_mono_items: &[crate::mir::monomorphize::MonoItem],
     // Stage 101: mono_names — MonoItem → specialized name map, used by
     // codegen_operand for FnDef substs mangling (e.g., `landin_Box_new` →
     // `Box_new_i32`). Built in pipeline.rs (single source of truth).
     mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
 ) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
-        // Stage 100 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 fix):
-        // Skip prelude generic function bodies that have NO MonoItem::Fn
-        // instantiation. These bodies have Param types that shouldn't be
-        // codegen'd — only instantiated MonoItem::Fn (handled by
-        // codegen_mono_functions) should be emitted.
+        // Stage 100/113 (TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH Layer 1 + TD-MONO-INFER):
+        // Skip ALL prelude generic function bodies. codegen_mono_functions
+        // handles all instantiated versions via substitute_mir_body.
+        //
+        // Stage 113: Now that the fn_sigs_map includes specialized function
+        // sigs (TD-LLVM-OBJ-EMIT-CRASH fix), we can safely skip ALL prelude
+        // generic def bodies — the forward declarations for specialized names
+        // have correct signatures, so no type mismatch crash.
         //
         // Skip condition: DefId >= user_item_count (prelude item) AND
-        // MIR body contains Param type (generic function) AND
-        // no MonoItem::Fn instantiation exists for this DefId.
-        //
-        // If a MonoItem::Fn instantiation exists, the generic def body is
-        // still emitted (because codegen_operand may reference it via
-        // generic def name when substs are empty in FnDef type — a separate
-        // issue tracked for Stage 101 codegen_operand substs mangling fix).
+        // MIR body contains Param type (generic function).
         //
         // Per §1.0 原則 6 (通解 > 特解): one skip rule for all prelude items.
         // Per §1.0 原則 9 (正确 > 妥协): generic defs don't emit, only instances.
-        // Per §1.0 原則 4 (报错 > 静默): don't silently fallback Param to i32.
+        // Per §1.0 原則 4 (报错 > 静默): missing generic def → linker error (loud).
         if let Some(def_id) = mir.def_id {
-            if def_id.as_u32() as usize >= user_item_count
-                && mir_body_contains_param_type(mir)
-                && !mono_items_contains_fn_for_def_id(collected_mono_items, def_id)
-            {
-                // Prelude generic function with no instantiation — skip codegen.
+            if def_id.as_u32() as usize >= user_item_count && mir_body_contains_param_type(mir) {
+                // Prelude generic function — skip codegen entirely.
+                // codegen_mono_functions emits all instantiated versions.
+                let _ = def_id;
                 continue;
             }
         }
@@ -300,9 +296,14 @@ pub fn codegen_from_mir(
 /// the given DefId. Used by `codegen_from_mir` to decide whether to skip
 /// a prelude generic function body.
 ///
+/// Stage 113: This helper is now DEAD CODE — the skip condition no longer
+/// checks MonoItem::Fn instantiation (skip ALL prelude generic def bodies).
+/// Kept for documentation + future re-use. Marked `#[allow(dead_code)]`.
+///
 /// Per §1.0 原則 6 (通解 > 特解): one check for all MonoItem kinds.
 /// Per §23: `mono_items_contains_fn_for_def_id` follows
 /// `<noun>_<noun>_<verb>_<prep>_<noun>` pattern.
+#[allow(dead_code)]
 fn mono_items_contains_fn_for_def_id(
     mono_items: &[crate::mir::monomorphize::MonoItem],
     def_id: crate::hir::DefId,

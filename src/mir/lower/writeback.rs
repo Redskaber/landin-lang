@@ -950,6 +950,34 @@ pub fn writeback_fndef_substs(
             }
         }
     }
+
+    // Stage 113: Secondary pass — propagate inferred substs into Assign's Constant.
+    for bb in mir.basic_blocks.iter_mut() {
+        for stmt in bb.statements.iter_mut() {
+            if let crate::mir::body::StatementKind::Assign(boxed) = &mut stmt.kind {
+                let (place, rvalue) = &mut **boxed;
+                if let crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Constant(c)) =
+                    rvalue
+                {
+                    if let TyKind::FnDef(c_def_id, c_substs) = &c.ty.kind {
+                        if c_substs.is_empty() {
+                            if let crate::mir::place::PlaceKind::Local(dest_id) = &place.kind {
+                                if let Some(dest_ld) = mir.local_decls.get(dest_id.0 as usize) {
+                                    if let TyKind::FnDef(dest_def_id, dest_substs) =
+                                        &dest_ld.ty.kind
+                                    {
+                                        if dest_def_id == c_def_id && !dest_substs.is_empty() {
+                                            c.ty = dest_ld.ty.clone();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Helper: collect Param → Ty bindings from matching two types.

@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.9
+> **Version**: v2.0
 > **Status**: Active
-> **最后更新**: Stage 112 / 2026-09-05
+> **最后更新**: Stage 113 / 2026-09-05
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -165,3 +165,4 @@
 4. **只追加不删除**：本文件为追加型日志，**禁止删除历史行**，仅允许在原行"备注"列追加修订标记（如 `[Stage 18.125 修订: ...]`）。
 5. **REC-A 责任**：本文件由 REC-A 在阶段归档时同步更新（per §8 文档同步规则），更新后必须 commit + push 到 worklog 镜像。
 6. **审计追溯**：本文件的每次更新都对应 worklog 中一条 `Task ID: stageN.M-rec` 的归档记录，便于跨阶段审计。
+| 113 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 95% | TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix — 根因: build_fn_sigs_map 缺少 specialized function sigs → variadic forward decl → type mismatch → SIGSEGV. 三部分修复: (1) build_fn_sigs_map 添加 specialized sigs; (2) writeback_fndef_substs secondary pass; (3) codegen_from_mir skip ALL prelude generic def bodies. 3 src files (~100 LOC) + 13 tests + docs/tools/debug-tools.md + debug script. v0.646.0. §3.2 全套验收通过 (898 lib + 4788 integration, 0 failures) |

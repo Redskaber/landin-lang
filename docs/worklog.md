@@ -44638,3 +44638,56 @@ Stage Summary:
 - Stage 114: 修复 TD-LLVM-OBJ-EMIT-CRASH 后, 重新应用 Stage 112 fix #1 + #2, 验证 0 回归.
 - Stage 115: 再次重新添加 Debug impl bodies, 验证 100 次跑 0 SIGSEGV
   (依赖 Stage 113 + 114 完成).
+
+---
+Task ID: stage113
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 113 (v0.12) — TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix.
+根因: build_fn_sigs_map 缺少 specialized function sigs → variadic forward
+decl → type mismatch → SIGSEGV. 三部分修复: (1) build_fn_sigs_map 添加
+specialized sigs; (2) writeback_fndef_substs secondary pass; (3) codegen
+_from_mir skip ALL prelude generic def bodies. v0.645.0 → v0.646.0.
+5686 tests (898 lib + 4788 integration), 0 failures, 9 ignored.
+
+5W2H:
+- WHAT: 修复 TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER
+- WHY: Stage 112 RCA 发现确定性 SIGSEGV, 阻断 TD-MONO-INFER fix
+- WHO: ARCH-A 设计; DEV-A 实施 + 调试 (addr2line + RUST_BACKTRACE);
+  REV-A 验证 0 回归; QA-A 13 tests
+- WHEN: Stage 113 完成 → Stage 114 (Debug impl re-add)
+- WHERE: src/codegen/llvm/function_sigs.rs, src/mir/lower/writeback.rs,
+  src/codegen/function.rs, src/codegen/mod.rs
+- HOW: 1) 复现 crash; 2) IR diff (baseline vs fix2); 3) 发现 store ptr
+  @process_i32 vs @landin_process; 4) 追踪 interpret_adhoc fallback;
+  5) 发现 fn_sigs_map 缺少 specialized sigs; 6) 修复 build_fn_sigs_map;
+  7) 验证 --emit-obj + --run 成功; 8) 应用 fix #1 + fix #2; 9) 0 回归
+- HOW MUCH: 3 src files (~100 LOC) + 13 tests + docs/tools/ + debug script
+
+决策点 (§12 最优>最小, §1.0 原则 9 正确>妥协, §1.0 原则 6 通解>特解):
+1. 选择"修复 fn_sigs_map 根因"而非"在 interpret_adhoc 中特判 specialized name"
+   - 引用 §12 (最优 > 最小): 根因修复 — 在数据源添加 sigs, 不是在消费端 workaround
+   - 引用 §1.0 原則 6 (通解 > 特解): 一条路径覆盖所有 specialized functions
+
+2. 选择"三部分一起修复"而非"逐个修复"
+   - 引用 §12 (最优 > 最小): 一次到位, 避免 linker error → crash → 逐个试
+   - 引用 §1.0 原則 9 (正确 > 妥协): 不发布中间状态 (linker error 或 crash)
+
+§3.2 验收:
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures, 0 ignored)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4788 tests, 0 failures, 9 ignored)
+- 总: 5686 tests (898 lib + 4788 integration + 13 stage113), 0 failures
+
+Stage Summary:
+- TD-LLVM-OBJ-EMIT-CRASH 修复完成
+- TD-MONO-INFER 修复完成 (writeback secondary pass + skip rule)
+- 根因: fn_sigs_map 缺少 specialized function sigs → variadic forward decl → type mismatch → SIGSEGV
+- 修复: build_fn_sigs_map 添加 specialized sigs + writeback secondary pass + skip ALL prelude generics
+- 13 个新测试覆盖正向/text IR/负向/边界
+- 架构健康度: 9.9/10 (stable — 3 src files, 0 回归, 2 TD 修复)
+- v0.646.0
+
+下一步:
+- Stage 114: 重新添加 Debug impl bodies for i32/i64/bool/usize, 验证 100 次跑 0 SIGSEGV.
+  TD-MONO-INFER + TD-LLVM-OBJ-EMIT-CRASH 都已修复, 预期 Debug impl 可安全添加.

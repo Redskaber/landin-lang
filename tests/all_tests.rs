@@ -1215,3 +1215,11 @@ mod stage111_debug_impl_readd_reverted_tests;
 // Stage 111 baseline preserved (5663 tests, 0 failures). ===
 #[path = "v0/stage112/plan/td_mono_infer_rca_tests.rs"]
 mod stage112_td_mono_infer_rca_tests;
+
+// === Stage 113 (v0.12): TD-LLVM-OBJ-EMIT-CRASH fix + TD-MONO-INFER fix.
+// Root cause: build_fn_sigs_map didn't include specialized function sigs
+// (e.g., process_i32) → variadic forward decl → type mismatch → SIGSEGV.
+// Fix: add specialized sigs to fn_sigs_map + writeback secondary pass +
+// skip ALL prelude generic def bodies. 5673 tests, 0 failures. ===
+#[path = "v0/stage113/plan/td_llvm_obj_emit_crash_fix_tests.rs"]
+mod stage113_td_llvm_obj_emit_crash_fix_tests;

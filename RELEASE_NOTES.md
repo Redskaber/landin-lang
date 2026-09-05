@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.645.0 (v0.12 Stage 112 — TD-MONO-INFER fix attempted + REVERTED: two-part fix caused 43 linker errors (fix #1 alone) or 6 impl Trait --emit-obj crashes (fix #1+#2); new TD discovered: TD-LLVM-OBJ-EMIT-CRASH; Stage 111 baseline preserved; 5673 tests) |
+| **Current version** | v0.646.0 (v0.12 Stage 113 — TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix: root cause = build_fn_sigs_map missing specialized function sigs → variadic forward decl → type mismatch → SIGSEGV; three-part fix: fn_sigs_map + writeback secondary pass + skip ALL prelude generics; 5686 tests) |
 | **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4775 integration tests = 5673 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4788 integration tests = 5686 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |

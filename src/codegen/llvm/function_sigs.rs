@@ -33,6 +33,11 @@ pub(crate) fn build_fn_sigs_map(
     fn_name_by_def_id: &HashMap<DefId, String>,
     fn_sigs: &HashMap<DefId, Sig>,
     adt_layouts: &AdtLayouts,
+    // Stage 113: mono_names — MonoItem → specialized name map, used to add
+    // specialized function sigs to the fn_sigs map. Without this, forward
+    // declarations for specialized functions (e.g., `process_i32`) use a
+    // variadic fallback → type mismatch → SIGSEGV in LLVMTargetMachineEmitToFile.
+    mono_names_opt: Option<&HashMap<crate::mir::MonoItem, String>>,
 ) -> HashMap<String, (EmitType, Vec<EmitType>)> {
     let mut map = HashMap::new();
     for (def_id, name) in fn_name_by_def_id {
@@ -79,6 +84,56 @@ pub(crate) fn build_fn_sigs_map(
                 .filter(|ty| *ty != EmitType::Void)
                 .collect();
             map.insert(name.clone(), (ret_ty, param_tys));
+        }
+    }
+
+    // Stage 113 (TD-LLVM-OBJ-EMIT-CRASH fix): Add specialized (monomorphized)
+    // function sigs to the fn_sigs map.
+    //
+    // Without this, when codegen_operand returns a specialized name like
+    // `@process_i32` (from writeback_fndef_substs secondary pass), the
+    // LLVMSysEmitter's `interpret_adhoc` looks up `process_i32` in fn_sigs,
+    // doesn't find it → falls back to variadic `i32 ()` forward declaration.
+    // Later, codegen_mono_functions emits the actual `process_i32` with
+    // correct sig `i32 (i32)` → type mismatch → old decl deleted + re-added
+    // → dangling references → SIGSEGV in LLVMTargetMachineEmitToFile.
+    //
+    // Fix: for each MonoItem::Fn with non-empty substs, compute the
+    // specialized name via mono_item_name and add it to the map with the
+    // substituted signature (inputs/output substituted with substs).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one pass for all MonoItem::Fn instances.
+    // Per §1.0 原則 9 (正确 > 妥协): correct forward declarations, not variadic fallback.
+    // Per §12 (最优 > 最小): root-cause fix at the sig map layer, not in interpret_adhoc.
+    // Per §17.6 (直到审查不出问题为止): found by Stage 113 RCA investigation.
+    if let Some(mono_names) = mono_names_opt {
+        for (mono_item, specialized_name) in mono_names.iter() {
+            if let crate::mir::MonoItem::Fn { def_id, substs } = mono_item {
+                if substs.is_empty() {
+                    continue;
+                }
+                // Look up the base function's sig.
+                if let Some(sig) = fn_sigs.get(def_id) {
+                    // Substitute Param types with concrete substs.
+                    let substituted_output = crate::mir::substitute(&sig.output, substs);
+                    let ret_ty =
+                        mir_type_to_emit_type_with_layouts(&substituted_output, adt_layouts);
+                    let param_tys: Vec<EmitType> = sig
+                        .inputs
+                        .iter()
+                        .map(|t| {
+                            let substituted = crate::mir::substitute(t, substs);
+                            if matches!(t.kind, crate::mir::ty::TyKind::Closure(_, _)) {
+                                EmitType::OpaquePtr
+                            } else {
+                                mir_type_to_emit_type_with_layouts(&substituted, adt_layouts)
+                            }
+                        })
+                        .filter(|ty| *ty != EmitType::Void)
+                        .collect();
+                    map.insert(specialized_name.clone(), (ret_ty, param_tys));
+                }
+            }
         }
     }
     // Stage 18.202 (TD-FORMAT-VARIADIC fix): Add runtime helper signatures

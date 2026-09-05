@@ -230,10 +230,32 @@ pub fn codegen_crate_to_module_with_target(
         #[allow(clippy::arc_with_non_send_sync)]
         std::sync::Arc::new(crate::mir::body::AdtLayouts::new())
     };
+    // Stage 113: Build mono_names early so we can add specialized function
+    // sigs to the fn_sigs map. This prevents SIGSEGV in LLVMTargetMachineEmitToFile
+    // when forward declarations for specialized functions (e.g., `process_i32`)
+    // use a variadic fallback instead of the correct substituted signature.
+    let collected_mono_items: Vec<crate::mir::monomorphize::MonoItem> = if result.hir.is_some() {
+        crate::mir::collect_mono_items(&result.mirs)
+    } else {
+        Vec::new()
+    };
+    let mono_names: std::collections::HashMap<crate::mir::monomorphize::MonoItem, String> =
+        if result.hir.is_some() {
+            crate::mir::monomorphize::build_mono_item_names(
+                &collected_mono_items,
+                &result.fn_name_by_def_id,
+                &result.type_name_by_def_id,
+                &result.interner,
+            )
+        } else {
+            std::collections::HashMap::new()
+        };
     let fn_sigs_map = crate::codegen::llvm::function_sigs::build_fn_sigs_map(
         &result.fn_name_by_def_id,
         &result.fn_sigs,
         &adt_layouts,
+        // Stage 113: pass mono_names so specialized function sigs are included.
+        Some(&mono_names),
     );
     emitter.set_fn_sigs(fn_sigs_map);
     run_codegen_pipeline(result, &mut emitter)?;

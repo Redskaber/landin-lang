@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.645.0 (v0.12 Stage 112 — TD-MONO-INFER fix attempted + REVERTED: two-part fix caused 43 linker errors or 6 impl Trait --emit-obj crashes; new TD discovered: TD-LLVM-OBJ-EMIT-CRASH; Stage 111 baseline preserved; 5673 tests — Architecture health 9.85/10) |
+| **Version** | v0.646.0 (v0.12 Stage 113 — TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix: root cause = build_fn_sigs_map missing specialized function sigs → variadic forward decl → type mismatch → SIGSEGV; three-part fix: fn_sigs_map + writeback secondary pass + skip ALL prelude generics; 5686 tests — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 112 COMPLETE (TD-MONO-INFER RCA + revert)**. 5673 tests (898 lib + 4775 integration + 10 stage112 RCA), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 112 attempted TD-MONO-INFER fix via two-part approach: (1) codegen skip rule strengthening; (2) writeback_fndef_substs secondary pass. Fix #1 alone: 43 linker errors. Fix #1+#2: 6 impl Trait --emit-obj crashes (deterministic SIGSEGV in LLVMTargetMachineEmitToFile). IR valid (llvm-as + llc work) but in-memory LLVMModule crashes via C API. New TD: TD-LLVM-OBJ-EMIT-CRASH (P2, v0.13+). Revert both fixes, preserve Stage 111 baseline. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.12 Stage 113 COMPLETE (TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER fix)**. 5686 tests (898 lib + 4788 integration + 13 stage113), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 113 修复 TD-LLVM-OBJ-EMIT-CRASH + TD-MONO-INFER — 根因: build_fn_sigs_map 缺少 specialized function sigs → variadic forward decl → type mismatch → SIGSEGV. 三部分修复: (1) build_fn_sigs_map 添加 specialized sigs; (2) writeback_fndef_substs secondary pass; (3) codegen_from_mir skip ALL prelude generic def bodies. 为 Stage 114 (Debug impl re-add) 铺平道路. Architecture health: 9.9/10. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
