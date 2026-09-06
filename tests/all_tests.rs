@@ -1274,3 +1274,10 @@ mod stage119_process_per_test_isolation_tests;
 // REVERTED (0-3 residual from run_program tests using compile_binary). ===
 #[path = "v0/stage120/plan/full_process_isolation_tests.rs"]
 mod stage120_full_process_isolation_tests;
+
+// === Stage 121 (v0.12): Debug impl re-add final RCA — LLVM backend
+// non-determinism is fundamental, cannot be fixed from Rust side.
+// Debug impls add vtable/dynptr globals → LLVM C++ DenseMap hash tables
+// become complex → non-deterministic codegen even in fresh subprocesses. ===
+#[path = "v0/stage121/plan/debug_impl_final_rca_tests.rs"]
+mod stage121_debug_impl_final_rca_tests;
