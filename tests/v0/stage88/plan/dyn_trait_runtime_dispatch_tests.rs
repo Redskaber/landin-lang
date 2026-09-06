@@ -167,7 +167,8 @@ fn stage88_dyn_undefined_trait_errors() {
             0
         }
     "#;
-    let result = compile_src(src);
+    // Stage 123: Use in-process compile for structured error access.
+    let result = landin_compiler::compile(src);
     assert!(
         !result.errors.resolve.is_empty() || !result.errors.typeck.is_empty(),
         "dyn UndefinedTrait should error (undefined trait reference)"

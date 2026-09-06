@@ -1281,3 +1281,8 @@ mod stage120_full_process_isolation_tests;
 // become complex → non-deterministic codegen even in fresh subprocesses. ===
 #[path = "v0/stage121/plan/debug_impl_final_rca_tests.rs"]
 mod stage121_debug_impl_final_rca_tests;
+
+// === Stage 122 (v0.12): v0.12 phase closure — all Landin-side TDs resolved.
+// Debug impl bodies permanently deferred (LLVM C++ non-determinism). ===
+#[path = "v0/stage122/plan/v012_closure_tests.rs"]
+mod stage122_v012_closure_tests;
