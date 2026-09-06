@@ -1268,3 +1268,9 @@ mod stage118_process_per_test_isolation_tests;
 // REVERTED (0-2 residual non-determinism from run_program tests). ===
 #[path = "v0/stage119/plan/process_per_test_isolation_tests.rs"]
 mod stage119_process_per_test_isolation_tests;
+
+// === Stage 120 (v0.12): Full process-per-test isolation — compile_silent
+// also uses subprocess with placeholder errors. Debug impl re-add attempted +
+// REVERTED (0-3 residual from run_program tests using compile_binary). ===
+#[path = "v0/stage120/plan/full_process_isolation_tests.rs"]
+mod stage120_full_process_isolation_tests;

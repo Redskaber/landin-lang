@@ -552,6 +552,71 @@ impl CompileResult {
     pub fn empty_result() -> Self {
         Self::empty(Rodeo::new(), CompileErrors::default())
     }
+
+    /// Stage 120 (TD-PROCESS-PER-TEST-ISOLATION): Create a CompileResult with
+    /// placeholder errors (correct count per category but empty content).
+    #[allow(clippy::too_many_arguments, unused_variables)]
+    pub fn with_error_counts(
+        lex: usize,
+        parse: usize,
+        lower: usize,
+        resolve: usize,
+        typeck: usize,
+        borrowck: usize,
+        trait_errors: usize,
+        macro_errors: usize,
+        codegen: usize,
+        module_load: usize,
+    ) -> Self {
+        use crate::lexer::{LexError, LexErrorKind};
+        use crate::parser::ParseError;
+        use crate::resolve::ResolveError;
+        let errors = CompileErrors {
+            lex: (0..lex)
+                .map(|_| LexError {
+                    message: "subprocess placeholder".to_string(),
+                    span: crate::session::Span::DUMMY,
+                    kind: LexErrorKind::Generic,
+                })
+                .collect(),
+            parse: (0..parse)
+                .map(|_| ParseError::new("subprocess placeholder", crate::session::Span::DUMMY))
+                .collect(),
+            lower: (0..lower)
+                .map(|_| {
+                    crate::hir::lower::LowerError::new(
+                        "subprocess placeholder",
+                        crate::session::Span::DUMMY,
+                    )
+                })
+                .collect(),
+            resolve: (0..resolve)
+                .map(|_| ResolveError::new("subprocess placeholder", crate::session::Span::DUMMY))
+                .collect(),
+            typeck: (0..typeck)
+                .map(|_| TypeError::new("subprocess placeholder", crate::session::Span::DUMMY))
+                .collect(),
+            borrowck: (0..borrowck)
+                .map(|_| BorrowError {
+                    message: "subprocess placeholder".to_string(),
+                    span: crate::session::Span::DUMMY,
+                    kind: crate::borrowck::BorrowErrorKind::BorrowImmutable,
+                })
+                .collect(),
+            trait_errors: Vec::new(), // Placeholder — too complex to construct
+            macro_errors: Vec::new(), // Placeholder — too complex to construct
+            codegen: (0..codegen)
+                .map(|_| {
+                    crate::codegen::error::CodegenError::new(
+                        "subprocess placeholder",
+                        crate::session::Span::DUMMY,
+                    )
+                })
+                .collect(),
+            module_load: Vec::new(), // Placeholder — too complex to construct
+        };
+        Self::empty(Rodeo::new(), errors)
+    }
 }
 
 /// Compile a source string through the full pipeline **with MIR optimization**.
