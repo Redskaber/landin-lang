@@ -1334,3 +1334,7 @@ mod stage134_trace_macros_tests;
 // === Stage 136 (v0.15): TD-CODEGEN-OPT-LEVELS — -O flag + opt levels. ===
 #[path = "v0/stage136/plan/opt_levels_tests.rs"]
 mod stage136_opt_levels_tests;
+
+// === Stage 138 (v0.15): TD-PTR-INDEX-CONST — *const T indexing. ===
+#[path = "v0/stage138/plan/ptr_index_tests.rs"]
+mod stage138_ptr_index_tests;

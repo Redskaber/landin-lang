@@ -404,6 +404,10 @@ pub(crate) fn resolve_index_element_type(
         TyKind::Slice(elem) => Some((**elem).clone()),
         // Stage 18.62: Infer/Error/Param are acceptable fallbacks.
         TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+        // Stage 138 (v0.15 — TD-PTR-INDEX-CONST): RawPtr indexing.
+        // `*const T` and `*mut T` both support `[index]` — pointer arithmetic.
+        // Per §1.0 原則 6 (通解 > 特解): one path for both const and mut ptrs.
+        TyKind::RawPtr(_, inner) => Some((**inner).clone()),
         _ => {
             // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
             // Stage 18.80 P2-D: Use expr_span instead of Span::DUMMY.

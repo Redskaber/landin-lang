@@ -403,3 +403,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD-INCREMENTAL | 缺少 incremental compilation cache | 每次全量编译 | 设计 incremental compilation cache (like rustc) | P4, v0.18+ |
 | TD-PARALLEL-COMP | 缺少 parallel compilation | 单线程编译 | 设计 parallel MIR lowering + typeck | P4, v0.18+ |
 | TD-LSP | 缺少 LSP (Language Server Protocol) integration | 无 LSP server | 实现 LSP server for IDE support | P4, v0.18+ |
+
+### P3 — v0.15+ Stage 137 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PTR-INDEX-CONST | `*const T` 不支持 `[index]` 索引操作（只有 `*mut T` 支持） | MIR lower 的 Index 表达式只处理 `*mut T`，不处理 `*const T` | 在 expr_operand.rs 的 Index arm 中添加 `*const T` 支持 | P3, v0.15+ |
+| TD-STDLIB-STRING-VEC-PARTIAL | TD-STDLIB-STRING-VEC 部分修复 — Vec::get 已添加但 String::starts_with/ends_with/contains 需要 *const T 索引支持 | 受 TD-PTR-INDEX-CONST 阻断 | 先修复 TD-PTR-INDEX-CONST，再添加 String 方法 | P3, v0.15+ |

@@ -347,6 +347,11 @@ impl TypeChecker {
                     }
                     // Stage 18.62: Infer/Error/Param are acceptable fallbacks.
                     TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+                    // Stage 138 (v0.15 — TD-PTR-INDEX-CONST): RawPtr indexing.
+                    // `*const T` and `*mut T` both support `[index]` — like C
+                    // pointer arithmetic. This enables String::starts_with etc.
+                    // Per §1.0 原則 6 (通解 > 特解): one path for both const and mut ptrs.
+                    TyKind::RawPtr(_, inner) => Some((**inner).clone()),
                     _ => {
                         // Stage 18.424: Push error for non-indexable concrete
                         // types (Int, Bool, Float, Adt, Tuple, etc.).
