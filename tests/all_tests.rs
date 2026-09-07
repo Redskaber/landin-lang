@@ -1359,3 +1359,10 @@ mod stage144_lex_literals_tests;
 //                         fixing `b'\xFF' as i64` returning -1 → 255. ===
 #[path = "v0/stage145/plan/cast_unsigned_tests.rs"]
 mod stage145_cast_unsigned_tests;
+
+// === Stage 146 (v0.15): TD-TYPECK-ASSOC-TYPE-PROJECTION — associated type
+//                         projection resolution in generic contexts. unify.rs
+//                         adds Projection arm; codegen runs projection_resolver
+//                         after monomorphization. ===
+#[path = "v0/stage146/plan/assoc_type_tests.rs"]
+mod stage146_assoc_type_tests;

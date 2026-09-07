@@ -321,7 +321,7 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-TYPECK-ASSOC-TYPE-PROJECTION | 缺少 associated type projection resolution (<T as Iterator>::Item) | Typeck 不支持 assoc type projection | 实现 resolve_projection_in_ty_pub 完整版 | P3, v0.15+ |
+| TD-TYPECK-ASSOC-TYPE-PROJECTION | ✅ Stage 146 修复 | 缺少 associated type projection resolution (<T as Iterator>::Item) | unify.rs 添加 Projection unify 分支 (§1.0 原則 6/9/10). codegen post-mono 调用 resolve_projections_in_mir (§11). driver/mod.rs projection_resolver pub. pipeline.rs 传递 HIR. 24 tests. 发现 TD-ASSOC-TYPE-MULTI-RUNTIME. | ✅ |
 | TD-TYPECK-HRTB | 缺少 higher-ranked trait bounds (for<'a> fn(&'a str)) | Typeck 不支持 HRTB unification | HRTB 完整实现 | P4, v0.16+ |
 | TD-TYPECK-AUTO-TRAIT | 缺少 auto trait coherence checking (Send/Sync auto impls) | Typeck + Trait solver 不支持 auto trait | auto trait 自动派生 | P4, v0.16+ |
 | TD-TYPECK-NEGATIVE-IMPL | 缺少 negative impls (impl !Send for Foo) | Typeck 不支持 negative impl | 添加 negative impl 语法 + coherence | P4, v0.17+ |
@@ -435,3 +435,9 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-PTR-INDEX-GEP-TYPE | ✅ Stage 143 修复 | emit_gep_index_ptr 需要动态使用 index local 的实际类型（i32 或 i64），而非固定类型 | Stage 143 修改 trait 方法签名添加 idx_ty 参数 — caller 查询 MIR local_decls 获取实际类型, TextEmitter 用 idx_ty 替代硬编码 i64. LLVMSysEmitter 忽略 idx_ty. | ✅ |
+
+### P3 — v0.15+ Stage 146 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-ASSOC-TYPE-MULTI-RUNTIME | 多关联类型 trait + 泛型投影的运行时 segfault (exit code 0 but no output) | method call 返回类型解析在多 assoc type 场景下的 ambiguity — `kv.key()` 返回 Self::Key, 但 resolve_projections_in_mir 可能匹配到错误的 assoc type binding | 调查 resolve_projections_in_mir 的 lookup_assoc_type_resolution 在多 assoc type 场景下的匹配逻辑 — 可能需要按 name + owner 精确匹配 (而非仅 name). 参考 Stage 86 的 find_assoc_type_def_id 修复 (name AND owner trait). | P3, v0.16+ |

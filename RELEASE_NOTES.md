@@ -3,13 +3,82 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.669.0 (v0.15 Stage 145 — TD-CODEGEN-CAST-UNSIGNED 完整修复: emit_cast 添加 src_signed 参数, u8/u16/u32/u64/usize as i64 用 zext; 5918 tests) |
+| **Current version** | v0.670.0 (v0.15 Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复: 泛型上下文中的关联类型投影解析; 5942 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5020 integration tests = 5918 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5044 integration tests = 5942 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 145 完成 v0.15 codegen cast signedness 修复); v0.15 codegen 阶段 — Stage 145 修复 emit_cast signedness, u8/u16/u32/u64/usize as i64 现在用 zext (正确 Rust 语义) |
+| **Architecture** | Health 9.9/10 (stable — Stage 146 完成 v0.15 assoc type projection 修复); v0.15 typeck 阶段 — Stage 146 修复泛型上下文中的关联类型投影解析, 解锁 Iterator trait |
+
+---
+
+## v0.670.0 — Stage 146 (v0.15) — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复
+
+### Overview
+
+Stage 146 完整修复 TD-TYPECK-ASSOC-TYPE-PROJECTION — 泛型上下文中的关联类型投影解析。
+这解锁了 Iterator trait (TD-STDLIB-ITERATOR 的前置依赖), 是通向自举的关键路径。
+
+### What was fixed
+
+1. **typeck unify.rs**: `TyKind::Projection(_, _)` 现在与任何类型 unify 成功
+   (类似 Param 规则). 之前 unify 没有 Projection 分支, 导致
+   `unify(Projection, i64)` 落入默认拒绝分支.
+   - §1.0 原則 6 (通解 > 特解): 一个 Projection 规则处理所有 unify
+   - §1.0 原則 9 (正确 > 妥协): typeck 不能解析 projections without mono context
+   - §1.0 原則 10 (唯一可信数据源): projection_resolver 是 authoritative source
+
+2. **codegen function.rs**: `codegen_mono_functions` 添加 `hir` 参数 +
+   post-monomorphization 调用 `resolve_projections_in_mir`. 在
+   `substitute_mir_body` 后, Param(C) → Adt(Holder), resolver 可解析.
+   - §1.0 原則 6 (通解): 一个 resolver 处理 pre-mono + post-mono
+   - §11 (allowed cross-stage access): codegen 调用 driver 的 resolver
+
+3. **driver/mod.rs**: `projection_resolver` 改为 `pub mod` (codegen 需要访问)
+
+4. **codegen/pipeline.rs**: 传递 `result.hir.as_ref()` 给 `codegen_mono_functions`
+
+### Important: unlocks Iterator trait
+
+`<C as Container>::Item` 在泛型函数中正确解析后, Iterator trait
+(`type Item; fn next(&mut self) -> Option<Self::Item>`) 的完整实现变为可能.
+TD-STDLIB-ITERATOR 是 Stage 147 的候选.
+
+### Decision rationale
+
+- 选 Projection unify any type 不选 resolve-in-typeck — §1.0 原則 9 (typeck 无 mono context)
+- 选 codegen post-mono resolver 不选 driver pre-mono-only — §1.0 原則 6 (通解)
+- 选传递 HIR 给 codegen 不选复制 resolver — §11 (allowed cross-stage)
+- 选 projection_resolver pub 不选复制逻辑 — §1.0 原則 6 (通解)
+
+### Test coverage
+
+24 new tests:
+- Concrete projection (4): 非泛型上下文
+- Generic projection (5): <C as Container>::Item 在泛型函数
+- Self::Item in trait (3): 回归测试
+- Multiple assoc types (2): 多关联类型
+- Edge cases (3): 空实现, usize, unit
+- Regression (3): 现有 trait 代码
+- Negative (4): 类型错误, 缺失 trait
+
+### Discovered new TD
+
+- **TD-ASSOC-TYPE-MULTI-RUNTIME** (P3, v0.16+): 多关联类型 trait + 泛型投影的
+  运行时 segfault (exit code 0 but no output). 根因可能是 method call 返回
+  类型解析在多 assoc type 场景下的 ambiguity.
+
+### §3.2 acceptance
+
+- cargo clean ✓
+- cargo build --release ✓ (48s)
+- cargo check ✓ (0 errors, 0 warnings)
+- cargo fmt --check ✓ (clean)
+- cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+- cargo test --release --lib ✓ (898 tests, 0 failures)
+- cargo test --release --test all_tests ✓ (5044 tests, 0 failures, 12 ignored)
+- Total: 5942 tests, 0 failures, 12 ignored (+24 new)
 
 ---
 

@@ -55,7 +55,12 @@ use crate::typeck::{TypeError, TypeckResults};
 /// Errors collected from one or more passes.
 // Stage 18.134 §13.4 J1-J6: extract sub-responsibilities from driver.rs
 mod driver_scan;
-mod projection_resolver;
+// Stage 146 (TD-TYPECK-ASSOC-TYPE-PROJECTION): Made `pub` so codegen can
+// call `resolve_projections_in_mir` after monomorphization (for generic
+// functions whose projections couldn't be resolved pre-mono).
+// Per §11 (allowed cross-stage access): projection resolution is a driver
+// post-typeck concern, called from both driver + codegen.
+pub mod projection_resolver;
 // Stage 18.138 §13.4 J1-J6: extract codegen prep from mod.rs
 mod driver_codegen_prep;
 // Stage 30.22 §13.4 J2/J6: split driver_validations by responsibility.

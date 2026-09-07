@@ -54,6 +54,18 @@ pub fn codegen_mono_functions(
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
     trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
+    // Stage 146 (TD-TYPECK-ASSOC-TYPE-PROJECTION): HIR for post-monomorphization
+    // projection resolution. After substitute_mir_body replaces Param(N) self
+    // types with concrete types, projections like `<C as Container>::Item`
+    // (now `<Holder as Container>::Item`) can be resolved to concrete types
+    // via the projection_resolver.
+    //
+    // Per §11 (allowed cross-stage access): projection resolution is a driver
+    // post-typeck concern — codegen calls the resolver, but the resolver reads
+    // HIR (allowed). This mirrors the driver's resolve_projections_in_mir call
+    // (compile_inner.rs:907), but runs AFTER monomorphization for generic
+    // functions (whose projections couldn't be resolved pre-monomorphization).
+    hir: Option<&crate::hir::HirCrate>,
 ) -> CodegenResult<()> {
     use crate::mir::collect_mono_items;
     use crate::mir::monomorphize::{build_mono_item_names, mono_item_name, MonoItem};
@@ -91,6 +103,29 @@ pub fn codegen_mono_functions(
 
             // Substitute Param types with concrete substs.
             let mut specialized_mir = substitute_mir_body(generic_mir, substs);
+
+            // Stage 146 (TD-TYPECK-ASSOC-TYPE-PROJECTION): Resolve associated
+            // type projections in the specialized MIR. After substitute_mir_body,
+            // projections like `<C as Container>::Item` (which had Param(C) self)
+            // now have concrete self types (e.g., `<Holder as Container>::Item`).
+            // The projection_resolver can now resolve them to the impl's concrete
+            // type (e.g., `i64`).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one resolver for all projections,
+            // called after monomorphization (vs the driver's pre-mono call which
+            // only handles concrete-self projections).
+            // Per §1.0 原則 9 (正确 > 妥协): this is the correct stage to resolve
+            // — post-substitution, pre-codegen. Deferring to codegen would
+            // produce `i32` fallback warnings (mir_type_to_emit_type on
+            // unresolved Projection).
+            // Per §1.0 原則 10 (唯一可信数据源): projection_resolver is the
+            // authoritative source; codegen never resolves projections itself.
+            if let Some(hir_crate) = hir {
+                crate::driver::projection_resolver::resolve_projections_in_mir(
+                    &mut specialized_mir,
+                    hir_crate,
+                );
+            }
 
             // Stage 68 (v0.8 — TD-IMPL-TRAIT-MONO-RESOLUTION): Re-resolve trait
             // method calls in the specialized MIR. After substitution, Param(N)

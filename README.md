@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.669.0 (v0.15 Stage 145 — TD-CODEGEN-CAST-UNSIGNED 完整修复: emit_cast 添加 src_signed 参数, u8/u16/u32/u64/usize as i64 现在用 zext (零扩展) 而非 sext (符号扩展); 5918 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.670.0 (v0.15 Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复: 泛型上下文中的关联类型投影解析; unify.rs 添加 Projection 分支 + codegen post-mono resolver; 5942 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 145 COMPLETE (TD-CODEGEN-CAST-UNSIGNED)**. 5918 tests (898 lib + 5020 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 145 修复 emit_cast signedness — b'\xFF' as i64 现在返回 255 (之前 -1). 副作用: bool as i64 返回 1 (正确 Rust 语义). 26 tests. |
+| **Status** | ✅ **v0.15 Stage 146 COMPLETE (TD-TYPECK-ASSOC-TYPE-PROJECTION)**. 5942 tests (898 lib + 5044 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 146 修复泛型关联类型投影 — <C as Container>::Item 在泛型函数中正确解析. 24 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

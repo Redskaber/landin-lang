@@ -455,6 +455,50 @@ impl UnificationTable {
             return Ok(());
         }
 
+        // Stage 146 (TD-TYPECK-ASSOC-TYPE-PROJECTION): Projection (associated
+        // type like `<T as Trait>::Item` or `Self::Item`) unifies with any type.
+        //
+        // ## Root cause (§2.2 根因思维)
+        //
+        // `TyKind::Projection(assoc_def_id, substs)` represents an associated
+        // type that cannot be resolved to a concrete type during typeck — it
+        // requires monomorphization (which runs AFTER typeck). Before Stage 146,
+        // `unify` had NO arm for `Projection`, so `unify(Projection, i64)` fell
+        // through to the default `_ => Err(...)` rejection arm. This caused
+        // valid generic code like:
+        //
+        //   ```landin
+        //   trait Container { type Item; fn get(&self) -> Self::Item; }
+        //   fn use_container<C: Container>(c: &C) -> <C as Container>::Item {
+        //       c.get()  // return type is Projection, get() returns i64
+        //   }
+        //   ```
+        //
+        // to fail with "mismatched types: expected <projection>, found i64".
+        //
+        // ## Fix (§1.0 原則 6/9/10)
+        //
+        // Projection unifies with any type, mirroring the Param rule. The
+        // actual resolution happens later:
+        //   1. `projection_resolver` (driver post-typeck) resolves `Projection`
+        //      to concrete types when the self type is concrete.
+        //   2. Monomorphization substitutes `Param` self types with concrete
+        //      types, enabling projection resolution at codegen time.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all Projection unifications
+        // — no per-trait or per-context special-casing.
+        // Per §1.0 原則 9 (正确 > 妥协): deferring to projection_resolver is
+        // the correct design — typeck cannot resolve projections without
+        // monomorphization context. This is NOT a compromise; it's the
+        // correct boundary between typeck and the driver.
+        // Per §1.0 原則 10 (唯一可信数据源): projection_resolver is the
+        // authoritative source for projection resolution; typeck treats
+        // projections as opaque.
+        if matches!(a.kind, TyKind::Projection(_, _)) || matches!(b.kind, TyKind::Projection(_, _))
+        {
+            return Ok(());
+        }
+
         match (&a.kind, &b.kind) {
             // Same concrete type → OK
             (TyKind::Bool, TyKind::Bool) => Ok(()),

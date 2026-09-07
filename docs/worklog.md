@@ -45157,3 +45157,56 @@ Stage Summary:
 - 下一步 (MUV): Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION (解锁 Iterator trait)
 - v0.669.0
 
+
+---
+Task ID: stage146-td-typeck-assoc-type-projection-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复. v0.669.0 → v0.670.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 145 baseline (5918 tests, 0 failures)
+- §13.1 设计对齐: 查 docs/lang-design/03-type-system.md + projection_resolver.rs + typeck/unify.rs
+- 根因分析 (§2.2):
+  - 根因 1 (typeck): unify.rs 的 unify_resolved 没有 TyKind::Projection 分支 → unify(Projection, i64) 失败
+  - 根因 2 (codegen): projection_resolver 只在 driver post-typeck 调用 (mono 前), 不在 codegen post-mono 调用
+- MUV-1: unify.rs 添加 Projection 分支 — Projection 与任何类型 unify 成功 (§1.0 原則 6/9/10)
+  - 类似 Param 规则: Projection 是 "unresolved, to be resolved later by projection_resolver"
+- MUV-2: codegen/function.rs codegen_mono_functions 添加 hir 参数 + post-mono resolver 调用
+  - substitute_mir_body 后, Param(C) → Adt(Holder), projection_resolver 可解析
+  - §11 (allowed cross-stage access): codegen 调用 driver 的 resolver
+- MUV-3: driver/mod.rs projection_resolver 改为 pub mod (codegen 需要访问)
+- MUV-4: codegen/pipeline.rs 传递 result.hir.as_ref() 给 codegen_mono_functions
+- MUV-5: 编写 tests/v0/stage146/plan/assoc_type_tests.rs — 24 tests
+  - Concrete projection (4): 非泛型上下文
+  - Generic projection (5): <C as Container>::Item 在泛型函数
+  - Self::Item in trait (3): 回归测试
+  - Multiple assoc types (2): 多关联类型
+  - Edge cases (3): 空实现, usize, unit
+  - Regression (3): 现有 trait 代码
+  - Negative (4): 类型错误, 缺失 trait
+  - 发现新 TD: TD-ASSOC-TYPE-MULTI-RUNTIME (多关联类型 + 泛型运行时 segfault)
+- MUV-6 §3.2 全套验收通过:
+  - cargo clean ✓
+  - cargo build --release ✓ (48s)
+  - cargo check ✓ (0 errors, 0 warnings)
+  - cargo fmt --check ✓ (clean)
+  - cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+  - cargo test --release --lib ✓ (898 tests, 0 failures)
+  - cargo test --release --test all_tests ✓ (5044 tests, 0 failures, 12 ignored)
+  - Total: 5942 tests, 0 failures, 12 ignored (+24 new)
+
+Stage Summary:
+- Stage 146 PASSED — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复
+- 0 regression (5918 → 5942 tests, +24 new)
+- 关键修复: <C as Container>::Item 在泛型函数中现在正确解析
+- 决策点:
+  - 选 Projection unify any type 不选 resolve-in-typeck — §1.0 原則 9 (typeck 无 mono context)
+  - 选 codegen post-mono resolver 不选 driver pre-mono-only — §1.0 原則 6 (通解)
+  - 选传递 HIR 给 codegen 不选复制 resolver — §11 (allowed cross-stage)
+  - 选 projection_resolver pub 不选复制逻辑 — §1.0 原則 6 (通解)
+- 裁剪点: L3 任务, 单轮收敛
+- 发现新 TD: TD-ASSOC-TYPE-MULTI-RUNTIME (P3, v0.16+) — 多关联类型 + 泛型运行时 segfault
+- 下一步 (MUV): Stage 147 — TD-STDLIB-ITERATOR (本阶段解锁 Iterator trait) 或
+  TD-TYPECK-LIFETIME-ELISION 或 TD-ASSOC-TYPE-MULTI-RUNTIME
+- v0.670.0
+

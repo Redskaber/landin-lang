@@ -263,6 +263,8 @@ pub fn run_codegen_pipeline(
     // (data, no HIR). Stage 18.104 (S5 fix): type_name_by_def_id pre-computed.
     // Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
     // Per §2.0 原則 9 "正确 > 妥协": generic calls now emit specialized fns.
+    // Stage 146 (TD-TYPECK-ASSOC-TYPE-PROJECTION): Pass HIR for post-mono
+    // projection resolution. Per §11 (allowed cross-stage access).
     codegen_mono_functions(
         &result.mirs,
         &result.type_name_by_def_id,
@@ -272,6 +274,8 @@ pub fn run_codegen_pipeline(
         &mono_layouts,
         emitter,
         &result.trait_method_map,
+        // Stage 146: Pass HIR for projection resolution after monomorphization.
+        result.hir.as_ref(),
     )?;
 
     // 6. Synthesized closure function bodies
