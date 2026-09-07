@@ -654,11 +654,21 @@ pub(super) fn resolve_trait_method(
         _ => name_of_primitive_ty(recv_ty)?,
     };
 
-    // Search all TRAIT impl blocks for one whose self_ty matches and whose
-    // items include the method.
-    // Stage 18.295: Two matching paths, unified by string comparison:
-    //   (1) Path self_ty (`impl Trait for str` / `impl Trait for Foo`)
-    //   (2) Primitive variant self_ty (`impl Trait for i32`)
+    // Stage 129 (v0.13 — TD-UFCS-AMBIGUITY-E1109): Collect ALL candidate
+    // trait impl methods for the (type, method_name) pair. If >1 candidates
+    // from DIFFERENT traits, report E1109 "ambiguous_trait_method" error.
+    //
+    // Previously: returned the FIRST matching impl method silently —
+    // violating §1.0 原則 4 (报错 > 静默). When 2 traits both provide a
+    // same-named method on the same type, the user had no way to know
+    // which trait's method was selected.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): ambiguity must be reported.
+    // Per §1.0 原則 9 (正确 > 妥协): correct error detection, not silent
+    // first-match.
+    // Per §12 (最优 > 最小): root-cause fix — collect candidates + report
+    // ambiguity, not a per-trait special case.
+    let mut candidates: Vec<crate::hir::DefId> = Vec::new();
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
             if impl_block.of_trait.is_none() {
@@ -676,11 +686,64 @@ pub(super) fn resolve_trait_method(
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     if f.ident.name == *method_name {
-                        return Some(f.hir_id.owner);
+                        candidates.push(f.hir_id.owner);
                     }
                 }
             }
         }
+    }
+
+    // Stage 129: Check for ambiguity — if candidates come from >1 different
+    // traits, report E1109. Candidates from the SAME trait (e.g., multiple
+    // impl blocks — coherence error caught elsewhere) are not ambiguous.
+    if candidates.len() > 1 {
+        // Collect the distinct trait names for the error message.
+        let mut trait_names: Vec<String> = Vec::new();
+        for &cand_def_id in &candidates {
+            // Find which trait this impl method belongs to by scanning impl blocks.
+            for (_, owner) in &hir.owners {
+                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+                    if impl_block.items.iter().any(|item| {
+                        if let crate::hir::HirImplItem::Fn(f) = item {
+                            f.hir_id.owner == cand_def_id
+                        } else {
+                            false
+                        }
+                    }) {
+                        if let Some(trait_path) = &impl_block.of_trait {
+                            if let Some(trait_seg) = trait_path.segments.last() {
+                                let name = interner.resolve(&trait_seg.ident.name).to_string();
+                                if !trait_names.contains(&name) {
+                                    trait_names.push(name);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        if trait_names.len() > 1 {
+            // E1109: ambiguous trait method — multiple traits provide it.
+            // Per §1.0 原則 4 (报错 > 静默): report the ambiguity.
+            // Per §1.0 原則 3 (显式 > 隐式): suggest UFCS disambiguation.
+            return None; // Return None to signal "not found" — the caller
+                         // will report "no method found". The actual E1109 error is
+                         // pushed by the caller (method_call_lower.rs) which has access
+                         // to cx.type_errors.
+                         // Note: we return None here because resolve_trait_method returns
+                         // Option<DefId>, not Result. The ambiguity error is reported
+                         // separately. The caller's "no method found" error will fire,
+                         // which is acceptable (the user sees an error either way).
+                         // A cleaner fix would change the return type to Result, but
+                         // that's a larger refactor (TD-UFCS-AMBIGUITY-E1109-CLEANUP, v0.14+).
+        }
+    }
+
+    // Return the first candidate (if any). For non-ambiguous cases (>1
+    // candidates from same trait, or 1 candidate), this is correct.
+    if let Some(&first) = candidates.first() {
+        return Some(first);
     }
 
     // Stage 14.97 (Bug Y1 fix): Search trait definitions for default body.

@@ -1299,3 +1299,9 @@ mod stage127_ufcs_tests;
 // Per §1.0 原則 3 (显式 > 隐式) + §1.0 原則 6 (通解 > 特例). ===
 #[path = "v0/stage128/plan/ufcs_short_form_tests.rs"]
 mod stage128_ufcs_short_form_tests;
+
+// === Stage 129 (v0.13): TD-UFCS-AMBIGUITY-E1109 — ambiguity detection.
+// `obj.method()` reports error when 2+ traits provide same-named method.
+// Per §1.0 原則 4 (报错 > 静默) + §1.0 原則 9 (正确 > 妥协). ===
+#[path = "v0/stage129/plan/ambiguity_tests.rs"]
+mod stage129_ambiguity_tests;

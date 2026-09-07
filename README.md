@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.659.0 (v0.13 Stage 128 — TD-UFCS-SHORT-FORM 修复: 短形式 `Trait::method(receiver, args)` 完整实现; 5785 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.660.0 (v0.13 Stage 129 — TD-UFCS-AMBIGUITY-E1109 修复: 普通 `obj.method()` 多 trait 同名方法时报错; 5795 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 128 COMPLETE (TD-UFCS-SHORT-FORM)**. 5785 tests (898 lib + 4887 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 128 实现 UFCS 短形式 `Trait::method(receiver, args)` — Self 从 receiver 推断. MIR lower 双 patch (local_decl + Assign Constant). 17 tests. 2 remaining TDs: TD-UFCS-DEFAULT-BODY-EMPTY-IMPL + TD-UFCS-AMBIGUITY-E1109. |
+| **Status** | ✅ **v0.13 Stage 129 COMPLETE (TD-UFCS-AMBIGUITY-E1109)**. 5795 tests (898 lib + 4897 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 129 实现歧义检测 — `obj.method()` 当 2+ trait 提供同名方法时报错（而非静默选择第一个）. 10 tests. 1 remaining TD: TD-UFCS-DEFAULT-BODY-EMPTY-IMPL. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

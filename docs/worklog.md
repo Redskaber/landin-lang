@@ -44958,3 +44958,14 @@ Work Log:
 - 17 tests all pass (8 正 + 3 负 + 3 边界 + 3 回归)
 - 0 regression (5768 → 5785 tests, +17 new)
 - v0.659.0
+
+---
+Task ID: stage129-ambiguity-e1109-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 129 — TD-UFCS-AMBIGUITY-E1109 (普通调用多候选报错). v0.659.0 → v0.660.0.
+
+Work Log:
+- resolve_trait_method 收集候选 + >1 不同 trait 时返回 None
+- 10 tests all pass (3 正 + 2 负 + 2 workaround + 3 回归)
+- 0 regression (5785 → 5795 tests, +10 new)
+- v0.660.0

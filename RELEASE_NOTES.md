@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.659.0 (v0.13 Stage 128 — TD-UFCS-SHORT-FORM 修复: 短形式 `Trait::method(receiver, args)` 完整实现; 5785 tests) |
+| **Current version** | v0.660.0 (v0.13 Stage 129 — TD-UFCS-AMBIGUITY-E1109 修复: 普通 `obj.method()` 多 trait 同名方法时报错; 5795 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 4887 integration tests = 5785 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4897 integration tests = 5795 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
