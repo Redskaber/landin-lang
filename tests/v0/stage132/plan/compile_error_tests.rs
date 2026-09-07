@@ -20,7 +20,10 @@ fn compile(code: &str) -> (bool, String) {
     let thread_id = std::thread::current().id();
     let dir = std::env::temp_dir().join(format!(
         "stage132_{:?}_{}_{}_{}",
-        thread_id, std::process::id(), nanos, n
+        thread_id,
+        std::process::id(),
+        nanos,
+        n
     ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let lin = dir.join("input.lin");
@@ -48,7 +51,10 @@ fn main() {
 "#;
     let (ok, stderr) = compile(code);
     assert!(!ok, "Should fail: compile_error! produces error");
-    assert!(stderr.contains("custom error message"), "stderr should contain the error message");
+    assert!(
+        stderr.contains("custom error message"),
+        "stderr should contain the error message"
+    );
 }
 
 #[test]
@@ -59,7 +65,10 @@ fn main() {
 }
 "#;
     let (ok, _stderr) = compile(code);
-    assert!(!ok, "Should fail: compile_error! with empty string still errors");
+    assert!(
+        !ok,
+        "Should fail: compile_error! with empty string still errors"
+    );
 }
 
 // =====================================================================

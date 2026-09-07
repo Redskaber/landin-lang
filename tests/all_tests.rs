@@ -1321,3 +1321,8 @@ mod stage131_env_macros_tests;
 // Compile-time error reporting. Per §1.0 原則 4 (报错 > 静默). ===
 #[path = "v0/stage132/plan/compile_error_tests.rs"]
 mod stage132_compile_error_tests;
+
+// === Stage 133 (v0.14): TD-MATCHES-MACRO — matches!.
+// Compile-time expansion to match expr { pat => true, _ => false }. ===
+#[path = "v0/stage133/plan/matches_macro_tests.rs"]
+mod stage133_matches_macro_tests;

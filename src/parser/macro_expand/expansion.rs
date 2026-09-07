@@ -292,6 +292,15 @@ fn expand_compile_time_macro_with_source(
         // Per §1.0 原則 9 (正确 > 妥协): compile-time error, not runtime.
         // Per §12 (最优 > 最小): root-cause fix — report at compile time.
         "compile_error" => Some(expand_compile_error_macro(input, interner, call_span)),
+        // Stage 133 (v0.14 — TD-MATCHES-MACRO): Compile-time matches! macro.
+        //
+        // Per Rust: `matches!(expr, pattern)` expands to
+        // `match expr { pattern => true, _ => false }`.
+        //
+        // Per §1.0 原則 6 (通解 > 特例): one compile-time expansion path.
+        // Per §1.0 原則 9 (正确 > 妥协): correct expansion, not runtime function.
+        // Per §12 (最优 > 最小): root-cause fix — expand to match expression.
+        "matches" => Some(expand_matches_macro(input, interner)),
         _ => None,
     }
 }
@@ -680,4 +689,90 @@ fn expand_compile_error_macro(
     // The compilation will fail because the expected expression is missing,
     // or the empty expansion will cause a parse error downstream.
     Vec::new()
+}
+
+/// Stage 133 (v0.14 — TD-MATCHES-MACROS): `matches!(expr, pattern)`
+/// → `match expr { pattern => true, _ => false }`
+///
+/// Per Rust: `matches!` is a convenience macro that returns true if the
+/// expression matches the given pattern, false otherwise.
+///
+/// Per §1.0 原則 6 (通解 > 特例): one expansion path for all patterns.
+/// Per §1.0 原則 9 (正确 > 妥协): expand to match expression, not runtime fn.
+/// Per §12 (最优 > 最小): root-cause fix — expand to match.
+fn expand_matches_macro(input: &[Token], interner: &mut Rodeo) -> Vec<Token> {
+    // Input tokens: `expr , pattern...`
+    // Split at the first comma — everything before is the expr, everything
+    // after is the pattern.
+    let comma_idx = input
+        .iter()
+        .position(|t| matches!(t.kind, TokenKind::Comma));
+
+    let (expr_tokens, pattern_tokens) = match comma_idx {
+        Some(idx) => {
+            let expr = &input[..idx];
+            let pat = &input[idx + 1..];
+            (expr, pat)
+        }
+        None => {
+            // No comma — just use all tokens as expr, empty pattern.
+            eprintln!("warning: matches! requires a comma-separated expr and pattern");
+            return vec![];
+        }
+    };
+
+    // Build: match expr { pattern => true , _ => false }
+    // Token stream: match (expr...) { (pattern...) => true , _ => false }
+    let underscore_sym = interner.get_or_intern("_");
+
+    let mut out = Vec::new();
+
+    // match (KwMatch, not Ident)
+    out.push(Token {
+        kind: TokenKind::KwMatch,
+        span: crate::session::Span::DUMMY,
+    });
+    // expr tokens
+    out.extend(expr_tokens.iter().cloned());
+    // {
+    out.push(Token {
+        kind: TokenKind::LBrace,
+        span: crate::session::Span::DUMMY,
+    });
+    // pattern tokens
+    out.extend(pattern_tokens.iter().cloned());
+    // => true
+    out.push(Token {
+        kind: TokenKind::FatArrow,
+        span: crate::session::Span::DUMMY,
+    });
+    out.push(Token {
+        kind: TokenKind::KwTrue,
+        span: crate::session::Span::DUMMY,
+    });
+    // ,
+    out.push(Token {
+        kind: TokenKind::Comma,
+        span: crate::session::Span::DUMMY,
+    });
+    // _ => false
+    out.push(Token {
+        kind: TokenKind::Ident(underscore_sym),
+        span: crate::session::Span::DUMMY,
+    });
+    out.push(Token {
+        kind: TokenKind::FatArrow,
+        span: crate::session::Span::DUMMY,
+    });
+    out.push(Token {
+        kind: TokenKind::KwFalse,
+        span: crate::session::Span::DUMMY,
+    });
+    // }
+    out.push(Token {
+        kind: TokenKind::RBrace,
+        span: crate::session::Span::DUMMY,
+    });
+
+    out
 }

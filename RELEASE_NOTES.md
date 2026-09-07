@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.663.0 (v0.14 Stage 132 — TD-COMPILE-ERROR-MACRO 修复: compile_error! 编译期宏; 5807 tests) |
+| **Current version** | v0.664.0 (v0.14 Stage 133 — TD-MATCHES-MACRO 修复: matches! 编译期宏展开; 5812 tests) |
 | **Date** | 2026-09-07 |
 | **Test count** | 898 lib tests + 4897 integration tests = 5795 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
