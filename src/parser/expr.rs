@@ -695,6 +695,27 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Lit(LitKind::Str(sym), span)
             }
+            // Stage 144 (TD-LEX-RAW-STRING): raw string literals (r"..." /
+            // r#"..."#) — semantically equivalent to regular StrLit (both
+            // produce `&'static str`). The lexer (string.rs::lex_raw_string
+            // + lex_raw_string_hash) already handles the r/r# prefix and
+            // hash-count matching; the parser only needs to map the token to
+            // the same AST node as StrLit.
+            //
+            // Per Rust Reference §4.2.4: "A raw string literal ... does not
+            // process any escapes. It is the same as a regular string literal
+            // except that backslashes have no special meaning."
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one `LitKind::Str` for both
+            // regular and raw strings — no new AST/HIR variant needed.
+            // Per §1.0 原則 4 (报错 > 静默): previously the parser fell
+            // through to the "could not parse expression" error, hiding the
+            // fact that the lexer DID recognize the token. Now it parses
+            // correctly.
+            TokenKind::RawStrLit(sym, _hashes) => {
+                self.bump();
+                Expr::Lit(LitKind::Str(sym), span)
+            }
             TokenKind::ByteLit(b) => {
                 self.bump();
                 Expr::Lit(LitKind::Byte(b), span)

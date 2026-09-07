@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.668.0 (v0.15 Stage 143 — TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC 完整修复: String::starts_with/ends_with/contains + str::starts_with/ends_with/contains + RawPtr 索引 codegen 修复; 5857 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.669.0 (v0.15 Stage 145 — TD-CODEGEN-CAST-UNSIGNED 完整修复: emit_cast 添加 src_signed 参数, u8/u16/u32/u64/usize as i64 现在用 zext (零扩展) 而非 sext (符号扩展); 5918 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 143 COMPLETE (TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC)**. 5857 tests (898 lib + 4959 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 143 完整修复 RawPtr 索引 codegen 链 + 添加 String/str 的 starts_with/ends_with/contains. 35 tests. |
+| **Status** | ✅ **v0.15 Stage 145 COMPLETE (TD-CODEGEN-CAST-UNSIGNED)**. 5918 tests (898 lib + 5020 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 145 修复 emit_cast signedness — b'\xFF' as i64 现在返回 255 (之前 -1). 副作用: bool as i64 返回 1 (正确 Rust 语义). 26 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

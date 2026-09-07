@@ -42,7 +42,7 @@ classDiagram
         +emit_and(ty, lhs, rhs) EmitValue
         +emit_or(ty, lhs, rhs) EmitValue
         +emit_zext(src, dst, val) EmitValue
-        +emit_cast(src, dst, val) EmitValue
+        +emit_cast(src, dst, src_signed, val) EmitValue
         +emit_select(ty, cond, t, f) EmitValue
         +emit_checked_binop(op, ty, lhs, rhs) EmitValue
     }

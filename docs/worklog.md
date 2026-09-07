@@ -45036,3 +45036,124 @@ Stage Summary:
 - 下一步 (MUV): Stage 144 — TD-TYPECK-ASSOC-TYPE-PROJECTION (解锁 Iterator trait) 或其他 v0.15+ TD
 - v0.668.0
 
+
+---
+Task ID: stage144-td-lex-raw-string-byte-literal-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 144 — TD-LEX-RAW-STRING + TD-LEX-BYTE-LITERAL 完整修复. v0.668.0 (无版本变更).
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 143 baseline (5857 tests, 0 failures)
+- §13.1 设计对齐: 查 docs/lang-design/02-grammar.md §1.7 (Char + string) + lexer/string.rs
+- 发现 TD 描述与实际不符:
+  - TD-LEX-RAW-STRING: Lexer 已实现 (Stage 6.13 lex_raw_string + lex_raw_string_hash)
+    Parser 缺 RawStrLit arm
+  - TD-LEX-BYTE-LITERAL: 全链路已实现 (lex + parse + typeck + codegen)
+    lex_byte 缺少 closing `'` 错误 push (§1.0 原則 4 violation)
+- MUV-1: parser/expr.rs 添加 RawStrLit arm:
+  TokenKind::RawStrLit(sym, _hashes) => Expr::Lit(LitKind::Str(sym), span)
+  §1.0 原則 6 (通解 > 特解): raw/regular string 共用 LitKind::Str
+- MUV-2: lex_byte 添加未闭合错误 push (§1.0 原則 4 报错 > 静默):
+  if self.peek() == Some(b'\'') { bump } else { push LexError }
+- MUV-3 测试: tests/v0/stage144/plan/lex_literals_tests.rs — 35 tests
+  - Raw string basic (4) + hashes (4) = 8 positive
+  - Byte literal (4) + byte string (3) + raw byte string (3) = 10 positive
+  - Edge cases (5) + integration (3) = 8 positive
+  - Regression (4) + Negative (5)
+  - 1:3+ 正负比例 (§9.4.3)
+- 发现新 TD: TD-CODEGEN-CAST-UNSIGNED — b'\xFF' as i64 返回 -1 而非 255
+  (codegen emit_cast 使用 is_signed=1, 对所有整数按有符号处理)
+  本阶段用 0x7F (127) 绕过, 待后续 stage 修复
+- MUV-4 §3.2 全套验收通过:
+  - cargo clean ✓
+  - cargo build --release ✓ (49s)
+  - cargo check ✓ (0 errors, 0 warnings)
+  - cargo fmt --check ✓ (clean)
+  - cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+  - cargo test --release --lib ✓ (898 tests, 0 failures)
+  - cargo test --release --test all_tests ✓ (4994 tests, 0 failures, 12 ignored)
+  - Total: 5892 tests, 0 failures, 12 ignored (+35 new)
+
+Stage Summary:
+- Stage 144 PASSED — TD-LEX-RAW-STRING + TD-LEX-BYTE-LITERAL 完整修复
+- 0 regression (5857 → 5892 tests, +35 new)
+- 决策点:
+  - 选 RawStrLit → LitKind::Str 不选新增 AST 节点 — §1.0 原則 6
+  - 选 push lex error 不选静默接受 — §1.0 原則 4/9
+  - 选 0x7F 绕过 TD-CODEGEN-CAST-UNSIGNED 不选强修 — 范围控制
+- 裁剪点: L2 任务, 跳过跨阶段深度审查 (§14.6)
+- 下一步 (MUV): Stage 145 — TD-CODEGEN-CAST-UNSIGNED (本阶段发现) 或
+  TD-TYPECK-ASSOC-TYPE-PROJECTION (解锁 Iterator trait) 或
+  TD-LEX-DOC-COMMENT (P4, v0.16+)
+- v0.668.0 (不变 — 无版本变更, TD 实际范围比描述小)
+
+
+---
+Task ID: stage145-td-codegen-cast-unsigned-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 145 — TD-CODEGEN-CAST-UNSIGNED 完整修复. v0.668.0 → v0.669.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 144 baseline (5892 tests, 0 failures)
+- §13.1 设计对齐: 查 docs/lang-design/07-codegen.md (cast 规范) + EmitType 枚举
+- 根因分析 (§2.2): EmitType 只携带 integer width (I8/I16/I32/I64), 不携带 signedness
+  → emit_cast 硬编码 is_signed=1 → u8 as i64 sign-extends (b'\xFF' → -1, not 255)
+- 架构选项分析: Option A (U8 variants, ~500 LOC) vs B (src_signed param, ~30 LOC) vs C (bypass, §6 violation)
+- 决策: 选 Option B (src_signed: bool) — §1.0 原則 6 (通解 > 特解) + §12 (最优 > 最小)
+- MUV-1: 修改 ArithmeticEmitter trait — emit_cast 添加 src_signed: bool 参数
+  - §1.0 原則 5 (去除兼容思维): 替换旧签名, 不保留
+  - §1.0 原則 6 (通解 > 特解): 一个 emit_cast 处理 signed + unsigned
+  - §1.0 原則 10 (唯一可信数据源): caller 从 MIR Ty 查询 signedness
+- MUV-2: LLVMSysEmitter::emit_cast 用 src_signed 选择 LLVMBuildIntCast2(is_signed)
+- MUV-3: TextEmitter::emit_cast 用 src_signed 选择 sext (signed) vs zext (unsigned)
+- MUV-4: 添加 is_mir_type_signed + operand_is_signed helpers 到 mir_translation/types.rs
+  - is_mir_type_signed: matches!(ty.kind, TyKind::Int(_)) — true for Int, false for Uint/Bool
+  - operand_is_signed: 查询 Operand::Constant.c.ty 或 Operand::Copy/Move.local_decls
+- MUV-4 续: 更新 7 个调用点:
+  - rvalue.rs:777 (Rvalue::Cast): operand_is_signed(mir, op)
+  - rvalue.rs:238-241 (float bitwise): true (irrelevant)
+  - operand.rs:364 (constant cast): matches!(&c.val, ConstVal::Int(_))
+  - statement.rs:122 (i32→i1 trunc): true (irrelevant for narrowing)
+  - statement.rs:558 (println int): true (signed path, zext handled by emit_zext)
+  - statement.rs:574 (float→double): true (irrelevant)
+  - statement.rs:609 (ptr deref→int): true (documented fallback)
+  - places.rs:1429 (OOB bounds): query mir.local_decls[idx.0].ty
+- 重要副作用: bool as i64 行为修正
+  - 之前: bool (not Int) → is_signed=1 hardcoded → sext → true (i1=1) → -1 (i64)
+  - 现在: bool (not Int) → is_mir_type_signed=false → zext → true → 1
+  - 这是正确的 Rust 语义 (true as i64 == 1)
+  - Stage 143/144 测试期望 -1 是 bug, 本阶段更新为 1
+- MUV-5: 编写 tests/v0/stage145/plan/cast_unsigned_tests.rs — 26 tests
+  - Unsigned widening (6): u8/u16/u32/usize → i64
+  - Signed widening (4): i8/i32 → i64 (positive + negative)
+  - Bool as i64 (2): true → 1, false → 0
+  - Narrowing (2): i64 → i8, u64 → u8
+  - Edge cases (4): MAX/MIN, chained casts
+  - Regression (3): existing patterns
+  - Text IR (3): zext vs sext verification
+  - Negative (2): type error cases
+- MUV-6 §3.2 全套验收通过:
+  - cargo clean ✓
+  - cargo build --release ✓ (49s)
+  - cargo check ✓ (0 errors, 0 warnings)
+  - cargo fmt --check ✓ (clean)
+  - cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+  - cargo test --release --lib ✓ (898 tests, 0 failures)
+  - cargo test --release --test all_tests ✓ (5020 tests, 0 failures, 12 ignored)
+  - Total: 5918 tests, 0 failures, 12 ignored (+26 new)
+
+Stage Summary:
+- Stage 145 PASSED — TD-CODEGEN-CAST-UNSIGNED 完整修复
+- 0 regression (5892 → 5918 tests, +26 new)
+- 关键修复: b'\xFF' as i64 现在返回 255 (之前 -1)
+- 副作用修复: bool as i64 现在返回 1 (之前 -1) — 正确的 Rust 语义
+- 决策点:
+  - 选 src_signed: bool 参数 不选 U8 variants — §1.0 原則 6/12 (30 LOC vs 500 LOC)
+  - 选 caller 查询 MIR 不选 emitter 推断 — §1.0 原則 10
+  - 选 bool 参数 不选 typed enum — 简洁性
+  - 选修改 trait 签名 不选新增方法 — §1.0 原則 5/6
+  - 选更新 Stage 143/144 测试期望 — 修正之前的 bug 期望
+- 裁剪点: L3 任务, 单轮收敛
+- 下一步 (MUV): Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION (解锁 Iterator trait)
+- v0.669.0
+

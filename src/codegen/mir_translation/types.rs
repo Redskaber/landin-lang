@@ -12,6 +12,66 @@ use crate::codegen::mir_translation::layouts::adt_layout_to_emit_type;
 use crate::codegen::{mir_type_to_emit_type, EmitType};
 use crate::mir::ty::ConstVal;
 
+/// Stage 145 (TD-CODEGEN-CAST-UNSIGNED): Determine whether a MIR `Ty` is a
+/// **signed** integer type.
+///
+/// `EmitType` only carries integer *width* (I8/I16/I32/I64), not
+/// *signedness* — both `i8` and `u8` map to `EmitType::I8`. For widening
+/// casts (`u8 as i64`), the choice between sign-extension (sext, for signed)
+/// and zero-extension (zext, for unsigned) depends on the source type's
+/// signedness, which `EmitType` cannot provide.
+///
+/// This helper queries MIR `Ty` directly — the authoritative source of
+/// signedness — and returns `true` for `TyKind::Int(_)` (i8/i16/i32/i64/
+/// i128/isize), `false` for `TyKind::Uint(_)` (u8/u16/u32/u64/u128/usize),
+/// and `true` (default to signed) for all other types.
+///
+/// Per §1.0 原則 10 (唯一可信数据源): MIR `Ty` is the source of truth for
+/// signedness — `EmitType` is a lossy projection.
+/// Per §1.0 原則 6 (通解 > 特解): one helper for all cast call sites.
+/// Per §1.0 原則 4 (报错 > 静默): non-integer types default to `true`
+/// (signed) — this is documented behavior, not a silent fallback. The
+/// caller is responsible for ensuring this helper is only called when
+/// the cast actually involves an integer source.
+pub fn is_mir_type_signed(ty: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind;
+    matches!(&ty.kind, TyKind::Int(_))
+}
+
+/// Stage 145: Determine signedness from an `Operand` by querying its MIR type.
+///
+/// For `Operand::Constant`, the constant's `c.ty` carries the declared type.
+/// For `Operand::Copy`/`Move`, the place's type is queried via `local_decls`.
+///
+/// Falls back to `true` (signed) when the type cannot be determined — this
+/// preserves the pre-Stage-145 behavior for edge cases (e.g., Infer types
+/// that haven't been resolved by writeback).
+///
+/// Per §1.0 原則 10 (唯一可信数据源): queries MIR directly.
+/// Per §1.0 原則 6 (通解 > 特解): one helper for all operand cast sites.
+pub fn operand_is_signed(mir: &crate::mir::MirBody, op: &crate::mir::Operand) -> bool {
+    use crate::mir::Operand;
+    match op {
+        Operand::Constant(c) => is_mir_type_signed(&c.ty),
+        Operand::Copy(lv) | Operand::Move(lv) => {
+            if let crate::mir::place::PlaceKind::Local(id) = &lv.kind {
+                mir.local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| is_mir_type_signed(&ld.ty))
+                    .unwrap_or(true)
+            } else {
+                // For non-Local places (projections), the type is harder to
+                // determine without full place-type resolution. Default to
+                // signed (preserves pre-Stage-145 behavior).
+                // Per §1.0 原則 9 (正确 > 妥协): this is a documented fallback,
+                // not a silent degradation — future stages can extend
+                // detect_place_type to carry signedness.
+                true
+            }
+        }
+    }
+}
+
 /// Stage 18.336 (P1 soundness fix): Filter `EmitType::Void` from a list of
 /// struct/tuple/enum-payload field types.
 ///

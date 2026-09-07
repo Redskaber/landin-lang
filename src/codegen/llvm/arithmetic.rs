@@ -248,7 +248,13 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         }
     }
 
-    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
+    fn emit_cast(
+        &mut self,
+        src: &EmitType,
+        dst: &EmitType,
+        src_signed: bool,
+        val: &EmitValue,
+    ) -> EmitValue {
         // Same-typecast short-circuit (mirrors TextEmitter behaviour).
         if src == dst {
             return val.clone();
@@ -267,20 +273,36 @@ impl ArithmeticEmitter for LLVMSysEmitter {
             // "Invalid bitcast" LLVM verification errors.
             //
             // Fix: for ANY integer-to-integer cast, use `LLVMBuildIntCast2`
-            // with `is_signed=1` (Landin integers default to signed). This
-            // handles zext (wider), sext (wider, signed), and trunc (narrower)
-            // automatically based on source/destination widths.
+            // which handles zext (wider, unsigned), sext (wider, signed), and
+            // trunc (narrower) automatically based on source/destination widths.
             //
-            // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs
-            // instead of enumerating each combination.
+            // Stage 145 (TD-CODEGEN-CAST-UNSIGNED): The `is_signed` parameter
+            // is now sourced from the caller (which has access to MIR `Ty`'s
+            // signedness — the source of truth). Previously this was hardcoded
+            // to `1` (signed), which caused `u8 as i64` to sign-extend (e.g.,
+            // `b'\xFF' as i64` returned -1 instead of 255).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one `emit_cast` for both signed
+            // and unsigned sources — `LLVMBuildIntCast2`'s `is_signed`
+            // parameter selects the correct extension semantics.
+            // Per §1.0 原則 10 (唯一可信数据源): `src_signed` comes from
+            // MIR `TyKind::Int` (true) vs `TyKind::Uint` (false).
+            // Per §1.0 原則 9 (正确 > 妥协): fix root cause (pass signedness),
+            // not symptom (add post-cast mask).
             let src_kind = LLVMGetTypeKind(self.llvm_type(src));
             let dst_kind = LLVMGetTypeKind(dst_ty);
             let r = if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
                 && dst_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
             {
                 // Integer-to-integer: use IntCast2 (handles zext/sext/trunc).
-                // Sign=1 means signed (SExt for widening, Trunc for narrowing).
-                LLVMBuildIntCast2(self.builder, v, dst_ty, 1, name_c.as_ptr())
+                // is_signed=1 → SExt for widening; is_signed=0 → ZExt.
+                LLVMBuildIntCast2(
+                    self.builder,
+                    v,
+                    dst_ty,
+                    if src_signed { 1 } else { 0 },
+                    name_c.as_ptr(),
+                )
             } else if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
                 && dst_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind
             {

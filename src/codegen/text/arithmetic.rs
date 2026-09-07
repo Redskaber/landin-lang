@@ -141,7 +141,13 @@ impl ArithmeticEmitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
+    fn emit_cast(
+        &mut self,
+        src: &EmitType,
+        dst: &EmitType,
+        src_signed: bool,
+        val: &EmitValue,
+    ) -> EmitValue {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);
         let dst_str = emit_type_to_llvm_str(dst);
@@ -156,10 +162,19 @@ impl ArithmeticEmitter for TextEmitter {
         // width comparison:
         //   - src == dst width: bitcast (no-op, same size)
         //   - src < dst: zext (zero-extend, for unsigned) or sext (sign-extend,
-        //     for signed — Landin defaults to signed)
+        //     for signed) — chosen by `src_signed` parameter (Stage 145)
         //   - src > dst: trunc
         //
-        // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs.
+        // Stage 145 (TD-CODEGEN-CAST-UNSIGNED): `src_signed` parameter selects
+        // zext (unsigned source) vs sext (signed source) for widening casts.
+        // Previously this was always "sext" (Landin integers default to signed),
+        // which caused `u8 as i64` to sign-extend (e.g., `b'\xFF' as i64`
+        // produced -1 instead of 255).
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one `emit_cast` for both signed and
+        // unsigned sources — `src_signed` selects the extension op.
+        // Per §1.0 原則 10 (唯一可信数据源): `src_signed` comes from MIR
+        // `TyKind::Int` (true) vs `TyKind::Uint` (false).
         let is_int = |t: &EmitType| {
             matches!(
                 t,
@@ -188,7 +203,13 @@ impl ArithmeticEmitter for TextEmitter {
                 let sw = int_width(a);
                 let dw = int_width(b);
                 if sw < dw {
-                    "sext" // sign-extend (Landin integers default to signed)
+                    // Stage 145: widening — choose sext (signed) or zext (unsigned)
+                    // based on the source type's signedness from MIR.
+                    if src_signed {
+                        "sext"
+                    } else {
+                        "zext"
+                    }
                 } else if sw > dw {
                     "trunc"
                 } else {

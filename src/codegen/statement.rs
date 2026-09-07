@@ -119,7 +119,10 @@ pub(crate) fn codegen_statement(
                                     | BinOp::Gt
                                     | BinOp::Ge
                             ) {
-                                val = emitter.emit_cast(&EmitType::I32, &EmitType::I1, &val);
+                                // Stage 145: i32 → i1 truncation — src_signed
+                                // is irrelevant for narrowing (trunc doesn't
+                                // depend on signedness). Pass `true` (default).
+                                val = emitter.emit_cast(&EmitType::I32, &EmitType::I1, true, &val);
                             }
                         }
                     }
@@ -555,7 +558,8 @@ pub(crate) fn emit_printf_call(
                             let cast_val = if is_unsigned {
                                 emitter.emit_zext(&arg_ty, &EmitType::I64, &arg_val)
                             } else {
-                                emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val)
+                                // Stage 145: signed integer widening — src_signed=true
+                                emitter.emit_cast(&arg_ty, &EmitType::I64, true, &arg_val)
                             };
                             c_fmt.push_str("%ld");
                             c_arg_vals.push((EmitType::I64, cast_val));
@@ -566,8 +570,9 @@ pub(crate) fn emit_printf_call(
                     }
                     EmitType::F32 | EmitType::F64 => {
                         // Float → %f (cast to double via emit_cast)
+                        // Stage 145: src_signed is irrelevant for float casts.
                         let cast_val = if arg_ty == EmitType::F32 {
-                            emitter.emit_cast(&EmitType::F32, &EmitType::F64, &arg_val)
+                            emitter.emit_cast(&EmitType::F32, &EmitType::F64, true, &arg_val)
                         } else {
                             arg_val
                         };
@@ -605,8 +610,13 @@ pub(crate) fn emit_printf_call(
                                 c_fmt.push_str("%s");
                                 c_arg_vals.push((EmitType::OpaquePtr, selected));
                             } else if *inner_ref != EmitType::I64 {
+                                // Stage 145: pointer dereference to int —
+                                // signedness unknown (we only have EmitType).
+                                // Default to signed (preserves pre-Stage-145 behavior).
+                                // Per §1.0 原則 9 (正确 > 妥协): documented fallback;
+                                // future stages can extend to query MIR place type.
                                 let cast_val =
-                                    emitter.emit_cast(inner_ref, &EmitType::I64, &loaded);
+                                    emitter.emit_cast(inner_ref, &EmitType::I64, true, &loaded);
                                 c_fmt.push_str("%ld");
                                 c_arg_vals.push((EmitType::I64, cast_val));
                             } else {

@@ -361,7 +361,12 @@ pub(crate) fn codegen_operand(
                 if src_ty == target_ty || !is_int_cast {
                     raw
                 } else {
-                    emitter.emit_cast(&src_ty, &target_ty, &raw)
+                    // Stage 145 (TD-CODEGEN-CAST-UNSIGNED): Pass the constant's
+                    // declared signedness from MIR `c.ty` — `ConstVal::Int` is
+                    // signed, `ConstVal::Uint` is unsigned. This selects
+                    // zext (unsigned) vs sext (signed) for widening casts.
+                    let src_signed = matches!(&c.val, ConstVal::Int(_));
+                    emitter.emit_cast(&src_ty, &target_ty, src_signed, &raw)
                 }
             }
         },

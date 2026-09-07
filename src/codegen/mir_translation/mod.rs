@@ -22,7 +22,10 @@ pub(crate) mod types;
 
 // Re-export public API (backward compatibility with old `mir_translation::*`).
 pub use stdlib::stdlib_type_kind_to_emit_type;
-pub use types::{mir_type_to_emit_type_with_layouts, mir_type_to_emit_type_with_layouts_and_mono};
+pub use types::{
+    is_mir_type_signed, mir_type_to_emit_type_with_layouts,
+    mir_type_to_emit_type_with_layouts_and_mono, operand_is_signed,
+};
 
 // pub(crate) re-exports for crate-internal helpers (used by codegen sub-modules).
 pub(crate) use places::{

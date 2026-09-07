@@ -3,13 +3,126 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.668.0 (v0.15 Stage 143 — TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC 完整修复: String/str 的 starts_with/ends_with/contains + RawPtr 索引 codegen 修复; 5857 tests) |
+| **Current version** | v0.669.0 (v0.15 Stage 145 — TD-CODEGEN-CAST-UNSIGNED 完整修复: emit_cast 添加 src_signed 参数, u8/u16/u32/u64/usize as i64 用 zext; 5918 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 4959 integration tests = 5857 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5020 integration tests = 5918 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 143 完成 v0.15 RawPtr 索引 codegen 链完整修复); v0.15 stdlib/prelude 阶段 — Stage 143 添加 String/str 的 starts_with/ends_with/contains, 完成 v0.15 RawPtr 索引基础设施 |
+| **Architecture** | Health 9.9/10 (stable — Stage 145 完成 v0.15 codegen cast signedness 修复); v0.15 codegen 阶段 — Stage 145 修复 emit_cast signedness, u8/u16/u32/u64/usize as i64 现在用 zext (正确 Rust 语义) |
+
+---
+
+## v0.669.0 — Stage 145 (v0.15) — TD-CODEGEN-CAST-UNSIGNED 完整修复
+
+### Overview
+
+Stage 145 完整修复 TD-CODEGEN-CAST-UNSIGNED — `emit_cast` 添加 `src_signed: bool` 参数,
+让 caller (有 MIR `Ty` 访问权) 传递 source 类型的 signedness。这修复了 `b'\xFF' as i64`
+返回 -1 (sext bug) → 现在返回 255 (zext, 正确 Rust 语义)。
+
+### What was fixed
+
+1. **emit_cast trait 方法签名**: 添加 `src_signed: bool` 参数
+   - §1.0 原則 5 (去除兼容思维): 替换旧签名, 不保留
+   - §1.0 原則 6 (通解 > 特解): 一个 emit_cast 处理 signed + unsigned
+   - §1.0 原則 10 (唯一可信数据源): caller 从 MIR Ty 查询 signedness
+
+2. **LLVMSysEmitter**: `LLVMBuildIntCast2(is_signed = src_signed ? 1 : 0)`
+
+3. **TextEmitter**: widening 用 `sext` (signed) 或 `zext` (unsigned)
+
+4. **新 helpers**: `is_mir_type_signed(ty)` + `operand_is_signed(mir, op)`
+
+5. **7 个调用点更新**: rvalue.rs (4) + operand.rs (1) + statement.rs (4) + places.rs (1)
+
+### Important side effect: bool as i64 behavior fix
+
+之前 `bool as i64` 用 sext → `true` (i1=1) → -1 (i64=0xFFFF...FFFF)。
+现在 bool 不是 `TyKind::Int`, 所以 `is_mir_type_signed` 返回 false → zext → `true` → 1。
+这是 **正确的 Rust 语义** (`true as i64 == 1`)。Stage 143/144 测试期望 `-1` 是 bug,
+本阶段更新为 `1`。
+
+### Decision rationale
+
+- 选 `src_signed: bool` 参数 不选新增 U8/U16/U64 variants — §1.0 原則 6/12 (30 LOC vs 500 LOC)
+- 选 caller 查询 MIR 不选 emitter 推断 — §1.0 原則 10 (唯一可信数据源)
+- 选 bool 参数 不选 typed enum — 简洁性, signedness 是二元概念
+- 选修改 trait 签名 不选新增 emit_cast_unsigned — §1.0 原則 5/6
+- 选 bool 默认 true (signed) for 未知类型 — §1.0 原則 9 (文档化 fallback)
+- 更新 Stage 143/144 测试期望 从 -1 改为 1 — 修正之前的 bug 期望
+
+### Test coverage
+
+26 new tests:
+- Unsigned widening (6): u8/u16/u32/usize → i64
+- Signed widening (4): i8/i32 → i64 (positive + negative)
+- Bool as i64 (2): true → 1, false → 0
+- Narrowing (2): i64 → i8, u64 → u8
+- Edge cases (4): MAX/MIN values, chained casts
+- Regression (3): existing patterns
+- Text IR (3): zext vs sext verification
+- Negative (2): type error cases
+
+### §3.2 acceptance
+
+- cargo clean ✓
+- cargo build --release ✓ (49s)
+- cargo check ✓ (0 errors, 0 warnings)
+- cargo fmt --check ✓ (clean)
+- cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+- cargo test --release --lib ✓ (898 tests, 0 failures)
+- cargo test --release --test all_tests ✓ (5020 tests, 0 failures, 12 ignored)
+- Total: 5918 tests, 0 failures, 12 ignored (+26 new)
+
+---
+
+## v0.668.0 — Stage 144 (v0.15) — TD-LEX-RAW-STRING + TD-LEX-BYTE-LITERAL 完整修复
+
+### Overview
+
+Stage 144 完整修复 2 个 P3 lexer 技术债。重要发现: TD 描述与实际代码状态不符 —
+lexer 已实现 (Stage 6.13), 仅 parser 缺 RawStrLit arm, 且 lex_byte 缺未闭合错误
+push (§1.0 原則 4 violation).
+
+### What was fixed
+
+1. **TD-LEX-RAW-STRING**: parser/expr.rs 添加 `RawStrLit(sym, _hashes)` arm
+   到 literal expression parser, mapping 到 `LitKind::Str` (与 StrLit 共用).
+   - §1.0 原則 6 (通解 > 特解): raw/regular string 共用一个 AST 节点
+   - §1.0 原則 4 (报错 > 静默): 之前 parser 报 "could not parse expression"
+     而非正确解析
+
+2. **TD-LEX-BYTE-LITERAL**: lexer/string.rs `lex_byte` 添加未闭合 `'` 错误
+   push. 之前 `b'A;` 被静默接受为 `b'A'` (byte 65), 违反 §1.0 原則 4.
+   - §1.0 原則 9 (正确 > 妥协): 修复根因 (push error) 而非症状 (静默接受)
+
+### What was discovered (new TD)
+
+- **TD-CODEGEN-CAST-UNSIGNED** (P3, v0.15+): `b'\xFF' as i64` 返回 -1 而非 255.
+  codegen `emit_cast` 使用 `LLVMBuildIntCast2(is_signed=1)` — 对所有整数按
+  有符号处理, u8 值 ≥ 128 sign-extended 到负数. 待后续 stage 修复 (需传递
+  src 类型 signedness).
+
+### Test coverage
+
+35 new tests:
+- Raw string basic (4) + hashes (4) = 8 positive
+- Byte literal (4) + byte string (3) + raw byte string (3) = 10 positive
+- Edge cases (5) + integration (3) = 8 positive
+- Regression (4) + Negative (5)
+- 1:3+ 正负比例 (§9.4.3)
+
+### §3.2 acceptance
+
+- cargo clean ✓
+- cargo build --release ✓ (49s)
+- cargo check ✓ (0 errors, 0 warnings)
+- cargo fmt --check ✓ (clean)
+- cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+- cargo test --release --lib ✓ (898 tests, 0 failures)
+- cargo test --release --test all_tests ✓ (4994 tests, 0 failures, 12 ignored)
+- Total: 5892 tests, 0 failures, 12 ignored (+35 new)
 
 ---
 

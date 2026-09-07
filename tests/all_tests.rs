@@ -1345,3 +1345,17 @@ mod stage138_ptr_index_tests;
 //                         codegen fix (single-index GEP into loaded ptr). ===
 #[path = "v0/stage143/plan/string_methods_tests.rs"]
 mod stage143_string_methods_tests;
+
+// === Stage 144 (v0.15): TD-LEX-RAW-STRING + TD-LEX-BYTE-LITERAL — raw
+//                         string + byte literal + byte string + raw byte
+//                         string literal parsing (lexer already done in
+//                         Stage 6.13; parser arm added in Stage 144). ===
+#[path = "v0/stage144/plan/lex_literals_tests.rs"]
+mod stage144_lex_literals_tests;
+
+// === Stage 145 (v0.15): TD-CODEGEN-CAST-UNSIGNED — emit_cast signedness
+//                         fix. u8/u16/u32/u64/usize as i64 now uses zext
+//                         (zero-extend) instead of sext (sign-extend),
+//                         fixing `b'\xFF' as i64` returning -1 → 255. ===
+#[path = "v0/stage145/plan/cast_unsigned_tests.rs"]
+mod stage145_cast_unsigned_tests;

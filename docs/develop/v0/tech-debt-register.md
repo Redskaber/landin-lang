@@ -298,8 +298,9 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-LEX-RAW-STRING | 缺少 raw string literals (r"...", r#"..."#) | Lexer 不支持 raw string 语法 | 添加 r"/r# 前缀检测 + 内容直到结束标记 | P3, v0.15+ |
-| TD-LEX-BYTE-LITERAL | 缺少 byte literals (b'x', b"...", br"...") | Lexer 不支持 byte literal 语法 | 添加 b 前缀检测 + u8 类型字面量 | P3, v0.15+ |
+| TD-LEX-RAW-STRING | ✅ Stage 144 修复 | TD 描述与实际不符: lexer 已实现 (Stage 6.13), 仅 parser 缺 RawStrLit arm | parser/expr.rs 添加 RawStrLit arm → LitKind::Str (§1.0 原則 6 通解). lexer/string.rs lex_byte 添加未闭合 ' 错误 push (§1.0 原則 4). 35 tests. | ✅ |
+| TD-LEX-BYTE-LITERAL | ✅ Stage 144 修复 | 全链路已实现 (lex + parse + typeck + codegen), lex_byte 缺 closing ' 错误 push | 同 TD-LEX-RAW-STRING 修复. | ✅ |
+| TD-CODEGEN-CAST-UNSIGNED | ✅ Stage 145 修复 | b'\xFF' as i64 返回 -1 而非 255 | codegen emit_cast 添加 src_signed: bool 参数 (§1.0 原則 5/6/10). LLVMSysEmitter 用 LLVMBuildIntCast2(is_signed). TextEmitter 用 sext vs zext. 添加 is_mir_type_signed + operand_is_signed helpers. 更新 7 个调用点. 副作用: bool as i64 现在返回 1 (正确 Rust 语义). 26 tests. | ✅ |
 | TD-LEX-DOC-COMMENT | 缺少 doc comment tokens (///, //!, /** */) | Lexer 不区分 doc comment 和普通 comment | 添加 doc comment 检测 + 存储到 AST attributes | P4, v0.16+ |
 
 #### 2. PARSER 缺陷

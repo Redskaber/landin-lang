@@ -1426,7 +1426,21 @@ pub(crate) fn codegen_place_load_typed(
                                 // Stage 143: use actual idx_ty (not hardcoded I32)
                                 // so that the cast source type matches the loaded
                                 // value type. Per §1.0 原則 6 (通解 > 特解).
-                                let idx_i64 = emitter.emit_cast(&idx_ty, &EmitType::I64, &idx_val);
+                                // Stage 145: pass signedness from MIR local_decls
+                                // (idx is usize → unsigned → zext, not sext).
+                                let idx_signed = mir
+                                    .local_decls
+                                    .get(idx.0 as usize)
+                                    .map(|ld| {
+                                        crate::codegen::mir_translation::is_mir_type_signed(&ld.ty)
+                                    })
+                                    .unwrap_or(true);
+                                let idx_i64 = emitter.emit_cast(
+                                    &idx_ty,
+                                    &EmitType::I64,
+                                    idx_signed,
+                                    &idx_val,
+                                );
                                 // Create len constant as i64 SSA value.
                                 let len_local = emitter.emit_alloca(&EmitType::I64, "%oob_len");
                                 emitter.emit_store(

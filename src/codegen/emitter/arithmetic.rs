@@ -50,7 +50,37 @@ pub trait ArithmeticEmitter {
     fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
 
     /// Emit a type cast.
-    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
+    ///
+    /// # Stage 145 (TD-CODEGEN-CAST-UNSIGNED) — `src_signed` parameter
+    ///
+    /// `EmitType` only carries integer *width* (I8/I16/I32/I64), not
+    /// *signedness* — both `i8` and `u8` map to `EmitType::I8`. For casts
+    /// that *widen* (e.g., `u8 as i64`), the choice between sign-extension
+    /// (sext, for signed) and zero-extension (zext, for unsigned) depends
+    /// on the source type's signedness, which `EmitType` cannot provide.
+    ///
+    /// Per §1.0 原則 10 (唯一可信数据源): the caller — which has access to
+    /// MIR `Ty` (the authoritative source of signedness) — must pass
+    /// `src_signed: bool` to this method.
+    /// Per §1.0 原則 6 (通解 > 特解): one `emit_cast` handles both signed
+    /// and unsigned sources based on the parameter — no separate
+    /// `emit_cast_unsigned` method.
+    /// Per §1.0 原則 5 (去除兼容思维): the old signature is replaced.
+    ///
+    /// # Parameter semantics
+    ///
+    /// - `src_signed = true`: source is a signed integer (`i8`/`i16`/`i32`/
+    ///   `i64`/`isize`). Widening uses `sext` (sign-extend).
+    /// - `src_signed = false`: source is an unsigned integer (`u8`/`u16`/
+    ///   `u32`/`u64`/`usize`). Widening uses `zext` (zero-extend).
+    /// - For non-integer sources (float, ptr), `src_signed` is ignored.
+    fn emit_cast(
+        &mut self,
+        src: &EmitType,
+        dst: &EmitType,
+        src_signed: bool,
+        val: &EmitValue,
+    ) -> EmitValue;
 
     /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
     /// constant (`ptr null`). Used for `ConstVal::Int(0)` in pointer-typed

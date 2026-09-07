@@ -236,8 +236,25 @@ impl<'a> Lexer<'a> {
                 0
             }
         };
+        // Stage 144 (TD-LEX-BYTE-LITERAL completeness — §1.0 原則 4 报错 > 静默):
+        // Previously, this code silently accepted `b'A` without a closing
+        // single quote — no error was pushed, and the lexer continued
+        // consuming the next token. This violated §1.0 原則 4 (报错 > 静默):
+        // malformed byte literals MUST produce a lex error.
+        //
+        // Per Rust Reference §4.2.2: "Byte literals ... must be terminated
+        // by a single quote (')."
+        //
+        // Per §1.0 原則 9 (正确 > 妥协): fix root cause (push error), not
+        // symptom (silently accept and hope downstream catches it).
         if self.peek() == Some(b'\'') {
             self.bump();
+        } else {
+            self.errors.push(LexError {
+                message: "unterminated byte literal — missing closing `'`".into(),
+                span: self.span_from(start),
+                kind: LexErrorKind::Generic,
+            });
         }
         Token {
             kind: TokenKind::ByteLit(val),

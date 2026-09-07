@@ -235,10 +235,14 @@ pub(crate) fn codegen_rvalue(
                     } else {
                         EmitType::I32
                     };
-                    let a_int = emitter.emit_cast(&ty, &int_ty, &a_val);
-                    let b_int = emitter.emit_cast(&ty, &int_ty, &b_val);
+                    // Stage 145: src_signed is irrelevant for float↔int casts
+                    // (sitofp/fptosi don't depend on signedness of the float).
+                    // Pass `true` (default) — the TextEmitter/LLVMSysEmitter
+                    // ignore src_signed for non-int-to-int paths.
+                    let a_int = emitter.emit_cast(&ty, &int_ty, true, &a_val);
+                    let b_int = emitter.emit_cast(&ty, &int_ty, true, &b_val);
                     let result_int = emitter.emit_binop(*op, &int_ty, &a_int, &b_int);
-                    emitter.emit_cast(&int_ty, &ty, &result_int)
+                    emitter.emit_cast(&int_ty, &ty, true, &result_int)
                 }
                 _ => emitter.emit_binop(*op, &ty, &a_val, &b_val),
             }
@@ -774,7 +778,12 @@ pub(crate) fn codegen_rvalue(
                     return Ok("null".to_string());
                 }
             }
-            emitter.emit_cast(&src_ty, &dst_ty, &val)
+            emitter.emit_cast(
+                &src_ty,
+                &dst_ty,
+                crate::codegen::mir_translation::operand_is_signed(mir, op),
+                &val,
+            )
         }
         // Stage 14.103 (SH-7 fix): BinaryOp2 is used for Range expressions
         // (start..end). For v0.1, ranges are only used in for-loop iterators

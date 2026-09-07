@@ -42,8 +42,9 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0, "starts_with full match should compile");
-    // Landin's bool true → i1 = 1, sign-extended to i64 = -1
-    assert_eq!(stdout.trim(), "-1");
+    // Landin's bool true → i1 = 1, zero-extended to i64 = 1 (Stage 145 fix:
+    // bool is unsigned, so zext not sext). Previously sext gave -1 (bug).
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -57,7 +58,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -71,7 +72,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -86,7 +87,7 @@ fn main() {
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
     // Empty prefix should match any string (Rust std semantics)
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 // ===========================================================================
@@ -151,7 +152,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -165,7 +166,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -179,7 +180,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 // ===========================================================================
@@ -229,7 +230,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -243,7 +244,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -257,7 +258,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -271,7 +272,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -285,7 +286,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -300,7 +301,7 @@ fn main() {
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
     // Empty needle should match any string (Rust std semantics)
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 // ===========================================================================
@@ -364,7 +365,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -378,7 +379,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -392,7 +393,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -423,7 +424,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1 0 -1 -1");
+    assert_eq!(stdout.trim(), "1 0 1 1");
 }
 
 // ===========================================================================
@@ -539,7 +540,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "sw=-1 ew=-1 ct=-1");
+    assert_eq!(stdout.trim(), "sw=1 ew=1 ct=1");
 }
 
 // ===========================================================================
@@ -558,7 +559,7 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0);
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
@@ -576,5 +577,5 @@ fn main() {
 "#;
     let (stdout, exit) = run_program(code);
     assert_eq!(exit, 0, "Method on as_str() result should compile");
-    assert_eq!(stdout.trim(), "-1");
+    assert_eq!(stdout.trim(), "1");
 }
