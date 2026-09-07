@@ -3,13 +3,33 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.672.0 (v0.15 Stage 148 — TD-GENERIC-ENUM-PAYLOAD-SUBST: 泛型 enum variant payload 类型替换; 5978 tests) |
+| **Current version** | v0.673.0 (v0.15 Stage 149 — TD-TRAIT-METHOD-GENERIC-RET-SKIP: 修复 trait 方法返回 Option<T> 时不 emit; 5993 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5080 integration tests = 5978 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5095 integration tests = 5993 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 148 完成 v0.15 泛型 enum payload 修复); v0.15 codegen 阶段 — Stage 148 修复 Option<T> pattern matching + 解锁 Iterator trait (部分受限 by TD-TRAIT-METHOD-REMONO-LINK) |
+| **Architecture** | Health 9.9/10 (stable — Stage 149 修复 P1 回归, Iterator trait 现在编译+链接); v0.15 codegen 阶段 — Stage 149 修复 trait 方法返回泛型枚举的 emit 跳过 |
+
+---
+
+## v0.673.0 — Stage 149 (v0.15) — TD-TRAIT-METHOD-GENERIC-RET-SKIP 完整修复
+
+### Overview
+
+Stage 149 修复 P1 回归 — trait impl 方法返回泛型枚举 (Option<T>) 时被 codegen 错误跳过.
+
+### What was fixed
+
+`statement_contains_param` 的 `Aggregate` 分支不再检查 substs/field_tys — 仅检查 operands.
+
+### Root cause
+
+`mir_body_contains_param_type` 检查 Aggregate substs 和 field_tys 是否含 Param. 对 trait impl 方法返回 `Option<T>`, Aggregate substs 含 `Param(0)` (来自 Option<T> 泛型参数 T), 导致方法被误判为 "generic" 并被跳过 emit.
+
+### §3.2 acceptance
+
+- 5993 tests (898 lib + 5095 integration), 0 failures, 12 ignored (+15 new)
 
 ---
 

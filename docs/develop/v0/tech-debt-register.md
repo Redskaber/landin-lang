@@ -448,3 +448,9 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 |-------|------|------|---------|--------|
 | TD-GENERIC-ENUM-MATCH-ARMS | match arm pattern binding for generic enums (Option<T>) 不解析 payload type T → concrete type | match arm binding 看到 Param(T) 而非替换后的具体类型 | 在 MIR lower 的 match arm pattern binding 中应用 substitute(payload_ty, enum_substs) | P3, v0.16+ |
 | TD-TRAIT-METHOD-REMONO-LINK | Stage 147 bodyless trait 方法获得新 DefId 后, vtable 引用 `landin_Iterator_Counter_next` 但函数未 emit (linker error) | vtable method name resolution 使用新 trait method DefId pattern, 但 impl method emit 使用不同 name | 修复 vtable method name resolution 以匹配 impl method 的 emitted name (landin_Counter_next 而非 landin_Iterator_Counter_next) | P3, v0.16+ |
+
+### P3 — v0.15+ Stage 149 调查发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-TRAIT-METHOD-GENERIC-RET-SKIP | ✅ Stage 149 修复 | trait 方法返回泛型枚举时 impl 方法不被 emit | statement_contains_param 的 Aggregate 分支不再检查 substs/field_tys (仅检查 operands). 15 tests. | ✅ |

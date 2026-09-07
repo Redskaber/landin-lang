@@ -45252,3 +45252,21 @@ Work Log:
 - 发现新 TD: TD-GENERIC-ENUM-MATCH-ARMS + TD-TRAIT-METHOD-REMONO-LINK
 - MUV-4 §3.2 全套验收通过: 898 lib + 5080 integration = 5978 tests, 0 failures
 - v0.672.0
+
+---
+Task ID: stage149-td-trait-method-generic-ret-skip-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 149 — TD-TRAIT-METHOD-GENERIC-RET-SKIP 完整修复 (P1 回归). v0.672.0 → v0.673.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 148 baseline (5978 tests, 0 failures). 发现 P1 回归: trait 方法返回 Option<T> 时 impl 方法不被 emit (linker error)
+- 根因: mir_body_contains_param_type 的 statement_contains_param 检查 Aggregate substs/field_tys 的 Param — 这些是 TYPE metadata, 不是 runtime values
+- MUV-1: statement_contains_param 的 Aggregate 分支改为仅检查 operands (不检查 substs/field_tys)
+- MUV-2: 启用 Stage 148 跳过的 Iterator 测试 + 编写 Stage 149 测试 (15 tests)
+- MUV-3 §3.2 全套验收通过: 898 lib + 5095 integration = 5993 tests, 0 failures
+- v0.673.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9):
+1. 选只检查 operands 不选不跳过用户函数 — §1.0 原則 6 (通解: 检查运行时值, 不检查 type metadata)
+2. 选用户函数总是 emit 不选跳过含 Param 的函数 — §1.0 原則 9 (正确 > 妥协: emit with warnings)
+3. 选不检查 Aggregate substs/field_tys 不选替换 Param — §1.0 原則 9 (typeck 限制是 follow-up TD)

@@ -1378,3 +1378,10 @@ mod stage147_multi_assoc_type_tests;
 //                         pattern matching + enables Iterator trait. ===
 #[path = "v0/stage148/plan/generic_enum_tests.rs"]
 mod stage148_generic_enum_tests;
+
+// === Stage 149 (v0.15): TD-TRAIT-METHOD-GENERIC-RET-SKIP — fix trait impl
+//                         methods returning generic enums (Option<T>) being
+//                         skipped by codegen. statement_contains_param now
+//                         only checks operands, not type metadata. ===
+#[path = "v0/stage149/plan/trait_method_generic_ret_tests.rs"]
+mod stage149_trait_method_generic_ret_tests;

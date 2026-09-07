@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.672.0 (v0.15 Stage 148 — TD-GENERIC-ENUM-PAYLOAD-SUBST: 泛型 enum variant payload 类型替换, 修复 Option<T> pattern matching; 5978 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.673.0 (v0.15 Stage 149 — TD-TRAIT-METHOD-GENERIC-RET-SKIP: 修复 trait 方法返回 Option<T> 时不 emit; 5993 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 148 COMPLETE (TD-GENERIC-ENUM-PAYLOAD-SUBST)**. 5978 tests (898 lib + 5080 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 148 修复泛型 enum variant payload 类型替换 — Option<T> pattern matching 现在正确提取值. 18 tests. |
+| **Status** | ✅ **v0.15 Stage 149 COMPLETE (TD-TRAIT-METHOD-GENERIC-RET-SKIP)**. 5993 tests (898 lib + 5095 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 149 修复 trait 方法返回泛型枚举时被 codegen 错误跳过. 15 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

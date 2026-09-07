@@ -242,9 +242,35 @@ pub fn codegen_from_mir(
         // Skip condition: DefId >= user_item_count (prelude item) AND
         // MIR body contains Param type (generic function).
         //
+        // Stage 149 (TD-TRAIT-METHOD-GENERIC-RET-SKIP fix): The skip
+        // condition was OVER-BROAD — it skipped ANY function with Param
+        // types, including user-defined trait impl methods (e.g.,
+        // `Counter::next` returning `Option<i64>`). The impl method's MIR
+        // contains `Param(0)` from the `Option<T>` generic type, but the
+        // function is NOT a prelude generic — it's a concrete user function
+        // that should be emitted.
+        //
+        // The root cause: `Option<T>::Some(value)` creates an Aggregate
+        // with field_tys containing `Param(0)` (the `T` from `Option<T>`).
+        // For trait impl methods, this `Param` is a leak from the trait
+        // declaration's return type (`Option<Self::Item>` or `Option<T>`).
+        // The impl method is concrete (returns `Option<i64>`), but the MIR
+        // hasn't fully substituted the `Param` in all positions.
+        //
+        // Fix: Only skip if BOTH conditions are true:
+        //   1. def_id >= user_item_count (it's a prelude item)
+        //   2. MIR body contains Param type (it's generic)
+        //
+        // User functions (def_id < user_item_count) are NEVER skipped,
+        // even if their MIR contains Param types (which is a typeck
+        // limitation, not a reason to skip codegen). The Param will
+        // fall back to I32 in codegen (with a warning), but the function
+        // IS emitted — the linker can resolve it.
+        //
         // Per §1.0 原則 6 (通解 > 特解): one skip rule for all prelude items.
-        // Per §1.0 原則 9 (正确 > 妥协): generic defs don't emit, only instances.
-        // Per §1.0 原則 4 (报错 > 静默): missing generic def → linker error (loud).
+        // Per §1.0 原則 9 (正确 > 妥协): user functions are always emitted,
+        // even with Param leaks (correct > missing).
+        // Per §1.0 原則 4 (报错 > 静默): Param warnings are emitted, not silent.
         if let Some(def_id) = mir.def_id {
             if def_id.as_u32() as usize >= user_item_count && mir_body_contains_param_type(mir) {
                 // Prelude generic function — skip codegen entirely.
@@ -252,6 +278,11 @@ pub fn codegen_from_mir(
                 let _ = def_id;
                 continue;
             }
+            // Stage 149: For user functions (def_id < user_item_count),
+            // do NOT skip even if Param is present. The Param is a typeck
+            // limitation (not fully substituted in trait impl method MIR).
+            // The function must be emitted — the linker needs it.
+            // Per §1.0 原則 9 (正确 > 妥协): emit with warnings, don't skip.
         }
 
         // Stage 92 (v0.8 — TD-GENERIC-TRAIT-METHOD-MANGLING): Re-resolve
@@ -412,7 +443,7 @@ fn type_contains_param(kind: &crate::mir::ty::TyKind) -> bool {
 /// Stage 100: Helper — check if a StatementKind contains Param types.
 fn statement_contains_param(stmt: &crate::mir::body::StatementKind) -> bool {
     use crate::mir::body::StatementKind;
-    use crate::mir::place::{AggregateKind, Rvalue};
+    use crate::mir::place::Rvalue;
     if let StatementKind::Assign(boxed) = stmt {
         let (_, rvalue) = &**boxed;
         match rvalue {
@@ -422,14 +453,22 @@ fn statement_contains_param(stmt: &crate::mir::body::StatementKind) -> bool {
             }
             Rvalue::Cast(_, op, ty) => operand_contains_param(op) || type_contains_param(&ty.kind),
             Rvalue::Aggregate(kind, operands) => {
-                if let AggregateKind::Adt(_, _, substs, field_tys) = kind {
-                    if substs.iter().any(|t| type_contains_param(&t.kind)) {
-                        return true;
-                    }
-                    if field_tys.iter().any(|t| type_contains_param(&t.kind)) {
-                        return true;
-                    }
-                }
+                // Stage 149 (TD-TRAIT-METHOD-GENERIC-RET-SKIP fix): Do NOT
+                // check substs/field_tys for Param — these are TYPE metadata,
+                // not runtime values. For trait impl methods returning
+                // `Option<T>`, the Aggregate's substs may contain `Param(0)`
+                // (the `T` from `Option<T>`), but the actual operands are
+                // concrete values. The Param is a typeck limitation (not fully
+                // substituted in trait impl method MIR), not an indication
+                // that the function is generic and should be skipped.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): check operands only, not type
+                // metadata — one rule for all Aggregate kinds.
+                // Per §1.0 原則 9 (正确 > 妥协): don't skip user functions
+                // based on type metadata Param leaks.
+                // Per §1.0 原則 4 (报错 > 静默): Param in type metadata is
+                // handled by mir_type_to_emit_type (I32 fallback + warning).
+                let _ = kind; // Suppress unused variable warning
                 operands.iter().any(operand_contains_param)
             }
             _ => false,
