@@ -583,6 +583,22 @@ pub struct HirPath {
     pub segments: Vec<HirPathSegment>,
     pub leading: PathLeading,
     pub res: Res, // Res::Unknown until Stage 1.3 name resolution
+    /// Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Optional QSelf for
+    /// UFCS (Universal Function Call Syntax) — `<T as Trait>::method`.
+    ///
+    /// - `None`: regular path (no `<T as Trait>` qualifier)
+    /// - `Some(HirQSelf)`: qualified path with explicit Self type + Trait
+    ///
+    /// Per §1.0 原則 6 (通解 > 特例): one `Option<HirQSelf>` field on `HirPath`
+    /// handles ALL UFCS forms (Type-only `<T>::method`, Trait-qualified
+    /// `<T as Trait>::method`, and short-form `Trait::method` when
+    /// `qself.ty` is `None`).
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): when the user writes `<T as Trait>::method`,
+    /// the trait context is EXPLICIT — no implicit candidate filtering at
+    /// typeck time. When the user writes `obj.method()` (no qself), typeck
+    /// performs method probe and reports E1109 if ambiguous.
+    pub qself: Option<HirQSelf>,
     pub span: Span,
 }
 
@@ -1116,6 +1132,7 @@ mod tests {
             segments: vec![],
             leading: PathLeading::None,
             res: Res::Unknown,
+            qself: None,
             span: Span::DUMMY,
         };
         assert_eq!(p.res, Res::Unknown);

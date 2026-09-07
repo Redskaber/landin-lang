@@ -441,6 +441,7 @@ fn hir_pat_tuple_struct() {
         }],
         leading: PathLeading::None,
         res: Res::Unknown,
+        qself: None,
         span: Span::DUMMY,
     };
     let inner_pat = HirPat {

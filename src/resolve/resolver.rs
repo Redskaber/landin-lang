@@ -99,6 +99,23 @@ pub struct Resolver {
     /// Impl methods are accessed via `Type::method` paths (impl_method_index),
     /// NOT as free functions.
     pub(super) impl_method_def_ids: std::collections::HashSet<DefId>,
+    /// Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Trait method index —
+    /// maps `(trait_name, method_name)` to the trait method's DefId.
+    ///
+    /// Used by `resolve_qualified_path` to resolve UFCS paths
+    /// `<T as Trait>::method` and `Trait::method` (short form) to the
+    /// trait declaration's method DefId. The actual impl method is found
+    /// later by codegen via `TraitResolver.resolve_vtable_method`.
+    ///
+    /// Built by `resolve_all_paths` before owner traversal (Phase 3.5).
+    /// Read during `resolve_path` (Phase 3) when `path.qself` is `Some`.
+    ///
+    /// Per §1.0 原則 6 (通解 > 特例): one index for all UFCS forms.
+    /// Per §1.0 原則 3 (显式 > 隐式): trait context is explicit in qself.
+    /// Per §13.4 + §16: built once in Phase 3.5, read in Phase 3 (after build,
+    /// before main path resolution — order doesn't matter since the index
+    /// is fully populated before any path resolution reads it).
+    pub(super) trait_method_index: HashMap<(Spur, Spur), DefId>,
     /// Stage 33.1 (TD-IMPL-METHOD-GENERIC-PARAM-RESOLUTION): Map from impl
     /// method fn DefId → impl block's generic type params.
     ///
@@ -161,6 +178,7 @@ impl Resolver {
             current_module: None,
             impl_method_index: HashMap::new(),
             impl_method_def_ids: std::collections::HashSet::new(),
+            trait_method_index: HashMap::new(),
             impl_method_parent_generics: std::collections::HashMap::new(),
             generic_param_scope: Vec::new(),
             trait_assoc_types: HashMap::new(),

@@ -2,14 +2,14 @@
 
 > A work-in-progress systems programming language inspired by Rust, using
 > LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
-> Rust (~94K LOC across 183 files) and targets x86_64 + AArch64 Linux.
+> Rust (~94K LOC across 185 files) and targets x86_64 + AArch64 Linux.
 
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.648.0 (v0.12 Stage 117 — TD-PROCESS-PER-TEST-ISOLATION RCA: confirmed process-per-test viable — non-determinism is cross-compilation accumulation; simple programs 10/10 in subprocess; tests that fail in full suite pass in isolation; fix requires compile_src → subprocess + error serialization; 5720 tests — Architecture health 9.85/10) |
+| **Version** | v0.658.0 (v0.13 Stage 127 — TD-TRAIT-METHOD-AMBIGUITY 修复: UFCS `<T as Trait>::method(receiver, args)` 完整实现 — Parser + HIR + Resolver + MIR lower + codegen; 26 tests; 5768 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.12 Stage 117 COMPLETE (TD-PROCESS-PER-TEST-ISOLATION RCA)**. 5720 tests (898 lib + 4821 integration + 6 stage117), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 117 confirmed process-per-test isolation as viable fix: (1) simple programs work 10/10 in subprocess; (2) tests that fail in full suite pass in isolation (cross-compilation accumulation, NOT single-compilation); (3) ASLR off doesn't help; (4) fix requires changing compile_src to use subprocess + structured error serialization. Debug impl bodies still REVERTED. Architecture health: 9.85/10. |
+| **Status** | ✅ **v0.13 Stage 127 COMPLETE (TD-TRAIT-METHOD-AMBIGUITY — UFCS)**. 5768 tests (898 lib + 4870 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 127 实现 Universal Function Call Syntax — `<T as Trait>::method(receiver, args)` 显式消歧 trait 方法调用. 3 新 TD documented (TD-UFCS-SHORT-FORM + TD-UFCS-DEFAULT-BODY-EMPTY-IMPL + TD-UFCS-AMBIGUITY-E1109). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

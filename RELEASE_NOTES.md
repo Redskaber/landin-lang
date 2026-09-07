@@ -3,13 +3,85 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.648.0 (v0.12 Stage 117 — TD-PROCESS-PER-TEST-ISOLATION RCA: confirmed process-per-test viable — non-determinism is cross-compilation accumulation, NOT single-compilation; simple programs 10/10 in subprocess; tests that fail in full suite pass in isolation; fix requires compile_src → subprocess + structured error serialization; 5720 tests) |
-| **Date** | 2026-09-05 |
-| **Test count** | 898 lib tests + 4821 integration tests = 5720 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Current version** | v0.658.0 (v0.13 Stage 127 — TD-TRAIT-METHOD-AMBIGUITY 修复: UFCS `<T as Trait>::method(receiver, args)` 完整实现; 5768 tests) |
+| **Date** | 2026-09-07 |
+| **Test count** | 898 lib tests + 4870 integration tests = 5768 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.658.0 — Stage 127 (v0.13) — TD-TRAIT-METHOD-AMBIGUITY 修复 (UFCS)
+
+### Overview
+
+Stage 127 实现 Universal Function Call Syntax (UFCS) — `<T as Trait>::method(receiver, args)`，
+解决 TD-TRAIT-METHOD-AMBIGUITY（两个 trait 为同一类型提供同名方法时的歧义）。
+
+这是 v0.13 阶段的第一个 stage，进入 trait 系统增强阶段。
+
+### Root Cause
+
+- **原根因假设**：mangling collision (`landin_i32_fmt` for both Display and Debug)
+  → Stage 98 (v0.9) 已修复（3-element mangling: `landin_<Trait>_<Type>_<method>`）
+- **真正根因**：`resolve_trait_method` 缺少 candidate filter — 遍历所有 trait impls
+  返回第一个匹配，无多候选报错
+- **通解**：引入 UFCS 显式 trait 限定语法，用户通过 `<T as Trait>::method` 显式消歧
+
+### Changes
+
+**Source files (~200 LOC)**:
+- `src/parser/path.rs`: 启用 Expr 上下文的 `is_qself_start` 检查（之前只支持 Type/Pattern）
+- `src/parser/expr.rs`: `parse_primary_expr` 的 `_ =>` fallthrough 调用 `take_last_qself()`
+- `src/hir/kinds.rs`: `HirPath` 新增 `qself: Option<HirQSelf>` 字段
+- `src/hir/lower/path.rs`: 新增 `lower_path_with_qself` 函数
+- `src/hir/lower/body.rs`: `Expr::Path` lowering 检查 qself
+- `src/hir/lower/item.rs`: 2 处 `HirPath { ... }` 构造添加 `qself: None`
+- `src/resolve/resolver.rs`: 新增 `trait_method_index: HashMap<(Spur, Spur), DefId>` 字段
+- `src/resolve/path_resolve.rs`: `resolve_qualified_path` + `trait_method_index` 填充 + qself.ty 解析
+- `src/codegen/function.rs`: `get_concrete_type_name` Adt 分支 + `type_name_by_def_id` 传递
+- `src/mir/lower/expr_variants.rs`: `resolve_ufcs_impl_method_def_id` 直接解析 impl 方法 DefId
+
+**Tests (26 tests)**:
+- `tests/v0/stage127/plan/ufcs_tests.rs`: 8 positive + 11 negative + 4 edge + 3 regression
+- `tests/v0/stage1/plan/hir_structure_tests.rs`: 1 test updated (qself: None)
+
+**Docs**:
+- `docs/lang-design/03-type-system.md`: §2.6 "Trait method dispatch syntax (UFCS)"
+- `docs/lang-design/02-grammar.md`: `ufcs_path` EBNF
+- `docs/lang-design/16-diagnostics.md`: E1109 (ambiguous_trait_method) + E1110 (trait_method_not_found)
+- `docs/develop/v0/stage-127/dev-log.md`: 完整开发日志
+- `docs/develop/v0/tech-debt-register.md`: TD-TRAIT-METHOD-AMBIGUITY 标记为 ✅ + 3 新 TD
+- `docs/develop/v0/calibration-data.md`: Stage 127 统计行
+
+**Scripts**:
+- `scripts/force-llvm-22.sh`: 强制 LLVM 22.1 部署（bypass auto-detection）
+- `scripts/switch-llvm-version.sh`: 扩展支持 `/tmp/llvm-N-prefix` 通用查找
+
+### New TDs Documented
+
+| TD ID | 描述 | 优先级 |
+|-------|------|--------|
+| TD-UFCS-SHORT-FORM | 短形式 `Trait::method(receiver)` 未实现 | P3, v0.14+ |
+| TD-UFCS-DEFAULT-BODY-EMPTY-IMPL | UFCS 调用 trait 默认方法体时，空 impl 找不到方法 | P3, v0.14+ |
+| TD-UFCS-AMBIGUITY-E1109 | 普通方法调用 `obj.method()` 多 trait 同名仍静默选择 | P3, v0.14+ |
+
+### §3.2 验收
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4870 tests, 0 failures, 9 ignored)
+- Total: 5768 tests, 0 failures
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协)
+
+1. **选 UFCS (通解)** — 不选 rename Debug::fmt (特解，违反 Rust 源码兼容性)
+2. **选 MIR lower 直接解析 impl 方法** — 不选依赖 codegen re_resolve (受 typeck 阻塞)
+3. **选 trait_method_index 预计算** — 不选 HIR 查询 (违反 §16 codegen HIR-free)
+
 
 ---
 

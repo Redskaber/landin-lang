@@ -1286,3 +1286,10 @@ mod stage121_debug_impl_final_rca_tests;
 // Debug impl bodies permanently deferred (LLVM C++ non-determinism). ===
 #[path = "v0/stage122/plan/v012_closure_tests.rs"]
 mod stage122_v012_closure_tests;
+
+// === Stage 127 (v0.13): TD-TRAIT-METHOD-AMBIGUITY — UFCS implementation.
+// Universal Function Call Syntax: <T as Trait>::method(receiver, args)
+// enables explicit trait method disambiguation.
+// Per §1.0 原則 3 (显式 > 隐式) + §1.0 原則 9 (正确 > 妥协). ===
+#[path = "v0/stage127/plan/ufcs_tests.rs"]
+mod stage127_ufcs_tests;

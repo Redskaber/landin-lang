@@ -103,6 +103,7 @@ pub fn codegen_mono_functions(
                 substs,
                 trait_method_map,
                 fn_name_by_def_id,
+                type_name_by_def_id,
                 interner,
             );
 
@@ -243,6 +244,7 @@ pub fn codegen_from_mir(
             &[],
             trait_method_map,
             fn_name_by_def_id,
+            type_name_by_def_id,
             interner,
         );
 
@@ -850,6 +852,7 @@ fn re_resolve_trait_method_calls(
     substs: &[crate::mir::ty::Ty],
     trait_method_map: &crate::mir::monomorphize::TraitMethodResolutionMap,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
     interner: &Rodeo,
 ) {
     use crate::mir::body::TerminatorKind;
@@ -889,7 +892,7 @@ fn re_resolve_trait_method_calls(
         let receiver_ty = get_receiver_type(&local_decls, args);
         let type_name = receiver_ty
             .as_ref()
-            .map(|ty| get_concrete_type_name(ty, interner))
+            .map(|ty| get_concrete_type_name(ty, type_name_by_def_id, interner))
             .unwrap_or_default();
 
         // Look up in the trait method map.
@@ -979,7 +982,11 @@ fn get_receiver_type(
 }
 
 /// Get the source-language name of a MIR type as a string.
-fn get_concrete_type_name(ty: &crate::mir::ty::Ty, _interner: &Rodeo) -> String {
+fn get_concrete_type_name(
+    ty: &crate::mir::ty::Ty,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
+    interner: &Rodeo,
+) -> String {
     use crate::mir::ty::TyKind;
     match &ty.kind {
         TyKind::Int(int_ty) => {
@@ -1017,7 +1024,31 @@ fn get_concrete_type_name(ty: &crate::mir::ty::Ty, _interner: &Rodeo) -> String 
             }
             .to_string()
         }
-        TyKind::Ref(_, _, inner) => get_concrete_type_name(inner, _interner),
+        TyKind::Ref(_, _, inner) => get_concrete_type_name(inner, type_name_by_def_id, interner),
+        // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Add Adt branch so
+        // that UFCS paths `<Type as Trait>::method(receiver)` can resolve
+        // the concrete impl method via trait_method_map lookup.
+        //
+        // Previously, Adt fell through to the empty-string default, which
+        // broke trait method dispatch for user-defined types when called
+        // via UFCS syntax. The normal method-call path (`obj.method()`)
+        // worked because it went through `resolve_trait_method` in MIR
+        // lower (which uses HIR lookup, not type_name string matching).
+        //
+        // Per §1.0 原則 6 (通解 > 特例): one Adt branch handles all
+        // user-defined types (struct + enum + union).
+        // Per §1.0 原則 9 (正确 > 妥协): root-cause fix — add the missing
+        // branch + pass type_name_by_def_id for proper name resolution.
+        TyKind::Adt(def_id, _) => {
+            // Look up the type name via the driver's type_name_by_def_id
+            // map (built in driver_codegen_prep.rs). The map stores the
+            // interned Symbol; resolve it to a string via the interner.
+            type_name_by_def_id
+                .get(def_id)
+                .and_then(|sym| interner.try_resolve(sym))
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        }
         _ => String::new(),
     }
 }

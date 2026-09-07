@@ -120,6 +120,23 @@ impl Resolver {
                         }
                     }
                     self.trait_assoc_types.insert(t.hir_id.owner, assoc_names);
+
+                    // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Build
+                    // trait_method_index — maps `(trait_name, method_name)`
+                    // → trait method DefId. Used by `resolve_qualified_path`
+                    // to resolve UFCS paths `<T as Trait>::method` to the
+                    // trait declaration's method DefId.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特例): one index for all traits.
+                    // Per §1.0 原則 3 (显式 > 隐式): trait context is explicit.
+                    let trait_name = t.ident.name;
+                    for trait_item in &t.items {
+                        if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                            let method_name = f.ident.name;
+                            self.trait_method_index
+                                .insert((trait_name, method_name), f.hir_id.owner);
+                        }
+                    }
                 }
 
                 // Stage 18.54: Collect generic type params for fn/struct/enum/trait/impl owners.
@@ -722,6 +739,22 @@ impl Resolver {
         if !matches!(path.res, Res::Unknown | Res::Err) {
             return;
         }
+        // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Resolve the qself
+        // inner type (if any) BEFORE resolving the path itself. This ensures
+        // the type expression `<English as Greeter>::greet` has its inner
+        // `English` type resolved to `Res::Def(English_def_id, Struct)`,
+        // which typeck + codegen use to find the concrete impl method.
+        //
+        // Per §1.0 原則 3 (显式 > 隐式): the qself type is explicit in the
+        // source — resolve it so downstream passes can use it.
+        // Per §1.0 原則 6 (通解 > 特例): one resolve_ty_paths call handles
+        // all qself forms (Some(ty) for `<T as Trait>` and `<T>`, None for
+        // short-form `Trait::method`).
+        if let Some(qself) = &mut path.qself {
+            if let Some(inner_ty) = &mut qself.ty {
+                self.resolve_ty_paths(inner_ty, interner);
+            }
+        }
         path.res = self.resolve_path(path, interner);
     }
 
@@ -755,10 +788,86 @@ impl Resolver {
         }
     }
 
+    /// Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Resolve a UFCS
+    /// qualified path — `<T as Trait>::method` or `Trait::method`.
+    ///
+    /// The path has `qself.position` indicating where the trait path ends.
+    /// Segments `[0..position]` are the trait path; `[position..]` are the
+    /// associated items (typically a single method name).
+    ///
+    /// Resolution strategy:
+    /// 1. Resolve trait path → trait DefId (via `module_tree.lookup_type`)
+    /// 2. Look up the method name in the trait declaration (via HIR owners)
+    /// 3. Return `Res::Def(trait_method_def_id, DefKind::Fn)`
+    ///
+    /// Per §1.0 原則 3 (显式 > 隐式): the user's explicit trait qualifier is
+    /// the source of truth — no method probe ambiguity (E1109 only fires for
+    /// unqualified `obj.method()` calls).
+    /// Per §1.0 原則 6 (通解 > 特例): one `resolve_qualified_path` handles
+    /// all UFCS forms — Type-only, Trait-qualified, and short-form.
+    /// Per §1.0 原則 4 (报错 > 静默): if the trait or method is not found,
+    /// return `Res::Err` (caller reports the error).
+    fn resolve_qualified_path(
+        &mut self,
+        path: &HirPath,
+        qself: &crate::hir::HirQSelf,
+        _interner: &Rodeo,
+    ) -> Res {
+        let position = qself.position;
+        if position == 0 || position >= path.segments.len() {
+            return Res::Err;
+        }
+
+        let trait_seg = &path.segments[position - 1];
+        let trait_name = trait_seg.ident.name;
+
+        if self.module_tree.lookup_type(trait_name).is_none() {
+            return Res::Err;
+        }
+
+        let method_seg = &path.segments[position];
+        let method_name = method_seg.ident.name;
+
+        // Look up (trait_name, method_name) in the trait method index.
+        // Built during resolve_all_paths Phase 3.5 (see build_trait_method_index).
+        //
+        // Note: For trait methods WITHOUT bodies (just declarations), Landin
+        // does not allocate a separate DefId — `f.hir_id.owner` is the trait's
+        // DefId. This is by design (see hir/lower/item.rs:389-391). The
+        // trait_method_index stores this trait DefId, and codegen's
+        // re_resolve_trait_method_calls uses (trait_def_id, type_name) to
+        // look up the concrete impl method via trait_method_map.
+        if let Some(&method_def_id) = self.trait_method_index.get(&(trait_name, method_name)) {
+            return Res::Def(method_def_id, crate::hir::DefKind::Fn);
+        }
+
+        Res::Err
+    }
+
     /// Core path resolution: look up a HirPath in the module tree + scope chain.
     pub(super) fn resolve_path(&mut self, path: &HirPath, interner: &Rodeo) -> Res {
         if path.segments.is_empty() {
             return Res::Err;
+        }
+
+        // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): UFCS path —
+        // `<T as Trait>::method` or `Trait::method` (short form).
+        //
+        // When `path.qself` is `Some`, the path is qualified. The trait path
+        // lives in `path.segments[0..qself.position]`, and the associated
+        // item (method/const/type) lives in `path.segments[qself.position..]`.
+        //
+        // For trait method calls, we resolve to `Res::Def(trait_method_def_id, DefKind::Fn)`.
+        // The MIR lower + codegen will use the trait context to emit a direct
+        // call to the impl method (via `TraitResolver.resolve_vtable_method`).
+        //
+        // Per §1.0 原則 3 (显式 > 隐式): the user's explicit trait qualifier
+        // is honored — no method probe ambiguity (E1109 only fires when the
+        // user writes `obj.method()` without a qualifier).
+        // Per §1.0 原則 6 (通解 > 特例): one qself-aware resolve_path handles
+        // all UFCS forms (Type-qualified, Trait-qualified, short-form).
+        if let Some(qself) = &path.qself {
+            return self.resolve_qualified_path(path, qself, interner);
         }
 
         // Stage 18.178 (TD-HEAP-ALLOC bug fix): For `__landin_<name>` paths,
@@ -1183,6 +1292,7 @@ impl Resolver {
                             .collect(),
                             leading: crate::ast::PathLeading::None,
                             res: crate::hir::Res::Def(enum_def_id, crate::resolve::DefKind::Enum),
+                            qself: None,
                             span: pat.span,
                         };
                         pat.kind = HirPatKind::Path(new_path);

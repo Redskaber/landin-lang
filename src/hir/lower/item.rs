@@ -128,6 +128,7 @@ impl<'a> HirLowerCtxt<'a> {
                             }],
                             leading: crate::ast::PathLeading::None,
                             res: crate::hir::Res::Unknown,
+                            qself: None,
                             span: hir_ty.span,
                         };
                         hir_param.ty = Some(crate::hir::HirTy {
@@ -796,6 +797,7 @@ impl<'a> HirLowerCtxt<'a> {
                                     segments: vec![],
                                     leading: crate::ast::PathLeading::None,
                                     res: crate::hir::Res::Unknown,
+                                    qself: None,
                                     span: item.span,
                                 }),
                                 vis: item.vis.clone(),

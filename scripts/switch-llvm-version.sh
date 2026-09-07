@@ -59,10 +59,14 @@ esac
 if [ -z "${LLVM_PREFIX:-}" ]; then
     if command -v llvm-config &> /dev/null; then
         LLVM_PREFIX=$(llvm-config --prefix)
+    elif [ -x "/tmp/llvm-${LLVM_MAJOR}-prefix/bin/llvm-config" ]; then
+        # Stage 127+: generic /tmp/llvm-<N>-prefix lookup (covers LLVM 18/19/20/21/22)
+        LLVM_PREFIX="/tmp/llvm-${LLVM_MAJOR}-prefix"
     elif [ "$LLVM_MAJOR" = "19" ]; then
         LLVM_PREFIX="/tmp/llvm-19-prefix"
     else
         echo "ERROR: Cannot determine LLVM prefix for version $LLVM_MAJOR"
+        echo "       Hint: run 'source scripts/force-llvm-22.sh' first to install LLVM 22"
         exit 1
     fi
 fi

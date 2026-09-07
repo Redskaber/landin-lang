@@ -126,7 +126,19 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
     let span = expr_span(expr);
     let kind = match expr {
         Expr::Lit(lit, _) => HirExprKind::Lit(lower_lit_kind(lit)),
-        Expr::Path(_, path, _) => HirExprKind::Path(crate::hir::lower::path::lower_path(cx, path)),
+        Expr::Path(qself, path, _) => {
+            // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): preserve QSelf
+            // for UFCS (`<T as Trait>::method`) into HIR. When qself is
+            // `Some`, typeck + MIR lower use the explicit trait context to
+            // resolve the method without ambiguity (per §1.0 原則 3 显式 > 隐式).
+            // When qself is `None`, this is a regular path expression.
+            let hir_path = if let Some(q) = qself {
+                crate::hir::lower::path::lower_path_with_qself(cx, path, q)
+            } else {
+                crate::hir::lower::path::lower_path(cx, path)
+            };
+            HirExprKind::Path(hir_path)
+        }
         Expr::Block(block, _) => {
             let stmts: Vec<HirStmt> = block.stmts.iter().map(|s| lower_stmt(cx, s)).collect();
             let block_expr = block.expr.as_ref().map(|e| Box::new(lower_expr(cx, e)));

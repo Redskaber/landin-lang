@@ -75,7 +75,7 @@
 | TD-PRELUDE-IMPL-BODY-MODULE-ACCUMULATION | ✅ Stage 115 修复 (partial) + Stage 119-120 (process isolation) | 4 sort fixes (HashMap → deterministic emission order) + compile_src/compile_silent subprocess isolation. |
 | TD-PROCESS-PER-TEST-ISOLATION | ✅ Stage 119-120 实现 | compile_src + compile_silent 使用 subprocess (`landin-stage0 --check-errors`). `--check-errors` flag added to CLI. |
 | TD-LLVM-INTERNAL-NONDETERMINISM | ⚠️ PERMANENTLY DEFERRED (Stage 121 最终 RCA) | LLVM C++ DenseMap hash function depends on heap layout → varies between runs. Cannot be fixed from Rust side. Debug impl bodies permanently deferred. |
-| TD-TRAIT-METHOD-AMBIGUITY | 📋 P3, v0.13+ | Display::fmt vs Debug::fmt method resolution. Fix: add explicit trait dispatch syntax or rename Debug::fmt. |
+| TD-TRAIT-METHOD-AMBIGUITY | ✅ Stage 127 修复 (UFCS fully-qualified form) | `<T as Trait>::method(receiver, args)` 完整实现. Parser + HIR + Resolver + MIR lower + codegen. 26 tests (8 正 + 11 负 + 4 边界 + 3 回归). 短形式 `Trait::method(receiver)` 推迟到 TD-UFCS-SHORT-FORM. |
 | Debug impl bodies (i32/i64/bool/usize) | ⚠️ PERMANENTLY DEFERRED | Blocked by TD-LLVM-INTERNAL-NONDETERMINISM. Trait declaration preserved (users can impl Debug for own types). |
 
 
@@ -102,6 +102,15 @@
 | TD-DYN-TRAIT-RUNTIME-DISPATCH | ~~dyn Trait 运行时 vtable dispatch 不完整~~ **FIXED Stage 88** — `method_call_lower.rs` forces vtable dispatch for Dyn/Ref(Dyn) receivers (was: static dispatch used because Stage 87's resolve_trait_method found the method → `call i32 @null` broken). | ~~codegen fat pointer arg 传递 + vtable indirect call 未正确连接~~ **DONE** (vtable dispatch wired; fat pointer coercion at call sites deferred to TD-DYN-TRAIT-FAT-PTR-COERCION) | ~~1) Dyn alloca {ptr,ptr}; 2) call site 传 fat pointer; 3) vtable indirect call~~ **DONE** (vtable indirect call works; call site fat pointer construction pending) | TD-DYN-TRAIT-COMPLETION ✅ (Stage 87) |
 | TD-DYN-TRAIT-FAT-PTR-COERCION | ~~dyn Trait unsized coercion codegen 不完整~~ **FIXED Stage 89** — call site now passes `@.dynptr.Trait.Concrete` (fat pointer global) instead of thin data pointer. Fix in `codegen/terminator.rs` + `build_type_name_by_def_id` (added Trait support). | ~~codegen coercion site 未构造 fat pointer~~ **DONE** | ~~detect Adt→Ref(Dyn) coercion site; construct fat pointer~~ **DONE** | TD-DYN-TRAIT-RUNTIME-DISPATCH ✅ (Stage 88) |
 | TD-DYN-TRAIT-DATA-PTR-EXTRACT | ~~dyn Trait method call 传 fat pointer 给 impl method~~ **FIXED Stage 90** — vtable indirect call 从 fat pointer field 0 提取 data pointer 传给 impl method。`use_greeter(&e)` 返回 42 (was: 返回 0)。 | ~~codegen emit_dyn_trait_method_call 传 fat pointer~~ **DONE** | ~~GEP fat ptr field 0 → data ptr；传 data ptr 给 method fn~~ **DONE** | TD-DYN-TRAIT-FAT-PTR-COERCION ✅ (Stage 89) |
+
+### P3 — v0.13+ UFCS 后续 (Stage 127 发现)
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-UFCS-SHORT-FORM | 短形式 `Trait::method(receiver)` 未实现（Stage 127 只实现完整形式 `<T as Trait>::method`） | MIR lower 在解析 path 时无法访问 receiver（receiver 是 Call 的 args[0]，在 func 之后才 lower） | 在 `lower_call_expr` 添加特殊路径：当 func path 的 qself.ty 为 None 时，先 lower receiver 获取其类型，再回填到 qself.ty | P3, v0.14+ |
+| TD-UFCS-DEFAULT-BODY-EMPTY-IMPL | UFCS 调用 trait 默认方法体时，如果 impl 块为空（不覆盖），找不到 impl 方法 | `resolve_ufcs_impl_method_def_id` 只扫描 impl 块的 items，不回退到 trait 声明的默认方法体 | 当 impl 块中找不到方法时，回退到 trait 声明的默认方法 DefId | P3, v0.14+ |
+| TD-UFCS-AMBIGUITY-E1109 | 普通方法调用 `obj.method()` 当 2+ trait 提供同名方法时，仍静默选择第一个匹配（无 E1109 报错） | `resolve_trait_method` 缺少 candidate filter + 多候选报错 | 在 `resolve_trait_method` 中收集所有候选，>1 时报 E1109 "ambiguous_trait_method" | P3, v0.14+ |
+
 
 ### P3 — 架构重构（非功能缺失）
 

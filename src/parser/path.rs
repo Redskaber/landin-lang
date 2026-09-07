@@ -64,15 +64,29 @@ impl<'a> Parser<'a> {
         // will consume the other. So `try_parse_qself` should be attempted
         // when peek is `<` OR when peek is `<<` with `shl_split > 0`.
         //
+        // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Enable QSelf
+        // parsing in Expr context too, so that `<T as Trait>::method(args)`
+        // works in expression position (UFCS — Universal Function Call Syntax).
+        //
+        // Per §1.0 原則 3 (显式 > 隐式): when 2 traits provide same-named
+        // method on same type, the user MUST disambiguate explicitly via
+        // `<T as Trait>::method` syntax (no implicit candidate filtering).
+        // Per §1.0 原則 6 (通解 > 特例): one `try_parse_qself` handles all
+        // contexts (Type / Pattern / Expr) — no per-context special case.
+        // Per §1.0 原則 9 (正确 > 妥协): explicit trait dispatch is the
+        // root-cause fix for trait method name collisions (Display::fmt vs
+        // Debug::fmt); renaming Debug::fmt would be a 特解 violating Rust
+        // source compatibility.
+        //
         // Note: qself info (inner type + position) is stored on the wrapping
-        // `Ty::Path(QSelf, Path, Span)`, NOT on `Path` itself. When called
-        // from `parse_ty`, the caller checks for qself and wraps accordingly.
-        // When called from non-type contexts (Expr, Pattern), qself info is
-        // discarded (qualified paths in expression position require different
-        // handling — turbofish + UFCS — which is out of scope for Phase 2).
-        let is_qself_start = matches!(ctx, PathContext::Type | PathContext::Pattern)
-            && (*self.peek() == TokenKind::Lt
-                || (*self.peek() == TokenKind::Shl && self.shl_split > 0));
+        // `Expr::Path(Option<QSelf>, Path, Span)` for Expr context, and on
+        // `Ty::Path(QSelf, Path, Span)` for Type context. Both are lowered
+        // to HIR preserving the qself — see `lower_path_with_qself`.
+        let is_qself_start = matches!(
+            ctx,
+            PathContext::Type | PathContext::Pattern | PathContext::Expr
+        ) && (*self.peek() == TokenKind::Lt
+            || (*self.peek() == TokenKind::Shl && self.shl_split > 0));
         if is_qself_start {
             if let Some((_qself, path)) = self.try_parse_qself(ctx, span) {
                 // QSelf info is preserved via thread-local storage for

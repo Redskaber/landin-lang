@@ -44887,3 +44887,61 @@ Stage Summary:
 - Stage 118: Implement process-per-test isolation — change compile_src to
   subprocess + add --emit-errors-json flag. ~250 LOC.
 - Stage 119: Re-add Debug impl bodies with debug_fmt, verify 100 runs 0 SIGSEGV.
+
+---
+Task ID: stage127-ufcs-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 127 — TD-TRAIT-METHOD-AMBIGUITY (UFCS) 完整实现。v0.657.0 → v0.658.0.
+
+Work Log:
+- §18 依赖审查: 上轮已恢复 v0.657.0/Stage 126 baseline (5742/0/9)
+- Phase 0 设计文档 (上轮完成): lang-design §2.6 UFCS + grammar + diagnostics E1109/E1110
+- Phase 1 Parser (上轮完成): Expr 上下文 qself 解析 + take_last_qself 集成
+- Phase 2 HIR (上轮完成): HirPath.qself 字段 + lower_path_with_qself + 所有构造点更新
+- Phase 3 Resolver (上轮完成): trait_method_index + resolve_qualified_path + qself.ty 解析
+- Phase 4 Codegen (上轮部分): get_concrete_type_name Adt 分支 + type_name_by_def_id 传递
+- Phase 4 关键突破 (本轮): 在 MIR lower 的 lower_path_expr 添加 resolve_ufcs_impl_method_def_id
+  直接解析 impl 方法 DefId — 绕过 typeck receiver_type 推断问题
+  - 根因: typeck 将 &e 的类型推断为 &String 而非 &English (fn_sigs trait 方法 Self=Error)
+  - 通解: MIR lower 直接用 qself.ty + trait_name + method_name 查找 impl 方法 DefId
+  - 验证: <English as Greeter>::greet(&e) 产生 call i32 @landin_Greeter_English_greet
+  - 运行时: 输出 42 (正确)
+- Phase 5 Tests (本轮完成): tests/v0/stage127/plan/ufcs_tests.rs
+  - 26 tests: 8 positive + 11 negative + 4 edge + 3 regression
+  - 1:3+ 正负比例 (§9.4.3)
+  - 覆盖: UFCS 基本 + 带 args + 消歧 + struct with fields + 多 impl + let binding +
+    expression + unit return + 嵌套 + 链式 + mut receiver + default body +
+    错误情况 (trait not found, method not in trait, type not impl trait,
+    missing receiver, missing as, missing >, missing ::, empty path,
+    not a trait, ambiguity) + 回归 (normal method, type::method, enum variant)
+- Phase 6 §3.2 验收 (本轮完成):
+  - cargo fmt --check ✓
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+  - cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures)
+  - cargo test --release --features llvm-backend --test all_tests ✓ (4870 tests, 0 failures, 9 ignored)
+  - Total: 5768 tests, 0 failures, 9 ignored
+- Phase 7 文档同步 (本轮完成):
+  - docs/develop/v0/stage-127/dev-log.md (完整开发日志)
+  - docs/develop/v0/tech-debt-register.md (TD-TRAIT-METHOD-AMBIGUITY ✅ + 3 新 TD)
+  - docs/develop/v0/calibration-data.md (Stage 127 统计行)
+  - README.md (v0.658.0 + Stage 127 + 5768 tests)
+  - RELEASE_NOTES.md (v0.658.0 — Stage 127 完整条目)
+  - Cargo.toml v0.657.0 → v0.658.0
+
+Stage Summary:
+- Stage 127 PASSED — UFCS `<T as Trait>::method(receiver, args)` 完整实现
+- 26 tests all pass (8 正 + 11 负 + 4 边界 + 3 回归)
+- 0 regression (5742 → 5768 tests, +26 new)
+- 3 new TDs documented:
+  - TD-UFCS-SHORT-FORM (P3, v0.14+): 短形式 Trait::method(receiver) 未实现
+  - TD-UFCS-DEFAULT-BODY-EMPTY-IMPL (P3, v0.14+): 空 impl 调用默认方法体找不到
+  - TD-UFCS-AMBIGUITY-E1109 (P3, v0.14+): 普通 obj.method() 多 trait 同名仍静默
+- 决策点:
+  - 选 UFCS (通解) 不选 rename Debug::fmt (特解) — §1.0 原则 6/9 + §12
+  - 选 MIR lower 直接解析 impl 方法 不选依赖 codegen re_resolve — §1.0 原则 9
+  - 选 trait_method_index 预计算 不选 HIR 查询 — §16 codegen HIR-free
+- 裁剪点: 无 (L3 任务，全流程执行)
+- 下一步 (MUV): Stage 128 — 可选 TD-UFCS-SHORT-FORM (短形式) 或
+  TD-UFCS-AMBIGUITY-E1109 (普通调用多候选报错) 或
+  进入 v0.14 其他 TD (TD-CFG-MACROS / TD-ENV-MACROS / TD-ASM-MACRO 等)
+- v0.658.0

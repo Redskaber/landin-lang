@@ -1046,7 +1046,17 @@ impl<'a> Parser<'a> {
                         span: path_span,
                     };
                 }
-                Expr::Path(None, path, path_span)
+                // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): If
+                // `parse_path_in_expr` parsed a `<T as Trait>::method` UFCS
+                // path, `last_qself` is `Some(QSelf)`. Take it and pass into
+                // `Expr::Path(Some(qself), path, span)` so HIR lowering can
+                // preserve the trait context for typeck + MIR lower.
+                //
+                // Per §1.0 原則 3 (显式 > 隐式): preserve the explicit trait
+                // qualifier through AST → HIR → MIR lower.
+                // Per §10 naming: `take_last_qself` is the single-use handoff.
+                let qself = self.take_last_qself();
+                Expr::Path(qself, path, path_span)
             }
         }
     }

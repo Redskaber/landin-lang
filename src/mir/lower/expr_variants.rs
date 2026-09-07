@@ -225,11 +225,32 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                         // substs may be empty — see TD-MONO-INFER note above.
                         let substs =
                             lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
-                        let fndef_ty = Ty::new(TyKind::FnDef(def_id, substs), expr.span);
+                        // Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): UFCS
+                        // path `<T as Trait>::method`. When the path has a qself,
+                        // resolve to the concrete impl method DefId directly
+                        // (not the trait declaration method DefId, which may be
+                        // the trait's own DefId for bodyless trait methods).
+                        //
+                        // This bypasses the codegen re_resolve_trait_method_calls
+                        // path (which uses receiver_type from local_decls — that
+                        // path has issues with typeck type inference for UFCS).
+                        //
+                        // Per §1.0 原則 3 (显式 > 隐式): the user's explicit
+                        // qself provides Self + Trait — resolve directly.
+                        // Per §1.0 原則 6 (通解 > 特例): one resolution path
+                        // for all UFCS calls (any trait, any type).
+                        // Per §1.0 原則 9 (正确 > 妥协): correct direct resolution
+                        // rather than relying on indirect re-resolution.
+                        let resolved_def_id = if path.qself.is_some() {
+                            resolve_ufcs_impl_method_def_id(cx, path).unwrap_or(def_id)
+                        } else {
+                            def_id
+                        };
+                        let fndef_ty = Ty::new(TyKind::FnDef(resolved_def_id, substs), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
                                 ty: fndef_ty.clone(),
-                                val: ConstVal::Uint(def_id.as_u32() as u128),
+                                val: ConstVal::Uint(resolved_def_id.as_u32() as u128),
                             })),
                             fndef_ty,
                             expr.span,
@@ -1141,3 +1162,93 @@ pub(super) fn lower_for_expr(
 // closure literal site, which caused the body's statements (and side
 // effects!) to fire at closure CONSTRUCTION time, not at call time.
 // This is a soundness bug — `let f = |x| { println!(...); x + 1 }
+// (file continues — Stage 127 UFCS impl method resolver)
+
+/// Stage 127 (v0.13 — TD-TRAIT-METHOD-AMBIGUITY): Resolve a UFCS path
+/// `<T as Trait>::method` to the concrete impl method's DefId.
+///
+/// Given a `HirPath` with `qself.is_some()`, extract:
+///   - Self type name from `qself.ty` (the `<T as ...>` inner type)
+///   - Trait name from `path.segments[qself.position - 1]`
+///   - Method name from `path.segments[qself.position]`
+///
+/// Then scan all `impl Trait for Type` blocks in HIR, find the one matching
+/// (trait_name, self_type_name), and return the impl method's DefId.
+///
+/// Returns `None` if:
+///   - qself is None (caller guards this)
+///   - qself.ty is None (short-form `Trait::method` — Self inferred from
+///     receiver, but this function doesn't have receiver context; caller
+///     falls back to trait_def_id)
+///   - No matching impl block found (caller falls back to trait_def_id)
+///
+/// Per §1.0 原則 3 (显式 > 隐式): the user's explicit `<T as Trait>` is the
+/// source of truth — no method probe ambiguity.
+/// Per §1.0 原則 6 (通解 > 特例): one resolver for all UFCS calls.
+/// Per §1.0 原則 4 (报错 > 静默): if no impl found, return None and let the
+/// caller fall back (codegen will report "no method found" if applicable).
+fn resolve_ufcs_impl_method_def_id(cx: &MirLowerCtxt, path: &HirPath) -> Option<crate::hir::DefId> {
+    use crate::hir::HirItem;
+    use crate::mir::ty::TyKind;
+
+    let qself = path.qself.as_ref()?;
+    let position = qself.position;
+    if position == 0 || position >= path.segments.len() {
+        return None;
+    }
+
+    // Extract Self type name from qself.ty.
+    let inner_ty = qself.ty.as_ref()?;
+    let self_type_name: &str = match &inner_ty.kind {
+        crate::hir::HirTyKind::Path(_qself, inner_path) if inner_path.segments.len() == 1 => {
+            cx.interner.resolve(&inner_path.segments[0].ident.name)
+        }
+        _ => return None, // Self is not a simple type path — fall back.
+    };
+
+    // Extract trait name + method name from path segments.
+    let trait_seg = &path.segments[position - 1];
+    let trait_name = trait_seg.ident.name;
+    let method_seg = &path.segments[position];
+    let method_name = method_seg.ident.name;
+
+    let hir = cx.hir?;
+
+    // Scan all impl blocks for one matching (trait_name, self_type_name).
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(HirItem::Impl(impl_block)) = owner {
+            // Check trait matches.
+            let impl_trait_matches = impl_block
+                .of_trait
+                .as_ref()
+                .and_then(|p| p.segments.last())
+                .map(|s| s.ident.name == trait_name)
+                .unwrap_or(false);
+            if !impl_trait_matches {
+                continue;
+            }
+            // Check self_ty matches.
+            let self_ty_matches = match &impl_block.self_ty.kind {
+                crate::hir::HirTyKind::Path(_q, p) if p.segments.len() == 1 => {
+                    cx.interner.resolve(&p.segments[0].ident.name) == self_type_name
+                }
+                _ => false,
+            };
+            if !self_ty_matches {
+                continue;
+            }
+            // Found matching impl — find the method by name.
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.ident.name == method_name {
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+
+    // No matching impl found — fall back to None (caller uses trait_def_id).
+    let _ = TyKind::Bool; // suppress unused import warning
+    None
+}
