@@ -65,8 +65,7 @@ fn stage95_type_mismatch_errors() {
             0
         }
     "#;
-    // Stage 123: Use in-process compile for structured error access.
-    let result = landin_compiler::compile(src);
+    let result = compile_src(src);
     assert!(
         !result.errors.typeck.is_empty(),
         "type mismatch (bool to i32) should error"

@@ -212,6 +212,11 @@ pub trait Emitter:
     + AggregateEmitter
     + LocalStateEmitter
 {
+    /// Stage 125: Returns true if this emitter is the LLVM C API emitter
+    /// (LLVMSysEmitter). Used to conditionally filter vtable emission.
+    fn is_llvm_emitter(&self) -> bool {
+        false
+    }
 }
 
 impl<T> Emitter for T where

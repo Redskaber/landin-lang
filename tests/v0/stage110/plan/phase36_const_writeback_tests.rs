@@ -94,10 +94,28 @@ fn assert_llvm_ir_valid(name: &str, code: &str) {
     let stable_ll = tmp_dir.join(format!("{}_stable.ll", name));
     std::fs::write(&stable_ll, &ir_text).expect("write stable .ll");
 
-    let llvm_as = std::env::var("LLVM_SYS_221_PREFIX")
-        .map(|p| Path::new(&p).join("bin/llvm-as"))
-        .unwrap_or_else(|_| Path::new("/tmp/llvm-22-prefix/bin/llvm-as").to_path_buf());
-    // Stage 123: Skip if llvm-as not found (non-standard LLVM install).
+    let llvm_as = std::env::var_os("PATH")
+        .and_then(|paths| {
+            std::env::split_paths(&paths).find_map(|dir| {
+                let full = dir.join("llvm-as");
+                if full.is_file() {
+                    Some(full)
+                } else {
+                    None
+                }
+            })
+        })
+        .or_else(|| {
+            std::env::var("LLVM_SYS_221_PREFIX")
+                .ok()
+                .map(|p| Path::new(&p).join("bin/llvm-as"))
+        })
+        .or_else(|| {
+            std::env::var("LLVM_SYS_191_PREFIX")
+                .ok()
+                .map(|p| Path::new(&p).join("bin/llvm-as"))
+        })
+        .unwrap_or_else(|| Path::new("/tmp/llvm-22-prefix/bin/llvm-as").to_path_buf());
     if !llvm_as.exists() {
         let _ = std::fs::remove_dir_all(&tmp_dir);
         return;

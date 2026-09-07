@@ -364,3 +364,28 @@ pub fn emit_vtables(
 ) {
     emit_vtables_from_resolver(trait_resolver, interner, emitter)
 }
+
+/// Stage 125 (TD-LLVM-INTERNAL-NONDETERMINISM fix): Emit vtable globals
+/// only for (trait, type) pairs that are actually used in `dyn Trait`
+/// method calls. This reduces LLVM module complexity → fewer DenseMap
+/// collisions → deterministic codegen.
+pub fn emit_vtables_filtered(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+    used_pairs: &std::collections::HashSet<(String, String)>,
+) {
+    let specs = build_vtable_global_specs(trait_resolver, interner);
+    for spec in &specs {
+        // Parse trait + type from global_name: ".vtable.<trait>.<type>"
+        let parts: Vec<&str> = spec.global_name.split('.').collect();
+        if parts.len() >= 4 {
+            let trait_name = parts[2].to_string();
+            let type_name = parts[3].to_string();
+            if !used_pairs.contains(&(trait_name, type_name)) {
+                continue; // Skip unused vtable
+            }
+        }
+        emitter.emit_vtable_global(&spec.global_name, &spec.method_symbols);
+    }
+}

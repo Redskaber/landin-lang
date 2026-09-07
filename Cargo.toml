@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.655.0"
+version = "0.656.0"
 edition = "2021"
 license = "MIT"
 description = "Landin compiler — Rust-inspired systems language (LLVM 22 backend)"
@@ -70,7 +70,7 @@ clap = { version = "4", features = ["derive"] }
 # is the build-server fallback. Supports LLVM 18-22 via switch-llvm-version.sh.
 # Set LLVM_SYS_221_PREFIX (or LLVM_SYS_191_PREFIX for fallback) + LLVM_LINK_SHARED=1.
 [dependencies.llvm-sys]
-version = "221"
+version = "191"
 features = ["prefer-dynamic"]
 optional = true
 

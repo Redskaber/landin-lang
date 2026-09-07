@@ -154,10 +154,6 @@ fn stage112_prelude_no_debug_impl_for_i32() {
 
 #[test]
 fn stage112_prelude_no_debug_impl_for_i64() {
-    // Stage 123: Debug impl bodies are permanently deferred (LLVM C++ non-determinism).
-    // The trait is declared but impl bodies are absent. Calling .fmt() on i64
-    // resolves to Display::fmt (which takes &mut String, not just &self),
-    // so it should error.
     let src = r#"
         fn main() -> i32 {
             let _s: String = (42i64).fmt();
@@ -165,11 +161,9 @@ fn stage112_prelude_no_debug_impl_for_i64() {
         }
     "#;
     let result = compile_src(src);
-    // Debug trait is declared but impl bodies deferred — .fmt() on i64
-    // resolves to Display::fmt (wrong signature) → type mismatch error.
     assert!(
         result.has_errors(),
-        "expected compile errors (Debug impl deferred, Display::fmt has wrong sig), got success"
+        "expected compile errors (no Debug impl for i64), got success"
     );
 }
 

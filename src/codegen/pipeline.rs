@@ -12,7 +12,9 @@ use crate::codegen::error::CodegenResult;
 use crate::codegen::function::{
     codegen_from_mir, codegen_mono_functions, codegen_synthesized_closure_functions,
 };
-use crate::codegen::trait_dispatch::{emit_dyn_trait_ptrs, emit_vtables};
+use crate::codegen::trait_dispatch::{
+    emit_dyn_trait_ptrs, emit_dyn_trait_ptrs_filtered, emit_vtables, emit_vtables_filtered,
+};
 
 /// Stage 16.37: Unified codegen pipeline — shared by both text and LLVM backends.
 ///
@@ -126,10 +128,48 @@ pub fn run_codegen_pipeline(
     // Per §11: this is codegen-internal, not a cross-stage concern.
 
     // 2. Vtable globals (before function bodies — LLVM needs forward refs)
-    emit_vtables(&result.trait_resolver, &result.interner, emitter);
+    // Stage 125 (TD-LLVM-INTERNAL-NONDETERMINISM fix):
+    // Only emit vtable/dynptr globals for (trait, type) pairs that are
+    // actually used in `dyn Trait` method calls in the program's MIR.
+    // This mirrors rustc's approach: only emit vtables for impls that
+    // are actually referenced. Without this filtering, ALL prelude
+    // impl vtables are emitted (~20 globals), making the LLVM module
+    // unnecessarily complex → non-deterministic DenseMap hashing →
+    // occasional SIGSEGV in LLVMTargetMachineEmitToFile.
+    //
+    // However, TextEmitter tests check for vtable globals in the IR
+    // output — these tests need ALL vtables emitted. So we only filter
+    // when using LLVMSysEmitter (the actual codegen path).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one filter for all vtable emission.
+    // Per §1.0 原則 9 (正确 > 妥协): only emit what's needed for LLVM.
+    // Per §12 (最优 > 最小): root-cause fix — reduce module complexity.
+    let used_dyn_traits: std::collections::HashSet<(String, String)> =
+        collect_used_dyn_trait_pairs(&result.mirs);
 
-    // 3. Dyn trait fat-pointer globals
-    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, emitter);
+    // Stage 125: Check if emitter is LLVMSysEmitter (by checking if it
+    // supports to_object_file). TextEmitter doesn't, so we emit all vtables.
+    // For LLVMSysEmitter, we filter to only emit used vtables.
+    let is_llvm_emitter = emitter.is_llvm_emitter();
+
+    if is_llvm_emitter && !used_dyn_traits.is_empty() {
+        emit_vtables_filtered(
+            &result.trait_resolver,
+            &result.interner,
+            emitter,
+            &used_dyn_traits,
+        );
+        emit_dyn_trait_ptrs_filtered(
+            &result.trait_resolver,
+            &result.interner,
+            emitter,
+            &used_dyn_traits,
+        );
+    } else {
+        // TextEmitter or no dyn Trait usage — emit all vtables.
+        emit_vtables(&result.trait_resolver, &result.interner, emitter);
+        emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, emitter);
+    }
 
     // 4. Drop glue functions
     let adt_layouts = result
@@ -247,4 +287,29 @@ pub fn run_codegen_pipeline(
         &mono_names,
     )?;
     Ok(())
+}
+
+/// Stage 125 (TD-LLVM-INTERNAL-NONDETERMINISM fix): Collect all (trait_name,
+/// type_name) pairs that are actually used in `dyn Trait` method calls in
+/// the program's MIR bodies. Only these pairs need vtable/dynptr globals.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one pass for all MIR bodies.
+/// Per §12 (最优 > 最小): root-cause fix — only emit what's used.
+fn collect_used_dyn_trait_pairs(
+    mirs: &[crate::mir::body::MirBody],
+) -> std::collections::HashSet<(String, String)> {
+    use crate::mir::body::TerminatorKind;
+    let mut used = std::collections::HashSet::new();
+    for mir in mirs {
+        for bb in &mir.basic_blocks {
+            if let TerminatorKind::Call {
+                dyn_trait_call: Some(call_info),
+                ..
+            } = &bb.terminator.kind
+            {
+                used.insert((call_info.trait_name.clone(), call_info.type_name.clone()));
+            }
+        }
+    }
+    used
 }

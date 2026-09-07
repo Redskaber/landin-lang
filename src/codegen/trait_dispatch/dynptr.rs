@@ -275,3 +275,27 @@ pub fn emit_dyn_trait_ptrs(
 ) {
     emit_dynptrs_from_resolver(trait_resolver, interner, emitter)
 }
+
+/// Stage 125 (TD-LLVM-INTERNAL-NONDETERMINISM fix): Emit dynptr globals
+/// only for (trait, type) pairs that are actually used in `dyn Trait`
+/// method calls.
+pub fn emit_dyn_trait_ptrs_filtered(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+    used_pairs: &std::collections::HashSet<(String, String)>,
+) {
+    let specs = build_dynptr_global_specs(trait_resolver, interner);
+    for spec in &specs {
+        // Parse trait + type from global_name: ".dynptr.<trait>.<type>"
+        let parts: Vec<&str> = spec.global_name.split('.').collect();
+        if parts.len() >= 4 {
+            let trait_name = parts[2].to_string();
+            let type_name = parts[3].to_string();
+            if !used_pairs.contains(&(trait_name, type_name)) {
+                continue;
+            }
+        }
+        emitter.emit_dyn_trait_const(&spec.global_name, &spec.data_symbol, &spec.vtable_symbol);
+    }
+}

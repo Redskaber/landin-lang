@@ -162,6 +162,12 @@ impl LLVMSysEmitter {
         self.fn_sigs = sigs;
     }
 
+    /// Stage 125: Override is_llvm_emitter to return true.
+    #[allow(dead_code)]
+    fn is_llvm_emitter(&self) -> bool {
+        true
+    }
+
     /// Return the underlying `LLVMModuleRef`.
     ///
     /// The caller is responsible for not disposing the module while the

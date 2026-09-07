@@ -46,6 +46,20 @@ use common::{compile_src, run_program};
 use std::path::Path;
 use std::process::Command;
 
+/// Stage 125: Find llvm-as in PATH or known LLVM prefixes.
+fn which(name: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths).find_map(|dir| {
+            let full = dir.join(name);
+            if full.is_file() {
+                Some(full)
+            } else {
+                None
+            }
+        })
+    })
+}
+
 /// Helper: emit LLVM IR for a Landin source string and verify it's
 /// valid LLVM IR via `llvm-as`.
 ///
@@ -107,18 +121,22 @@ fn assert_llvm_ir_valid(name: &str, code: &str) {
     std::fs::write(&stable_ll, &ir_text).expect("write stable .ll");
 
     // Verify with llvm-as.
-    // Stage 123: Make llvm-as optional — skip IR validation if binary not found.
-    // This fixes regressions on systems where LLVM is installed in a different
-    // location (not /tmp/llvm-22-prefix or LLVM_SYS_221_PREFIX not set).
-    let llvm_as = std::env::var("LLVM_SYS_221_PREFIX")
-        .map(|p| Path::new(&p).join("bin/llvm-as"))
-        .unwrap_or_else(|_| Path::new("/tmp/llvm-22-prefix/bin/llvm-as").to_path_buf());
+    // Stage 123/125: Dynamically find llvm-as in PATH or known LLVM prefixes.
+    let llvm_as = which("llvm-as")
+        .or_else(|| {
+            std::env::var("LLVM_SYS_221_PREFIX")
+                .ok()
+                .map(|p| Path::new(&p).join("bin/llvm-as"))
+        })
+        .or_else(|| {
+            std::env::var("LLVM_SYS_191_PREFIX")
+                .ok()
+                .map(|p| Path::new(&p).join("bin/llvm-as"))
+        })
+        .unwrap_or_else(|| Path::new("/tmp/llvm-22-prefix/bin/llvm-as").to_path_buf());
     if !llvm_as.exists() {
-        // llvm-as not found — skip IR validation (not all systems have it).
-        // Per §1.0 原則 9 (正确 > 妥协): skip is better than panic when the
-        // tool is simply not installed. The test still validates compilation.
         let _ = std::fs::remove_dir_all(&tmp_dir);
-        return;
+        return; // Skip if llvm-as not found.
     }
     let as_out = match Command::new(&llvm_as)
         .arg(&stable_ll)
@@ -128,7 +146,6 @@ fn assert_llvm_ir_valid(name: &str, code: &str) {
     {
         Ok(o) => o,
         Err(_) => {
-            // Failed to execute — skip validation.
             let _ = std::fs::remove_dir_all(&tmp_dir);
             return;
         }

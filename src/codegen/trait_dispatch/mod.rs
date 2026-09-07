@@ -39,13 +39,14 @@ pub mod vtable;
 // From `vtable` — vtable global emission.
 pub use vtable::{
     build_vtable_global_specs, emit_vtable_global_from_emission, emit_vtable_global_text,
-    emit_vtable_globals_batch, emit_vtables, emit_vtables_from_resolver, StdlibVtableGlobalSpec,
+    emit_vtable_globals_batch, emit_vtables, emit_vtables_filtered, emit_vtables_from_resolver,
+    StdlibVtableGlobalSpec,
 };
 
 // From `dynptr` — dyn Trait fat-pointer global emission.
 pub use dynptr::{
-    build_dynptr_global_specs, emit_dyn_trait_ptrs, emit_dynptr_global_text,
-    emit_dynptrs_from_resolver, StdlibDynptrGlobalSpec,
+    build_dynptr_global_specs, emit_dyn_trait_ptrs, emit_dyn_trait_ptrs_filtered,
+    emit_dynptr_global_text, emit_dynptrs_from_resolver, StdlibDynptrGlobalSpec,
 };
 
 // From `orchestrator` — combined vtable+dynptr emission + plan/summary aggregates.
