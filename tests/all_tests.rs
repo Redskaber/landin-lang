@@ -1366,3 +1366,9 @@ mod stage145_cast_unsigned_tests;
 //                         after monomorphization. ===
 #[path = "v0/stage146/plan/assoc_type_tests.rs"]
 mod stage146_assoc_type_tests;
+
+// === Stage 147 (v0.15): TD-ASSOC-TYPE-MULTI-RUNTIME — multi-assoc-type
+//                         trait method resolution fix. Bodyless trait methods
+//                         now get unique DefIds (fixes map key collisions). ===
+#[path = "v0/stage147/plan/multi_assoc_type_tests.rs"]
+mod stage147_multi_assoc_type_tests;

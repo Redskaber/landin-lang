@@ -446,13 +446,11 @@ fn main() {
 
 #[test]
 fn stage146_multiple_assoc_types_generic() {
-    // NOTE: This test is currently SKIP (exit code 0 but runtime segfault).
-    // The combination of multiple assoc types + generic projection has a
-    // deeper resolution gap (method call return type with multi-assoc-type
-    // trait). This is tracked as a follow-up TD for v0.16+.
-    //
-    // For now, just verify the non-generic multiple assoc types case works
-    // (stage146_multiple_assoc_types).
+    // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME fix): This test now PASSES.
+    // Previously skipped due to a runtime segfault caused by
+    // TraitMethodResolutionMap key collisions (bodyless trait methods
+    // shared the trait's DefId). Stage 147 gives bodyless methods their
+    // own DefId, fixing the collision.
     let code = r#"
 trait KeyValue {
     type Key;
@@ -470,14 +468,18 @@ impl KeyValue for Entry {
     fn value(&self) -> i64 { self.v }
 }
 
+fn get_key<K: KeyValue>(kv: &K) -> <K as KeyValue>::Key {
+    kv.key()
+}
+
 fn main() {
     let e: Entry = Entry { k: 42i64, v: 99i64 };
-    println!("{} {}", e.key(), e.value());
+    println!("{}", get_key(&e));
 }
 "#;
     let (stdout, exit) = run_program(code);
-    assert_eq!(exit, 0, "multiple assoc types (non-generic) should compile");
-    assert_eq!(stdout.trim(), "42 99");
+    assert_eq!(exit, 0, "multiple assoc types with generic should compile");
+    assert_eq!(stdout.trim(), "42");
 }
 
 // ===========================================================================

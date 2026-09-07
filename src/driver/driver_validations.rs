@@ -101,6 +101,12 @@ pub(super) fn mir_ty_kinds_compatible(a: &crate::mir::ty::Ty, b: &crate::mir::ty
         (TyKind::Param(a_p), TyKind::Param(b_p)) => a_p.index == b_p.index,
         // Param ↔ concrete: ok (generic, can't compare at this stage).
         (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true,
+        // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME): Projection ↔ any type: ok.
+        // Projection (associated type like `Self::Output`) cannot be resolved
+        // at validation time without monomorphization context. Defer to
+        // codegen (which runs resolve_projections_in_mir after mono).
+        // Per §1.0 原則 6/9/10 (mirrors unify.rs Stage 146 Projection rule).
+        (TyKind::Projection(_, _), _) | (_, TyKind::Projection(_, _)) => true,
         // Infer/Error: skip (can't determine).
         (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
         (TyKind::Error, _) | (_, TyKind::Error) => true,

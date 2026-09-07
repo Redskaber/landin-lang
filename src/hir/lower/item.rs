@@ -428,7 +428,42 @@ impl<'a> HirLowerCtxt<'a> {
                     self.exit_owner();
                     HirTraitItem::Fn(hir_fn)
                 } else {
-                    // No body — keep old behavior (no separate owner).
+                    // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME fix): Bodyless
+                    // trait methods now ALSO get their own DefId via
+                    // enter_owner/exit_owner. Previously, bodyless methods
+                    // used fresh_hir_id (sharing the trait's owner DefId),
+                    // which caused ALL bodyless trait methods in the same
+                    // trait to have the SAME hir_id.owner. This made
+                    // TraitMethodResolutionMap entries collide (same DefId +
+                    // type_name key), causing `kv.key()` to resolve to
+                    // `Entry::value` (the last-inserted entry for that key).
+                    //
+                    // ## Root cause (§2.2 根因思维)
+                    //
+                    // `TraitMethodResolutionMap` keys are
+                    // `(trait_method_def_id, type_name)`. For bodyless
+                    // methods, `trait_method_def_id = f.hir_id.owner` = the
+                    // trait's DefId (shared by ALL methods). So for a trait
+                    // with `fn key` + `fn value`, both map entries have the
+                    // same key `(trait_def_id, "Entry")`, and the second
+                    // insert OVERWRITES the first. `lookup` returns whatever
+                    // was inserted last — `value` — regardless of whether
+                    // `key()` or `value()` was called.
+                    //
+                    // ## Fix (§1.0 原則 6/9)
+                    //
+                    // Give bodyless trait methods their own DefId (same as
+                    // bodied methods). Now `f.hir_id.owner` is unique per
+                    // method, and the map keys don't collide.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one enter_owner/exit_owner
+                    // path for ALL trait methods (bodied + bodyless).
+                    // Per §1.0 原則 9 (正确 > 妥协): bodyless methods need
+                    // unique DefIds for correct map resolution.
+                    // Per §1.0 原則 4 (报错 > 静默): the collision was silent
+                    // — HashMap.insert overwrote without warning.
+                    let def_id = self.enter_owner();
+                    let fn_hir_id = self.owner_hir_id();
                     let hir_generics = generics::lower_generics(self, generics);
                     let inputs: Vec<HirParam> =
                         sig.inputs.iter().map(|p| self.lower_param(p)).collect();
@@ -436,7 +471,6 @@ impl<'a> HirLowerCtxt<'a> {
                         ast::FnRetTy::Default(s) => HirFnRetTy::Default(*s),
                         ast::FnRetTy::Ty(t) => HirFnRetTy::Ty(ty::lower_ty(self, t)),
                     };
-                    let fn_hir_id = self.fresh_hir_id();
                     let hir_fn = HirFn {
                         hir_id: fn_hir_id,
                         ident: *ident,
@@ -453,6 +487,8 @@ impl<'a> HirLowerCtxt<'a> {
                         attrs: vec![],
                         span: sig.span,
                     };
+                    self.store_owner(def_id, OwnerNode::Item(HirItem::Fn(hir_fn.clone())));
+                    self.exit_owner();
                     HirTraitItem::Fn(hir_fn)
                 }
             }

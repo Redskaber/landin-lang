@@ -45210,3 +45210,30 @@ Stage Summary:
   TD-TYPECK-LIFETIME-ELISION 或 TD-ASSOC-TYPE-MULTI-RUNTIME
 - v0.670.0
 
+
+---
+Task ID: stage147-td-assoc-type-multi-runtime-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 147 — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复. v0.670.0 → v0.671.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 146 baseline (5942 tests, 0 failures)
+- 根因分析 (§2.2): bodyless trait 方法使用 fresh_hir_id (共享 trait owner DefId)
+  → TraitMethodResolutionMap key 冲突 → kv.key() 解析到 Entry::value
+- MUV-1: hir/lower/item.rs — bodyless trait 方法使用 enter_owner/exit_owner (获得唯一 DefId)
+- MUV-2: resolve/module_build.rs — 添加 trait_method_def_ids 集合 + 跳过 trait 方法在模块注册
+- MUV-3: driver/driver_validations.rs — mir_ty_kinds_compatible 添加 Projection 分支 (Projection ↔ any = true)
+- MUV-4: 更新 stage1 测试预期 (owner_count 1→2, trait 查找用 find 而非 first)
+- MUV-5: 启用 stage146 跳过的 multi-assoc generic 测试 + 编写 stage147 测试 (18 tests)
+- MUV-6 §3.2 全套验收通过:
+  - cargo clean ✓ / build --release ✓ (48s) / check ✓ / fmt ✓ / clippy ✓
+  - cargo test --lib ✓ (898 tests, 0 failures)
+  - cargo test --test all_tests ✓ (5062 tests, 0 failures, 12 ignored)
+  - Total: 5960 tests, 0 failures, 12 ignored (+18 new)
+
+Stage Summary:
+- Stage 147 PASSED — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复
+- 0 regression (5942 → 5960 tests, +18 new)
+- 决策点: 选 bodyless 方法获得唯一 DefId 不选修改 map key — §1.0 原則 6 (通解)
+- 下一步 (MUV): Stage 148 — TD-STDLIB-ITERATOR (解锁 Iterator trait) 或 TD-TYPECK-LIFETIME-ELISION
+- v0.671.0

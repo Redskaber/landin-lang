@@ -57,7 +57,13 @@ fn integration_enum_with_variants() {
 #[test]
 fn integration_trait_with_items() {
     let hir = parse_and_lower("trait Foo { fn bar(&self); type Item; const X: i32; }");
-    assert_eq!(hir.owner_count(), 1);
+    // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME): bodyless trait method `bar`
+    // now gets its own owner (DefId) via enter_owner/exit_owner, same as
+    // bodied trait methods. This is required for unique DefIds in
+    // TraitMethodResolutionMap. Without it, all bodyless trait methods in
+    // the same trait share the trait's DefId, causing map key collisions.
+    // owner_count = 1 (trait Foo) + 1 (fn bar) = 2.
+    assert_eq!(hir.owner_count(), 2);
 }
 
 #[test]
@@ -240,8 +246,15 @@ fn struct_enum_variants_preserved() {
 #[test]
 fn struct_trait_items_preserved() {
     let hir = parse_and_lower("trait Foo { fn bar(&self); type Item; const X: i32; }");
-    let owner = hir.owners.first().expect("should have 1 owner");
-    if let OwnerNode::Item(HirItem::Trait(t)) = &owner.1 {
+    // Stage 147: owners now includes both the trait AND its bodyless method
+    // (fn bar gets its own DefId). Find the Trait owner among all owners.
+    let trait_owner = hir
+        .owners
+        .iter()
+        .find(|(_, node)| matches!(node, OwnerNode::Item(HirItem::Trait(_))))
+        .map(|(_, node)| node)
+        .expect("should have a Trait owner");
+    if let OwnerNode::Item(HirItem::Trait(t)) = trait_owner {
         assert_eq!(t.items.len(), 3, "should have 3 trait items");
     } else {
         panic!("expected Trait");

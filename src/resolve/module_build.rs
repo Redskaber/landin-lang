@@ -84,6 +84,34 @@ impl Resolver {
             set
         };
 
+        // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME fix): Pre-collect trait
+        // method DefIds from trait declarations. Trait methods (both bodied
+        // + bodyless) are now stored as separate HirItem::Fn owners by the
+        // HIR lower (for unique DefId in TraitMethodResolutionMap). But
+        // they should NOT be registered in the global value namespace —
+        // they're scoped to their trait. Without this pre-collection, a
+        // trait method named `fmt` and an impl method named `fmt` (for
+        // the same trait) would both try to register `fmt` in the value
+        // namespace → "duplicate definition" error.
+        //
+        // Per §12 (最优 > 最小): root-cause fix — skip trait methods in
+        // global namespace registration, same pattern as impl methods.
+        // Per §1.0 原則 6 (通解 > 特解): one pre-collection for all trait methods
+        // (bodied + bodyless).
+        let trait_method_def_ids: std::collections::HashSet<DefId> = {
+            let mut set = std::collections::HashSet::new();
+            for (_, node) in &hir.owners {
+                if let OwnerNode::Item(HirItem::Trait(t)) = node {
+                    for trait_item in &t.items {
+                        if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                            set.insert(f.hir_id.owner);
+                        }
+                    }
+                }
+            }
+            set
+        };
+
         // Stage 15.70: Register Box<T> as a builtin prelude type.
         //
         // Box<T> is a special type — it represents a heap-allocated owned
@@ -119,6 +147,18 @@ impl Resolver {
                 // `Type::method` paths (impl_method_index), not as free fns.
                 if let HirItem::Fn(_) = item {
                     if self.impl_method_def_ids.contains(def_id) {
+                        // Still record the DefKind so codegen can find it.
+                        self.def_kinds.insert(*def_id, DefKind::Fn);
+                        continue;
+                    }
+                    // Stage 147 (TD-ASSOC-TYPE-MULTI-RUNTIME fix): Skip trait
+                    // method owners — they're accessed via trait method resolution
+                    // (TraitMethodResolutionMap), not as free fns in the value
+                    // namespace. Without this skip, trait method `fmt` and impl
+                    // method `fmt` would collide in the value namespace.
+                    // Per §12 (最优 > 最小): same pattern as impl methods.
+                    // Per §1.0 原則 6 (通解 > 特解): one skip for all trait methods.
+                    if trait_method_def_ids.contains(def_id) {
                         // Still record the DefKind so codegen can find it.
                         self.def_kinds.insert(*def_id, DefKind::Fn);
                         continue;

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.670.0 (v0.15 Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复: 泛型上下文中的关联类型投影解析; unify.rs 添加 Projection 分支 + codegen post-mono resolver; 5942 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.671.0 (v0.15 Stage 147 — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复: bodyless trait 方法获得唯一 DefId, 修复 TraitMethodResolutionMap key 冲突; 5960 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 146 COMPLETE (TD-TYPECK-ASSOC-TYPE-PROJECTION)**. 5942 tests (898 lib + 5044 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 146 修复泛型关联类型投影 — <C as Container>::Item 在泛型函数中正确解析. 24 tests. |
+| **Status** | ✅ **v0.15 Stage 147 COMPLETE (TD-ASSOC-TYPE-MULTI-RUNTIME)**. 5960 tests (898 lib + 5062 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 147 修复多关联类型 trait 方法解析 — bodyless trait 方法获得唯一 DefId, 修复 map key 冲突. 18 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

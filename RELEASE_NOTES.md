@@ -3,13 +3,61 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.670.0 (v0.15 Stage 146 — TD-TYPECK-ASSOC-TYPE-PROJECTION 完整修复: 泛型上下文中的关联类型投影解析; 5942 tests) |
+| **Current version** | v0.671.0 (v0.15 Stage 147 — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复: bodyless trait 方法获得唯一 DefId; 5960 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5044 integration tests = 5942 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5062 integration tests = 5960 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 146 完成 v0.15 assoc type projection 修复); v0.15 typeck 阶段 — Stage 146 修复泛型上下文中的关联类型投影解析, 解锁 Iterator trait |
+| **Architecture** | Health 9.9/10 (stable — Stage 147 完成 v0.15 multi-assoc-type trait 方法解析修复); v0.15 typeck 阶段 — Stage 147 修复 bodyless trait 方法 DefId 唯一性, 解锁完整 Iterator trait 支持 |
+
+---
+
+## v0.671.0 — Stage 147 (v0.15) — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复
+
+### Overview
+
+Stage 147 完整修复 TD-ASSOC-TYPE-MULTI-RUNTIME — 多关联类型 trait + 泛型投影的运行时 segfault.
+这修复了 Stage 146 发现的 follow-up TD.
+
+### What was fixed
+
+1. **hir/lower/item.rs**: Bodyless trait 方法现在使用 `enter_owner`/`exit_owner`
+   (获得唯一 DefId), 与 bodied 方法相同. 之前使用 `fresh_hir_id` (共享 trait
+   owner DefId), 导致 TraitMethodResolutionMap key 冲突.
+   - §1.0 原則 6 (通解 > 特解): 一个 enter_owner/exit_owner 路径处理所有 trait 方法
+
+2. **resolve/module_build.rs**: 添加 `trait_method_def_ids` 集合 + 跳过 trait 方法
+   在模块值命名空间注册 (same pattern as impl methods Stage 14.42)
+
+3. **driver/driver_validations.rs**: `mir_ty_kinds_compatible` 添加 Projection 分支
+   (Projection ↔ any type = true), mirrors unify.rs Stage 146
+
+### Root cause (§2.2 根因思维)
+
+`TraitMethodResolutionMap` keys are `(trait_method_def_id, type_name)`. For bodyless
+methods, `trait_method_def_id = f.hir_id.owner` = the trait's DefId (shared by ALL
+methods). So for a trait with `fn key` + `fn value`, both map entries have the same
+key `(trait_def_id, "Entry")`, and the second insert OVERWRITES the first. `lookup`
+returns whatever was inserted last — `value` — regardless of whether `key()` or
+`value()` was called.
+
+### Test coverage
+
+18 new tests:
+- Multi-assoc-type generic function (4)
+- Multiple methods with same-name trait (3)
+- FnMut/FnOnce trait impls (4) (regression — was broken by Stage 146)
+- Three+ assoc types (2)
+- Edge cases (2)
+- Regression (3)
+
+### §3.2 acceptance
+
+- cargo clean ✓ / build --release ✓ (48s) / check ✓ / fmt ✓ / clippy ✓
+- cargo test --lib ✓ (898 tests, 0 failures)
+- cargo test --test all_tests ✓ (5062 tests, 0 failures, 12 ignored)
+- Total: 5960 tests, 0 failures, 12 ignored (+18 new)
 
 ---
 

@@ -440,4 +440,4 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-ASSOC-TYPE-MULTI-RUNTIME | 多关联类型 trait + 泛型投影的运行时 segfault (exit code 0 but no output) | method call 返回类型解析在多 assoc type 场景下的 ambiguity — `kv.key()` 返回 Self::Key, 但 resolve_projections_in_mir 可能匹配到错误的 assoc type binding | 调查 resolve_projections_in_mir 的 lookup_assoc_type_resolution 在多 assoc type 场景下的匹配逻辑 — 可能需要按 name + owner 精确匹配 (而非仅 name). 参考 Stage 86 的 find_assoc_type_def_id 修复 (name AND owner trait). | P3, v0.16+ |
+| TD-ASSOC-TYPE-MULTI-RUNTIME | ✅ Stage 147 修复 | 多关联类型 trait + 泛型投影的运行时 segfault (exit code 0 but no output) | bodyless trait 方法获得唯一 DefId (enter_owner) + module_build 跳过 trait 方法注册 + mir_ty_kinds_compatible 添加 Projection 分支. 修复 TraitMethodResolutionMap key 冲突. 18 tests. | ✅ |
