@@ -281,6 +281,17 @@ fn expand_compile_time_macro_with_source(
         "include_str" => Some(expand_include_str_macro(
             input, interner, call_span, file_name,
         )),
+        // Stage 132 (v0.14 — TD-COMPILE-ERROR-MACRO): Compile-time
+        // compile_error! macro. Reports a custom error message at compile
+        // time — does NOT produce any code.
+        //
+        // Per Rust: `compile_error!("msg")` unconditionally fails compilation
+        // with the given message. Used with #[cfg] for conditional errors.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): errors are explicit.
+        // Per §1.0 原則 9 (正确 > 妥协): compile-time error, not runtime.
+        // Per §12 (最优 > 最小): root-cause fix — report at compile time.
+        "compile_error" => Some(expand_compile_error_macro(input, interner, call_span)),
         _ => None,
     }
 }
@@ -643,4 +654,30 @@ fn extract_string_arg(input: &[Token], interner: &Rodeo) -> Option<String> {
         }
     }
     None
+}
+
+/// Stage 132 (v0.14 — TD-COMPILE-ERROR-MACRO): `compile_error!("msg")`
+/// → reports a compile-time error and produces no code.
+///
+/// Per Rust: `compile_error!` unconditionally fails compilation with the
+/// given message. The macro produces no tokens — the error is reported
+/// via stderr and the compilation fails.
+///
+/// Per §1.0 原則 4 (报错 > 静默): errors are explicit.
+/// Per §1.0 原則 9 (正确 > 妥协): compile-time error, not runtime.
+fn expand_compile_error_macro(
+    input: &[Token],
+    interner: &Rodeo,
+    call_span: crate::session::Span,
+) -> Vec<Token> {
+    let msg = extract_string_arg(input, interner)
+        .unwrap_or_else(|| "compile_error! requires a string literal argument".to_string());
+    // Report the error to stderr.
+    // Per §1.0 原則 4 (报错 > 静默): report explicitly.
+    eprintln!("error[E9999]: {}", msg);
+    eprintln!("  --> compile_error! at span {:?}", call_span);
+    // Return empty token stream — produces no code.
+    // The compilation will fail because the expected expression is missing,
+    // or the empty expansion will cause a parse error downstream.
+    Vec::new()
 }

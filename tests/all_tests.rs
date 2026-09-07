@@ -1316,3 +1316,8 @@ mod stage130_default_body_tests;
 // Compile-time env var + file reading. Per §1.0 原則 9 (正确 > 妥协). ===
 #[path = "v0/stage131/plan/env_macros_tests.rs"]
 mod stage131_env_macros_tests;
+
+// === Stage 132 (v0.14): TD-COMPILE-ERROR-MACRO — compile_error!.
+// Compile-time error reporting. Per §1.0 原則 4 (报错 > 静默). ===
+#[path = "v0/stage132/plan/compile_error_tests.rs"]
+mod stage132_compile_error_tests;

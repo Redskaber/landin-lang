@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.662.0 (v0.14 Stage 131 — TD-ENV-MACROS 修复: env!/option_env!/include_str! 编译期宏; 5803 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.663.0 (v0.14 Stage 132 — TD-COMPILE-ERROR-MACRO 修复: compile_error! 编译期宏; 5807 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.14 Stage 131 COMPLETE (TD-ENV-MACROS)**. 5803 tests (898 lib + 4905 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 131 实现 env!/option_env!/include_str! 编译期宏 — 编译期读取环境变量和文件内容，展开为字符串字面量. 5 tests. |
+| **Status** | ✅ **v0.14 Stage 132 COMPLETE (TD-COMPILE-ERROR-MACRO)**. 5807 tests (898 lib + 4909 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 132 实现 compile_error! 编译期宏 — 编译期报错 + 空 token 流. 4 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
