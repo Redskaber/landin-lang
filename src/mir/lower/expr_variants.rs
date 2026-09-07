@@ -296,6 +296,39 @@ pub(super) fn lower_call_expr(
     args: &[HirExpr],
     expected_ty: Option<&crate::mir::ty::Ty>,
 ) -> LocalId {
+    // Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): Detect short-form UFCS call
+    // `Trait::method(receiver, args)`. When the func is a 2-segment path
+    // `Trait::method` (no qself), and the first segment is a trait name,
+    // we patch the func's FnDef type to point to the impl method after
+    // lowering args (so we can read the receiver's type).
+    //
+    // We set a flag here; the actual patching happens after args are lowered
+    // (so we can read the receiver's type from local_decls).
+    //
+    // Per §1.0 原則 3 (显式 > 隐式): the user's explicit `Trait::method` is the
+    // source of truth — no method probe ambiguity.
+    // Per §1.0 原則 6 (通解 > 特例): reuses `resolve_impl_method_by_name` with
+    // the fully-qualified form (one scan logic).
+    // Per §1.0 原則 9 (正确 > 妥协): correct direct resolution rather than
+    // relying on codegen re_resolve (which has typeck receiver_type issues).
+    let short_form_ufcs_info: Option<(crate::lexer::Symbol, crate::lexer::Symbol)> =
+        if let HirExprKind::Path(path) = &func.kind {
+            if path.qself.is_none() && path.segments.len() == 2 && !args.is_empty() {
+                let trait_name = path.segments[0].ident.name;
+                let method_name = path.segments[1].ident.name;
+                // Check if first segment is a trait (has an entry in trait_method_index).
+                if is_trait_method(cx, trait_name, method_name) {
+                    Some((trait_name, method_name))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
     // Lower func first — this determines whether the call is a real
     // function call or an ADT construction (struct/enum ctor).
     let func_local = lower_expr_to_operand(cx, func, None);
@@ -562,6 +595,88 @@ pub(super) fn lower_call_expr(
         .iter()
         .map(|l| Operand::Move(Place::local(*l, Span::DUMMY)))
         .collect();
+
+    // Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): If this was detected as a
+    // short-form UFCS call (`Trait::method(receiver, args)`), now that
+    // args are lowered, read the receiver's type from local_decls and
+    // patch the func_local's FnDef type to point to the concrete impl
+    // method DefId (instead of the trait declaration DefId).
+    if let Some((trait_name, method_name)) = short_form_ufcs_info {
+        if let Some(&recv_local) = arg_locals.first() {
+            let recv_ty = cx.mir.local(recv_local).ty.clone();
+            if let Some(self_name) = extract_self_type_name(cx, &recv_ty) {
+                if let Some(impl_def_id) = resolve_ufcs_short_form_impl_method_def_id(
+                    cx,
+                    trait_name,
+                    self_name,
+                    method_name,
+                ) {
+                    // Stage 128: Patch BOTH the local_decl AND the Assign
+                    // statement's Constant operand. The Assign was created by
+                    // lower_path_expr's eval_rvalue_to_temp, which stored
+                    // `Rvalue::Use(Operand::Constant(Const { ty: FnDef(trait_def_id) }))`
+                    // into the func_local. typeck's post_check_statement unifies
+                    // place_ty (local_decl) with rvalue_ty (Constant's ty), so
+                    // both must be patched to avoid a false "expected fn, found fn"
+                    // mismatch.
+                    //
+                    // Per §1.0 原則 9 (正确>妥协): patch both locations for
+                    // consistency — leaving the Constant unpatched would cause
+                    // typeck to see a mismatch between the patched local_decl
+                    // and the unpatched Constant.
+                    // Per §1.0 原則 6 (通解 > 特例): one scan of all basic_blocks
+                    // for the Assign statement referencing func_local.
+                    let func_span = expr.span;
+                    // Patch the func_local's local_decl type.
+                    if let Some(decl) = cx.mir.local_decls.get_mut(func_local.0 as usize) {
+                        if let crate::mir::ty::TyKind::FnDef(_, substs) = &decl.ty.kind {
+                            let substs = substs.clone();
+                            decl.ty = crate::mir::ty::Ty::new(
+                                crate::mir::ty::TyKind::FnDef(impl_def_id, substs),
+                                func_span,
+                            );
+                        }
+                    }
+                    // Patch the Assign statement's Constant operand.
+                    // Search all basic_blocks for an Assign to func_local.
+                    for bb in &mut cx.mir.basic_blocks {
+                        for stmt in &mut bb.statements {
+                            if let crate::mir::body::StatementKind::Assign(boxed) = &mut stmt.kind {
+                                let (place, rvalue) = &mut **boxed;
+                                // Check if this Assign writes to func_local.
+                                if let crate::mir::place::PlaceKind::Local(id) = &place.kind {
+                                    if *id == func_local {
+                                        // Found the Assign — patch the Constant's ty.
+                                        if let crate::mir::place::Rvalue::Use(
+                                            crate::mir::place::Operand::Constant(c),
+                                        ) = rvalue
+                                        {
+                                            if let crate::mir::ty::TyKind::FnDef(_, substs) =
+                                                &c.ty.kind
+                                            {
+                                                let substs = substs.clone();
+                                                c.ty = crate::mir::ty::Ty::new(
+                                                    crate::mir::ty::TyKind::FnDef(
+                                                        impl_def_id,
+                                                        substs,
+                                                    ),
+                                                    func_span,
+                                                );
+                                            }
+                                            // Also patch the ConstVal (the DefId as u128).
+                                            c.val = crate::mir::place::ConstVal::Uint(
+                                                impl_def_id.as_u32() as u128,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Stage 31.7 (v0.19): from_str + Box::new intrinsic dispatch REMOVED.
     // Both are now handled by prelude impls (Stage 31.6b + 31.6f).
@@ -1187,10 +1302,100 @@ pub(super) fn lower_for_expr(
 /// Per §1.0 原則 6 (通解 > 特例): one resolver for all UFCS calls.
 /// Per §1.0 原則 4 (报错 > 静默): if no impl found, return None and let the
 /// caller fall back (codegen will report "no method found" if applicable).
-fn resolve_ufcs_impl_method_def_id(cx: &MirLowerCtxt, path: &HirPath) -> Option<crate::hir::DefId> {
+/// Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): Check if `(trait_name, method_name)`
+/// is a known trait method (has an entry in `trait_method_index`).
+///
+/// Used to detect short-form UFCS calls `Trait::method(receiver)` — when
+/// the func path is `Trait::method` (2 segments, no qself) and the first
+/// segment is a trait name with the method declared, we treat it as
+/// short-form UFCS (not a regular `module::function` call).
+///
+/// Per §1.0 原則 4 (报错 > 静默): if not a trait method, fall through to
+/// normal path resolution (which may report "cannot find value").
+fn is_trait_method(
+    cx: &MirLowerCtxt,
+    trait_name: crate::lexer::Symbol,
+    method_name: crate::lexer::Symbol,
+) -> bool {
+    // We don't have direct access to Resolver.trait_method_index from MIR
+    // lower (it's a Resolver field, not MirLowerCtxt). Instead, we check
+    // the HIR: if there's a trait with `trait_name` that declares `method_name`.
+    //
+    // Per §16: this reads HIR (allowed in MIR lower for resolution checks).
+    // Per §1.0 原則 6 (通解 > 特例): one HIR scan for all trait checks.
     use crate::hir::HirItem;
-    use crate::mir::ty::TyKind;
+    let Some(hir) = cx.hir else {
+        return false;
+    };
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(HirItem::Trait(t)) = owner {
+            if t.ident.name == trait_name {
+                // Found the trait — check if it declares method_name.
+                for trait_item in &t.items {
+                    if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                        if f.ident.name == method_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
 
+/// Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): Extract the Self type name from
+/// a receiver's MIR type.
+///
+/// For `&T` (Ref), strips the Ref wrapper and returns T's name.
+/// For `T` (Adt), returns T's name directly.
+/// For primitives (i32, bool, etc.), returns the primitive name.
+/// For other types (Infer, Error, Param, etc.), returns None (fall back).
+///
+/// Per §1.0 原則 6 (通解 > 特例): one extractor for all receiver types.
+fn extract_self_type_name<'a>(cx: &'a MirLowerCtxt, ty: &crate::mir::ty::Ty) -> Option<&'a str> {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Ref(_, _, inner) => extract_self_type_name(cx, inner),
+        TyKind::Adt(def_id, _) => {
+            // Look up the struct/enum name via HIR.
+            use crate::hir::HirItem;
+            let hir = cx.hir?;
+            let owner = hir.find_owner(*def_id)?;
+            match owner {
+                crate::hir::OwnerNode::Item(HirItem::Struct(s)) => {
+                    Some(cx.interner.resolve(&s.ident.name))
+                }
+                crate::hir::OwnerNode::Item(HirItem::Enum(e)) => {
+                    Some(cx.interner.resolve(&e.ident.name))
+                }
+                _ => None,
+            }
+        }
+        TyKind::Int(int_ty) => Some(match int_ty {
+            crate::ast::IntTy::I8 => "i8",
+            crate::ast::IntTy::I16 => "i16",
+            crate::ast::IntTy::I32 => "i32",
+            crate::ast::IntTy::I64 => "i64",
+            crate::ast::IntTy::I128 => "i128",
+            crate::ast::IntTy::Isize => "isize",
+        }),
+        TyKind::Uint(uint_ty) => Some(match uint_ty {
+            crate::ast::UintTy::U8 => "u8",
+            crate::ast::UintTy::U16 => "u16",
+            crate::ast::UintTy::U32 => "u32",
+            crate::ast::UintTy::U64 => "u64",
+            crate::ast::UintTy::U128 => "u128",
+            crate::ast::UintTy::Usize => "usize",
+        }),
+        TyKind::Bool => Some("bool"),
+        TyKind::Char => Some("char"),
+        TyKind::Str => Some("str"),
+        _ => None,
+    }
+}
+
+fn resolve_ufcs_impl_method_def_id(cx: &MirLowerCtxt, path: &HirPath) -> Option<crate::hir::DefId> {
     let qself = path.qself.as_ref()?;
     let position = qself.position;
     if position == 0 || position >= path.segments.len() {
@@ -1211,6 +1416,52 @@ fn resolve_ufcs_impl_method_def_id(cx: &MirLowerCtxt, path: &HirPath) -> Option<
     let trait_name = trait_seg.ident.name;
     let method_seg = &path.segments[position];
     let method_name = method_seg.ident.name;
+
+    resolve_impl_method_by_name(cx, trait_name, self_type_name, method_name)
+}
+
+/// Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): Resolve a short-form UFCS call
+/// `Trait::method(receiver, args)` to the concrete impl method's DefId.
+///
+/// Unlike `resolve_ufcs_impl_method_def_id` (which reads Self from qself.ty),
+/// this function takes `self_type_name` directly — extracted from the
+/// receiver argument's type.
+///
+/// The `trait_name` and `method_name` come from the path's first two
+/// segments (`Trait::method`).
+///
+/// Returns `None` if no matching impl block found (caller falls back to
+/// trait_def_id, which may produce `@null` in codegen — the user will see
+/// a link error or runtime crash, which is acceptable for this stage;
+/// proper E1110 "trait_method_not_found" is deferred to v0.14+).
+///
+/// Per §1.0 原則 3 (显式 > 隐式): the user's explicit `Trait::method` is the
+/// source of truth — no method probe ambiguity.
+/// Per §1.0 原則 6 (通解 > 特例): reuses the same impl-scan logic as the
+/// fully-qualified form (one `resolve_impl_method_by_name` helper).
+fn resolve_ufcs_short_form_impl_method_def_id(
+    cx: &MirLowerCtxt,
+    trait_name: crate::lexer::Symbol,
+    self_type_name: &str,
+    method_name: crate::lexer::Symbol,
+) -> Option<crate::hir::DefId> {
+    resolve_impl_method_by_name(cx, trait_name, self_type_name, method_name)
+}
+
+/// Stage 128 (v0.13): Core helper — scan all `impl Trait for Type` blocks
+/// in HIR for one matching (trait_name, self_type_name, method_name),
+/// and return the impl method's DefId.
+///
+/// Shared by both fully-qualified form (`<T as Trait>::method`) and
+/// short-form (`Trait::method(receiver)`) — per §1.0 原則 6 (通解 > 特例):
+/// one scan logic for both UFCS forms.
+fn resolve_impl_method_by_name(
+    cx: &MirLowerCtxt,
+    trait_name: crate::lexer::Symbol,
+    self_type_name: &str,
+    method_name: crate::lexer::Symbol,
+) -> Option<crate::hir::DefId> {
+    use crate::hir::HirItem;
 
     let hir = cx.hir?;
 
@@ -1248,7 +1499,5 @@ fn resolve_ufcs_impl_method_def_id(cx: &MirLowerCtxt, path: &HirPath) -> Option<
         }
     }
 
-    // No matching impl found — fall back to None (caller uses trait_def_id).
-    let _ = TyKind::Bool; // suppress unused import warning
     None
 }

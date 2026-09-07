@@ -1293,3 +1293,9 @@ mod stage122_v012_closure_tests;
 // Per §1.0 原則 3 (显式 > 隐式) + §1.0 原則 9 (正确 > 妥协). ===
 #[path = "v0/stage127/plan/ufcs_tests.rs"]
 mod stage127_ufcs_tests;
+
+// === Stage 128 (v0.13): TD-UFCS-SHORT-FORM — short-form UFCS.
+// `Trait::method(receiver, args)` — Self inferred from receiver.
+// Per §1.0 原則 3 (显式 > 隐式) + §1.0 原則 6 (通解 > 特例). ===
+#[path = "v0/stage128/plan/ufcs_short_form_tests.rs"]
+mod stage128_ufcs_short_form_tests;

@@ -107,7 +107,7 @@
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-UFCS-SHORT-FORM | 短形式 `Trait::method(receiver)` 未实现（Stage 127 只实现完整形式 `<T as Trait>::method`） | MIR lower 在解析 path 时无法访问 receiver（receiver 是 Call 的 args[0]，在 func 之后才 lower） | 在 `lower_call_expr` 添加特殊路径：当 func path 的 qself.ty 为 None 时，先 lower receiver 获取其类型，再回填到 qself.ty | P3, v0.14+ |
+| TD-UFCS-SHORT-FORM | ✅ Stage 128 修复 | 短形式 `Trait::method(receiver, args)` 完整实现. MIR lower 双 patch (local_decl + Assign Constant). 17 tests. | — | ✅ |
 | TD-UFCS-DEFAULT-BODY-EMPTY-IMPL | UFCS 调用 trait 默认方法体时，如果 impl 块为空（不覆盖），找不到 impl 方法 | `resolve_ufcs_impl_method_def_id` 只扫描 impl 块的 items，不回退到 trait 声明的默认方法体 | 当 impl 块中找不到方法时，回退到 trait 声明的默认方法 DefId | P3, v0.14+ |
 | TD-UFCS-AMBIGUITY-E1109 | 普通方法调用 `obj.method()` 当 2+ trait 提供同名方法时，仍静默选择第一个匹配（无 E1109 报错） | `resolve_trait_method` 缺少 candidate filter + 多候选报错 | 在 `resolve_trait_method` 中收集所有候选，>1 时报 E1109 "ambiguous_trait_method" | P3, v0.14+ |
 

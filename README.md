@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.658.0 (v0.13 Stage 127 — TD-TRAIT-METHOD-AMBIGUITY 修复: UFCS `<T as Trait>::method(receiver, args)` 完整实现 — Parser + HIR + Resolver + MIR lower + codegen; 26 tests; 5768 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.659.0 (v0.13 Stage 128 — TD-UFCS-SHORT-FORM 修复: 短形式 `Trait::method(receiver, args)` 完整实现; 5785 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 127 COMPLETE (TD-TRAIT-METHOD-AMBIGUITY — UFCS)**. 5768 tests (898 lib + 4870 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 127 实现 Universal Function Call Syntax — `<T as Trait>::method(receiver, args)` 显式消歧 trait 方法调用. 3 新 TD documented (TD-UFCS-SHORT-FORM + TD-UFCS-DEFAULT-BODY-EMPTY-IMPL + TD-UFCS-AMBIGUITY-E1109). |
+| **Status** | ✅ **v0.13 Stage 128 COMPLETE (TD-UFCS-SHORT-FORM)**. 5785 tests (898 lib + 4887 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 128 实现 UFCS 短形式 `Trait::method(receiver, args)` — Self 从 receiver 推断. MIR lower 双 patch (local_decl + Assign Constant). 17 tests. 2 remaining TDs: TD-UFCS-DEFAULT-BODY-EMPTY-IMPL + TD-UFCS-AMBIGUITY-E1109. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

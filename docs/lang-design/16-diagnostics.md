@@ -202,6 +202,8 @@ impl DiagnosticBuffer {
 | E1106 | reached_recursion_limit | 达到递归深度限制 |
 | E1107 | cannot_find_implementation | 找不到 impl |
 | E1108 | ambiguous_from_implementation | 歧义 From impl（`?` 操作符） |
+| E1109 | ambiguous_trait_method | **Stage 127**: 多个 trait 为同一类型提供同名方法（rustc E0034 等价）。错误信息列出所有候选 trait，建议使用 UFCS `<T as Trait>::method` 或 `Trait::method(receiver)` 显式消歧 |
+| E1110 | trait_method_not_found | **Stage 127**: trait 未声明该方法（rustc E0599 等价的 trait 限定版本） |
 
 #### Codegen (E1300-E1399)
 

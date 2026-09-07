@@ -318,6 +318,16 @@ path_expr := path_prefix? ident ("::" ident)* ("::" generic_args)?
 path_prefix := "::" | "crate" "::" | "super" "::" | "self" "::"
 qualified_path := "<" type ("as" type_path)? ">" "::" path_segment
 
+// Stage 127-128 (v0.13): UFCS trait method call syntax
+// Three forms supported (aligned with Rust Reference §6.1 + RFC 0132):
+//   1. obj.method(args)                  — method call (must be unambiguous)
+//   2. Trait::method(receiver, args)      — short form (Self inferred from receiver) [Stage 128]
+//   3. <Type as Trait>::method(receiver, args) — fully qualified (explicit Self + Trait) [Stage 127]
+// When form 1 is ambiguous (2+ traits provide `method` for type T),
+// compiler emits E1109 and suggests form 2 or 3.
+ufcs_path := type_path "::" ident   // form 2: Trait::method (Self from receiver)
+           | qualified_path          // form 3: <T as Trait>::method (explicit)
+
 struct_expr := type_path "{" struct_expr_field ("," struct_expr_field)* ","? "}"
 struct_expr_field := ident ":" expr | ident | (integer_lit) ":" expr
 

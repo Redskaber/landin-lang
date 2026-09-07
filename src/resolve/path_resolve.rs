@@ -1096,6 +1096,22 @@ impl Resolver {
                     // handles cases like `Color::Red` (enum variant access)
                     // where the second segment is a variant, not a method.
                 }
+                // Stage 128 (v0.13 — TD-UFCS-SHORT-FORM): For `Trait::method`
+                // 2-segment paths, check trait_method_index. If the first
+                // segment is a trait (DefKind::Trait) and the second is a
+                // method declared in that trait, resolve to the trait method's
+                // DefId (which is the trait's DefId for bodyless methods —
+                // MIR lower's resolve_ufcs_short_form_impl_method_def_id will
+                // patch it to the impl method DefId after lowering the receiver).
+                if matches!(first_kind, Some(DefKind::Trait)) {
+                    let trait_name = first.ident.name;
+                    let method_name = path.segments[1].ident.name;
+                    if let Some(&method_def_id) =
+                        self.trait_method_index.get(&(trait_name, method_name))
+                    {
+                        return Res::Def(method_def_id, DefKind::Fn);
+                    }
+                }
             }
 
             // Stage 18.153 (TD-SINGLE-FILE Phase 2): For multi-segment paths

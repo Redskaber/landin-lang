@@ -231,6 +231,81 @@ pub trait Unpin {}           // v0.2
 
 Marker trait 的 impl 由编译器自动派生（auto trait），用户也可手动 `impl !Send for MyType {}` 取消（v0.2）。
 
+### 2.6 Trait method dispatch syntax (UFCS) — Stage 127-128
+
+> **Stage 127 (v0.13)**: 引入 Universal Function Call Syntax (UFCS) 完整形式 `<T as Trait>::method`。
+> **Stage 128 (v0.13)**: 补充短形式 `Trait::method(receiver)`（Self 从 receiver 推断）。
+
+**问题背景**：当 2 个 trait 都为同一类型提供同名方法时（如 `Display::fmt` vs `Debug::fmt`），普通的 `obj.fmt()` 调用是**歧义**的。Rust 通过 [RFC 0132](https://rust-lang.github.io/rfcs/0132-ufcs.html) 引入 UFCS 显式消歧。
+
+**语法（3 种形式，对齐 Rust Reference §6.1 Paths）**：
+
+```landin
+// 形式 1: 普通方法调用 (method call syntax) — 仅当无歧义时合法
+obj.fmt(args)                          // 单 trait 提供 fmt → OK
+                                       // 多 trait 提供 fmt → E1109 ambiguous (TD-UFCS-AMBIGUITY-E1109, v0.14+)
+
+// 形式 2: 短形式 (path-qualified) — Self 从首参数推断 [Stage 128]
+Display::fmt(&obj, args)                // 显式指定 trait，Self=&obj
+
+// 形式 3: 完全限定 (fully qualified) — 显式指定 Self + Trait [Stage 127]
+<i32 as Display>::fmt(&n, args)         // 完全消歧
+<i32 as Debug>::fmt(&n, args)           // 完全消歧
+```
+
+**形式 1 的 method probe 算法**（对齐 rustc `pick_method`）：
+
+1. 收集所有声明了 `fmt` 方法、且 `T: Trait` 成立的 trait 候选
+2. 0 候选 → E0599 "no method named `fmt` found"
+3. 1 候选 → 静态分发（已有行为）
+4. >1 候选 → **E1109 "ambiguous_trait_method"**（Stage 128+ 实现，当前仍静默选择 — TD-UFCS-AMBIGUITY-E1109）
+
+**形式 2 的解析规则** [Stage 128]：
+
+- `Trait::method(receiver, args)` 中 `Trait` 必须是已注册的 trait name
+- 解析为 `HirPath` with `qself: Some(HirQSelf { ty: None, position: 0 })`（ty=None 表示短形式）
+- MIR lower 在 `lower_call_expr` 中检测短形式：先 lower args[0] (receiver) 获取其类型，回填到 qself.ty，再用 `resolve_ufcs_impl_method_def_id` 解析 impl 方法
+- 若 trait 未定义 `method` → E1110 "trait_method_not_found"
+
+**形式 3 的解析规则** [Stage 127]：
+
+- `<Type as Trait>::method(args)` 必须满足：
+  - `Type` 是合法类型表达式
+  - `Trait` 是已注册 trait
+  - `Type: Trait` 成立（否则 E1102 "type does not implement trait"）
+  - `Trait` 声明了 `method`（否则 E1110）
+
+**Mangling**（解决符号碰撞）：
+
+trait impl method 的 mangled name 使用 **3 段式**（已有 inherent method 保持 2 段式）：
+
+```
+inherent method:  landin_<Type>_<method>           e.g. landin_String_push_str
+trait impl method: landin_<Trait>_<Type>_<method>   e.g. landin_Display_i32_fmt
+                                                     e.g. landin_Debug_i32_fmt
+```
+
+3 段式确保 `Display::fmt` 与 `Debug::fmt` 即使在同名 trait method 下也不会符号碰撞（Stage 98 根因修复，per §1.0 原则 9 正确>妥协）。
+
+**Stage 127-128 实现范围**：
+
+| Stage | 子阶段 | 内容 | 文件 |
+|-------|--------|------|------|
+| 127 | Phase 1 | Parser: `<T as Trait>::method` (Expr 上下文 qself) | `src/parser/path.rs`, `src/parser/expr.rs` |
+| 127 | Phase 2 | HIR: `HirPath.qself: Option<HirQSelf>` | `src/hir/kinds.rs`, `src/hir/lower/path.rs` |
+| 127 | Phase 3 | Resolver: `trait_method_index` + `resolve_qualified_path` | `src/resolve/resolver.rs`, `src/resolve/path_resolve.rs` |
+| 127 | Phase 4 | MIR lower: `resolve_ufcs_impl_method_def_id` (完整形式) | `src/mir/lower/expr_variants.rs` |
+| 127 | Phase 5 | Codegen: `get_concrete_type_name` Adt 分支 | `src/codegen/function.rs` |
+| 128 | Phase 1 | MIR lower: 短形式 `Trait::method(receiver)` — receiver 类型回填 | `src/mir/lower/expr_variants.rs` |
+| 128 | Phase 2 | Tests: 短形式正负测试 | `tests/v0/stage128/plan/` |
+
+**参考**：
+
+- [Rust Reference §6.1 Paths — Disambiguating function calls](https://doc.rust-lang.org/reference/paths.html)
+- [RFC 0132 — Universal Function Call Syntax](https://rust-lang.github.io/rfcs/0132-ufcs.html)
+- [rustc-dev-guide — Method Lookup](https://rustc-dev-guide.rust-lang.org/method-lookup.html)
+- [rustc error E0034 — multiple applicable items in scope](https://doc.rust-lang.org/error_codes/E0034.html)
+
 ---
 
 ## 3. 泛型与 Monomorphization

@@ -44945,3 +44945,16 @@ Stage Summary:
   TD-UFCS-AMBIGUITY-E1109 (普通调用多候选报错) 或
   进入 v0.14 其他 TD (TD-CFG-MACROS / TD-ENV-MACROS / TD-ASM-MACRO 等)
 - v0.658.0
+
+---
+Task ID: stage128-ufcs-short-form-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 128 — TD-UFCS-SHORT-FORM (短形式 Trait::method(receiver)) 完整实现. v0.658.0 → v0.659.0.
+
+Work Log:
+- §20 迭代审计: 深挖 typeck "expected fn, found fn" 根因
+- 根因: typeck post_check_statement unify place_ty (local_decl) 与 rvalue_ty (Constant) — 只 patch local_decl 不够
+- 修复: 双 patch (local_decl + Assign Constant ty + ConstVal)
+- 17 tests all pass (8 正 + 3 负 + 3 边界 + 3 回归)
+- 0 regression (5768 → 5785 tests, +17 new)
+- v0.659.0

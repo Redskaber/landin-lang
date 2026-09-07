@@ -3,13 +3,68 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.658.0 (v0.13 Stage 127 — TD-TRAIT-METHOD-AMBIGUITY 修复: UFCS `<T as Trait>::method(receiver, args)` 完整实现; 5768 tests) |
+| **Current version** | v0.659.0 (v0.13 Stage 128 — TD-UFCS-SHORT-FORM 修复: 短形式 `Trait::method(receiver, args)` 完整实现; 5785 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 4870 integration tests = 5768 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4887 integration tests = 5785 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
 | **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+
+---
+
+## v0.659.0 — Stage 128 (v0.13) — TD-UFCS-SHORT-FORM 修复 (短形式 UFCS)
+
+### Overview
+
+Stage 128 实现 UFCS 短形式 `Trait::method(receiver, args)` — Self 从 receiver 推断。
+这是 Stage 127 UFCS 的自然完整化，使 Landin 支持 Rust 推荐的 trait 方法消歧语法。
+
+### Root Cause
+
+- **根因**: MIR lower 的 `lower_path_expr` 在解析 `Trait::method` 路径时无法访问
+  receiver 类型（receiver 是 Call 的 args[0]，在 func 之后才 lower）
+- **typeck 阻塞**: `post_check_statement` unify place_ty (local_decl) 与 rvalue_ty
+  (Constant) — 只 patch local_decl 不够，Constant 仍指向 trait DefId，导致
+  "expected fn, found fn" 误报
+- **通解**: 在 `lower_call_expr` 中 args lowering 后双 patch
+  (local_decl.ty + Assign 语句中的 Constant.ty + ConstVal)
+
+### Changes
+
+**Source files (~120 LOC)**:
+- `src/mir/lower/expr_variants.rs`:
+  - 新增 `is_trait_method` (检查 HIR trait 是否声明方法)
+  - 新增 `extract_self_type_name` (从 receiver 类型提取 Self 类型名)
+  - 新增 `resolve_ufcs_short_form_impl_method_def_id` (短形式解析)
+  - 新增 `resolve_impl_method_by_name` (共享 impl 扫描逻辑)
+  - `lower_call_expr`: 检测短形式 + args lowering 后双 patch
+- `src/resolve/path_resolve.rs`: `Trait::method` 2-segment 路径添加 trait_method_index 查找
+
+**Tests (17 tests)**:
+- `tests/v0/stage128/plan/ufcs_short_form_tests.rs`: 8 positive + 3 negative + 3 edge + 3 regression
+
+**Docs**:
+- `docs/lang-design/03-type-system.md` §2.6: 补充短形式语法说明
+- `docs/lang-design/02-grammar.md`: ufcs_path EBNF
+- `docs/lang-design/16-diagnostics.md`: E1109/E1110 错误码
+- `docs/develop/v0/stage-128/dev-log.md`: 完整开发日志
+- `docs/develop/v0/tech-debt-register.md`: TD-UFCS-SHORT-FORM ✅
+- `docs/develop/v0/calibration-data.md`: Stage 128 统计行
+
+### §3.2 验收
+
+- cargo fmt --check ✓
+- cargo clippy --all-targets --features llvm-backend -- -D warnings ✓ (0 warnings)
+- cargo test --release --features llvm-backend --lib ✓ (898 tests, 0 failures)
+- cargo test --release --features llvm-backend --test all_tests ✓ (4887 tests, 0 failures, 9 ignored)
+- Total: 5785 tests, 0 failures
+
+### Decision (§12 最优>最小, §1.0 原则 9 正确>妥协)
+
+1. **选 lower_call_expr 中检测** — 不选 lower_path_expr（无法访问 receiver）
+2. **选双 patch (local_decl + Constant)** — 不选只 patch local_decl（typeck unify 失败）
+3. **选共享 resolve_impl_method_by_name** — 不选重复逻辑（§1.0 原则 6）
 
 ---
 
