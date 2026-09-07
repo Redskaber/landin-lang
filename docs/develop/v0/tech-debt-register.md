@@ -410,3 +410,15 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 |-------|------|------|---------|--------|
 | TD-PTR-INDEX-CONST | `*const T` 不支持 `[index]` 索引操作（只有 `*mut T` 支持） | MIR lower 的 Index 表达式只处理 `*mut T`，不处理 `*const T` | 在 expr_operand.rs 的 Index arm 中添加 `*const T` 支持 | P3, v0.15+ |
 | TD-STDLIB-STRING-VEC-PARTIAL | TD-STDLIB-STRING-VEC 部分修复 — Vec::get 已添加但 String::starts_with/ends_with/contains 需要 *const T 索引支持 | 受 TD-PTR-INDEX-CONST 阻断 | 先修复 TD-PTR-INDEX-CONST，再添加 String 方法 | P3, v0.15+ |
+
+### P3 — v0.15+ Stage 139 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-STR-FAT-PTR-LAYOUT-MISMATCH | String::starts_with/ends_with/contains 方法体无法正确访问 &str 参数的 ptr/len 字段 — &str 是 fat pointer {ptr, i64} 但 prelude str struct 用 {ptr: *mut u8, len: usize} 布局，两者不互操作 | &str fat pointer 与 str struct 布局不一致 — &str 的 .ptr 和 .len 访问通过 GEP fat pointer field，但 str struct 的 .ptr 和 .len 通过 GEP struct field | 统一 &str 和 str struct 布局，或在 prelude 方法中用 fat pointer 访问模式 | P3, v0.15+ |
+
+### P3 — v0.15+ Stage 140 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PTR-INDEX-CODEGEN | RawPtr 索引的 codegen GEP 生成错误 — getelementptr i8, ptr, i32 0, i32 idx (应为 i32 idx) | unwrap_fat_ptr_for_index 的 OpaquePtr 分支需要 LOAD 指针值再 GEP，但存在双重 load 问题 | 修复 unwrap_fat_ptr_for_index 的 OpaquePtr 分支：load 后返回 loaded_ptr，避免在 caller 中再次 load | P3, v0.15+ |

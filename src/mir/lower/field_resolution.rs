@@ -42,6 +42,44 @@ pub(crate) fn resolve_field_type(
     field_index: u32,
 ) -> Option<Ty> {
     let hir = cx.hir?;
+
+    // Stage 140 (v0.15 — TD-STR-FAT-PTR-LAYOUT-MISMATCH):
+    // &str is a fat pointer {ptr: *mut u8, len: i64}. Field 0 is ptr,
+    // field 1 is len. Return the correct type for each field.
+    // Per §1.0 原則 6 (通解 > 特解): one path for all &str field types.
+    if let HirExprKind::Path(path) = &receiver.kind {
+        if let Res::Local(hir_id) = path.res {
+            if let Some(local_id) = cx.local_map.get(&hir_id) {
+                if let Some(ld) = cx.mir.local_decls.get(local_id.0 as usize) {
+                    let is_str_ref = match &ld.ty.kind {
+                        TyKind::Ref(_, _, inner) => matches!(inner.kind, TyKind::Str),
+                        TyKind::Str => true,
+                        _ => false,
+                    };
+                    if is_str_ref {
+                        return match field_index {
+                            0 => Some(Ty::new(
+                                TyKind::RawPtr(
+                                    crate::mir::ty::Mutability::Mutable,
+                                    Box::new(Ty::new(
+                                        TyKind::Uint(crate::ast::UintTy::U8),
+                                        crate::session::Span::DUMMY,
+                                    )),
+                                ),
+                                crate::session::Span::DUMMY,
+                            )),
+                            1 => Some(Ty::new(
+                                TyKind::Uint(crate::ast::UintTy::Usize),
+                                crate::session::Span::DUMMY,
+                            )),
+                            _ => None,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     let struct_def_id = find_receiver_struct_def_id(cx, receiver)?;
 
     // Stage 16.53: Extract substs from the receiver's type. If the receiver
@@ -189,6 +227,31 @@ pub(crate) fn resolve_field_index(
         if let Some(name_str) = cx.interner.try_resolve(field_name) {
             if let Ok(idx) = name_str.parse::<u32>() {
                 return idx;
+            }
+            // Stage 140 (v0.15 — TD-STR-FAT-PTR-LAYOUT-MISMATCH):
+            // &str is a fat pointer {ptr, i64}, not a struct. When accessing
+            // .ptr or .len on a &str, map to field 0 or 1 respectively.
+            // Per §1.0 原則 6 (通解 > 特解): one path for all &str field access.
+            // Per §12: root-cause fix — fat pointer field access via name.
+            if let HirExprKind::Path(path) = &receiver.kind {
+                if let Res::Local(hir_id) = path.res {
+                    if let Some(local_id) = cx.local_map.get(&hir_id) {
+                        if let Some(ld) = cx.mir.local_decls.get(local_id.0 as usize) {
+                            let is_str_ref = match &ld.ty.kind {
+                                TyKind::Ref(_, _, inner) => matches!(inner.kind, TyKind::Str),
+                                TyKind::Str => true,
+                                _ => false,
+                            };
+                            if is_str_ref {
+                                return match name_str {
+                                    "ptr" => 0,
+                                    "len" => 1,
+                                    _ => 0,
+                                };
+                            }
+                        }
+                    }
+                }
             }
             if let Some(struct_def_id) = find_receiver_struct_def_id(cx, receiver) {
                 if let Some(OwnerNode::Item(HirItem::Struct(s))) =

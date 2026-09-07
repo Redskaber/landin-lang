@@ -841,6 +841,20 @@ pub(crate) fn unwrap_fat_ptr_for_index(
                 (base_ptr.to_string(), None)
             }
         }
+        // Stage 140 (v0.15 — TD-STR-FAT-PTR-LAYOUT-MISMATCH):
+        // For raw pointers (Ptr(_)), treat as pointer indexing —
+        // use emit_gep_index_ptr (single index, no leading 0).
+        // Per §1.0 原則 6 (通解 > 特解): one path for all raw pointer indexing.
+        EmitType::Ptr(inner) => (base_ptr.to_string(), Some(*inner.clone())),
+        // Stage 140: OpaquePtr also needs pointer-style GEP (no leading 0).
+        // The pointee type is unknown (opaque), so use I8 as fallback.
+        // This handles *mut u8 / *const u8 from String.ptr / str.ptr fields.
+        // IMPORTANT: For OpaquePtr, base_ptr is the ADDRESS of the storage
+        // (alloca or field address). We need to LOAD the pointer value first.
+        EmitType::OpaquePtr => {
+            let data_ptr = emitter.emit_load(&EmitType::OpaquePtr, &base_ptr.to_string());
+            (data_ptr, Some(EmitType::I8))
+        }
         _ => (base_ptr.to_string(), None),
     }
 }
@@ -1220,6 +1234,10 @@ pub(crate) fn codegen_place_load_typed(
                     match &raw_ty {
                         EmitType::Ptr(inner) => *inner.clone(),
                         EmitType::OpaquePtr => {
+                            // Stage 140: Return raw_ty directly for non-Local bases
+                            // (Field projections like self.ptr). unwrap_fat_ptr_for_index
+                            // now handles OpaquePtr → returns (base_ptr, Some(I8)).
+                            // For Local bases, check if it's a Ref to extract inner type.
                             if let PlaceKind::Local(id) = &base.kind {
                                 if let Some(ld) = mir.local_decls.get(id.0 as usize) {
                                     if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
@@ -1299,6 +1317,8 @@ pub(crate) fn codegen_place_load_typed(
                 // field instead of the element.
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                // Stage 140: unwrap_fat_ptr_for_index now handles OpaquePtr
+                // by loading the pointer value. No separate RawPtr load needed.
                 let elem_ptr = match pointee_opt {
                     Some(elem_ty) => emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val),
                     None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
