@@ -1372,3 +1372,9 @@ mod stage146_assoc_type_tests;
 //                         now get unique DefIds (fixes map key collisions). ===
 #[path = "v0/stage147/plan/multi_assoc_type_tests.rs"]
 mod stage147_multi_assoc_type_tests;
+
+// === Stage 148 (v0.15): TD-GENERIC-ENUM-PAYLOAD-SUBST — generic enum
+//                         variant payload type substitution. Fixes Option<T>
+//                         pattern matching + enables Iterator trait. ===
+#[path = "v0/stage148/plan/generic_enum_tests.rs"]
+mod stage148_generic_enum_tests;

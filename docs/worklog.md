@@ -45237,3 +45237,18 @@ Stage Summary:
 - 决策点: 选 bodyless 方法获得唯一 DefId 不选修改 map key — §1.0 原則 6 (通解)
 - 下一步 (MUV): Stage 148 — TD-STDLIB-ITERATOR (解锁 Iterator trait) 或 TD-TYPECK-LIFETIME-ELISION
 - v0.671.0
+
+---
+Task ID: stage148-td-generic-enum-payload-subst-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 148 — TD-GENERIC-ENUM-PAYLOAD-SUBST 完整修复. v0.671.0 → v0.672.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 147 baseline (5960 tests, 0 failures)
+- 根因: codegen/rvalue.rs 的 enum variant storage_ty 使用空 substs + field_tys 未替换 Param
+- MUV-1: storage_ty 使用 adt_substs (而非空 substs) + field_tys 通过 substitute 替换
+- MUV-2: 验证 Option<i64> pattern matching 正确提取值 (42, was 0)
+- MUV-3: 编写 tests/v0/stage148/plan/generic_enum_tests.rs — 18 tests
+- 发现新 TD: TD-GENERIC-ENUM-MATCH-ARMS + TD-TRAIT-METHOD-REMONO-LINK
+- MUV-4 §3.2 全套验收通过: 898 lib + 5080 integration = 5978 tests, 0 failures
+- v0.672.0

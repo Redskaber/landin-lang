@@ -3,13 +3,36 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.671.0 (v0.15 Stage 147 — TD-ASSOC-TYPE-MULTI-RUNTIME 完整修复: bodyless trait 方法获得唯一 DefId; 5960 tests) |
+| **Current version** | v0.672.0 (v0.15 Stage 148 — TD-GENERIC-ENUM-PAYLOAD-SUBST: 泛型 enum variant payload 类型替换; 5978 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5062 integration tests = 5960 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5080 integration tests = 5978 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 147 完成 v0.15 multi-assoc-type trait 方法解析修复); v0.15 typeck 阶段 — Stage 147 修复 bodyless trait 方法 DefId 唯一性, 解锁完整 Iterator trait 支持 |
+| **Architecture** | Health 9.9/10 (stable — Stage 148 完成 v0.15 泛型 enum payload 修复); v0.15 codegen 阶段 — Stage 148 修复 Option<T> pattern matching + 解锁 Iterator trait (部分受限 by TD-TRAIT-METHOD-REMONO-LINK) |
+
+---
+
+## v0.672.0 — Stage 148 (v0.15) — TD-GENERIC-ENUM-PAYLOAD-SUBST 完整修复
+
+### Overview
+
+Stage 148 修复泛型 enum variant payload 类型替换. 之前 `codegen/rvalue.rs` 的 enum variant 构建路径使用空 substs 计算 storage_ty 和未替换的 field_tys (含 Param(N)), 导致 `insertvalue` 使用错误 payload 类型 (I32 而非 I64) → 值截断.
+
+### What was fixed
+
+1. **storage_ty**: 使用 `adt_substs` (而非空 substs) — `lookup_mono_layout` 找到替换后的布局
+2. **field_tys**: 通过 `substitute(field_ty, adt_substs)` 替换 Param 为具体类型
+3. Per §1.0 原則 6/9/10 (通解/正确/唯一可信数据源)
+
+### Discovered new TDs
+
+- TD-GENERIC-ENUM-MATCH-ARMS: match arm pattern binding for generic enums 不解析 payload type T
+- TD-TRAIT-METHOD-REMONO-LINK: Stage 147 bodyless trait 方法新 DefId 导致 vtable linker error
+
+### §3.2 acceptance
+
+- 5978 tests (898 lib + 5080 integration), 0 failures, 12 ignored (+18 new)
 
 ---
 

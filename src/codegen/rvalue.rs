@@ -443,12 +443,16 @@ pub(crate) fn codegen_rvalue(
             if is_enum {
                 // Enum variant construction.
                 // Look up the full storage type from the Adt layout.
+                // Stage 148 (TD-GENERIC-ENUM-PAYLOAD-SUBST): Pass `adt_substs`
+                // (not empty substs) so that generic enums like `Wrapper<T>`
+                // resolve their payload types via the mono layout (which has
+                // the substituted types).
+                // Per §1.0 原則 10 (唯一可信数据源): adt_substs from
+                // AggregateKind::Adt is the authoritative source of concrete
+                // type arguments.
                 let storage_ty = mir_type_to_emit_type_with_layouts_and_mono(
                     &crate::mir::ty::Ty::new(
-                        crate::mir::ty::TyKind::Adt(
-                            *def_id,
-                            Vec::<crate::mir::ty::Ty>::new().into(),
-                        ),
+                        crate::mir::ty::TyKind::Adt(*def_id, adt_substs.clone()),
                         crate::session::Span::DUMMY,
                     ),
                     layouts,
@@ -517,21 +521,37 @@ pub(crate) fn codegen_rvalue(
                     // `mir_type_to_emit_type_with_layouts_and_mono` which
                     // correctly resolves Adt types via layouts.
                     //
-                    // Per §1.0 原則 4 (报错 > 静默): the layouts variant resolves
-                    // Adt types properly (vs unchecked returning I32 for Adt).
-                    // Per §1.0 原則 6 (通解 > 特解): one layouts variant handles
-                    // all type kinds including Adt.
-                    // Per §12 (最优 > 最小): root-cause fix — use layouts variant
-                    // (vs checked variant which is too strict for Adt-in-pointer).
-                    let val_ty = field_tys
-                        .get(i)
-                        .map(|t| {
-                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
-                        })
-                        .unwrap_or_else(|| {
-                            detect_operand_type(mir, op, layouts, mono_layouts)
-                                .unwrap_or(EmitType::I32)
-                        });
+                    // Stage 148 (TD-GENERIC-ENUM-PAYLOAD-SUBST): For generic
+                    // enums like `Option<T>`, `field_tys` contains
+                    // unsubstituted `Param(N)` types (e.g., `Param(0)` for
+                    // `Wrapper<T>::Value(T)`). Without substitution,
+                    // `mir_type_to_emit_type_with_layouts_and_mono` returns
+                    // I32 for Param, causing `insertvalue` to use the wrong
+                    // payload type (I32 instead of I64) → value truncation.
+                    //
+                    // Fix: apply `substitute(field_ty, adt_substs)` before
+                    // converting to EmitType. `adt_substs` carries the concrete
+                    // types from the call site (e.g., [i64] for `Wrapper<i64>`).
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one substitute call for
+                    // all field types (no per-field special-casing).
+                    // Per §1.0 原則 9 (正确 > 妥协): fix root cause (substitute
+                    // Param with concrete type), not symptom (use operand type
+                    // as fallback).
+                    // Per §1.0 原則 10 (唯一可信数据源): adt_substs from
+                    // AggregateKind::Adt is the authoritative source of
+                    // concrete type arguments.
+                    let raw_field_ty = field_tys.get(i).cloned();
+                    let val_ty = if let Some(t) = raw_field_ty {
+                        let substituted = crate::mir::substitute::substitute(&t, adt_substs);
+                        mir_type_to_emit_type_with_layouts_and_mono(
+                            &substituted,
+                            layouts,
+                            mono_layouts,
+                        )
+                    } else {
+                        detect_operand_type(mir, op, layouts, mono_layouts).unwrap_or(EmitType::I32)
+                    };
                     let target_idx = starting_field_idx + (i as u32 - 1);
                     agg = emitter.emit_insertvalue(&storage_ty, &agg, &val_ty, &val, target_idx);
                 }

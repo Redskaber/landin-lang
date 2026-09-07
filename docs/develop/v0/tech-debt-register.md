@@ -441,3 +441,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-ASSOC-TYPE-MULTI-RUNTIME | ✅ Stage 147 修复 | 多关联类型 trait + 泛型投影的运行时 segfault (exit code 0 but no output) | bodyless trait 方法获得唯一 DefId (enter_owner) + module_build 跳过 trait 方法注册 + mir_ty_kinds_compatible 添加 Projection 分支. 修复 TraitMethodResolutionMap key 冲突. 18 tests. | ✅ |
+
+### P3 — v0.15+ Stage 148 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-GENERIC-ENUM-MATCH-ARMS | match arm pattern binding for generic enums (Option<T>) 不解析 payload type T → concrete type | match arm binding 看到 Param(T) 而非替换后的具体类型 | 在 MIR lower 的 match arm pattern binding 中应用 substitute(payload_ty, enum_substs) | P3, v0.16+ |
+| TD-TRAIT-METHOD-REMONO-LINK | Stage 147 bodyless trait 方法获得新 DefId 后, vtable 引用 `landin_Iterator_Counter_next` 但函数未 emit (linker error) | vtable method name resolution 使用新 trait method DefId pattern, 但 impl method emit 使用不同 name | 修复 vtable method name resolution 以匹配 impl method 的 emitted name (landin_Counter_next 而非 landin_Iterator_Counter_next) | P3, v0.16+ |
