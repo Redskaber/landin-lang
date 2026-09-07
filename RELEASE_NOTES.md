@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.660.0 (v0.13 Stage 129 — TD-UFCS-AMBIGUITY-E1109 修复: 普通 `obj.method()` 多 trait 同名方法时报错; 5795 tests) |
+| **Current version** | v0.662.0 (v0.14 Stage 131 — TD-ENV-MACROS 修复: env!/option_env!/include_str! 编译期宏; 5803 tests) |
 | **Date** | 2026-09-07 |
 | **Test count** | 898 lib tests + 4897 integration tests = 5795 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |

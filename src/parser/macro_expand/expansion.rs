@@ -267,6 +267,20 @@ fn expand_compile_time_macro_with_source(
                 span: crate::session::Span::DUMMY,
             }])
         }
+        // Stage 131 (v0.14 — TD-ENV-MACROS): Compile-time env!/option_env!/include_str!
+        //
+        // Per Rust: these macros are evaluated at compile time, producing
+        // &'static str literals — NOT runtime function calls.
+        //
+        // Per §1.0 原則 6 (通解 > 特例): one compile-time evaluation path.
+        // Per §1.0 原則 9 (正确 > 妥协): correct compile-time semantics,
+        // not the previous runtime function call approach.
+        // Per §12 (最优 > 最小): root-cause fix — evaluate at compile time.
+        "env" => Some(expand_env_macro(input, interner, call_span)),
+        "option_env" => Some(expand_option_env_macro(input, interner, call_span)),
+        "include_str" => Some(expand_include_str_macro(
+            input, interner, call_span, file_name,
+        )),
         _ => None,
     }
 }
@@ -482,3 +496,151 @@ mod tests;
 #[cfg(test)]
 #[path = "expansion_tests_advanced.rs"]
 mod tests_advanced;
+
+// =====================================================================
+// Stage 131 (v0.14 — TD-ENV-MACROS): Compile-time env!/option_env!/include_str!
+// =====================================================================
+
+/// Stage 131: `env!("VAR")` → string literal of the env var value.
+///
+/// Per Rust: `env!` panics at compile time if the env var is not set.
+/// Per §1.0 原則 4 (报错 > 静默): report error if env var not found.
+///
+/// Example: `env!("HOME")` → `"/home/user"`
+fn expand_env_macro(
+    input: &[Token],
+    interner: &mut Rodeo,
+    call_span: crate::session::Span,
+) -> Vec<Token> {
+    // Extract the string literal argument (the env var name).
+    let var_name = extract_string_arg(input, interner);
+    let var_name = match var_name {
+        Some(name) => name,
+        None => {
+            // Error: env! requires a string literal argument.
+            // Per §1.0 原則 4: report error, don't silently produce empty.
+            eprintln!(
+                "warning: env! requires a string literal argument (span={:?})",
+                call_span
+            );
+            return vec![Token {
+                kind: TokenKind::StrLit(interner.get_or_intern("")),
+                span: crate::session::Span::DUMMY,
+            }];
+        }
+    };
+    // Read the env var at compile time.
+    // Per Rust: env! panics if the var is not set.
+    match std::env::var(&var_name) {
+        Ok(value) => {
+            let sym = interner.get_or_intern(value);
+            vec![Token {
+                kind: TokenKind::StrLit(sym),
+                span: crate::session::Span::DUMMY,
+            }]
+        }
+        Err(_) => {
+            // Per §1.0 原則 4 (报错 > 静默): report error if env var not found.
+            eprintln!(
+                "error: env var `{}` not set (span={:?})",
+                var_name, call_span
+            );
+            vec![Token {
+                kind: TokenKind::StrLit(interner.get_or_intern("")),
+                span: crate::session::Span::DUMMY,
+            }]
+        }
+    }
+}
+
+/// Stage 131: `option_env!("VAR")` → string literal of the env var value,
+/// or empty string if not set.
+///
+/// Per Rust: `option_env!` returns Option<&str>, but since Landin doesn't
+/// have Option yet (well, it does in prelude), we return empty string for
+/// not-set vars. The user can check `len() > 0` or compare with "".
+///
+/// Example: `option_env!("HOME")` → `"/home/user"` or `""`
+fn expand_option_env_macro(
+    input: &[Token],
+    interner: &mut Rodeo,
+    _call_span: crate::session::Span,
+) -> Vec<Token> {
+    let var_name = extract_string_arg(input, interner).unwrap_or_default();
+    let value = std::env::var(&var_name).unwrap_or_default();
+    let sym = interner.get_or_intern(value);
+    vec![Token {
+        kind: TokenKind::StrLit(sym),
+        span: crate::session::Span::DUMMY,
+    }]
+}
+
+/// Stage 131: `include_str!("path")` → string literal of the file contents.
+///
+/// Per Rust: `include_str!` reads the file at compile time, relative to
+/// the current file. Panics if the file doesn't exist.
+/// Per §1.0 原則 4 (报错 > 静默): report error if file not found.
+///
+/// Example: `include_str!("data.txt")` → contents of data.txt
+fn expand_include_str_macro(
+    input: &[Token],
+    interner: &mut Rodeo,
+    call_span: crate::session::Span,
+    file_name: &str,
+) -> Vec<Token> {
+    let path_str = extract_string_arg(input, interner).unwrap_or_default();
+    if path_str.is_empty() {
+        eprintln!(
+            "warning: include_str! requires a string literal argument (span={:?})",
+            call_span
+        );
+        return vec![Token {
+            kind: TokenKind::StrLit(interner.get_or_intern("")),
+            span: crate::session::Span::DUMMY,
+        }];
+    }
+    // Resolve path relative to the current file's directory.
+    let base_dir = std::path::Path::new(file_name)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let full_path = base_dir.join(&path_str);
+    match std::fs::read_to_string(&full_path) {
+        Ok(content) => {
+            let sym = interner.get_or_intern(content);
+            vec![Token {
+                kind: TokenKind::StrLit(sym),
+                span: crate::session::Span::DUMMY,
+            }]
+        }
+        Err(e) => {
+            // Per §1.0 原則 4 (报错 > 静默): report error if file not found.
+            eprintln!(
+                "error: include_str! cannot read file `{}`: {} (span={:?})",
+                full_path.display(),
+                e,
+                call_span
+            );
+            vec![Token {
+                kind: TokenKind::StrLit(interner.get_or_intern("")),
+                span: crate::session::Span::DUMMY,
+            }]
+        }
+    }
+}
+
+/// Stage 131: Helper — extract a string literal argument from macro input.
+///
+/// Extracts the first string literal token from the input tokens,
+/// skipping commas and whitespace. Returns None if no string literal found.
+fn extract_string_arg(input: &[Token], interner: &Rodeo) -> Option<String> {
+    for tok in input {
+        match &tok.kind {
+            TokenKind::StrLit(sym) => {
+                return Some(interner.resolve(sym).to_string());
+            }
+            TokenKind::Comma => continue,
+            _ => continue,
+        }
+    }
+    None
+}

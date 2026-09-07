@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.661.0 (v0.13 Stage 130 — TD-UFCS-DEFAULT-BODY-EMPTY-IMPL 部分修复: resolve_impl_method_by_name 回退到 trait 默认方法; 5798 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.662.0 (v0.14 Stage 131 — TD-ENV-MACROS 修复: env!/option_env!/include_str! 编译期宏; 5803 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 130 COMPLETE (TD-UFCS-DEFAULT-BODY-EMPTY-IMPL 部分修复)**. 5798 tests (898 lib + 4900 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 130 实现 trait 默认方法体回退 — 当 impl 块为空时，回退到 trait 声明的默认方法 DefId. 5 tests. v0.13 UFCS 阶段 COMPLETE (Stage 127-130). |
+| **Status** | ✅ **v0.14 Stage 131 COMPLETE (TD-ENV-MACROS)**. 5803 tests (898 lib + 4905 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 131 实现 env!/option_env!/include_str! 编译期宏 — 编译期读取环境变量和文件内容，展开为字符串字面量. 5 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

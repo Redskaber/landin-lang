@@ -1311,3 +1311,8 @@ mod stage129_ambiguity_tests;
 // Per §1.0 原則 6 (通解 > 特例) + §1.0 原則 9 (正确 > 妥协). ===
 #[path = "v0/stage130/plan/default_body_tests.rs"]
 mod stage130_default_body_tests;
+
+// === Stage 131 (v0.14): TD-ENV-MACROS — env!/option_env!/include_str!.
+// Compile-time env var + file reading. Per §1.0 原則 9 (正确 > 妥协). ===
+#[path = "v0/stage131/plan/env_macros_tests.rs"]
+mod stage131_env_macros_tests;
