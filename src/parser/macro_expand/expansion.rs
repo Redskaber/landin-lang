@@ -301,6 +301,28 @@ fn expand_compile_time_macro_with_source(
         // Per §1.0 原則 9 (正确 > 妥协): correct expansion, not runtime function.
         // Per §12 (最优 > 最小): root-cause fix — expand to match expression.
         "matches" => Some(expand_matches_macro(input, interner)),
+        // Stage 134 (v0.14 — TD-TRACE-MACROS-MACRO): trace_macros! is a
+        // no-op compile-time macro. In Rust, it's a hint to the compiler
+        // to enable/disable macro expansion tracing. Landin doesn't
+        // implement tracing, but must accept the syntax without error.
+        //
+        // Per §1.0 原則 6 (通解 > 特例): one no-op path for all trace_macros calls.
+        // Per §1.0 原則 9 (正确 > 妥协): accept syntax, don't generate runtime fn.
+        // Per §12 (最优 > 最小): root-cause fix — expand to nothing.
+        "trace_macros" => {
+            // no-op: produce unit expression `()` so the statement parses.
+            // trace_macros!(true); → (); (valid statement)
+            Some(vec![
+                Token {
+                    kind: TokenKind::LParen,
+                    span: crate::session::Span::DUMMY,
+                },
+                Token {
+                    kind: TokenKind::RParen,
+                    span: crate::session::Span::DUMMY,
+                },
+            ])
+        }
         _ => None,
     }
 }

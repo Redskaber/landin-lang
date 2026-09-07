@@ -1326,3 +1326,7 @@ mod stage132_compile_error_tests;
 // Compile-time expansion to match expr { pat => true, _ => false }. ===
 #[path = "v0/stage133/plan/matches_macro_tests.rs"]
 mod stage133_matches_macro_tests;
+
+// === Stage 134 (v0.14): TD-TRACE-MACROS-MACRO — trace_macros! no-op. ===
+#[path = "v0/stage134/plan/trace_macros_tests.rs"]
+mod stage134_trace_macros_tests;

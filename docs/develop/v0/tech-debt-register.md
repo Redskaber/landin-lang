@@ -289,5 +289,5 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD-RUNTIME-PANIC-TO-LANDIN | Panic C wrappers 可转 Landin prelude fns (仅保留 abort 基石) | C wrapper 特解 | 格式化→Landin fn, abort→C 基石 | P3, v0.9+ |
 | TD-COMPILE-ERROR-MACRO | ✅ Stage 132 修复 | compile_error! 编译期宏. 编译期 eprintln 报错 + 空 token 流. 4 tests. | ✅ |
 | TD-MATCHES-MACRO | ✅ Stage 133 修复 | matches! 编译期宏. 展开为 match expr { pat => true, _ => false }. 使用 KwMatch/KwTrue/KwFalse. 5 tests. | ✅ |
-| TD-TRACE-MACROS-MACRO | trace_macros! 未完整实现 | macro body 不完整 | 完整实现 trace_macros! | P3, v0.9+ |
+| TD-TRACE-MACROS-MACRO | ✅ Stage 134 修复 | trace_macros! no-op 宏. 展开为 () unit 表达式. 3 tests. | ✅ |
 | TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION | turbofish path `From::<i32>::from` 在 MIR lower 中解析为错误 DefId | MIR lower path resolution bug | 修复 turbofish path resolution | P3, v0.9+ |
