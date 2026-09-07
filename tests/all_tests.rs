@@ -1385,3 +1385,9 @@ mod stage148_generic_enum_tests;
 //                         only checks operands, not type metadata. ===
 #[path = "v0/stage149/plan/trait_method_generic_ret_tests.rs"]
 mod stage149_trait_method_generic_ret_tests;
+
+// === Stage 150 (v0.15): TD-GENERIC-ENUM-MATCH-ARMS — match arm pattern
+//                         binding for generic enums. Payload type T now
+//                         substituted to concrete type from scrutinee substs. ===
+#[path = "v0/stage150/plan/generic_enum_match_tests.rs"]
+mod stage150_generic_enum_match_tests;

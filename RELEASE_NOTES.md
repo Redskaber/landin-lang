@@ -3,13 +3,30 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.673.0 (v0.15 Stage 149 — TD-TRAIT-METHOD-GENERIC-RET-SKIP: 修复 trait 方法返回 Option<T> 时不 emit; 5993 tests) |
+| **Current version** | v0.674.0 (v0.15 Stage 150 — TD-GENERIC-ENUM-MATCH-ARMS: 修复泛型枚举 match arm pattern binding; 6002 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5095 integration tests = 5993 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5104 integration tests = 6002 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 149 修复 P1 回归, Iterator trait 现在编译+链接); v0.15 codegen 阶段 — Stage 149 修复 trait 方法返回泛型枚举的 emit 跳过 |
+| **Architecture** | Health 9.9/10 (stable — Stage 150 修复泛型枚举 match arm binding); v0.15 typeck+lower 阶段 — Stage 150 修复 match arm pattern binding 对泛型枚举 payload 的类型替换 |
+
+---
+
+## v0.674.0 — Stage 150 (v0.15) — TD-GENERIC-ENUM-MATCH-ARMS 完整修复
+
+### Overview
+
+Stage 150 修复泛型枚举 match arm pattern binding — `Option::Some(v)` 中 `v` 现在正确解析为 `i64` (之前被当作 `T`/`Param`).
+
+### What was fixed
+
+1. `resolve_enum_variant`: 使用 `lower_hir_ty_to_mir_ty_with_hir_and_generics` + enum generic_params, 使 `T` 解析为 `Param(0)` 而非 `Error`.
+2. `pattern_bindings`: 从 scrutinee 的 `local_decl.ty` 提取具体 substs, 用 `substitute` 替换 `Param(0)` → 具体类型.
+
+### §3.2 acceptance
+
+- 6002 tests (898 lib + 5104 integration), 0 failures, 12 ignored (+9 new)
 
 ---
 

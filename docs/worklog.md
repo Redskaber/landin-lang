@@ -45270,3 +45270,24 @@ Work Log:
 1. 选只检查 operands 不选不跳过用户函数 — §1.0 原則 6 (通解: 检查运行时值, 不检查 type metadata)
 2. 选用户函数总是 emit 不选跳过含 Param 的函数 — §1.0 原則 9 (正确 > 妥协: emit with warnings)
 3. 选不检查 Aggregate substs/field_tys 不选替换 Param — §1.0 原則 9 (typeck 限制是 follow-up TD)
+
+---
+Task ID: stage150-td-generic-enum-match-arms-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 150 — TD-GENERIC-ENUM-MATCH-ARMS 完整修复. v0.673.0 → v0.674.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 149 baseline (5993 tests, 0 failures)
+- 根因: resolve_enum_variant 使用 lower_hir_ty_to_mir_ty (无泛型上下文) → T 变 Error; pattern_bindings 直接用 Error 类型
+- MUV-1: resolve_enum_variant 使用 lower_hir_ty_to_mir_ty_with_hir_and_generics + enum generic_params → T 变 Param(0)
+- MUV-2: pattern_bindings 从 scrutinee local_decl.ty 提取 substs, 用 substitute 替换 Param(0) → i64
+- MUV-3: 9 tests + §3.2 全套验收通过 (898 lib + 5104 integration = 6002 tests, 0 failures)
+- v0.674.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 选 with_hir_and_generics 不选 lower_hir_ty_to_mir_ty — §1.0 原則 6 (通解: 所有枚举都传 generic_params)
+2. 选从 scrutinee 提取 substs 不选从 pattern 提取 — §1.0 原則 10 (scrutinee local_decl.ty 是唯一可信数据源)
+
+裁剪点: L3 任务, 单轮收敛 (根因清晰: 两处缺失 substitute/with_generics)
+
+下一步 (MUV): Stage 151 — TD-TRAIT-METHOD-RET-MATCH-GEP (match arm 从 trait 方法返回值提取数据不正确) 或 TD-STDLIB-ITERATOR

@@ -159,12 +159,37 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     let payload_tys = &field_tys[1..];
                     let starting_idx =
                         compute_enum_payload_starting_idx(cx, enum_def_id, variant_idx);
+                    // Stage 150 (TD-GENERIC-ENUM-MATCH-ARMS): Get the
+                    // scrutinee's concrete substs so we can substitute Param
+                    // types in the payload. For `Option<i64>`, the scrutinee
+                    // type is `Adt(Option_def_id, [i64])`, so substs = [i64].
+                    // When we extract `Some(v)`, the payload type `Param(0)`
+                    // (from `Some(T)`) gets substituted to `i64`.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one substitute call for
+                    // all payload types.
+                    // Per §1.0 原則 10 (唯一可信数据源): scrutinee's
+                    // local_decl.ty is the authoritative source of substs.
+                    let scrut_substs: Vec<Ty> = {
+                        let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+                        match &scrut_ty.kind {
+                            crate::mir::ty::TyKind::Adt(_, substs) => {
+                                substs.iter().cloned().collect()
+                            }
+                            _ => Vec::new(),
+                        }
+                    };
                     for (i, sub_pat) in sub_pats.iter().enumerate() {
                         let field_idx = starting_idx + i as u32;
-                        let field_ty = payload_tys
+                        let raw_field_ty = payload_tys
                             .get(i)
                             .cloned()
                             .unwrap_or_else(|| Ty::new(TyKind::Int(crate::ast::IntTy::I32), span));
+                        // Stage 150: Substitute Param types with concrete
+                        // substs from the scrutinee. E.g., Param(0) → i64
+                        // when matching `Option<i64>`.
+                        let field_ty =
+                            crate::mir::substitute::substitute(&raw_field_ty, &scrut_substs);
                         if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
                             let binding_local =
                                 cx.mir.new_local(field_ty.clone(), None, sub_pat.span);

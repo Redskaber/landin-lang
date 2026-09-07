@@ -23,7 +23,6 @@ use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 
-use super::ty_lower::lower_hir_ty_to_mir_ty;
 use super::MirLowerCtxt;
 
 /// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Map a primitive `TyKind`
@@ -116,6 +115,17 @@ pub(crate) fn resolve_enum_variant(
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => e,
         _ => return None,
     };
+    // Stage 150 (TD-GENERIC-ENUM-MATCH-ARMS): Get the enum's generic params
+    // so we can use lower_hir_ty_to_mir_ty_with_hir_and_generics for variant
+    // field types. This resolves `T` in `Some(T)` to `Param(0)` instead of
+    // `Error` (which happens with plain lower_hir_ty_to_mir_ty when no
+    // generic context is passed).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): one generic_params lookup for all enums
+    // (empty for non-generic enums — no-op).
+    // Per §1.0 原則 10 (唯一可信数据源): HIR enum declaration is the
+    // authoritative source of generic params.
+    let generic_params = crate::hir::find_generics(enum_def_id, hir);
     for (i, variant) in enum_def.variants.iter().enumerate() {
         if variant.ident.name == *variant_name {
             // Found the variant. Build field_tys: [discriminant, payload...]
@@ -126,12 +136,20 @@ pub(crate) fn resolve_enum_variant(
                 }
                 crate::hir::HirVariantData::Tuple(fields, _) => {
                     for f in fields {
-                        field_tys.push(lower_hir_ty_to_mir_ty(&f.ty));
+                        field_tys.push(super::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                            &f.ty,
+                            Some(hir),
+                            &generic_params,
+                        ));
                     }
                 }
                 crate::hir::HirVariantData::Struct(fields, _) => {
                     for f in fields {
-                        field_tys.push(lower_hir_ty_to_mir_ty(&f.ty));
+                        field_tys.push(super::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                            &f.ty,
+                            Some(hir),
+                            &generic_params,
+                        ));
                     }
                 }
             }

@@ -446,7 +446,7 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-GENERIC-ENUM-MATCH-ARMS | match arm pattern binding for generic enums (Option<T>) 不解析 payload type T → concrete type | match arm binding 看到 Param(T) 而非替换后的具体类型 | 在 MIR lower 的 match arm pattern binding 中应用 substitute(payload_ty, enum_substs) | P3, v0.16+ |
+| TD-GENERIC-ENUM-MATCH-ARMS | ✅ Stage 150 修复 | match arm pattern binding for generic enums 不解析 payload type T | resolve_enum_variant 使用 with_hir_and_generics + pattern_bindings 从 scrutinee substs 替换 Param(0). 9 tests. | ✅ |
 | TD-TRAIT-METHOD-REMONO-LINK | Stage 147 bodyless trait 方法获得新 DefId 后, vtable 引用 `landin_Iterator_Counter_next` 但函数未 emit (linker error) | vtable method name resolution 使用新 trait method DefId pattern, 但 impl method emit 使用不同 name | 修复 vtable method name resolution 以匹配 impl method 的 emitted name (landin_Counter_next 而非 landin_Iterator_Counter_next) | P3, v0.16+ |
 
 ### P3 — v0.15+ Stage 149 调查发现
@@ -454,3 +454,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-TRAIT-METHOD-GENERIC-RET-SKIP | ✅ Stage 149 修复 | trait 方法返回泛型枚举时 impl 方法不被 emit | statement_contains_param 的 Aggregate 分支不再检查 substs/field_tys (仅检查 operands). 15 tests. | ✅ |
+
+### P3 — v0.15+ Stage 150 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-TRAIT-METHOD-RET-MATCH-GEP | Iterator sum 的 match arm 提取值不正确 (count works, sum returns garbage) | match arm 从 trait 方法返回的 Option<Self::Item> 中提取 payload 时, GEP field index 可能不匹配 codegen 的 storage layout | 调查 codegen 对 trait 方法返回值的 enum variant payload GEP 路径 | P3, v0.16+ |
+| TD-OPTION-UNWRAP-OR-MATCH | unwrap_or 在 Some+None 组合时 Some 返回 0 | unwrap_or 内部的 match 对 Some 分支的 payload 提取不正确 | 调查 prelude Option::unwrap_or 的 match arm GEP | P3, v0.16+ |
