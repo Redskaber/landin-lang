@@ -3,13 +3,72 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.665.0 (v0.14 Stage 134 — TD-TRACE-MACROS-MACRO 修复: trace_macros! no-op; 5815 tests) |
+| **Current version** | v0.668.0 (v0.15 Stage 143 — TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC 完整修复: String/str 的 starts_with/ends_with/contains + RawPtr 索引 codegen 修复; 5857 tests) |
 | **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 4897 integration tests = 5795 total (100% pass rate single-thread with `ulimit -s unlimited`, 9 ignored) |
+| **Test count** | 898 lib tests + 4959 integration tests = 5857 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.85/10 (stable — Layer 1+2+4 完成, Layer 3 待 Stage 103+); v0.10 TD-PRELUDE-IMPL-BODY-CODEGEN-CRASH 修复阶段 — Stage 102 Layer 4 完成, 3 次稳定性验证全绿 |
+| **Architecture** | Health 9.9/10 (stable — Stage 143 完成 v0.15 RawPtr 索引 codegen 链完整修复); v0.15 stdlib/prelude 阶段 — Stage 143 添加 String/str 的 starts_with/ends_with/contains, 完成 v0.15 RawPtr 索引基础设施 |
+
+---
+
+## v0.668.0 — Stage 143 (v0.15) — TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC 完整修复
+
+### Overview
+
+Stage 143 完整修复 3 个相互关联的 P3 技术债，完成 v0.15 阶段 RawPtr 索引基础设施
++ stdlib String/str 方法添加。这是 Stage 140-142 的最终修复阶段，根因链 7 步
+全部解决。
+
+### What was fixed
+
+1. **TD-PTR-INDEX-GEP-TYPE**: `emit_gep_index_ptr` 添加 `idx_ty: &EmitType` 参数 —
+   TextEmitter 动态使用 MIR local 实际类型 (i32/i64) 而非硬编码 i64。
+   - §1.0 原則 5 (去除兼容思维): 修改 trait 签名而非新增方法
+   - §1.0 原則 6 (通解 > 特解): 一个方法处理所有 index 类型
+   - §1.0 原則 10 (唯一可信数据源): MIR local_decls 是 source of truth
+
+2. **TD-PTR-INDEX-CODEGEN-2**: 完整修复 RawPtr 索引 codegen:
+   - `unwrap_fat_ptr_for_index` Ptr(_) 不 LOAD (caller 责任, §1.0 原則 11)
+   - `array_ty` 仅对 Ptr(Array) strip (保留 Ptr(I8) 以便走 Ptr(_) 分支)
+   - `detect_place_type` Index 添加 Ptr/OpaquePtr 分支
+   - `emit_load` 用 `detect_place_type` 替代 caller-supplied ty
+   - `codegen_place_load_typed` Index arm 添加 `base_ty.is_ptr()` 检查
+
+3. **TD-STDLIB-STRING-VEC**: 添加 String + str 的 starts_with/ends_with/contains
+   到 prelude. byte-by-byte 比较循环 (§1.0 原則 9: 测试 indexing 基础设施, 不引入
+   新 C 运行时 helper __landin_memcmp).
+
+### Decision rationale
+
+- 选修改 trait 签名 不选新增方法 — §1.0 原則 5/10 (去除兼容思维 + 唯一可信数据源)
+- 选 caller 查询 MIR 不选 emitter 推断 — §1.0 原則 10
+- 选 caller LOAD 不选 unwrap 内 LOAD — §1.0 原則 11 (确定性边界: caller 知道 base_ptr 是否 loaded)
+- 选 byte-by-byte Landin loop 不选 __landin_memcmp — §1.0 原則 9 (正确 > 妥协)
+- 选 detect_place_type 不选 caller-supplied ty — §1.0 原則 6/12 (通解 + 最优)
+- 选仅对 Ptr(Array) strip 不选全部 strip — §1.0 原則 9 (不破坏 raw pointer 语义)
+
+### Test coverage
+
+35 new tests:
+- starts_with: 4 positive + 3 negative (full match, partial, single char, empty prefix, no match, partial mismatch, longer prefix)
+- ends_with: 3 positive + 2 negative
+- contains: 6 positive + 3 negative (full, middle, start, end, single char, empty; no match, longer, almost match)
+- edge cases: 4 (empty strings, single char)
+- regression: 5 (array/slice/raw ptr/String methods)
+- combined: 3 (all methods + chaining + as_str)
+
+### §3.2 acceptance
+
+- cargo clean ✓
+- cargo build --release ✓ (57s)
+- cargo check ✓ (0 errors, 0 warnings)
+- cargo fmt --check ✓ (clean)
+- cargo clippy --all-targets -- -D warnings ✓ (0 warnings)
+- cargo test --release --lib ✓ (898 tests, 0 failures)
+- cargo test --release --test all_tests ✓ (4959 tests, 0 failures, 12 ignored)
+- Total: 5857 tests, 0 failures, 12 ignored (+35 new from Stage 142)
 
 ---
 

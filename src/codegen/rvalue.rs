@@ -901,7 +901,15 @@ pub(crate) fn codegen_rvalue(
                     mono_names,
                     type_name_by_def_id,
                 );
-                cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &elem_emit_ty, &idx_val);
+                // Stage 143 (TD-PTR-INDEX-GEP-TYPE): detect the index
+                // operand's actual type so the TextEmitter outputs the
+                // correct `i32`/`i64` prefix in the GEP index position.
+                // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 10
+                // (唯一可信数据源): detect_operand_type queries MIR
+                // (the authoritative source).
+                let idx_ty = detect_operand_type(mir, idx_op, layouts, mono_layouts)
+                    .unwrap_or(EmitType::I64);
+                cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &elem_emit_ty, &idx_ty, &idx_val);
             }
             cur_ptr
         }

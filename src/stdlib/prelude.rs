@@ -958,6 +958,73 @@ impl String {
     fn is_empty(&self) -> bool { self.len == 0usize }
     fn clear(&mut self) { self.len = 0usize; }
     fn capacity(&self) -> usize { self.cap }
+    // Stage 143 (v0.15 — TD-STDLIB-STRING-VEC): String::starts_with /
+    // ends_with / contains — slice comparison methods. These rely on raw
+    // pointer indexing (`self.ptr[i]` where `self.ptr: *mut u8`) which was
+    // fixed in Stage 143 (TD-PTR-INDEX-CODEGEN-2 — `unwrap_fat_ptr_for_index`
+    // Ptr(_) branch now LOADs the pointer value before GEP).
+    //
+    // Per §1.0 原則 6 (通解 > 特解): byte-by-byte comparison loop is the
+    // general mechanism — no new C runtime helper, all logic in Landin
+    // source. Alternative considered: add `__landin_memcmp` extern C
+    // (analogous to `__landin_memcpy`), but that just shifts the loop
+    // to C — doesn't add capability, only saves a few cycles. The
+    // Landin-side loop tests that the indexing codegen fix works.
+    //
+    // Per §1.0 原則 9 (正确 > 妥协): implementing in Landin source proves
+    // the indexing infrastructure is correct. If we used `__landin_memcmp`
+    // and bypassed indexing, we'd hide any codegen bug.
+    //
+    // Per §1.0 原則 4 (报错 > 静默): if `prefix.len > self.len`, returns
+    // false (does not panic — Rust std semantics).
+    //
+    // Per §12 (最优 > 最小): uses existing field access (Stage 18.284) +
+    // raw pointer indexing (Stage 143). No new language features needed.
+    fn starts_with(&self, prefix: &str) -> bool {
+        if prefix.len > self.len { return false; }
+        let mut i: usize = 0usize;
+        while i < prefix.len {
+            if self.ptr[i] != prefix.ptr[i] { return false; }
+            i = i + 1usize;
+        }
+        true
+    }
+    fn ends_with(&self, suffix: &str) -> bool {
+        if suffix.len > self.len { return false; }
+        if suffix.len == 0usize { return true; }
+        let start: usize = self.len - suffix.len;
+        let mut i: usize = 0usize;
+        while i < suffix.len {
+            if self.ptr[start + i] != suffix.ptr[i] { return false; }
+            i = i + 1usize;
+        }
+        true
+    }
+    // contains: searches for `needle` as a substring. Returns true if any
+    // position in `self` matches `needle.len` consecutive bytes.
+    // O(self.len * needle.len) worst case — same as Rust's naive str::contains
+    // (Rust uses a more optimized algorithm for long needles, but for short
+    // strings the naive approach is competitive).
+    fn contains(&self, needle: &str) -> bool {
+        if needle.len == 0usize { return true; }
+        if needle.len > self.len { return false; }
+        let last_start: usize = self.len - needle.len;
+        let mut start: usize = 0usize;
+        while start <= last_start {
+            let mut i: usize = 0usize;
+            let mut matched: bool = true;
+            while i < needle.len {
+                if self.ptr[start + i] != needle.ptr[i] {
+                    matched = false;
+                    break;
+                }
+                i = i + 1usize;
+            }
+            if matched { return true; }
+            start = start + 1usize;
+        }
+        false
+    }
 }
 // Stage 18.195 (TD-VEC-MVP): Vec<T> — owned dynamic array.
 //
@@ -1115,6 +1182,57 @@ impl str {
     // Per §12 (最优 > 最小): root-cause fix — real body replaces intrinsic.
     // Per §1.0 原則 6 (通解 > 特解): standard method resolution + cast.
     fn as_bytes(&self) -> &[u8] { self as &[u8] }
+    // Stage 143 (v0.15 — TD-STDLIB-STRING-VEC continuation): str::starts_with /
+    // ends_with / contains — mirror String methods. Same byte-by-byte
+    // comparison logic, exercising the raw pointer indexing codegen fix
+    // (TD-PTR-INDEX-CODEGEN-2). The &str fat pointer's .ptr field gives the
+    // data pointer; indexing it as `self.ptr[i]` uses the new codegen path.
+    //
+    // Per §1.0 原則 6 (通解 > 特解): same method bodies as String, applied
+    // to str fat pointer struct. No code duplication in codegen — one
+    // indexing path for both String.ptr and str.ptr (both *mut u8).
+    // Per §12 (最优 > 最小): root-cause fix at codegen level benefits both
+    // String and str method impls uniformly.
+    fn starts_with(&self, prefix: &str) -> bool {
+        if prefix.len > self.len { return false; }
+        let mut i: usize = 0usize;
+        while i < prefix.len {
+            if self.ptr[i] != prefix.ptr[i] { return false; }
+            i = i + 1usize;
+        }
+        true
+    }
+    fn ends_with(&self, suffix: &str) -> bool {
+        if suffix.len > self.len { return false; }
+        if suffix.len == 0usize { return true; }
+        let start: usize = self.len - suffix.len;
+        let mut i: usize = 0usize;
+        while i < suffix.len {
+            if self.ptr[start + i] != suffix.ptr[i] { return false; }
+            i = i + 1usize;
+        }
+        true
+    }
+    fn contains(&self, needle: &str) -> bool {
+        if needle.len == 0usize { return true; }
+        if needle.len > self.len { return false; }
+        let last_start: usize = self.len - needle.len;
+        let mut start: usize = 0usize;
+        while start <= last_start {
+            let mut i: usize = 0usize;
+            let mut matched: bool = true;
+            while i < needle.len {
+                if self.ptr[start + i] != needle.ptr[i] {
+                    matched = false;
+                    break;
+                }
+                i = i + 1usize;
+            }
+            if matched { return true; }
+            start = start + 1usize;
+        }
+        false
+    }
 }
 // Stage 18.285 (TD-INTRINSIC-OVERUSE Phase 2-A continuation): Primitive type
 // impls with REAL bodies (not markers). These verify the architecture is

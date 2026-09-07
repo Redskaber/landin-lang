@@ -80,23 +80,34 @@ impl MemoryEmitter for TextEmitter {
     }
 
     /// Stage 3.51: GEP into a raw element pointer (for slice indexing).
+    ///
+    /// Stage 143 (TD-PTR-INDEX-GEP-TYPE): The `idx_ty` parameter is the
+    /// source-of-truth for the GEP index type. Previously this method
+    /// hardcoded `i64`, which broke text IR tests when the actual MIR local
+    /// was `i32` (the IR showed `i64 0` while the test expected `i32 0`).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one method handles both i32 and i64
+    /// indices based on the caller-provided type.
+    /// Per §1.0 原則 10 (唯一可信数据源): `idx_ty` comes from MIR `local_decls`
+    /// (the authoritative source), not inferred from `EmitValue`.
     fn emit_gep_index_ptr(
         &mut self,
         base_ptr: &EmitValue,
         elem_ty: &EmitType,
+        idx_ty: &EmitType,
         index: &EmitValue,
     ) -> EmitValue {
         let r = self.fresh();
         let elem_str = emit_type_to_llvm_str(elem_ty);
+        let idx_str = emit_type_to_llvm_str(idx_ty);
         // Stage 14.59: LLVM 19 opaque pointers — use "ptr" instead of "elem*"
         let ptr_str = "ptr".to_string();
-        // Stage 31.6c: Use i64 for GEP index (handles usize/i64 indices from
-        // pointer arithmetic `ptr + len` where len is usize = i64 on 64-bit).
-        // LLVM accepts i64 for GEP indices on 64-bit targets.
-        // Per §1.0 原則 6 (通解 > 特解): one index type for all GEP indices.
+        // Stage 143: Use the actual index type from MIR (i32 or i64), not a
+        // hardcoded i64. LLVM accepts any integer type for GEP indices.
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all index types.
         self.line(&format!(
-            "  %v{} = getelementptr inbounds {}, {} {}, i64 {}",
-            r, elem_str, ptr_str, base_ptr, index
+            "  %v{} = getelementptr inbounds {}, {} {}, {} {}",
+            r, elem_str, ptr_str, base_ptr, idx_str, index
         ));
         format!("%v{}", r)
     }

@@ -277,10 +277,27 @@ pub(crate) fn codegen_statement(
                                     _ => raw_ty,
                                 }
                             };
+                            // Stage 143 (TD-PTR-INDEX-GEP-TYPE): Query MIR
+                            // local_decls for the index local's actual type
+                            // (i32 or i64/usize). Previously this hardcoded
+                            // EmitType::I32 for emit_load.
+                            // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 10
+                            // (唯一可信数据源): MIR local_decls is the source.
+                            let idx_ty = mir
+                                .local_decls
+                                .get(idx.0 as usize)
+                                .map(|ld| {
+                                    crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts_and_mono(
+                                        &ld.ty,
+                                        layouts,
+                                        mono_layouts,
+                                    )
+                                })
+                                .unwrap_or(EmitType::I64);
                             let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                                 v
                             } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
-                                emitter.emit_load(&EmitType::I32, &ptr)
+                                emitter.emit_load(&idx_ty, &ptr)
                             } else {
                                 "0".to_string()
                             };
@@ -288,9 +305,8 @@ pub(crate) fn codegen_statement(
                             let (gep_base, pointee_opt) =
                                 unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
                             let elem_ptr = match pointee_opt {
-                                Some(elem_ty) => {
-                                    emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val)
-                                }
+                                Some(elem_ty) => emitter
+                                    .emit_gep_index_ptr(&gep_base, &elem_ty, &idx_ty, &idx_val),
                                 None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
                             };
                             emitter.emit_store(&ty, &val, &elem_ptr);

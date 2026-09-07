@@ -569,6 +569,22 @@ pub(crate) fn detect_place_type(
                     {
                         fields[0].pointee()
                     }
+                    // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Raw pointer case —
+                    // `*mut T` / `*const T` indexing returns the pointee type T.
+                    // Without this, `self.ptr[i]` where `self.ptr: *mut u8`
+                    // returned `I32` (the fallback), causing `load i32` instead
+                    // of `load i8` — wrong element size, wrong comparison.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one Ptr(_) case for all
+                    // raw pointer indexing — *mut u8, *mut i32, *const T, etc.
+                    // Per §1.0 原則 9 (正确 > 妥协): fix root cause (return
+                    // actual pointee), not symptom (cast after load).
+                    EmitType::Ptr(inner) => *inner.clone(),
+                    // Stage 143: OpaquePtr raw pointer (e.g., *mut Struct) —
+                    // pointee is opaque, fall back to I8 (byte access).
+                    // This is consistent with unwrap_fat_ptr_for_index's
+                    // OpaquePtr branch which returns Some(I8).
+                    EmitType::OpaquePtr => EmitType::I8,
                     _ => EmitType::I32,
                 }
             }
@@ -726,10 +742,34 @@ pub(crate) fn compute_place_address(
                 // Stage 14.61: For Ref to Array, extract the Array type from the
                 // Ref's inner type for the GEP. detect_place_storage_type returns
                 // Ptr(Array) which is wrong for GEP — we need Array itself.
+                //
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Do NOT strip Ptr when the
+                // inner is NOT an Array. For raw pointers like `*mut u8`, the
+                // inner is `I8` (a scalar, not an array). Stripping would produce
+                // `array_ty = I8`, then `unwrap_fat_ptr_for_index(_, I8)` falls
+                // through to the `_` arm returning `(base_ptr, None)` — which
+                // then calls `emit_gep_index(base_ptr, I8, idx)` producing the
+                // invalid IR `GEP i8, ptr %X, i32 0, i32 idx` (i8 is not an array).
+                //
+                // The correct flow: keep `array_ty = Ptr(I8)`, then
+                // `unwrap_fat_ptr_for_index(_, Ptr(I8))` matches the `Ptr(_)`
+                // branch returning `(base_ptr, Some(I8))` — caller uses
+                // `emit_gep_index_ptr(base_ptr, I8, idx_ty, idx)` → CORRECT
+                // single-index GEP into the loaded data pointer.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one rule for all raw pointer
+                // Index cases — keep Ptr(inner) and let unwrap_fat_ptr_for_index
+                // dispatch correctly.
+                // Per §1.0 原則 9 (正确 > 妥协): fix root cause (don't strip),
+                // not symptom (add special case for I8).
                 let array_ty = {
                     let raw_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                     match &raw_ty {
-                        EmitType::Ptr(inner) => *inner.clone(),
+                        // Only strip Ptr for Ref-to-Array (Ptr(Array) → Array).
+                        // For other Ptr (e.g., Ptr(I8) from *mut u8), keep as-is.
+                        EmitType::Ptr(inner) if matches!(**inner, EmitType::Array(_, _)) => {
+                            *inner.clone()
+                        }
                         EmitType::OpaquePtr => {
                             // Check MIR for Ref(_, _, Array)
                             if let PlaceKind::Local(id) = &base.kind {
@@ -751,30 +791,70 @@ pub(crate) fn compute_place_address(
                         _ => raw_ty,
                     }
                 };
+                // Stage 143 (TD-PTR-INDEX-GEP-TYPE): Query MIR local_decls
+                // for the index local's actual type (i32 or i64/usize).
+                // Previously this hardcoded EmitType::I32 for emit_load,
+                // which broke codegen when the actual local was i64 (usize).
+                // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 10 (唯一可信数据源):
+                // MIR local_decls is the source of truth.
+                let idx_ty = mir
+                    .local_decls
+                    .get(idx.0 as usize)
+                    .map(|ld| {
+                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
+                    })
+                    .unwrap_or(EmitType::I64);
                 let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
-                    emitter.emit_load(&EmitType::I32, &ptr)
+                    emitter.emit_load(&idx_ty, &ptr)
                 } else {
                     "0".to_string()
                 };
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
                 match pointee_opt {
-                    Some(elem_ty) => emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val),
+                    Some(elem_ty) => {
+                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_ty, &idx_val)
+                    }
                     None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
                 }
             }
             ProjectionElem::ConstantIndex { offset, .. } => {
-                let base_ptr =
-                    compute_place_address(emitter, mir, base, _interner, layouts, mono_layouts);
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Mirror the Index arm's
+                // base_ptr computation — if base is a raw pointer (Ptr(_)),
+                // LOAD the pointer value first so that unwrap_fat_ptr_for_index
+                // can pass it through correctly (without double-loading).
+                // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 11 (确定性边界):
+                // consistent base_ptr semantics across Index and ConstantIndex.
+                let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                let base_ptr = if base_ty.is_ptr() {
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        base_ty,
+                        _interner,
+                        layouts,
+                        mono_layouts,
+                    )
+                } else {
+                    compute_place_address(emitter, mir, base, _interner, layouts, mono_layouts)
+                };
                 let array_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                // Stage 143: ConstantIndex offset is u32, but historically
+                // TextEmitter emitted it as i64. Preserve this behavior
+                // (§1.0 原則 9 — 正确 > 妥协: don't change unrelated test expectations).
+                let idx_ty = EmitType::I64;
                 match pointee_opt {
-                    Some(elem_ty) => {
-                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &offset.to_string())
-                    }
+                    Some(elem_ty) => emitter.emit_gep_index_ptr(
+                        &gep_base,
+                        &elem_ty,
+                        &idx_ty,
+                        &offset.to_string(),
+                    ),
                     None => emitter.emit_gep_index(&gep_base, &array_ty, &offset.to_string()),
                 }
             }
@@ -844,7 +924,21 @@ pub(crate) fn unwrap_fat_ptr_for_index(
         // Stage 140 (v0.15 — TD-STR-FAT-PTR-LAYOUT-MISMATCH):
         // For raw pointers (Ptr(_)), treat as pointer indexing —
         // use emit_gep_index_ptr (single index, no leading 0).
-        // Per §1.0 原則 6 (通解 > 特解): one path for all raw pointer indexing.
+        //
+        // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Do NOT LOAD here. The caller
+        // (compute_place_address / codegen_place_load_typed / statement.rs)
+        // already LOADS the pointer value when `base_ty.is_ptr()` is true.
+        // Adding a LOAD here would produce a double-load: load the pointer
+        // value, then load again treating the pointer value as an address.
+        //
+        // Per §1.0 原則 11 (确定性边界): the boundary is:
+        // - Caller responsibility: if base is a raw pointer (Ptr(_)), LOAD
+        //   the pointer value before calling this function.
+        // - `unwrap_fat_ptr_for_index` responsibility: handle fat pointer
+        //   Structs (LOAD field 0) and pass through everything else.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one rule for all raw pointer Index
+        // operations — caller LOADs, we pass through.
         EmitType::Ptr(inner) => (base_ptr.to_string(), Some(*inner.clone())),
         // Stage 140: OpaquePtr also needs pointer-style GEP (no leading 0).
         // The pointee type is unknown (opaque), so use I8 as fallback.
@@ -1150,7 +1244,34 @@ pub(crate) fn codegen_place_load_typed(
                 // Stage 14.61: When base is a Local with Ref type (e.g., `&[i32; 3]`),
                 // load the reference value (the array pointer) instead of using
                 // the alloca pointer directly.
-                let base_ptr = if let PlaceKind::Local(id) = &base.kind {
+                //
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): When base is a raw pointer
+                // (Ptr(_) or OpaquePtr), LOAD the pointer value FIRST. This
+                // handles `self.ptr[i]` where `self.ptr: *mut u8` — the Field
+                // projection yields a raw pointer, and we need to LOAD it
+                // before GEP-ing into the data buffer.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one `base_ty.is_ptr()` check
+                // for all raw pointer Index cases (Local raw ptr, Field raw ptr,
+                // any projection that yields a raw ptr).
+                // Per §1.0 原則 11 (确定性边界): consistent with
+                // compute_place_address's Index arm — both LOAD raw pointers.
+                let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                let base_ptr = if base_ty.is_ptr() {
+                    // Stage 143: Raw pointer base — LOAD the pointer value.
+                    // Without this, `self.ptr[i]` would GEP into the alloca
+                    // storing the pointer (treating alloca bytes as the array),
+                    // producing invalid IR + wrong values.
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        base_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
+                } else if let PlaceKind::Local(id) = &base.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
                     if let Some(ty) = local_ty {
                         // Stage 18.183 (TD-FAT-PTR-INDEX-PROJ fix): For fat
@@ -1229,10 +1350,18 @@ pub(crate) fn codegen_place_load_typed(
                     compute_place_address(emitter, mir, base, interner, layouts, mono_layouts)
                 };
                 // Stage 14.61: Extract Array type from Ref for GEP.
+                //
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Do NOT strip Ptr when
+                // the inner is NOT an Array. See compute_place_address Index
+                // arm for the full rationale.
                 let array_ty = {
                     let raw_ty = detect_place_storage_type(mir, base, layouts, mono_layouts);
                     match &raw_ty {
-                        EmitType::Ptr(inner) => *inner.clone(),
+                        // Only strip Ptr for Ref-to-Array (Ptr(Array) → Array).
+                        // For other Ptr (e.g., Ptr(I8) from *mut u8), keep as-is.
+                        EmitType::Ptr(inner) if matches!(**inner, EmitType::Array(_, _)) => {
+                            *inner.clone()
+                        }
                         EmitType::OpaquePtr => {
                             // Stage 140: Return raw_ty directly for non-Local bases
                             // (Field projections like self.ptr). unwrap_fat_ptr_for_index
@@ -1257,10 +1386,26 @@ pub(crate) fn codegen_place_load_typed(
                         _ => raw_ty,
                     }
                 };
+                // Stage 143 (TD-PTR-INDEX-GEP-TYPE): Query MIR local_decls
+                // for the index local's actual type (i32 or i64/usize).
+                // Previously this hardcoded EmitType::I32 for emit_load AND
+                // for the OOB bounds-check cast source — which broke codegen
+                // when the actual local was i64 (usize),
+                // e.g. `let i: usize = ...; arr[i]` would emit `cast i32 %v
+                // to i64` but %v was loaded as i32 (wrong bits).
+                // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 10 (唯一可信数据源):
+                // MIR local_decls is the source of truth.
+                let idx_ty = mir
+                    .local_decls
+                    .get(idx.0 as usize)
+                    .map(|ld| {
+                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
+                    })
+                    .unwrap_or(EmitType::I64);
                 let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
-                    emitter.emit_load(&EmitType::I32, &ptr)
+                    emitter.emit_load(&idx_ty, &ptr)
                 } else {
                     "0".to_string()
                 };
@@ -1278,8 +1423,10 @@ pub(crate) fn codegen_place_load_typed(
                             };
                             if array_len > 0 {
                                 // Cast idx to i64 for comparison and panic call.
-                                let idx_i64 =
-                                    emitter.emit_cast(&EmitType::I32, &EmitType::I64, &idx_val);
+                                // Stage 143: use actual idx_ty (not hardcoded I32)
+                                // so that the cast source type matches the loaded
+                                // value type. Per §1.0 原則 6 (通解 > 特解).
+                                let idx_i64 = emitter.emit_cast(&idx_ty, &EmitType::I64, &idx_val);
                                 // Create len constant as i64 SSA value.
                                 let len_local = emitter.emit_alloca(&EmitType::I64, "%oob_len");
                                 emitter.emit_store(
@@ -1320,13 +1467,45 @@ pub(crate) fn codegen_place_load_typed(
                 // Stage 140: unwrap_fat_ptr_for_index now handles OpaquePtr
                 // by loading the pointer value. No separate RawPtr load needed.
                 let elem_ptr = match pointee_opt {
-                    Some(elem_ty) => emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val),
+                    Some(elem_ty) => {
+                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_ty, &idx_val)
+                    }
                     None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
                 };
-                emitter.emit_load(&ty, &elem_ptr)
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Use detect_place_type to
+                // get the actual element type, not the caller-supplied `ty`
+                // (which may be I32 default from codegen_place_load). Without
+                // this, `self.ptr[i]` where `self.ptr: *mut u8` emits
+                // `load i32` instead of `load i8` — wrong element size, wrong
+                // comparison semantics.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one detect_place_type call
+                // covers all element types (i8, i32, i64, etc.).
+                // Per §1.0 原則 9 (正确 > 妥协): fix root cause (use actual
+                // type), not symptom (cast after load).
+                // Per §12 (最优 > 最小): mirrors the Field case fix (line 1197).
+                let elem_ty = detect_place_type(mir, lv, layouts, mono_layouts);
+                emitter.emit_load(&elem_ty, &elem_ptr)
             }
             ProjectionElem::ConstantIndex { offset, .. } => {
-                let base_ptr = if let PlaceKind::Local(id) = &base.kind {
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Mirror the Index arm's
+                // base_ptr computation — if base is a raw pointer (Ptr(_)),
+                // LOAD the pointer value first so that unwrap_fat_ptr_for_index
+                // can pass it through correctly (without double-loading).
+                // Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 11 (确定性边界):
+                // consistent base_ptr semantics across Index and ConstantIndex.
+                let base_ty = detect_place_type(mir, base, layouts, mono_layouts);
+                let base_ptr = if base_ty.is_ptr() {
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        base_ty,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                    )
+                } else if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .local_ptr(id.0)
                         .cloned()
@@ -1347,13 +1526,23 @@ pub(crate) fn codegen_place_load_typed(
                 // Stage 3.51: same fat pointer unwrap as Index.
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                // Stage 143: ConstantIndex offset is u32, but historically
+                // TextEmitter emitted it as i64. Preserve this behavior
+                // (§1.0 原則 9 — 正确 > 妥协: don't change unrelated test expectations).
+                let idx_ty = EmitType::I64;
                 let elem_ptr = match pointee_opt {
-                    Some(elem_ty) => {
-                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &offset.to_string())
-                    }
+                    Some(elem_ty) => emitter.emit_gep_index_ptr(
+                        &gep_base,
+                        &elem_ty,
+                        &idx_ty,
+                        &offset.to_string(),
+                    ),
                     None => emitter.emit_gep_index(&gep_base, &array_ty, &offset.to_string()),
                 };
-                emitter.emit_load(&ty, &elem_ptr)
+                // Stage 143 (TD-PTR-INDEX-CODEGEN-2): Use detect_place_type
+                // for actual element type (mirrors Index arm fix).
+                let elem_ty = detect_place_type(mir, lv, layouts, mono_layouts);
+                emitter.emit_load(&elem_ty, &elem_ptr)
             }
             _ => "0".to_string(),
         },

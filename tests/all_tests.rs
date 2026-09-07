@@ -1338,3 +1338,10 @@ mod stage136_opt_levels_tests;
 // === Stage 138 (v0.15): TD-PTR-INDEX-CONST — *const T indexing. ===
 #[path = "v0/stage138/plan/ptr_index_tests.rs"]
 mod stage138_ptr_index_tests;
+
+// === Stage 143 (v0.15): TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 +
+//                         TD-STDLIB-STRING-VEC — String::starts_with /
+//                         ends_with / contains + raw pointer indexing
+//                         codegen fix (single-index GEP into loaded ptr). ===
+#[path = "v0/stage143/plan/string_methods_tests.rs"]
+mod stage143_string_methods_tests;

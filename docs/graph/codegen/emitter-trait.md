@@ -53,7 +53,7 @@ classDiagram
         +emit_load(ty, ptr) EmitValue
         +emit_gep_field(base, struct_ty, idx) EmitValue
         +emit_gep_index(base, array_ty, idx) EmitValue
-        +emit_gep_index_ptr(base, elem_ty, idx) EmitValue
+        +emit_gep_index_ptr(base, elem_ty, idx_ty, idx) EmitValue
     }
     class AggregateEmitter {
         <<trait>>

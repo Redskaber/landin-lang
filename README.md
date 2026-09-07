@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.667.0 (v0.15 Stage 138 — TD-PTR-INDEX-CONST 修复: *const T 索引支持; 5822 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.668.0 (v0.15 Stage 143 — TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC 完整修复: String::starts_with/ends_with/contains + str::starts_with/ends_with/contains + RawPtr 索引 codegen 修复; 5857 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 138 COMPLETE (TD-PTR-INDEX-CONST)**. 5822 tests (898 lib + 4924 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 138 修复 *const T 索引 — typeck + MIR lower 添加 RawPtr 分支. 3 tests. |
+| **Status** | ✅ **v0.15 Stage 143 COMPLETE (TD-PTR-INDEX-GEP-TYPE + TD-PTR-INDEX-CODEGEN-2 + TD-STDLIB-STRING-VEC)**. 5857 tests (898 lib + 4959 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 143 完整修复 RawPtr 索引 codegen 链 + 添加 String/str 的 starts_with/ends_with/contains. 35 tests. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

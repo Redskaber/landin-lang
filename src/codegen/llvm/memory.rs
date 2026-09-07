@@ -178,6 +178,7 @@ impl MemoryEmitter for LLVMSysEmitter {
         &mut self,
         base_ptr: &EmitValue,
         elem_ty: &EmitType,
+        _idx_ty: &EmitType,
         index: &EmitValue,
     ) -> EmitValue {
         unsafe {

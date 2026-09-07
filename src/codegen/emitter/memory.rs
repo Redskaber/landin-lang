@@ -40,10 +40,38 @@ pub trait MemoryEmitter {
     ) -> EmitValue;
 
     /// Emit a getelementptr for element access via a raw element pointer.
+    ///
+    /// # Parameters
+    ///
+    /// - `base_ptr`: the data pointer (already unwrapped from any fat pointer
+    ///   storage) — points to the first element of the buffer.
+    /// - `elem_ty`: the element type (e.g. `i8` for `*mut u8`, `i32` for
+    ///   `*mut i32`, `i32` for `&[i32]` slice element).
+    /// - `idx_ty`: the **index value's** type (e.g. `i32` if the index is a
+    ///   `let i: i32` local, `i64` if it's a `usize`/`i64` local). This is the
+    ///   source-of-truth for the GEP index type in TextEmitter output. The
+    ///   LLVMSysEmitter ignores this parameter — LLVM's `LLVMBuildInBoundsGEP2`
+    ///   accepts any integer type as the index.
+    /// - `index`: the index value (SSA name or literal).
+    ///
+    /// # Why `idx_ty` is a separate parameter (Stage 143, TD-PTR-INDEX-GEP-TYPE)
+    ///
+    /// `EmitValue` is a `String` (SSA name or literal) and does not carry type
+    /// information. Previously, `TextEmitter::emit_gep_index_ptr` hardcoded `i64`
+    /// for the index type — which failed when the actual MIR local was `i32`
+    /// (text IR tests expected `i32 <idx>`, got `i64 <idx>`).
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解) + §1.0 原則 10 (唯一可信数据源): the caller
+    /// (which has access to MIR `local_decls`) is the source of truth for the
+    /// index type, and must pass it explicitly to this method.
+    ///
+    /// Per §1.0 原則 5 (去除兼容思维): the old signature is replaced, not kept
+    /// alongside a new one.
     fn emit_gep_index_ptr(
         &mut self,
         base_ptr: &EmitValue,
         elem_ty: &EmitType,
+        idx_ty: &EmitType,
         index: &EmitValue,
     ) -> EmitValue;
 }

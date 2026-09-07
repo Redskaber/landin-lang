@@ -408,17 +408,29 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-PTR-INDEX-CONST | `*const T` 不支持 `[index]` 索引操作（只有 `*mut T` 支持） | MIR lower 的 Index 表达式只处理 `*mut T`，不处理 `*const T` | 在 expr_operand.rs 的 Index arm 中添加 `*const T` 支持 | P3, v0.15+ |
-| TD-STDLIB-STRING-VEC-PARTIAL | TD-STDLIB-STRING-VEC 部分修复 — Vec::get 已添加但 String::starts_with/ends_with/contains 需要 *const T 索引支持 | 受 TD-PTR-INDEX-CONST 阻断 | 先修复 TD-PTR-INDEX-CONST，再添加 String 方法 | P3, v0.15+ |
+| TD-PTR-INDEX-CONST | ✅ Stage 138 修复 | *const T 索引支持. typeck/infer.rs + mir/lower/field_resolution.rs 添加 RawPtr(_, inner) 分支. 3 tests. | ✅ |
+| TD-STDLIB-STRING-VEC-PARTIAL | ✅ Stage 143 修复 | TD-STDLIB-STRING-VEC 完整修复 — String + str 的 starts_with/ends_with/contains 添加到 prelude. byte-by-byte loop 用 raw pointer indexing (依赖 TD-PTR-INDEX-CODEGEN-2 修复). 35 tests. | ✅ |
 
 ### P3 — v0.15+ Stage 139 发现
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-STR-FAT-PTR-LAYOUT-MISMATCH | String::starts_with/ends_with/contains 方法体无法正确访问 &str 参数的 ptr/len 字段 — &str 是 fat pointer {ptr, i64} 但 prelude str struct 用 {ptr: *mut u8, len: usize} 布局，两者不互操作 | &str fat pointer 与 str struct 布局不一致 — &str 的 .ptr 和 .len 访问通过 GEP fat pointer field，但 str struct 的 .ptr 和 .len 通过 GEP struct field | 统一 &str 和 str struct 布局，或在 prelude 方法中用 fat pointer 访问模式 | P3, v0.15+ |
+| TD-STR-FAT-PTR-LAYOUT-MISMATCH | ✅ Stage 140+143 修复 | String::starts_with/ends_with/contains 方法体无法正确访问 &str 参数的 ptr/len 字段 — &str 是 fat pointer {ptr, i64} 但 prelude str struct 用 {ptr: *mut u8, len: usize} 布局，两者不互操作 | Stage 140 完成 MIR lower (field_resolution.rs). Stage 143 完成 codegen (unwrap_fat_ptr_for_index Ptr(_) 不 LOAD + array_ty 不 strip + detect_place_type Ptr 分支 + emit_load 用 detect_place_type). String + str 方法已添加. 35 tests. | ✅ |
 
 ### P3 — v0.15+ Stage 140 发现
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-PTR-INDEX-CODEGEN | RawPtr 索引的 codegen GEP 生成错误 — getelementptr i8, ptr, i32 0, i32 idx (应为 i32 idx) | unwrap_fat_ptr_for_index 的 OpaquePtr 分支需要 LOAD 指针值再 GEP，但存在双重 load 问题 | 修复 unwrap_fat_ptr_for_index 的 OpaquePtr 分支：load 后返回 loaded_ptr，避免在 caller 中再次 load | P3, v0.15+ |
+| TD-PTR-INDEX-CODEGEN | ✅ Stage 143 修复 (合并到 TD-PTR-INDEX-CODEGEN-2) | RawPtr 索引的 codegen GEP 生成错误 | Stage 143 完整修复 — 见 TD-PTR-INDEX-CODEGEN-2 | ✅ |
+
+### P3 — v0.15+ Stage 141 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PTR-INDEX-CODEGEN-2 | ✅ Stage 143 修复 | RawPtr 索引 codegen 修复 — unwrap_fat_ptr_for_index Ptr(_) 不 LOAD (caller 责任, §1.0 原則 11) + array_ty 仅对 Ptr(Array) strip + detect_place_type Index 添加 Ptr/OpaquePtr 分支 + emit_load 用 detect_place_type + codegen_place_load_typed Index arm 添加 base_ty.is_ptr() 检查 | Stage 143 完整修复. 35 tests. | ✅ |
+
+### P3 — v0.15+ Stage 142 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PTR-INDEX-GEP-TYPE | ✅ Stage 143 修复 | emit_gep_index_ptr 需要动态使用 index local 的实际类型（i32 或 i64），而非固定类型 | Stage 143 修改 trait 方法签名添加 idx_ty 参数 — caller 查询 MIR local_decls 获取实际类型, TextEmitter 用 idx_ty 替代硬编码 i64. LLVMSysEmitter 忽略 idx_ty. | ✅ |
