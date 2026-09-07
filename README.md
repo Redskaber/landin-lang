@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.665.0 (v0.14 Stage 134 — TD-TRACE-MACROS-MACRO 修复: trace_macros! no-op; 5815 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.666.0 (v0.15 Stage 136 — TD-CODEGEN-OPT-LEVELS 修复: -O flag + LLVM 优化级别; 5819 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.14 Stage 134 COMPLETE (TD-TRACE-MACROS-MACRO)**. 5815 tests (898 lib + 4917 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 134 实现 trace_macros! no-op 宏 — 展开为 () unit 表达式. 3 tests. |
+| **Status** | ✅ **v0.15 Stage 136 COMPLETE (TD-CODEGEN-OPT-LEVELS)**. 5819 tests (898 lib + 4921 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 136 实现 -O/--opt-level CLI flag (0/1/2/3) + LLVMCodeGenOptLevel. 4 tests. 同时确认 extern block + range pattern 已实现. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

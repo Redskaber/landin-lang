@@ -291,3 +291,115 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD-MATCHES-MACRO | ✅ Stage 133 修复 | matches! 编译期宏. 展开为 match expr { pat => true, _ => false }. 使用 KwMatch/KwTrue/KwFalse. 5 tests. | ✅ |
 | TD-TRACE-MACROS-MACRO | ✅ Stage 134 修复 | trace_macros! no-op 宏. 展开为 () unit 表达式. 3 tests. | ✅ |
 | TD-GENERIC-TRAIT-TURBOFISH-PATH-RESOLUTION | turbofish path `From::<i32>::from` 在 MIR lower 中解析为错误 DefId | MIR lower path resolution bug | 修复 turbofish path resolution | P3, v0.9+ |
+
+### P3 — v0.15+ 系统性架构审查发现 (Stage 135)
+
+#### 1. LEXER 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-LEX-RAW-STRING | 缺少 raw string literals (r"...", r#"..."#) | Lexer 不支持 raw string 语法 | 添加 r"/r# 前缀检测 + 内容直到结束标记 | P3, v0.15+ |
+| TD-LEX-BYTE-LITERAL | 缺少 byte literals (b'x', b"...", br"...") | Lexer 不支持 byte literal 语法 | 添加 b 前缀检测 + u8 类型字面量 | P3, v0.15+ |
+| TD-LEX-DOC-COMMENT | 缺少 doc comment tokens (///, //!, /** */) | Lexer 不区分 doc comment 和普通 comment | 添加 doc comment 检测 + 存储到 AST attributes | P4, v0.16+ |
+
+#### 2. PARSER 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PARSE-ASSOC-TYPE-BOUND | 缺少 associated type bounds (impl Iterator<Item = i32>) | Parser 不支持 assoc type in bound | 添加 assoc type bound 解析 | P3, v0.15+ |
+| TD-PARSE-GAT | 缺少 Generic Associated Types (trait Foo<T> { type Bar<U>; }) | Parser + HIR + Typeck 不支持 GAT | GAT 完整实现 (parser → HIR → typeck → codegen) | P4, v0.16+ |
+| TD-PARSE-CONST-GENERIC | 缺少 const generics (fn foo<const N: usize>()) | Parser + HIR + Typeck 不支持 const generics | const generics 完整实现 | P4, v0.16+ |
+| TD-PARSE-ASYNC-AWAIT | 缺少 async/await syntax | Parser + MIR 不支持 async | async/await state machine lowering | P4, v0.17+ |
+| TD-PARSE-RANGE-PATTERN | ✅ 已实现 (审查时发现) | Parser 已支持 1..=5 range pattern in match. 测试通过. | ✅ |
+| TD-PARSE-SLICE-PATTERN | 缺少 slice pattern ([a, .., b]) | Parser pattern 不支持 slice pattern | 添加 slice pattern 到 HirPatKind | P3, v0.15+ |
+| TD-PARSE-EXTERN-BLOCK | ✅ 已实现 (审查时发现) | Parser + HIR 已支持 extern "C" { fn foo(); } 和 extern "C" fn foo() 语法. 2 tests 验证通过. | ✅ |
+| TD-PARSE-IMPL-TRAIT-RETURN | 缺少 impl Trait in return position (fn foo() -> impl Trait) | Parser + Typeck 不支持 return position impl Trait | RPIT 完整实现 | P3, v0.15+ |
+| TD-PARSE-LABEL | 缺少 label syntax ('label: loop { ... }) | Parser 不支持 label | 添加 label 到 loop/break/continue | P4, v0.16+ |
+
+#### 3. TYPECK 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-TYPECK-ASSOC-TYPE-PROJECTION | 缺少 associated type projection resolution (<T as Iterator>::Item) | Typeck 不支持 assoc type projection | 实现 resolve_projection_in_ty_pub 完整版 | P3, v0.15+ |
+| TD-TYPECK-HRTB | 缺少 higher-ranked trait bounds (for<'a> fn(&'a str)) | Typeck 不支持 HRTB unification | HRTB 完整实现 | P4, v0.16+ |
+| TD-TYPECK-AUTO-TRAIT | 缺少 auto trait coherence checking (Send/Sync auto impls) | Typeck + Trait solver 不支持 auto trait | auto trait 自动派生 | P4, v0.16+ |
+| TD-TYPECK-NEGATIVE-IMPL | 缺少 negative impls (impl !Send for Foo) | Typeck 不支持 negative impl | 添加 negative impl 语法 + coherence | P4, v0.17+ |
+| TD-TYPECK-LIFETIME-ELISION | 缺少完整 lifetime elision rules (3 rules from RFC 3081) | Typeck lifetime elision 不完整 | 实现 3 条 elision rules | P3, v0.15+ |
+| TD-TYPECK-NEVER-FALLBACK | 缺少 never type fallback (! → ()) | Typeck 不支持 ! → () 自动转换 | 实现 never type fallback | P4, v0.16+ |
+
+#### 4. BORROWCK 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-BORROWCK-NLL | 缺少 NLL (Non-Lexical Lifetimes) | Borrowck 使用 region_inference 但可能不完整 | 验证 NLL 完整性 + 修复 edge cases | P3, v0.15+ |
+| TD-BORROWCK-TWO-PHASE | 缺少 two-phase borrows (let r = &mut x; *r = ...) | Borrowck 不支持 two-phase borrows | 实现 two-phase borrow analysis | P4, v0.16+ |
+| TD-BORROWCK-CLOSURE-CAPTURE | 缺少 closure capture analysis (RFC 2229 disjoint capture) | Borrowck 不支持 disjoint closure capture | 实现 RFC 2229 capture analysis | P4, v0.16+ |
+| TD-BORROWCK-VARIANCE | 缺少 variance checking (invariance/covariance/contravariance) | Typeck 不检查 type variance | 实现 variance checker | P4, v0.16+ |
+
+#### 5. MIR 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-MIR-OPTIMIZATION | 缺少 MIR optimizations (const propagation, dead code elimination) | MIR 没有 optimization pass | 添加 MIR optimization passes | P4, v0.16+ |
+| TD-MIR-BORROWCK | 缺少 MIR borrowck (current borrowck runs before MIR) | Borrowck 不在 MIR 上运行 | 迁移 borrowck 到 MIR-based (like rustc) | P4, v0.17+ |
+| TD-MIR-ASYNC | 缺少 Generator/async state machine lowering | MIR 不支持 async state machine | 实现 async → state machine MIR lowering | P4, v0.17+ |
+
+#### 6. CODEGEN 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-CODEGEN-DEBUG-INFO | 缺少 debug info generation (-g) | Codegen 不生成 DWARF debug info | 添加 LLVM debug info emission | P4, v0.16+ |
+| TD-CODEGEN-OPT-LEVELS | ✅ Stage 136 修复 | -O/--opt-level CLI flag (0/1/2/3). LLVMCodeGenOptLevel 选择. 4 tests. | ✅ |
+| TD-CODEGEN-LTO | 缺少 LTO (Link-Time Optimization) | Codegen 不支持 LTO | 添加 LLVM LTO 支持 | P4, v0.17+ |
+| TD-CODEGEN-EMITTER-UNIFY | TextEmitter + LLVMSysEmitter 双路径 (~2000 LOC 重复) | 历史双 emitter 架构 | 统一为单一 emitter | P3, v0.15+ (已有 TD-SPECIAL-10) |
+| TD-CODEGEN-OPAQUE-PTR | OpaquePtr for &Adt (递归 struct workaround) | Stage 14.63 特解 | 迁移到 Ptr(Adt) + 循环检测 | P3, v0.15+ (已有 TD-SPECIAL-13) |
+
+#### 7. TRAIT SYSTEM 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-TRAIT-SPECIALIZATION | 缺少 specialization (RFC 1210) | Trait solver 不支持 specialization | 实现 specialization (min_specialization first) | P4, v0.17+ |
+| TD-TRAIT-BLANKET-IMPL | 缺少 blanket impls (impl<T> Foo for T where T: Bar) | Trait solver 不支持 blanket impl | 添加 blanket impl 到 trait solver | P3, v0.15+ |
+| TD-TRAIT-DYN-LIFETIME | 缺少 dyn Trait lifetime bounds (dyn Trait + 'a) | Typeck 不支持 dyn lifetime bounds | 添加 lifetime bounds to Dyn type | P3, v0.15+ |
+
+#### 8. STDLIB / PRELUDE 缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-STDLIB-ITERATOR | 缺少 Iterator trait + adapters (map, filter, collect) | Prelude 不包含 Iterator | 添加 Iterator trait + 常用 adapters | P3, v0.15+ |
+| TD-STDLIB-OPTION-METHODS | 缺少 Option/Result full method coverage (ok_or, map_err, and_then) | Prelude 只实现 MVP 方法 | 扩展 Option/Result 方法覆盖 | P3, v0.15+ |
+| TD-STDLIB-HASH | 缺少 Hash trait + HashMap/HashSet | Prelude 不包含 Hash | 添加 Hash trait + HashMap/HashSet | P4, v0.16+ |
+| TD-STDLIB-STRING-VEC | 缺少 String/Vec/Box full method coverage | Prelude 只实现 MVP 方法 | 扩展 String/Vec/Box 方法覆盖 | P3, v0.15+ |
+| TD-STDLIB-PARTIALORD | 缺少 PartialOrd impls (i32/i64/bool/usize) | 受 TD-LLVM-INTERNAL-NONDETERMINISM 阻断 (与 Debug impl bodies 同类问题) | 等待 LLVM 非确定性解决 或使用 Stage 125 vtable filtering | P3, v0.15+ |
+
+#### 9. 宏系统缺陷
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-MACRO-PROC | 缺少 procedural macros (derive, attribute, function-like) | 不支持 proc macro 系统 | 实现 proc macro 基础设施 | P4, v0.17+ |
+| TD-MACRO-CRATE-PATH | 缺少 $crate path in macros | macro_rules! 不支持 $crate | 添加 $crate 特殊 metavariable | P3, v0.15+ |
+| TD-MACRO-HYGIENE-COMPLETE | 宏 hygiene 不完整 | macro_rules! hygiene 不完整 | 完善 hygiene 系统 | P3, v0.15+ |
+
+#### 10. 特解转通解
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-SPECIAL-PRINT-INTERCEPT | println!/print! 用 codegen intercept 而非 macro expansion (Stage 18.18 特解) | Stage 18.18 选择特解因 macro_rules! 未就绪 | 转为 macro_rules! expansion to printf call | P3, v0.15+ (已有 TD-PRINT-CODEGEN-INTERCEPT-TO-MACRO) |
+| TD-SPECIAL-VEC-STRING-INTRINSIC | String::push_str / Vec::push 用 MIR intrinsic (Stage 18.229 特解) | Stage 18.229 选择特解 | 转 regular impl method dispatch | P3, v0.15+ (已有 TD-VEC-STRING-INTRINSIC-TO-METHOD-DISPATCH) |
+| TD-SPECIAL-FORMAT-VARIADIC | __landin_format_variadic 用 MIR intrinsic (Stage 18.231 特解) | Stage 18.231 选择特解 | 转 Display trait dispatch | P3, v0.15+ (已有 TD-FORMAT-VARIADIC-INTRINSIC-TO-DISPLAY) |
+
+#### 11. 自举能力差距
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-BOOTSTRAP-MINIMUM | 最小自举能力差距 — 需要全 Rust 语法子集 + 闭包 + trait + 泛型 + 错误处理 + 文件 I/O | 缺少 associated types, GATs, const generics, async, NLL, proc macros | 需要 50+ 个 stage 达到最小自举能力 | P4, v0.20+ |
+
+#### 12. 可拓展性差距
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-PLUGIN-SYSTEM | 缺少 plugin system (compiler plugins) | 架构无 plugin 接口 | 设计 plugin trait + 注册机制 | P4, v0.17+ |
+| TD-MULTI-BACKEND | 缺少 trait for codegen backends (cranelift support) | 只有 LLVM backend | 设计 CodegenBackend trait + 添加 cranelift | P4, v0.17+ |
+| TD-INCREMENTAL | 缺少 incremental compilation cache | 每次全量编译 | 设计 incremental compilation cache (like rustc) | P4, v0.18+ |
+| TD-PARALLEL-COMP | 缺少 parallel compilation | 单线程编译 | 设计 parallel MIR lowering + typeck | P4, v0.18+ |
+| TD-LSP | 缺少 LSP (Language Server Protocol) integration | 无 LSP server | 实现 LSP server for IDE support | P4, v0.18+ |

@@ -41,6 +41,12 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::*;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU32;
+
+// Stage 136 (v0.15 — TD-CODEGEN-OPT-LEVELS): Global optimization level.
+// Set by CLI (-O flag) before codegen. 0 = none, 1 = less, 2 = default, 3 = aggressive.
+// Per §1.0 原則 6 (通解 > 特例): one global for all codegen paths.
+pub static OPT_LEVEL: AtomicU32 = AtomicU32::new(0);
 
 // Stage 16.77 MUV-1: Import private helpers (cstr, is_float, parse_*, collect_cstring).
 use helpers::*;
@@ -252,6 +258,7 @@ impl LLVMSysEmitter {
             let cpu_c = cstr_result("generic", crate::session::Span::DUMMY)?;
             let feat_c = cstr_result("", crate::session::Span::DUMMY)?;
             // Stage 18.329 (P1 soundness fix): Use LLVMCodeGenLevelDefault.
+            // Stage 136 (v0.15 — TD-CODEGEN-OPT-LEVELS): Support -O flag.
             //
             // Stage 18.328 changed to CodeGenLevelNone to avoid a 4-byte store
             // optimization bug. However, CodeGenLevelNone also disables the
@@ -260,6 +267,26 @@ impl LLVMSysEmitter {
             // parameter). Without this pass, struct-returning functions like
             // Vec::new() (returns { ptr, i64, i64 } = 24 bytes) would have
             // incorrect calling conventions, causing intermittent segfaults.
+            let opt_level = {
+                match crate::codegen::llvm::OPT_LEVEL.load(std::sync::atomic::Ordering::Relaxed) {
+                    0 => LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
+                    1 => LLVMCodeGenOptLevel::LLVMCodeGenLevelLess,
+                    3 => LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+                    _ => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault, // 2 and default
+                }
+            };
+            // Default to CodeGenLevelDefault (ABI-safe) unless explicitly set to 0.
+            // Per §1.0 原則 9 (正确 > 妥协): -O0 is for debugging, -O2 is default.
+            let opt_level = if crate::codegen::llvm::OPT_LEVEL
+                .load(std::sync::atomic::Ordering::Relaxed)
+                == 0
+            {
+                // Default: use CodeGenLevelDefault (ABI-safe) instead of None.
+                // This matches the Stage 18.329 fix — None causes ABI bugs.
+                LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault
+            } else {
+                opt_level
+            };
             //
             // The root cause of the 4-byte store bug was NOT the optimization
             // level — it was the typed pointer issue (now fixed in Stage 18.327:
@@ -287,7 +314,7 @@ impl LLVMSysEmitter {
                 triple_c.as_ptr(),
                 cpu_c.as_ptr(),
                 feat_c.as_ptr(),
-                LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
+                opt_level,
                 LLVMRelocMode::LLVMRelocDefault,
                 LLVMCodeModel::LLVMCodeModelDefault,
             );

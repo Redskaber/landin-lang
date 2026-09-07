@@ -1330,3 +1330,7 @@ mod stage133_matches_macro_tests;
 // === Stage 134 (v0.14): TD-TRACE-MACROS-MACRO — trace_macros! no-op. ===
 #[path = "v0/stage134/plan/trace_macros_tests.rs"]
 mod stage134_trace_macros_tests;
+
+// === Stage 136 (v0.15): TD-CODEGEN-OPT-LEVELS — -O flag + opt levels. ===
+#[path = "v0/stage136/plan/opt_levels_tests.rs"]
+mod stage136_opt_levels_tests;

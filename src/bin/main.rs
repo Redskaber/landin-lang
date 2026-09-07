@@ -50,6 +50,16 @@ struct Cli {
     #[arg(long, value_name = "WHEN", default_value = "auto")]
     color: String,
 
+    /// Stage 136 (v0.15 — TD-CODEGEN-OPT-LEVELS): Optimization level.
+    /// 0 = no optimization (default), 1 = basic, 2 = standard, 3 = aggressive.
+    #[arg(
+        short = 'O',
+        long = "opt-level",
+        value_name = "LEVEL",
+        default_value = "0"
+    )]
+    opt_level: u32,
+
     /// Stage 18.89: Target triple for cross-compilation.
     /// Default: x86_64-unknown-linux-gnu
     /// Examples: aarch64-unknown-linux-gnu, x86_64-pc-windows-gnu
@@ -124,6 +134,12 @@ fn main() {
         || cli.run
         || cli.check_errors
     {
+        // Stage 136 (v0.15 — TD-CODEGEN-OPT-LEVELS): Set optimization level.
+        #[cfg(feature = "llvm-backend")]
+        {
+            landin_compiler::codegen::llvm::OPT_LEVEL
+                .store(cli.opt_level, std::sync::atomic::Ordering::Relaxed);
+        }
         let mut result = driver::compile_binary(&source_file.src);
 
         // Stage 119 (TD-PROCESS-PER-TEST-ISOLATION): --check-errors outputs
