@@ -1499,5 +1499,31 @@ fn resolve_impl_method_by_name(
         }
     }
 
+    // Stage 130 (v0.13 — TD-UFCS-DEFAULT-BODY-EMPTY-IMPL): If the impl
+    // block doesn't override the method (empty impl or impl missing the
+    // method), fall back to the trait declaration's default method body.
+    //
+    // This handles `trait T { fn m(&self) -> i32 { 99 } }` + `impl T for S {}`
+    // — the impl is empty, so `m` resolves to the trait's default body.
+    //
+    // Per §1.0 原則 6 (通解 > 特例): one fallback path for all traits.
+    // Per §1.0 原則 9 (正确 > 妥协): correct default body resolution.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(HirItem::Trait(t)) = owner {
+            if t.ident.name != trait_name {
+                continue;
+            }
+            // Found the trait — search its items for the method.
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.ident.name == method_name && f.body.is_some() {
+                        // Method has a default body — return its DefId.
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+
     None
 }

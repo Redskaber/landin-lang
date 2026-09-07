@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.660.0 (v0.13 Stage 129 — TD-UFCS-AMBIGUITY-E1109 修复: 普通 `obj.method()` 多 trait 同名方法时报错; 5795 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.661.0 (v0.13 Stage 130 — TD-UFCS-DEFAULT-BODY-EMPTY-IMPL 部分修复: resolve_impl_method_by_name 回退到 trait 默认方法; 5798 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.13 Stage 129 COMPLETE (TD-UFCS-AMBIGUITY-E1109)**. 5795 tests (898 lib + 4897 integration), 0 failures, 9 ignored. fmt clean, 0 clippy warnings. Stage 129 实现歧义检测 — `obj.method()` 当 2+ trait 提供同名方法时报错（而非静默选择第一个）. 10 tests. 1 remaining TD: TD-UFCS-DEFAULT-BODY-EMPTY-IMPL. |
+| **Status** | ✅ **v0.13 Stage 130 COMPLETE (TD-UFCS-DEFAULT-BODY-EMPTY-IMPL 部分修复)**. 5798 tests (898 lib + 4900 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 130 实现 trait 默认方法体回退 — 当 impl 块为空时，回退到 trait 声明的默认方法 DefId. 5 tests. v0.13 UFCS 阶段 COMPLETE (Stage 127-130). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -1305,3 +1305,9 @@ mod stage128_ufcs_short_form_tests;
 // Per §1.0 原則 4 (报错 > 静默) + §1.0 原則 9 (正确 > 妥协). ===
 #[path = "v0/stage129/plan/ambiguity_tests.rs"]
 mod stage129_ambiguity_tests;
+
+// === Stage 130 (v0.13): TD-UFCS-DEFAULT-BODY-EMPTY-IMPL — default body fallback.
+// `resolve_impl_method_by_name` falls back to trait default body when impl is empty.
+// Per §1.0 原則 6 (通解 > 特例) + §1.0 原則 9 (正确 > 妥协). ===
+#[path = "v0/stage130/plan/default_body_tests.rs"]
+mod stage130_default_body_tests;

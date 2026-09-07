@@ -108,7 +108,7 @@
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-UFCS-SHORT-FORM | ✅ Stage 128 修复 | 短形式 `Trait::method(receiver, args)` 完整实现. MIR lower 双 patch (local_decl + Assign Constant). 17 tests. | — | ✅ |
-| TD-UFCS-DEFAULT-BODY-EMPTY-IMPL | UFCS 调用 trait 默认方法体时，如果 impl 块为空（不覆盖），找不到 impl 方法 | `resolve_ufcs_impl_method_def_id` 只扫描 impl 块的 items，不回退到 trait 声明的默认方法体 | 当 impl 块中找不到方法时，回退到 trait 声明的默认方法 DefId | P3, v0.14+ |
+| TD-UFCS-DEFAULT-BODY-EMPTY-IMPL | ✅ Stage 130 部分修复 | `resolve_impl_method_by_name` 回退到 trait 声明的默认方法 DefId。但 codegen 参数类型未正确特化 (TD-UFCS-DEFAULT-BODY-CODEGEN). 5 tests (1 ignored). |
 | TD-UFCS-AMBIGUITY-E1109 | ✅ Stage 129 基本修复 | 普通方法调用 `obj.method()` 多 trait 同名方法时报错（返回 None 触发 "no method found"）。`resolve_trait_method` 收集所有候选，>1 不同 trait 时返回 None。精确 E1109 错误信息 + 候选 trait 名列出留给 v0.14+ (TD-UFCS-AMBIGUITY-E1109-CLEANUP). 10 tests. |
 
 
