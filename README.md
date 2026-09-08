@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.676.0 (v0.15 Stage 152 — TD-OPTION-AND-THEN-I32-MISMATCH: 修复泛型枚举 AdtLayout Param 替换; 6002 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.677.0 (v0.16 Stage 153 — TD-CALL-DEST-TYPE-SUBSTS: 修复 `call_dest_type` 使用特化 sig.output; 6010 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.15 Stage 152 COMPLETE (TD-OPTION-AND-THEN-I32-MISMATCH)**. 6002 tests (898 lib + 5104 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 152 修复泛型枚举 AdtLayout Param 替换 — 新增 substitute_adt_layout, stage40 测试恢复 i32. |
+| **Status** | ✅ **v0.16 Stage 153 COMPLETE (TD-CALL-DEST-TYPE-SUBSTS)**. 6010 tests (898 lib + 5112 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 153 修复 `call_dest_type` 使用特化签名 — 复用 `terminator.rs:655-686` 的 substitute 模式, 从 `c.ty.kind = FnDef(did, substs)` 提取 substs. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

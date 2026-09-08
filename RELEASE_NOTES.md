@@ -3,13 +3,38 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.676.0 (v0.15 Stage 152 — TD-OPTION-AND-THEN-I32-MISMATCH: 修复泛型枚举 AdtLayout Param 替换; 6002 tests) |
-| **Date** | 2026-09-07 |
-| **Test count** | 898 lib tests + 5104 integration tests = 6002 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Current version** | v0.677.0 (v0.16 Stage 153 — TD-CALL-DEST-TYPE-SUBSTS: 修复 `call_dest_type` 使用特化 sig.output; 6010 tests) |
+| **Date** | 2026-09-08 |
+| **Test count** | 898 lib tests + 5112 integration tests = 6010 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 152 修复泛型枚举 AdtLayout Param 替换); v0.15 codegen 阶段 — Stage 152 新增 substitute_adt_layout, 恢复 stage40 i32 测试 |
+| **Architecture** | Health 9.9/10 (stable — Stage 153 修复 `call_dest_type` 使用特化签名); v0.16 codegen 阶段 — Stage 153 复用 `terminator.rs:655-686` 的 substitute 模式, 从 `c.ty.kind = FnDef(did, substs)` 提取 substs |
+
+---
+
+## v0.677.0 — Stage 153 (v0.16) — TD-CALL-DEST-TYPE-SUBSTS 完整修复
+
+### Overview
+
+Stage 153 修复 `call_dest_type` 使用未特化的 `fn_sigs.get(&did).output` (含 Param), 复用 `terminator.rs:655-686` (Stage 18.107) 的成熟 substitute 模式, 使泛型函数/方法调用的 destination local 分配正确的具体类型 (i64 而非 Param→i32 fallback).
+
+### What was fixed
+
+1. `call_dest_type` (codegen/function.rs) 提取 `(callee_def_id, callee_substs)` 元组 — 从 `c.ty.kind = FnDef(did, substs)` (携带 substs), fallback `c.val` (DefId only)
+2. 当 `callee_substs` 非空时: `substitute(sig.output, callee_substs)` 特化输出类型
+3. 同时处理 `Operand::Constant` 和 `Operand::Copy/Move` 两条路径 (Closure case 一并处理)
+4. 修复前 IR: `%loc_3 = alloca i32` (4 bytes for i64 value, UB); 修复后: `%loc_3 = alloca i64` (8 bytes, correct)
+
+### §3.2 acceptance
+
+- 6010 tests (898 lib + 5112 integration), 0 failures, 12 ignored (8 new stage153 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-TYPECK-GENERIC-ARG-VALIDATION** (P3, v0.16+): turbofish 实参类型不匹配静默接受 (§1.0 原則 4 报错 > 静默 违反)
 
 ---
 

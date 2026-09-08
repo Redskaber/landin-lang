@@ -45335,3 +45335,37 @@ Work Log:
 裁剪点: L3 任务, 单轮收敛
 
 下一步 (MUV): Stage 153 — TD-CALL-DEST-TYPE-SUBSTS (修复 call_dest_type 使用特化签名) 或 TD-STDLIB-ITERATOR
+
+---
+Task ID: stage153-td-call-dest-type-substs-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 153 — TD-CALL-DEST-TYPE-SUBSTS 完整修复. v0.676.0 → v0.677.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 152 baseline (6002 tests, 0 failures). 发现新 TD (TD-CALL-DEST-TYPE-SUBSTS) 是 Stage 152 工作的直接 follow-up
+- 根因分析: `call_dest_type` (codegen/function.rs:855-915) 使用 `fn_sigs.get(&did).output` (未特化, 含 Param), 而 `terminator.rs:655-686` (Stage 18.107) 已实现 substitute 模式 — 同一 substitute 逻辑未统一应用 (§1.0 原則 6 违反)
+- MUV-1: 重构 `call_dest_type` — 提取 (callee_def_id, callee_substs) 元组:
+  * `Operand::Constant(c)` 路径: 优先 `c.ty.kind = FnDef(did, substs)` (携带 substs), fallback `c.val` (DefId only)
+  * `Operand::Copy/Move(lv)` 路径: 从 `local_decl.ty` 提取 FnDef/Closure (did, substs)
+  * 当 `callee_substs` 非空时: `crate::mir::substitute::substitute(&sig.output, &callee_substs)` 特化输出类型
+  * 传入 `mir_type_to_emit_type_with_layouts_and_mono(&specialized_output, ...)` 而非 `&sig.output`
+- MUV-2: 编写 tests/v0/stage153/plan/call_dest_type_substs_tests.rs — 8 tests (3 正 + 3 回归 + 2 边界)
+- MUV-3 §3.2 全套验收通过: 898 lib + 5112 integration = 6010 tests, 0 failures, 12 ignored
+  * cargo clean: 1094 files removed
+  * cargo build --release --features llvm-backend: 48s success
+  * cargo check --features llvm-backend: 0 errors 0 warnings
+  * cargo fmt --check: exit 0
+  * cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+  * cargo test --release --features llvm-backend: 6010 tests, 0 failures (197s)
+- IR 验证: 修复前 `%loc_3 = alloca i32` (BUG 4 bytes for i64); 修复后 `%loc_3 = alloca i64` (CORRECT 8 bytes)
+- 发现新 TD: TD-TYPECK-GENERIC-ARG-VALIDATION (turbofish 实参类型不匹配静默接受, §1.0 原則 4 违反)
+- v0.677.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 复用 `terminator.rs` 的成熟 substitute 模式 (§1.0 原則 6 通解 > 特解) — 不重新设计
+2. 同时修复 Constant + Copy/Move 两条路径 (§1.0 原則 9 正确 > 妥协) — 不只修一个 case
+3. 保留 c.val fallback (§1.0 原則 10 唯一可信数据源) — c.ty 优先, c.val 兼容旧 MIR
+
+裁剪点: L2 任务 (~60 LOC + 8 tests), 单轮收敛 (根因清晰: 复用成熟模式, 无新设计). 跳过 §14.6 跨阶段验证 (单文件修改, 无架构变化). 仍执行 §14.5 深度审查 (单轮).
+
+下一步 (MUV): Stage 154 — TD-STDLIB-ITERATOR (添加 Iterator trait + adapters 到 prelude, 解锁更多泛型方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck 的 turbofish arg 验证)

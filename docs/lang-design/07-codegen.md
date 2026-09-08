@@ -925,3 +925,70 @@ Stage 16.76 MUV-3 把 1144-LOC `mir_translation.rs` 拆分为 4 子模块，按�
 ### 16.6 偏差处理
 
 无偏差。本节描述的实现与 §2-§4 设计文档完全一致，6 子 trait 拆分 + backend 文件组织是 §13.4 J2 单一职责原则在 codegen 模块的具体应用。
+
+---
+
+## 17. `call_dest_type` 特化签名（Stage 153 §14.8 回写）
+
+### 17.1 问题背景
+
+Stage 14.36 引入 `call_dest_type` 用于覆盖 Call 终结点 destination local 的声明类型 — 当 typeck writeback 将 local 类型降级为 `Infer→i32` 时, 通过 callee 的 `fn_sigs` 返回类型覆盖为正确的具体类型 (如 struct `{i32, i32}`), 确保 alloca 大小匹配 struct-returning 方法调用.
+
+**Bug**: `call_dest_type` 仅从 `c.val` (Uint/Int) 提取 callee DefId, 丢弃了 `c.ty` (FnDef(did, substs)) 携带的 call-site substs. 当 callee 是泛型函数 (`fn identity<T>(x: T) -> T`) 时, `sig.output = Param(0)` (未特化), 经 `mir_type_to_emit_type_with_layouts_and_mono` 走 Param fallback → `EmitType::I32`, 导致 alloca 为 4 bytes 而非实际的 8 bytes (i64).
+
+### 17.2 修复方案
+
+复用 `terminator.rs:655-686` (Stage 18.107) 的成熟 substitute 模式:
+
+1. **提取 (callee_def_id, callee_substs) 元组**:
+   - `Operand::Constant(c)` 路径: 优先 `c.ty.kind = FnDef(did, substs)` (携带 substs), fallback `c.val` (DefId only, empty substs)
+   - `Operand::Copy/Move(lv)` 路径: 从 `local_decl.ty.kind` 提取 `FnDef(did, substs)` 或 `Closure(did, substs)`
+
+2. **特化 sig.output**: 当 `callee_substs.is_empty()` 时直接用 `(*sig.output).clone()`; 否则用 `crate::mir::substitute::substitute(&sig.output, &callee_substs)`.
+
+3. **传入特化后的 output**: `mir_type_to_emit_type_with_layouts_and_mono(&specialized_output, layouts, mono_layouts)` 而非 `&sig.output`.
+
+### 17.3 设计原则
+
+| 原则 | 应用 |
+|------|------|
+| §1.0 原則 6 (通解 > 特解) | 复用 `terminator.rs` 成熟模式, 不重新设计. 同一 substitute 路径适用于所有 generic callees (Constant + Copy/Move + Closure) |
+| §1.0 原則 9 (正确 > 妥协) | 同时修复两条 Operand 路径, 不只修一个 case |
+| §1.0 原則 10 (唯一可信数据源) | `c.ty` (FnDef) 是 substs 的唯一可信源; `c.val` (Uint/Int) 是 DefId 的 fallback 源 |
+| §1.0 原則 4 (报错 > 静默) | 发现 turbofish arg 静默接受问题, 登记为 TD-TYPECK-GENERIC-ARG-VALIDATION |
+
+### 17.4 IR 验证
+
+修复前 (`identity::<i64>(5000000000i64)`):
+```llvm
+%loc_3 = alloca i32        ; BUG: 4 bytes for i64 value
+%v1 = call i64 @identity_i64(i64 5000000000)
+store i64 %v1, ptr %loc_3   ; 8 bytes → 4-byte alloca → UB
+```
+
+修复后:
+```llvm
+%loc_3 = alloca i64        ; CORRECT: 8 bytes
+%v1 = call i64 @identity_i64(i64 5000000000)
+store i64 %v1, ptr %loc_3   ; 8 bytes → 8-byte alloca → safe
+```
+
+### 17.5 与 Stage 18.107 (terminator.rs) 的一致性
+
+`terminator.rs:655-686` 在 Stage 18.107 实现了相同的 substitute 模式用于生成 `call` 指令的返回类型. Stage 153 在 `call_dest_type` 中应用同一模式用于 destination local 的 alloca 类型. 两者使用相同的:
+- 提取逻辑 (FnDef 优先, c.val fallback)
+- substitute 函数 (`crate::mir::substitute::substitute`)
+- 退化路径 (substs 为空时直接用原 sig.output)
+
+这保证了 callee 返回类型 (terminator.rs) 与 destination alloca 类型 (call_dest_type) 的**一致性** — 二者必须使用相同的特化结果, 否则 `store i64 %v1, ptr %alloca` 会有类型不匹配.
+
+### 17.6 历史背景
+
+- **Stage 14.36**: 引入 `call_dest_type` (仅从 `c.val` 提取 DefId)
+- **Stage 18.107**: 在 `terminator.rs` 实现 substitute 模式, 但未同步到 `call_dest_type`
+- **Stage 152**: 发现 TD-CALL-DEST-TYPE-SUBSTS (prelude 泛型方法 i32/i64 不匹配根因分析时)
+- **Stage 153**: 完整修复, 复用 terminator.rs 模式, 同时覆盖 Constant + Copy/Move 路径
+
+### 17.7 后续 TD
+
+- **TD-TYPECK-GENERIC-ARG-VALIDATION** (P3, v0.16+): turbofish 实参类型不匹配静默接受. typeck 的 generic call arg check 缺失 turbofish substs 与实参类型的比对. 需在 typeck 的 call arg check 中, 当 callee 是 generic 且 turbofish 指定了 substs 时, 验证每个实参类型与特化后的 inputs 一致.

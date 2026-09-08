@@ -4,7 +4,8 @@
 //! - `codegen_from_mir`: iterate over MirBody list and call codegen_function
 //! - `codegen_synthesized_closure_functions`: emit synthesized closure call fns
 //! - `codegen_function`: emit a single LLVM function from a MirBody
-//! - `get_call_dest_type`: helper to override local type for Call destinations
+//! - `call_dest_type`: helper to override local type for Call destinations
+//!   (Stage 153: now uses specialized sig.output with substs from FnDef type)
 //!
 //! Extraction from `codegen/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
@@ -852,6 +853,23 @@ pub(crate) fn codegen_function(
 /// the local's declared type (which may be Infer→i32 after typeck writeback)
 /// with the actual return type (e.g. struct { i32, i32 }), ensuring the
 /// alloca has the correct size for struct-returning method calls.
+///
+/// Stage 153 (TD-CALL-DEST-TYPE-SUBSTS): Extract `(callee_def_id,
+/// callee_substs)` from the callee's `FnDef(did, substs)` type — and if
+/// `callee_substs` is non-empty, substitute `Param(N)` in `sig.output`
+/// with the concrete types before converting to `EmitType`. This mirrors
+/// the pattern already used in `terminator.rs:655-686` (Stage 18.107 fix)
+/// so that the call destination local allocates the **correct concrete
+/// size** for generic trait methods (e.g., `Iterator::sum::<i64>()`
+/// returns `i64`, not the `Param(0)` → I32 fallback).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one substitute path for all generic
+/// callees, mirroring the existing pattern in `terminator.rs`.
+/// Per §1.0 原則 9 (正确 > 妥协): specialize at the call site, never
+/// silently fall back to I32 when substs are known.
+/// Per §1.0 原則 10 (唯一可信数据源): the callee's `FnDef(did, substs)`
+/// type is the authoritative source of call-site generic arguments;
+/// `c.val` (Uint/Int) carries only the DefId, not the substs.
 pub(crate) fn call_dest_type(
     mir: &MirBody,
     local_idx: usize,
@@ -866,42 +884,70 @@ pub(crate) fn call_dest_type(
         {
             if let crate::mir::place::PlaceKind::Local(id) = &destination.kind {
                 if id.0 as usize == local_idx {
-                    // This local is a Call destination — get callee's DefId
-                    let callee_def_id = if let crate::mir::place::Operand::Constant(c) = func {
+                    // Stage 153: Extract both DefId AND substs from the
+                    // callee's FnDef type. `c.ty` (or `local_decl.ty` for
+                    // Copy/Move) carries `FnDef(did, substs)` — the call
+                    // site's actual generic arguments. `c.val` carries only
+                    // the DefId as Uint/Int (legacy fallback).
+                    let (callee_def_id, callee_substs): (
+                        Option<crate::hir::DefId>,
+                        crate::mir::ty::SubstsRef,
+                    ) = if let crate::mir::place::Operand::Constant(c) = func {
                         // Stage 18.375 (TD-AS-CAST-TRUNCATION): use try_from + expect
                         // instead of `as u32`. Per §1.0 原則 1 (内存安全决不能妥协):
                         // silent truncation could mask corrupted ConstVal. Per §2 原则 3:
                         // expect documents the FnDef invariant.
-                        match &c.val {
-                            crate::mir::ty::ConstVal::Uint(n) => Some(crate::hir::DefId(
-                                u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
-                            )),
-                            crate::mir::ty::ConstVal::Int(n) => Some(crate::hir::DefId(
-                                u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
-                            )),
-                            _ => None,
+                        //
+                        // Stage 153: Prefer `c.ty.kind = FnDef(did, substs)`
+                        // (carries substs); fall back to `c.val` (DefId only).
+                        if let crate::mir::ty::TyKind::FnDef(did, substs) = &c.ty.kind {
+                            (Some(*did), substs.clone())
+                        } else {
+                            let did = match &c.val {
+                                crate::mir::ty::ConstVal::Uint(n) => Some(crate::hir::DefId(
+                                    u32::try_from(*n).expect("FnDef ConstVal::Uint must fit u32"),
+                                )),
+                                crate::mir::ty::ConstVal::Int(n) => Some(crate::hir::DefId(
+                                    u32::try_from(*n).expect("FnDef ConstVal::Int must fit u32"),
+                                )),
+                                _ => None,
+                            };
+                            (did, std::rc::Rc::from([] as [crate::mir::ty::Ty; 0]))
                         }
                     } else if let crate::mir::place::Operand::Copy(lv)
                     | crate::mir::place::Operand::Move(lv) = func
                     {
                         if let crate::mir::place::PlaceKind::Local(id) = &lv.kind {
-                            mir.local_decls.get(id.0 as usize).and_then(|ld| {
-                                if let crate::mir::ty::TyKind::FnDef(did, _) = &ld.ty.kind {
-                                    Some(*did)
-                                } else {
-                                    None
-                                }
-                            })
+                            mir.local_decls
+                                .get(id.0 as usize)
+                                .and_then(|ld| match &ld.ty.kind {
+                                    crate::mir::ty::TyKind::FnDef(did, substs) => {
+                                        Some((Some(*did), substs.clone()))
+                                    }
+                                    crate::mir::ty::TyKind::Closure(did, substs) => {
+                                        Some((Some(*did), substs.clone()))
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap_or((None, std::rc::Rc::from([] as [crate::mir::ty::Ty; 0])))
                         } else {
-                            None
+                            (None, std::rc::Rc::from([] as [crate::mir::ty::Ty; 0]))
                         }
                     } else {
-                        None
+                        (None, std::rc::Rc::from([] as [crate::mir::ty::Ty; 0]))
                     };
                     if let Some(did) = callee_def_id {
                         if let Some(sig) = fn_sigs.get(&did) {
+                            // Stage 153 (TD-CALL-DEST-TYPE-SUBSTS): Substitute
+                            // `Param(N)` in `sig.output` with the call site's
+                            // concrete substs. Mirrors `terminator.rs:660-664`.
+                            let specialized_output = if callee_substs.is_empty() {
+                                (*sig.output).clone()
+                            } else {
+                                crate::mir::substitute::substitute(&sig.output, &callee_substs)
+                            };
                             return Some(mir_type_to_emit_type_with_layouts_and_mono(
-                                &sig.output,
+                                &specialized_output,
                                 layouts,
                                 mono_layouts,
                             ));

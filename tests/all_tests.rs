@@ -1391,3 +1391,11 @@ mod stage149_trait_method_generic_ret_tests;
 //                         substituted to concrete type from scrutinee substs. ===
 #[path = "v0/stage150/plan/generic_enum_match_tests.rs"]
 mod stage150_generic_enum_match_tests;
+
+// === Stage 153 (v0.16): TD-CALL-DEST-TYPE-SUBSTS — `call_dest_type` now
+//                         uses the specialized callee signature (substs
+//                         applied to `sig.output`) so generic function
+//                         call destinations allocate the correct concrete
+//                         size (e.g., i64, not Param→i32 fallback). ===
+#[path = "v0/stage153/plan/call_dest_type_substs_tests.rs"]
+mod stage153_call_dest_type_substs_tests;

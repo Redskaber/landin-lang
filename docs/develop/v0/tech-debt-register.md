@@ -472,4 +472,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-CALL-DEST-TYPE-SUBSTS | call_dest_type 使用 fn_sigs.get(&did).output (带 Param) 而非特化后的签名 → loc 类型错误 | call_dest_type 未特化 sig.output with substs | 在 call_dest_type 中, 当函数是特化的 (有 substs) 时, 用 substitute(sig.output, substs) 替换 | P3, v0.16+ |
+| TD-CALL-DEST-TYPE-SUBSTS | ✅ Stage 153 修复 | `call_dest_type` 使用 `fn_sigs.get(&did).output` (带 Param) 而非特化后的签名 → loc 类型错误 (Param→I32 fallback, 但实际是 i64) | 复用 `terminator.rs:655-686` (Stage 18.107) 的成熟 substitute 模式: 从 `c.ty.kind = FnDef(did, substs)` 提取 substs (而非只用 `c.val`), 当 substs 非空时 `substitute(sig.output, substs)` 后传入 `mir_type_to_emit_type_with_layouts_and_mono`. 8 tests (3 正 + 3 回归 + 2 边界). | ✅ |
+
+### P3 — v0.16+ Stage 153 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-TYPECK-GENERIC-ARG-VALIDATION | `identity::<i64>(42i32)` 等泛型调用的实参类型不匹配 turbofish 期望的类型时, typeck 静默接受而非报错 | typeck 的 generic call arg type 验证缺失 — 推断的 T 来自 turbofish 但不与实参类型比对 | 在 typeck 的 call arg check 中, 当 callee 是 generic 且 turbofish 指定了 substs 时, 验证每个实参类型与特化后的 inputs 一致, 不一致则报 type error (E0308: mismatched types) | P3, v0.16+ |
