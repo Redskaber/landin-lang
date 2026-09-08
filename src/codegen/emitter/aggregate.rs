@@ -40,9 +40,33 @@ pub trait AggregateEmitter {
     ) -> EmitValue;
 
     /// Emit a dyn Trait vtable indirect call.
+    ///
+    /// Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): `receiver_value` is the
+    /// SSA value of the fat pointer `{ptr, ptr}` to dispatch through. This
+    /// can be either:
+    /// - A global symbol like `@.dynptr.Greeter.English` (call-site coercion,
+    ///   Stage 89 path — the global dynptr constant)
+    /// - A local SSA value like `%loc_5` (let-binding coercion, Stage 154
+    ///   path — the local fat pointer constructed by `codegen_statement`)
+    ///
+    /// The GEP + load + indirect call pattern is the same for both:
+    /// ```text
+    /// %gep_vtable = getelementptr { ptr, ptr }, ptr <receiver>, i32 0, i32 1
+    /// %vtable     = load ptr, ptr %gep_vtable
+    /// %gep_method = getelementptr [N x ptr], ptr %vtable, i32 0, i32 slot_index
+    /// %method_fn  = load ptr, ptr %gep_method
+    /// %gep_data   = getelementptr { ptr, ptr }, ptr <receiver>, i32 0, i32 0
+    /// %data_ptr   = load ptr, ptr %gep_data
+    /// %result     = call <ret_ty> %method_fn(<args>)
+    /// ```
+    ///
+    /// Per §1.0 原則 6 (通解 > 特解): one dispatch path for both global and
+    /// local fat pointers — the GEP pattern is identical.
+    /// Per §1.0 原則 9 (正确 > 妥协): use the actual receiver value, not a
+    /// hardcoded global symbol.
     fn emit_dyn_trait_method_call(
         &mut self,
-        dynptr_symbol: &str,
+        receiver_value: &str,
         slot_index: u32,
         args: &[(EmitType, &EmitValue)],
         ret_ty: &EmitType,

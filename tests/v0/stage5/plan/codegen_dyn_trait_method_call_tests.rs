@@ -15,6 +15,7 @@
 use landin_compiler::codegen::{
     codegen_dyn_trait_call_direct, AggregateEmitter, EmitType, EmitValue, TextEmitter,
 };
+use landin_compiler::mir::body::MirBody;
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
 use landin_compiler::session::Span;
@@ -30,7 +31,7 @@ use lasso::Rodeo;
 fn test_emit_dyn_trait_method_call_returns_value() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    let ret = emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    let ret = emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     assert!(!ret.is_empty());
 }
 
@@ -39,7 +40,7 @@ fn test_emit_dyn_trait_method_call_returns_value() {
 fn test_emit_dyn_trait_method_call_contains_gep() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     assert!(
         output.contains("getelementptr"),
@@ -53,7 +54,7 @@ fn test_emit_dyn_trait_method_call_contains_gep() {
 fn test_emit_dyn_trait_method_call_contains_loads() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     // Should have at least 2 load instructions (vtable ptr + method fn ptr).
     let load_count = output.matches("load").count();
@@ -70,7 +71,7 @@ fn test_emit_dyn_trait_method_call_contains_loads() {
 fn test_emit_dyn_trait_method_call_contains_indirect_call() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     // Indirect call: "call i32 %v" (not "call i32 @")
     assert!(
@@ -85,7 +86,7 @@ fn test_emit_dyn_trait_method_call_contains_indirect_call() {
 fn test_emit_dyn_trait_method_call_references_dynptr_symbol() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Display.Vec", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Display.Vec", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     assert!(
         output.contains("@.dynptr.Display.Vec"),
@@ -99,7 +100,7 @@ fn test_emit_dyn_trait_method_call_references_dynptr_symbol() {
 fn test_emit_dyn_trait_method_call_uses_slot_index() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Clone.S", 1, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Clone.S", 1, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     // The slot_index appears in the second load (method fn ptr load).
     assert!(
@@ -114,7 +115,7 @@ fn test_emit_dyn_trait_method_call_uses_slot_index() {
 fn test_emit_dyn_trait_method_call_void_ret_no_register() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    let ret = emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::Void);
+    let ret = emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::Void);
     assert_eq!(ret, "0");
     let output = emitter.output_with_globals();
     assert!(
@@ -132,7 +133,7 @@ fn test_dyn_trait_call_distinct_from_direct_call() {
     // Direct call: uses @function_name
     emitter.emit_call("direct_fn", &args, &EmitType::I32);
     // Dyn Trait call: uses %v register
-    emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
     assert!(output.contains("call i32 @direct_fn"));
     assert!(output.contains("call i32 %v"));
@@ -160,9 +161,12 @@ fn test_codegen_dyn_trait_call_returns_value() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
     assert!(!ret.is_empty());
@@ -181,9 +185,12 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -208,9 +215,12 @@ fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -242,9 +252,12 @@ fn test_codegen_terminator_dyn_trait_dispatch_via_direct() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
     assert!(!ret.is_empty(), "expected non-empty EmitValue");
@@ -266,9 +279,12 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
         &mut emitter,
         &call1,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
     // Second call → Drop.B
@@ -276,9 +292,12 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
         &mut emitter,
         &call2,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -299,7 +318,7 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
 fn test_dyn_trait_call_ir_well_formed() {
     let mut emitter = TextEmitter::new();
     let args: Vec<(EmitType, &EmitValue)> = vec![];
-    emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
+    emitter.emit_dyn_trait_method_call("@.dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
 
     let gep_count = output.matches("getelementptr").count();

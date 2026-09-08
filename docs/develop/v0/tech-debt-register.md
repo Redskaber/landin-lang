@@ -479,3 +479,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-TYPECK-GENERIC-ARG-VALIDATION | `identity::<i64>(42i32)` 等泛型调用的实参类型不匹配 turbofish 期望的类型时, typeck 静默接受而非报错 | typeck 的 generic call arg type 验证缺失 — 推断的 T 来自 turbofish 但不与实参类型比对 | 在 typeck 的 call arg check 中, 当 callee 是 generic 且 turbofish 指定了 substs 时, 验证每个实参类型与特化后的 inputs 一致, 不一致则报 type error (E0308: mismatched types) | P3, v0.16+ |
+
+### P3 — v0.16+ Stage 154 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-VTABLE-MISSING-DEFAULT-BODY | vtable 只包含 impl 提供的方法, 不包含 trait default body 方法 | resolver.rs vtable 构建只遍历 impl items, 不遍历 trait items 的 default body | 在 vtable 构建中, 遍历 trait items, 对有 default body 的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`) | P3, v0.16+ |
+| TD-DYN-TRAIT-METHOD-ARG-PLACEHOLDER | `codegen_dyn_trait_call_direct` 对 args[0] (receiver) 使用 `%arg0` 占位符而非实际 codegen | 历史: receiver 由 `emit_dyn_trait_method_call` 从 fat pointer 提取, 所以占位符无影响. 但对非 receiver args, 占位符是 bug | codegen_dyn_trait_call_direct 对 args[1:] 使用 `codegen_operand` 正确生成值 (Stage 154 已修复非 receiver args) | P3, v0.16+ (部分修复) |

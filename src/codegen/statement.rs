@@ -126,6 +126,112 @@ pub(crate) fn codegen_statement(
                             }
                         }
                     }
+
+                    // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): When the
+                    // destination local's type is `&dyn Trait` (Ref(Dyn)),
+                    // construct a fat pointer `{ptr %place, ptr @.vtable.Trait.Type}`
+                    // from the thin pointer value.
+                    //
+                    // This handles TWO rvalue forms:
+                    // 1. `Rvalue::Ref(_, _, place)` — direct `let g: &dyn T = &local;`
+                    // 2. `Rvalue::Use(Operand::Copy/Move(place))` — indirect via
+                    //    a temporary: `let tmp = &local; let g: &dyn T = tmp;`
+                    //
+                    // In both cases, the thin pointer needs to be wrapped into
+                    // a fat pointer with the correct vtable.
+                    //
+                    // Without this, the thin pointer is stored to a fat pointer
+                    // alloca — the vtable pointer field is uninitialized, and
+                    // the method dispatch uses the GLOBAL dynptr instead.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one fat pointer construction
+                    // rule for all `Ref(Adt) → Ref(Dyn)` coercions, regardless
+                    // of whether the rvalue is Ref or Use.
+                    // Per §1.0 原則 9 (正确 > 妥协): construct the fat pointer at
+                    // the let binding, not patch the dispatch to use thin.
+                    // Per §1.0 原則 10 (唯一可信数据源): `local_ty` (from
+                    // local_decls) is the authoritative destination type.
+                    if let crate::mir::ty::TyKind::Ref(_, _, inner) = &local_ty.kind {
+                        if let crate::mir::ty::TyKind::Dyn(trait_def_id) = &inner.kind {
+                            // Extract the concrete type's DefId from the
+                            // referenced place. For Rvalue::Ref, it's the
+                            // place being borrowed. For Rvalue::Use(Copy/Move),
+                            // it's the source place's type.
+                            let source_place_opt: Option<&Place> = match rvalue {
+                                Rvalue::Ref(_, _, lv) => Some(lv),
+                                Rvalue::Use(Operand::Copy(lv)) | Rvalue::Use(Operand::Move(lv)) => {
+                                    Some(lv)
+                                }
+                                _ => None,
+                            };
+                            let concrete_def_id_opt = source_place_opt.and_then(|lv| {
+                                if let PlaceKind::Local(lv_id) = &lv.kind {
+                                    mir.local_decls.get(lv_id.0 as usize).and_then(|ld| {
+                                        // The place might be `&Adt` (if the
+                                        // rvalue is Use(Copy(&local))) or
+                                        // `Adt` directly (if Rvalue::Ref).
+                                        if let crate::mir::ty::TyKind::Ref(_, _, ref_inner) =
+                                            &ld.ty.kind
+                                        {
+                                            if let crate::mir::ty::TyKind::Adt(adt_def, _) =
+                                                &ref_inner.kind
+                                            {
+                                                Some(*adt_def)
+                                            } else {
+                                                None
+                                            }
+                                        } else if let crate::mir::ty::TyKind::Adt(adt_def, _) =
+                                            &ld.ty.kind
+                                        {
+                                            Some(*adt_def)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                } else {
+                                    None
+                                }
+                            });
+
+                            if let Some(concrete_def_id) = concrete_def_id_opt {
+                                // Resolve trait_name and concrete_name
+                                // via type_name_by_def_id (interner).
+                                let trait_name_opt = type_name_by_def_id.get(trait_def_id);
+                                let concrete_name_opt = type_name_by_def_id.get(&concrete_def_id);
+                                if let (Some(trait_sym), Some(concrete_sym)) =
+                                    (trait_name_opt, concrete_name_opt)
+                                {
+                                    let trait_name = interner.resolve(trait_sym);
+                                    let concrete_name = interner.resolve(concrete_sym);
+                                    let vtable_symbol =
+                                        format!("@.vtable.{}.{}", trait_name, concrete_name);
+                                    // The data pointer is `val` (the thin
+                                    // pointer returned by codegen_rvalue).
+                                    let fat_ptr_ty = EmitType::Struct(vec![
+                                        EmitType::OpaquePtr,
+                                        EmitType::OpaquePtr,
+                                    ]);
+                                    let mut fat_ptr = "undef".to_string();
+                                    fat_ptr = emitter.emit_insertvalue(
+                                        &fat_ptr_ty,
+                                        &fat_ptr,
+                                        &EmitType::OpaquePtr,
+                                        &val,
+                                        0,
+                                    );
+                                    fat_ptr = emitter.emit_insertvalue(
+                                        &fat_ptr_ty,
+                                        &fat_ptr,
+                                        &EmitType::OpaquePtr,
+                                        &vtable_symbol,
+                                        1,
+                                    );
+                                    val = fat_ptr;
+                                }
+                            }
+                        }
+                    }
+
                     emitter.set_local(id.0, val.clone());
                     if ty != EmitType::Void {
                         if let Some(ptr) = emitter.local_ptr(id.0).cloned() {

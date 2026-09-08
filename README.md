@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.677.0 (v0.16 Stage 153 — TD-CALL-DEST-TYPE-SUBSTS: 修复 `call_dest_type` 使用特化 sig.output; 6010 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.678.0 (v0.16 Stage 154 — TD-DYN-LOCAL-FAT-PTR-COERCION: 修复 `let g: &dyn Trait = &local;` 使用 LOCAL fat pointer 而非 GLOBAL dynptr; 6019 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 153 COMPLETE (TD-CALL-DEST-TYPE-SUBSTS)**. 6010 tests (898 lib + 5112 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 153 修复 `call_dest_type` 使用特化签名 — 复用 `terminator.rs:655-686` 的 substitute 模式, 从 `c.ty.kind = FnDef(did, substs)` 提取 substs. |
+| **Status** | ✅ **v0.16 Stage 154 COMPLETE (TD-DYN-LOCAL-FAT-PTR-COERCION)**. 6019 tests (898 lib + 5121 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 154 修复 `let g: &dyn Trait = &local;` 构造 LOCAL fat pointer — 三部分: (A) types.rs `Ref(Dyn)` → fat pointer; (B) statement.rs 构造 `{ptr %local, ptr @.vtable}`; (C) `emit_dyn_trait_method_call` 使用 receiver local value. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

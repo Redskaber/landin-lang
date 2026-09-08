@@ -154,10 +154,13 @@ pub(crate) fn codegen_terminator(
                     emitter,
                     call_info,
                     args,
+                    mir,
                     interner,
                     layouts,
                     mono_layouts,
                     fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
                 );
                 if let PlaceKind::Local(id) = &destination.kind {
                     let dest_ty = mir
@@ -533,12 +536,81 @@ pub(crate) fn codegen_terminator(
                                 {
                                     let trait_name = interner.resolve(trait_sym);
                                     let concrete_name = interner.resolve(concrete_sym);
-                                    let dynptr_symbol =
-                                        format!("@.dynptr.{}.{}", trait_name, concrete_name);
-                                    // Pass the fat pointer global as the arg.
-                                    // The callee's vtable dispatch will GEP into
-                                    // this fat pointer to load the vtable.
-                                    arg_pairs.push((ty, dynptr_symbol));
+                                    // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION):
+                                    // The callee's parameter type is now
+                                    // `{ptr, ptr}` (fat pointer) after Part A.
+                                    // We can't pass `@.dynptr.Trait.Type` as a
+                                    // `ptr` (thin pointer) — type mismatch.
+                                    // Instead, construct the fat pointer
+                                    // `{ptr @.data.Type, ptr @.vtable.Trait.Type}`
+                                    // using insertvalue, mirroring Part B.
+                                    //
+                                    // Per §1.0 原則 6 (通解 > 特解): same
+                                    // insertvalue pattern as Part B (let
+                                    // binding coercion).
+                                    // Stage 154: Use the LOCAL data pointer
+                                    // (e.g., `%loc_3`) when the operand is a
+                                    // Copy/Move of a local. The operand might
+                                    // be `&c` (a reference), so we need to
+                                    // LOAD the pointer from the reference's
+                                    // alloca to get the struct pointer.
+                                    let data_symbol = if let Operand::Copy(lv) | Operand::Move(lv) =
+                                        a
+                                    {
+                                        if let PlaceKind::Local(lv_id) = &lv.kind {
+                                            // Check if the local is a reference
+                                            // (Ref(Adt)) — if so, load the pointer.
+                                            let is_ref = mir
+                                                .local_decls
+                                                .get(lv_id.0 as usize)
+                                                .map(|ld| {
+                                                    matches!(
+                                                        &ld.ty.kind,
+                                                        crate::mir::ty::TyKind::Ref(_, _, _)
+                                                    )
+                                                })
+                                                .unwrap_or(false);
+                                            if let Some(ptr) = emitter.local_ptr(lv_id.0).cloned() {
+                                                if is_ref {
+                                                    // Load the pointer from the reference alloca.
+                                                    emitter.emit_load(&EmitType::OpaquePtr, &ptr)
+                                                } else {
+                                                    // Not a reference — use the alloca directly.
+                                                    ptr
+                                                }
+                                            } else {
+                                                format!("@.data.{}", concrete_name)
+                                            }
+                                        } else {
+                                            format!("@.data.{}", concrete_name)
+                                        }
+                                    } else {
+                                        format!("@.data.{}", concrete_name)
+                                    };
+                                    let vtable_symbol =
+                                        format!("@.vtable.{}.{}", trait_name, concrete_name);
+                                    let fat_ptr_ty = EmitType::Struct(vec![
+                                        EmitType::OpaquePtr,
+                                        EmitType::OpaquePtr,
+                                    ]);
+                                    let mut fat_ptr = "undef".to_string();
+                                    fat_ptr = emitter.emit_insertvalue(
+                                        &fat_ptr_ty,
+                                        &fat_ptr,
+                                        &EmitType::OpaquePtr,
+                                        &data_symbol,
+                                        0,
+                                    );
+                                    fat_ptr = emitter.emit_insertvalue(
+                                        &fat_ptr_ty,
+                                        &fat_ptr,
+                                        &EmitType::OpaquePtr,
+                                        &vtable_symbol,
+                                        1,
+                                    );
+                                    // Use the fat pointer struct type (not the
+                                    // operand's thin pointer type) for the arg.
+                                    arg_pairs.push((fat_ptr_ty, fat_ptr));
                                     continue;
                                 }
                             }

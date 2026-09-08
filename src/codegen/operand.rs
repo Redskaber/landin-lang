@@ -393,25 +393,71 @@ pub(crate) fn codegen_operand(
 /// up `mir.dyn_trait_calls[index]`). The call info is now carried on the
 /// `TerminatorKind::Call` struct directly.
 ///
+/// Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): Now accepts `mir` to extract
+/// the receiver's local SSA value from `args[0]`. The receiver value can be:
+/// - A local fat pointer (e.g., `%loc_5`) — from `let g: &dyn T = &local;`
+/// - A global dynptr (e.g., `@.dynptr.Trait.Type`) — fallback when the
+///   receiver can't be resolved to a local (e.g., call-site coercion)
+///
 /// Per §23 (API Naming): `codegen_dyn_trait_call_direct` follows
-/// `<verb>_<noun>_<noun>_<noun>_<adj>` pattern.
+/// `<verb>_<noun>_<noun>_<noun>_<noun>_<adj>` pattern.
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub fn codegen_dyn_trait_call_direct(
     emitter: &mut dyn Emitter,
     call_info: &crate::mir::dyn_trait::DynTraitMethodCall,
     args: &[Operand],
-    _interner: &Rodeo,
-    _layouts: &crate::mir::body::AdtLayouts,
-    _mono_layouts: Option<&crate::mir::MonoLayoutMap>,
-    _fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    mir: &crate::mir::MirBody,
+    interner: &Rodeo,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    mono_names: &std::collections::HashMap<crate::mir::monomorphize::MonoItem, String>,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 ) -> EmitValue {
-    let dynptr_symbol = format!(".dynptr.{}.{}", call_info.trait_name, call_info.type_name);
+    // Stage 154: Extract the receiver's local SSA value from args[0].
+    // The receiver is the first argument (self). If it's a Copy/Move of a
+    // local, we use that local's SSA value (e.g., `%loc_5`). Otherwise,
+    // fall back to the global dynptr symbol.
+    //
+    // Per §1.0 原則 10 (唯一可信数据源): the receiver's local_decl.ty is
+    // the authoritative source — if it's `Ref(Dyn)`, the local holds a
+    // fat pointer that should be used for dispatch.
+    let global_fallback = || format!("@.dynptr.{}.{}", call_info.trait_name, call_info.type_name);
+    // Extract the receiver's local SSA value from args[0]. If the receiver
+    // is a Copy/Move of a local whose type is Ref(Dyn), use the local's SSA
+    // value (e.g., `%loc_5`). Otherwise, fall back to the global dynptr.
+    let receiver_value: String = match args.first() {
+        Some(Operand::Copy(lv)) | Some(Operand::Move(lv)) => {
+            if let crate::mir::place::PlaceKind::Local(id) = &lv.kind {
+                // Check if the local's type is Ref(Dyn) — a fat pointer.
+                if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                    if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                        if matches!(inner.kind, crate::mir::ty::TyKind::Dyn(_)) {
+                            // Local fat pointer — use the local's SSA value.
+                            format!("%loc_{}", id.0)
+                        } else {
+                            global_fallback()
+                        }
+                    } else {
+                        global_fallback()
+                    }
+                } else {
+                    global_fallback()
+                }
+            } else {
+                global_fallback()
+            }
+        }
+        _ => global_fallback(),
+    };
 
-    // Codegen args — same logic as codegen_dyn_trait_call but without
-    // needing `mir` for type detection (we use call_info.param_kinds).
+    // Codegen args — for args[1:] (non-receiver), use codegen_operand to
+    // produce the actual SSA value. For args[0] (receiver), the value is
+    // handled by emit_dyn_trait_method_call (extracted from the fat pointer).
     let arg_pairs: Vec<(EmitType, EmitValue)> = args
         .iter()
         .enumerate()
-        .map(|(i, _a)| {
+        .map(|(i, a)| {
             let ty = if i == 0 {
                 EmitType::OpaquePtr
             } else {
@@ -422,17 +468,30 @@ pub fn codegen_dyn_trait_call_direct(
                     EmitType::I32
                 }
             };
-            // For the value, we use the operand's emit directly.
-            // Since we don't have `mir` here, we emit a placeholder.
-            // The actual values are emitted by the caller before calling us.
-            // Actually, we need the operand values — let me reconsider.
-            // For now, emit a placeholder and the caller will fix up.
-            (ty, format!("%arg{}", i))
+            // Stage 154: Codegen the actual operand value for non-receiver args.
+            // For args[0] (receiver), the value is extracted from the fat pointer
+            // inside emit_dyn_trait_method_call, so we pass a placeholder.
+            let val = if i == 0 {
+                format!("%arg{}", i)
+            } else {
+                codegen_operand(
+                    emitter,
+                    mir,
+                    a,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                    mono_names,
+                    type_name_by_def_id,
+                )
+            };
+            (ty, val)
         })
         .collect();
     let arg_refs: Vec<(EmitType, &EmitValue)> =
         arg_pairs.iter().map(|(t, v)| (t.clone(), v)).collect();
 
     let ret_ty = stdlib_type_kind_to_emit_type(call_info.return_kind);
-    emitter.emit_dyn_trait_method_call(&dynptr_symbol, call_info.slot_index, &arg_refs, &ret_ty)
+    emitter.emit_dyn_trait_method_call(&receiver_value, call_info.slot_index, &arg_refs, &ret_ty)
 }

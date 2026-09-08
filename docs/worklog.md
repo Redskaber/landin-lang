@@ -45369,3 +45369,30 @@ Work Log:
 裁剪点: L2 任务 (~60 LOC + 8 tests), 单轮收敛 (根因清晰: 复用成熟模式, 无新设计). 跳过 §14.6 跨阶段验证 (单文件修改, 无架构变化). 仍执行 §14.5 深度审查 (单轮).
 
 下一步 (MUV): Stage 154 — TD-STDLIB-ITERATOR (添加 Iterator trait + adapters 到 prelude, 解锁更多泛型方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck 的 turbofish arg 验证)
+
+---
+Task ID: stage154-td-dyn-local-fat-ptr-coercion-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 154 — TD-DYN-LOCAL-FAT-PTR-COERCION 完整修复. v0.677.0 → v0.678.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 153 baseline (6010 tests, 0 failures). 调查 TD-TRAIT-METHOD-REMONO-LINK (无法复现 — symbols match) 时发现新 bug: `let g: &dyn Trait = &local; g.method()` 使用 GLOBAL dynptr 而非 local fat pointer
+- 根因分析 (3 bugs): (A) types.rs `Ref(Dyn)` 走 `_` arm → thin ptr 而非 fat ptr; (B) Rvalue::Ref 不构造 fat pointer; (C) emit_dyn_trait_method_call 使用 global dynptr symbol
+- MUV-1 Part A: types.rs 添加 `Dyn` case 到 `Ref` inner match → `Struct([OpaquePtr, OpaquePtr])` (fat pointer). 同时更新 `_with_layouts` 和 `_with_layouts_and_mono` 两个变体
+- MUV-2 Part B: statement.rs 当 dest 是 `Ref(Dyn)` 且 rvalue 是 `Ref` 或 `Use(Copy/Move)` 时, 用 `emit_insertvalue` 构造 fat pointer `{ptr %local, ptr @.vtable.Trait.Type}`
+- MUV-3 Part C: (1) Emitter trait `emit_dyn_trait_method_call` 参数 `dynptr_symbol` → `receiver_value`; (2) TextEmitter GEP 直接使用 receiver_value; (3) LLVMSysEmitter `@` → LLVMGetNamedGlobal, `%` → self.lookup(); (4) `codegen_dyn_trait_call_direct` 从 args[0] 提取 receiver local SSA value; (5) `interpret_adhoc` 添加 LLVMGetNamedGlobal fallback
+- MUV-4 Call-site coercion fix: terminator.rs 使用 local data pointer (load if Ref) 而非 global `@.data.Type`
+- MUV-5: 更新 3 个 stage5 test files (codegen_dyn_trait_call_direct 新签名: +mir +mono_names +type_name_by_def_id)
+- MUV-6: 编写 tests/v0/stage154/plan/dyn_local_fat_ptr_coercion_tests.rs — 9 tests (3 正 + 3 回归 + 2 边界 + 1 负)
+- MUV-7 §3.2 全套验收通过: 898 lib + 5121 integration = 6019 tests, 0 failures, 12 ignored
+- 发现新 TD: TD-VTABLE-MISSING-DEFAULT-BODY (vtable 只含 impl methods, 不含 trait default body) + TD-DYN-TRAIT-METHOD-ARG-PLACEHOLDER (args[0] 占位符, 部分修复)
+- v0.678.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 三部分同时修复 (§1.0 原則 9) — Part A 单独会导致更多 verification error; A+B 单独会产生 silent wrong results
+2. Emitter trait API change (§1.0 原則 6 通解) — `receiver_value: &str` 同时处理 global 和 local
+3. Call-site coercion 也使用 local data pointer (§1.0 原則 9) — 不只修 let-binding, 同时修 call-site
+
+裁剪点: L3 任务 (~200 LOC + 9 tests), 单轮收敛 (根因清晰: 三个 bug 组合, 一起修复). 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 155 — TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证)

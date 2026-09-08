@@ -526,6 +526,14 @@ impl LLVMSysEmitter {
                 if !func.is_null() {
                     return func;
                 }
+                // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): Try to get a
+                // GLOBAL (non-function) from the module. This is needed for
+                // references like `@.data.English` and `@.vtable.Greeter.English`
+                // used in fat pointer construction via `insertvalue`.
+                let global = LLVMGetNamedGlobal(self.module, name_c.as_ptr());
+                if !global.is_null() {
+                    return global;
+                }
                 // Stage 14.65: Function not yet defined — create a forward
                 // declaration with the CORRECT signature from `fn_sigs`.
                 //

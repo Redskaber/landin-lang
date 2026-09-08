@@ -3,13 +3,40 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.677.0 (v0.16 Stage 153 — TD-CALL-DEST-TYPE-SUBSTS: 修复 `call_dest_type` 使用特化 sig.output; 6010 tests) |
+| **Current version** | v0.678.0 (v0.16 Stage 154 — TD-DYN-LOCAL-FAT-PTR-COERCION: 修复 `let g: &dyn Trait = &local;` 使用 LOCAL fat pointer; 6019 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5112 integration tests = 6010 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5121 integration tests = 6019 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 153 修复 `call_dest_type` 使用特化签名); v0.16 codegen 阶段 — Stage 153 复用 `terminator.rs:655-686` 的 substitute 模式, 从 `c.ty.kind = FnDef(did, substs)` 提取 substs |
+| **Architecture** | Health 9.9/10 (stable — Stage 154 修复 `let g: &dyn Trait = &local;` LOCAL fat pointer); v0.16 codegen 阶段 — Stage 154 三部分: types.rs `Ref(Dyn)` → fat pointer; statement.rs 构造 `{ptr %local, ptr @.vtable}`; `emit_dyn_trait_method_call` 使用 receiver local value |
+
+---
+
+## v0.678.0 — Stage 154 (v0.16) — TD-DYN-LOCAL-FAT-PTR-COERCION 完整修复
+
+### Overview
+
+Stage 154 修复 `let g: &dyn Trait = &local; g.method()` 使用 GLOBAL `@.dynptr.Trait.Type` (data ptr = `@.data.Type = i8 0`) 而非 LOCAL fat pointer 的 bug. 三部分修复: types.rs 类型映射 + statement.rs fat pointer 构造 + emit_dyn_trait_method_call 使用 receiver local value.
+
+### What was fixed
+
+1. **types.rs (Part A)**: 添加 `TyKind::Dyn(_)` case 到 `Ref` inner match → `Struct([OpaquePtr, OpaquePtr])` (fat pointer, 16 bytes). 之前 `Ref(Dyn)` 走 `_` arm → `ptr_to(...)` (thin pointer, 8 bytes), 丢失 vtable 指针.
+2. **statement.rs (Part B)**: 当 dest local 是 `Ref(Dyn)` 且 rvalue 是 `Ref` 或 `Use(Copy/Move)` 时, 用 `emit_insertvalue` 构造 fat pointer `{ptr %local, ptr @.vtable.Trait.Type}`.
+3. **operand.rs + aggregate.rs (Part C)**: `emit_dyn_trait_method_call` 参数 `dynptr_symbol` → `receiver_value` (可以是 `@global` 或 `%local`); `codegen_dyn_trait_call_direct` 从 args[0] 提取 receiver local SSA value.
+4. **terminator.rs (Call-site coercion)**: 使用 local data pointer (`%loc_N` 或 load 后的) 而非 global `@.data.Type`.
+5. **llvm/mod.rs**: `interpret_adhoc` 添加 `LLVMGetNamedGlobal` fallback 以查找 `@.data.Type` 和 `@.vtable.Trait.Type` globals.
+
+### §3.2 acceptance
+
+- 6019 tests (898 lib + 5121 integration), 0 failures, 12 ignored (9 new stage154 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-VTABLE-MISSING-DEFAULT-BODY** (P3, v0.16+): vtable 只包含 impl 提供的方法, 不包含 trait default body 方法
+- **TD-DYN-TRAIT-METHOD-ARG-PLACEHOLDER** (P3, v0.16+ 部分修复): `codegen_dyn_trait_call_direct` 对 args[0] 使用占位符 (Stage 154 已修复 args[1:])
 
 ---
 

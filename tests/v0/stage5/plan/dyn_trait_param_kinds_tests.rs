@@ -8,6 +8,7 @@
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
 use landin_compiler::codegen::{codegen_dyn_trait_call_direct, TextEmitter};
+use landin_compiler::mir::body::MirBody;
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
 use landin_compiler::mir::DynTraitFatPtr;
@@ -185,9 +186,12 @@ fn test_codegen_dyn_trait_call_i32_param() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -216,9 +220,12 @@ fn test_codegen_dyn_trait_call_f64_param() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -246,9 +253,12 @@ fn test_codegen_dyn_trait_call_bool_param() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -269,9 +279,12 @@ fn test_codegen_dyn_trait_call_no_params() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 
@@ -301,9 +314,12 @@ fn test_codegen_dyn_trait_call_multiple_params() {
         &mut emitter,
         &call_info,
         &args,
+        &MirBody::new(Span::DUMMY),
         &interner,
         &layouts,
         None,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     );
 

@@ -155,30 +155,29 @@ impl AggregateEmitter for TextEmitter {
 
     /// Stage 5.79: Emit a dyn Trait vtable indirect call.
     ///
+    /// Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): `receiver_value` can be
+    /// either a global symbol (e.g., `@.dynptr.Greeter.English`) or a local
+    /// SSA value (e.g., `%loc_5`). The GEP pattern is the same for both.
+    ///
     /// Three LLVM instructions:
-    /// 1. `%vN = getelementptr { ptr, ptr }, ptr @<dynptr_symbol>, i32 0, i32 1`
-    ///    — get vtable pointer slot (second field of the dynptr global)
+    /// 1. `%vN = getelementptr { ptr, ptr }, ptr <receiver>, i32 0, i32 1`
+    ///    — get vtable pointer slot (second field of the fat pointer)
     /// 2. `%vN+1 = load ptr, ptr %vN` — load the vtable pointer
     /// 3. `%vN+2 = load ptr, ptr %vN+1, i32 <slot_index>` — load the method fn ptr
     /// 4. `%vN+3 = call <ret_ty> %vN+2(<args>)` — indirect call
-    ///
-    /// Per §16 + Stage 5.78 marker convention: this method is invoked
-    /// when codegen detects a `TerminatorKind::Call` whose `func` is
-    /// `Operand::Constant(Const { ty: Error, val: Int(index) })` where
-    /// `index < mir.dyn_trait_calls.len()`.
     fn emit_dyn_trait_method_call(
         &mut self,
-        dynptr_symbol: &str,
+        receiver_value: &str,
         slot_index: u32,
         args: &[(EmitType, &EmitValue)],
         ret_ty: &EmitType,
     ) -> EmitValue {
-        // 1. Get the vtable pointer slot from the dynptr global.
-        //    dynptr global is `{ ptr, ptr }` — first field is data ptr,
+        // 1. Get the vtable pointer slot from the fat pointer.
+        //    Fat pointer is `{ ptr, ptr }` — first field is data ptr,
         //    second field (index 1) is vtable ptr.
         let gep_r = self.fresh();
         self.line(&format!(
-            "  %v{gep_r} = getelementptr {{ ptr, ptr }}, ptr @{dynptr_symbol}, i32 0, i32 1"
+            "  %v{gep_r} = getelementptr {{ ptr, ptr }}, ptr {receiver_value}, i32 0, i32 1"
         ));
 
         // 2. Load the vtable pointer.
@@ -232,7 +231,7 @@ impl AggregateEmitter for TextEmitter {
         // calls (any trait, any concrete type).
         let data_gep_r = self.fresh();
         self.line(&format!(
-            "  %v{data_gep_r} = getelementptr {{ ptr, ptr }}, ptr @{dynptr_symbol}, i32 0, i32 0"
+            "  %v{data_gep_r} = getelementptr {{ ptr, ptr }}, ptr {receiver_value}, i32 0, i32 0"
         ));
         let data_ptr_r = self.fresh();
         self.line(&format!("  %v{data_ptr_r} = load ptr, ptr %v{data_gep_r}"));

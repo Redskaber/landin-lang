@@ -257,41 +257,48 @@ impl AggregateEmitter for LLVMSysEmitter {
 
     fn emit_dyn_trait_method_call(
         &mut self,
-        dynptr_symbol: &str,
+        receiver_value: &str,
         slot_index: u32,
         args: &[(EmitType, &EmitValue)],
         ret_ty: &EmitType,
     ) -> EmitValue {
         // Stage 14.13 (GAP-30): Implement dyn Trait method dispatch via
-        // vtable indirect call. The dynptr global is `{ ptr, ptr }` where
+        // vtable indirect call. The fat pointer is `{ ptr, ptr }` where
         // field 0 = data pointer, field 1 = vtable pointer. The vtable is
         // `[N x ptr]` where slot_index selects the method function pointer.
         //
+        // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): `receiver_value` can
+        // be either a global symbol (e.g., `@.dynptr.Greeter.English`) or
+        // a local SSA value (e.g., `%loc_5`). For globals, use
+        // `LLVMGetNamedGlobal`; for locals, look up the SSA value via
+        // `self.lookup()`.
+        //
         // LLVM IR sequence (mirrors TextEmitter's reference implementation):
-        //   %gep_vtable = getelementptr { ptr, ptr }, ptr @dynptr, i32 0, i32 1
+        //   %gep_vtable = getelementptr { ptr, ptr }, ptr <receiver>, i32 0, i32 1
         //   %vtable     = load ptr, ptr %gep_vtable
         //   %gep_method = getelementptr [N x ptr], ptr %vtable, i32 0, i32 slot_index
         //   %method_fn  = load ptr, ptr %gep_method
         //   %result     = call <ret_ty> %method_fn(<args>)
-        //
-        // Note: We use the opaque pointer mode (ptr) for all GEPs and loads,
-        // matching LLVM 15+ opaque pointer semantics. The dynptr global must
-        // already exist in the module (emitted by emit_dyn_trait_ptrs before
-        // codegen_from_mir — see codegen_crate_to_module reorder).
         unsafe {
-            let dynptr_name_c = cstr_owned(dynptr_symbol);
-            let dynptr = LLVMGetNamedGlobal(self.module, dynptr_name_c.as_ptr());
-            if dynptr.is_null() {
-                // Graceful degradation: if the dynptr global doesn't exist
-                // (e.g., trait resolver didn't build a vtable for this pair),
-                // emit a zero-valued result instead of panicking. This
-                // prevents the compiler from crashing on programs that use
-                // dyn Trait but have a resolver gap. The program will produce
-                // wrong results but will compile and link.
-                let ret_llvm_ty = self.llvm_type(ret_ty);
-                let zero = LLVMConstInt(ret_llvm_ty, 0, 1);
-                return self.fresh_named(zero);
-            }
+            // Stage 154: Resolve receiver_value to an LLVMValueRef.
+            // - Global: starts with `@` → LLVMGetNamedGlobal
+            // - Local: starts with `%` → self.lookup()
+            let receiver: LLVMValueRef = if let Some(global_name) = receiver_value.strip_prefix('@')
+            {
+                let name_c = cstr_owned(global_name);
+                let global = LLVMGetNamedGlobal(self.module, name_c.as_ptr());
+                if global.is_null() {
+                    // Graceful degradation: if the global doesn't exist,
+                    // emit a zero-valued result instead of panicking.
+                    let ret_llvm_ty = self.llvm_type(ret_ty);
+                    let zero = LLVMConstInt(ret_llvm_ty, 0, 1);
+                    return self.fresh_named(zero);
+                }
+                global
+            } else {
+                // Local SSA value (e.g., `%loc_5`).
+                self.lookup(&EmitValue::from(receiver_value))
+            };
 
             // 1. GEP to get the vtable pointer slot (field 1 of {ptr, ptr}).
             let fat_ptr_ty = self.llvm_type(&EmitType::Struct(vec![
@@ -305,7 +312,7 @@ impl AggregateEmitter for LLVMSysEmitter {
             let gep_vtable = LLVMBuildInBoundsGEP2(
                 self.builder,
                 fat_ptr_ty,
-                dynptr,
+                receiver,
                 vtable_indices.as_mut_ptr(),
                 vtable_indices.len() as u32,
                 gep_name.as_ptr(),
@@ -429,15 +436,16 @@ impl AggregateEmitter for LLVMSysEmitter {
             }
 
             // Stage 90: Extract data pointer from the fat pointer for
-            // the receiver arg (args[0]). The fat pointer is the dynptr
-            // global `{ ptr @.data.Concrete, ptr @.vtable.Trait.Concrete }`.
+            // the receiver arg (args[0]). The fat pointer is
+            // `{ ptr @.data.Concrete, ptr @.vtable.Trait.Concrete }`.
             // Field 0 is the data pointer — GEP + load to get it.
+            // Stage 154: `receiver` can be a global or local fat pointer.
             let data_ptr_name = cstr_owned("dyn_data_ptr");
             let mut data_indices = [zero, zero]; // GEP {ptr,ptr} field 0
             let gep_data = LLVMBuildInBoundsGEP2(
                 self.builder,
                 fat_ptr_ty,
-                dynptr,
+                receiver,
                 data_indices.as_mut_ptr(),
                 data_indices.len() as u32,
                 data_ptr_name.as_ptr(),

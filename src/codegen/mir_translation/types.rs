@@ -289,12 +289,23 @@ pub fn mir_type_to_emit_type_with_layouts(
                 TyKind::Array(elem, _) => crate::codegen::emit_fat_ptr_type(
                     mir_type_to_emit_type_with_layouts(elem, layouts),
                 ),
+                // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): `&dyn Trait` is
+                // a fat pointer `{ptr, ptr}` (data + vtable). Without this
+                // case, `Ref(_, _, Dyn(_))` falls to the `_` arm producing
+                // `ptr_to(...)` (thin pointer), causing the alloca to be 8
+                // bytes instead of 16 — the vtable pointer is lost.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one fat pointer rule for all
+                // `&dyn Trait` (any trait, any concrete type).
+                // Per §1.0 原則 9 (正确 > 妥协): `&dyn Trait` IS the fat
+                // pointer, not a pointer to a fat pointer struct.
+                TyKind::Dyn(_) => EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr]),
                 // Stage 18.337: For Adt pointee, use opaque ptr — do NOT
                 // recurse into the Adt's layout (would infinite-loop on
                 // recursive types like `struct Node { next: *mut Node }`).
                 TyKind::Adt(_, _) => EmitType::OpaquePtr,
-                // For non-Adt, non-Slice, non-Str pointee (primitives, tuples,
-                // closures): recurse is safe (no cycle possible).
+                // For non-Adt, non-Slice, non-Str, non-Dyn pointee
+                // (primitives, tuples, closures): recurse is safe (no cycle).
                 _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
             }
         }
@@ -475,6 +486,17 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
                 TyKind::Array(elem, _) => crate::codegen::emit_fat_ptr_type(
                     mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
                 ),
+                // Stage 154 (TD-DYN-LOCAL-FAT-PTR-COERCION): `&dyn Trait` is
+                // a fat pointer `{ptr, ptr}` (data + vtable). Mirrors the
+                // `_with_layouts` variant. Without this, the alloca for
+                // `let g: &dyn Trait = &local;` would be 8 bytes (thin ptr)
+                // instead of 16 bytes (fat ptr) — the vtable pointer is lost.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one fat pointer rule for all
+                // `&dyn Trait` (any trait, any concrete type).
+                // Per §1.0 原則 9 (正确 > 妥协): `&dyn Trait` IS the fat
+                // pointer, not a pointer to a fat pointer struct.
+                TyKind::Dyn(_) => EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr]),
                 // Stage 18.337: For Adt pointee, use opaque ptr — do NOT recurse.
                 TyKind::Adt(_, _) => EmitType::OpaquePtr,
                 _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(

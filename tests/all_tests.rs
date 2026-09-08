@@ -1399,3 +1399,9 @@ mod stage150_generic_enum_match_tests;
 //                         size (e.g., i64, not Param→i32 fallback). ===
 #[path = "v0/stage153/plan/call_dest_type_substs_tests.rs"]
 mod stage153_call_dest_type_substs_tests;
+
+// === Stage 154 (v0.16): TD-DYN-LOCAL-FAT-PTR-COERCION — `let g: &dyn Trait = &local;`
+//                         now constructs a LOCAL fat pointer `{ptr, ptr @.vtable}` instead
+//                         of using the GLOBAL dynptr (which points to @.data.Type = i8 0). ===
+#[path = "v0/stage154/plan/dyn_local_fat_ptr_coercion_tests.rs"]
+mod stage154_dyn_local_fat_ptr_coercion_tests;
