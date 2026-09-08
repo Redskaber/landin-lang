@@ -486,3 +486,11 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 |-------|------|------|---------|--------|
 | TD-VTABLE-MISSING-DEFAULT-BODY | vtable 只包含 impl 提供的方法, 不包含 trait default body 方法 | resolver.rs vtable 构建只遍历 impl items, 不遍历 trait items 的 default body | 在 vtable 构建中, 遍历 trait items, 对有 default body 的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`) | P3, v0.16+ |
 | TD-DYN-TRAIT-METHOD-ARG-PLACEHOLDER | `codegen_dyn_trait_call_direct` 对 args[0] (receiver) 使用 `%arg0` 占位符而非实际 codegen | 历史: receiver 由 `emit_dyn_trait_method_call` 从 fat pointer 提取, 所以占位符无影响. 但对非 receiver args, 占位符是 bug | codegen_dyn_trait_call_direct 对 args[1:] 使用 `codegen_operand` 正确生成值 (Stage 154 已修复非 receiver args) | P3, v0.16+ (部分修复) |
+| TD-OPTION-UNWRAP-OR-MATCH | ✅ Stage 155 验证已修复 | unwrap_or 在 Some+None 组合时 Some 返回 0 | Stage 152 substitute_adt_layout 间接修复了此问题 — AdtLayout 的 Param 被正确替换为具体类型. 验证: some.unwrap_or(0) = 42, none.unwrap_or(99) = 99. | ✅ |
+| TD-TRAIT-METHOD-REMONO-LINK | ✅ Stage 155 验证 linker 已修复 | Stage 147 bodyless trait 方法获得新 DefId 后, vtable 引用 `landin_Iterator_Counter_next` 但函数未 emit (linker error) | Stage 147-149 的 DefId 修复 + module_build 跳过 trait 方法注册已解决 linker 问题. vtable 符号与函数 emit 名称匹配. 但运行时值仍有问题 (见 TD-OPTION-NONE-GENERIC-SUBSTS-MISSING). | ✅ (linker 修复) |
+
+### P3 — v0.16+ Stage 155 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-OPTION-NONE-GENERIC-SUBSTS-MISSING | trait 方法体内部 `Option::None` 构造使用空 substs → Param fallback → `{i32,i32}` 而非 `{i32,i64}`. 导致 trait 方法返回 `Option<i64>` 的 None 分支 payload 类型错误. | `lower_path_expr` 对 unit variant (如 `Option::None`) 使用 `lower_path_generic_args` 读取 HIR path 的 generic args, 但 path 无 turbofish 时 substs 为空. typeck 未从期望返回类型推断 substs. | 在 typeck writeback 中, 当 unit variant 构造的 substs 为空且上下文有期望类型时, 从期望类型提取 substs. 或在 codegen 中对 Option::None 构造从函数返回类型推断 substs. | P3, v0.16+ |

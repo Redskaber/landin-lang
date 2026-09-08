@@ -45396,3 +45396,28 @@ Work Log:
 裁剪点: L3 任务 (~200 LOC + 9 tests), 单轮收敛 (根因清晰: 三个 bug 组合, 一起修复). 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 155 — TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证)
+
+---
+Task ID: stage155-td-match-scrut-ret-copy-type-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 155 — TD-MATCH-SCRUT-RET-COPY-TYPE 完整修复. v0.678.0 → v0.679.0.
+
+Work Log:
+- §18 依赖审查: 验证上传包 v0.678.0 (6019 tests, 0 failures) 与当前工作目录一致
+- 环境部署: 安装 Rust 1.98.1 (rustup) + LLVM 22.1.8 (setup-llvm-env.sh) + 提取上传包替换旧版 v0.67.0
+- 根因分析: `pattern_lower.rs:238` 在 scrutinee 类型为 Infer/Error 时用空 substs 覆盖类型 → `needs_writeback` 返回 false → writeback 跳过 → 类型未解析 → Param→I32 fallback → `{i32,i32}` 而非 `{i32,i64}` → store 截断 i64→i32
+- MUV-1: 修改 `pattern_lower.rs:238` — 从 HIR 查找 enum 泛型参数个数, 用 `Param(N)` 占位符替代空 substs. 使 `needs_writeback` 返回 true → writeback 的 Call dest 规则解析具体类型
+- MUV-2: 验证 TD-OPTION-UNWRAP-OR-MATCH (✅ Stage 152 间接修复) + TD-TRAIT-METHOD-REMONO-LINK (✅ linker 已修复)
+- MUV-3: 编写 tests/v0/stage155/plan/match_scrut_ret_copy_type_tests.rs — 9 tests (4 正 + 2 回归 + 2 边界 + 1 负)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5130 integration = 6028 tests, 0 failures, 12 ignored
+- 发现新 TD: TD-OPTION-NONE-GENERIC-SUBSTS-MISSING (trait 方法体 Option::None 构造 substs 缺失)
+- v0.679.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 用 Param(N) 占位符不选空 substs (§1.0 原則 9) — 空 substs 使 writeback 跳过, 导致 silent wrong results
+2. 从 HIR 查找泛型参数个数 (§1.0 原則 10) — HIR enum 定义是权威来源
+3. 不修改 writeback 逻辑 (§1.0 原則 6) — writeback 已有正确的 Call dest 规则, 只需让 needs_writeback 返回 true
+
+裁剪点: L2 任务 (~40 LOC + 9 tests), 单轮收敛 (根因清晰: 空 substs → Param fallback). 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING (修复 trait 方法体 Option::None 构造 substs) 或 TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法)

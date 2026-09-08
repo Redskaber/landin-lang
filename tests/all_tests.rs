@@ -1405,3 +1405,10 @@ mod stage153_call_dest_type_substs_tests;
 //                         of using the GLOBAL dynptr (which points to @.data.Type = i8 0). ===
 #[path = "v0/stage154/plan/dyn_local_fat_ptr_coercion_tests.rs"]
 mod stage154_dyn_local_fat_ptr_coercion_tests;
+
+// === Stage 155 (v0.16): TD-MATCH-SCRUT-RET-COPY-TYPE — match arm on function
+//                         return value (generic enum) now reads correct payload.
+//                         Fix: Param(N) placeholders in match lowering enable
+//                         writeback to resolve concrete type from Call dest. ===
+#[path = "v0/stage155/plan/match_scrut_ret_copy_type_tests.rs"]
+mod stage155_match_scrut_ret_copy_type_tests;

@@ -3,13 +3,37 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.678.0 (v0.16 Stage 154 — TD-DYN-LOCAL-FAT-PTR-COERCION: 修复 `let g: &dyn Trait = &local;` 使用 LOCAL fat pointer; 6019 tests) |
+| **Current version** | v0.679.0 (v0.16 Stage 155 — TD-MATCH-SCRUT-RET-COPY-TYPE: 修复函数返回泛型枚举后 match arm garbage value; 6028 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5121 integration tests = 6019 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5130 integration tests = 6028 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 154 修复 `let g: &dyn Trait = &local;` LOCAL fat pointer); v0.16 codegen 阶段 — Stage 154 三部分: types.rs `Ref(Dyn)` → fat pointer; statement.rs 构造 `{ptr %local, ptr @.vtable}`; `emit_dyn_trait_method_call` 使用 receiver local value |
+| **Architecture** | Health 9.9/10 (stable — Stage 155 修复 match scrutinee 类型解析); v0.16 codegen 阶段 — Stage 155 `pattern_lower.rs:238` 用 `Param(N)` 占位符替代空 substs, 使 writeback 解析 Call dest 类型 |
+
+---
+
+## v0.679.0 — Stage 155 (v0.16) — TD-MATCH-SCRUT-RET-COPY-TYPE 完整修复
+
+### Overview
+
+Stage 155 修复函数返回泛型枚举 (如 `Option<i64>`) 后 match arm 读取 garbage value (-1 而非 42) 的 P1 bug. 根因: `pattern_lower.rs:238` 用空 substs 覆盖 scrutinee 类型, 使 writeback 跳过类型解析.
+
+### What was fixed
+
+1. **pattern_lower.rs:238**: 用 `Param(N)` 占位符 (匹配 enum 泛型参数个数) 替代空 substs `Vec::new()`. 使 `needs_writeback` 返回 true → writeback 的 Call dest 规则解析具体类型.
+2. 验证 TD-OPTION-UNWRAP-OR-MATCH (Stage 152 间接修复, unwrap_or 返回正确值).
+3. 验证 TD-TRAIT-METHOD-REMONO-LINK (linker 已修复, vtable 符号匹配).
+
+### §3.2 acceptance
+
+- 6028 tests (898 lib + 5130 integration), 0 failures, 12 ignored (9 new stage155 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-OPTION-NONE-GENERIC-SUBSTS-MISSING** (P3, v0.16+): trait 方法体内部 `Option::None` 构造使用空 substs → Param fallback → `{i32,i32}` 而非 `{i32,i64}`
 
 ---
 

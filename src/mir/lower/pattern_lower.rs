@@ -235,7 +235,49 @@ pub(crate) fn lower_match(
                 // Found the enum DefId — construct the Adt type and
                 // update the scrutinee local's type so the discriminant
                 // extraction works.
-                let resolved_ty = Ty::new(TyKind::Adt(enum_def_id, Vec::new().into()), span);
+                //
+                // Stage 155 (TD-MATCH-SCRUT-RET-COPY-TYPE): Use Param(N)
+                // placeholders matching the enum's generic parameter count
+                // instead of empty substs. Empty substs caused writeback to
+                // skip this local (needs_writeback returns false for
+                // Adt with empty substs), leaving the type unresolved.
+                // With Param(N) placeholders, needs_writeback returns true,
+                // and the writeback's Call dest rule resolves the concrete
+                // type from the callee's return type.
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one Param(N) placeholder
+                // rule for all generic enums (Option<T>, Result<T,E>, etc.).
+                // Per §1.0 原則 9 (正确 > 妥协): let writeback resolve the
+                // concrete type, don't guess it here.
+                // Per §1.0 原則 10 (唯一可信数据源): the writeback's
+                // compute_call_dest_ty is the authoritative type source.
+                let generic_count = cx
+                    .hir
+                    .and_then(|h| h.find_owner(enum_def_id))
+                    .and_then(|o| match o {
+                        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(
+                            e.generics
+                                .params
+                                .iter()
+                                .filter(|p| matches!(p, crate::hir::HirGenericParam::Type(_)))
+                                .count(),
+                        ),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
+                let substs: std::rc::Rc<[Ty]> = (0..generic_count)
+                    .map(|i| {
+                        let param = crate::mir::ty::ParamTy {
+                            index: i as u32,
+                            // Stage 155: name is debug-only; use Spur::default
+                            // since cx.interner is &Rodeo (not &mut). The
+                            // index is the authoritative field for substitution.
+                            name: lasso::Spur::default(),
+                        };
+                        Ty::new(TyKind::Param(param), span)
+                    })
+                    .collect();
+                let resolved_ty = Ty::new(TyKind::Adt(enum_def_id, substs), span);
                 if let Some(ld) = cx.mir.local_decls.get_mut(scrut_local.0 as usize) {
                     ld.ty = resolved_ty;
                 }

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.678.0 (v0.16 Stage 154 — TD-DYN-LOCAL-FAT-PTR-COERCION: 修复 `let g: &dyn Trait = &local;` 使用 LOCAL fat pointer 而非 GLOBAL dynptr; 6019 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.679.0 (v0.16 Stage 155 — TD-MATCH-SCRUT-RET-COPY-TYPE: 修复函数返回泛型枚举后 match arm 读取 garbage value; 6028 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 154 COMPLETE (TD-DYN-LOCAL-FAT-PTR-COERCION)**. 6019 tests (898 lib + 5121 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 154 修复 `let g: &dyn Trait = &local;` 构造 LOCAL fat pointer — 三部分: (A) types.rs `Ref(Dyn)` → fat pointer; (B) statement.rs 构造 `{ptr %local, ptr @.vtable}`; (C) `emit_dyn_trait_method_call` 使用 receiver local value. |
+| **Status** | ✅ **v0.16 Stage 155 COMPLETE (TD-MATCH-SCRUT-RET-COPY-TYPE)**. 6028 tests (898 lib + 5130 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 155 修复函数返回泛型枚举后 match arm garbage value — `pattern_lower.rs:238` 用 `Param(N)` 占位符替代空 substs, 使 writeback 解析 Call dest 类型. 验证 TD-OPTION-UNWRAP-OR-MATCH + TD-TRAIT-METHOD-REMONO-LINK 已修复. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
