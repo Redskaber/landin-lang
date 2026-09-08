@@ -1445,3 +1445,9 @@ mod stage159_stdlib_iterator_tests;
 //                         error. ===
 #[path = "v0/stage160/plan/typeck_generic_arg_validation_tests.rs"]
 mod stage160_typeck_generic_arg_validation_tests;
+
+// === Stage 161 (v0.17): Comprehensive stdlib method coverage audit. All
+//                         Option/Result/String/Vec methods verified working
+//                         with type annotations. New TDs registered. ===
+#[path = "v0/stage161/plan/stdlib_method_audit_tests.rs"]
+mod stage161_stdlib_method_audit_tests;

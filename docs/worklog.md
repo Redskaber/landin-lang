@@ -45545,3 +45545,25 @@ Work Log:
 裁剪点: L2 任务 (~30 LOC + 8 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 161 — TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator 关联类型投影) 或 TD-STDLIB-STRING-VEC (扩展 String/Vec 方法覆盖)
+
+---
+Task ID: stage161-stdlib-method-audit-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 161 — Stdlib 方法覆盖审计. v0.684.0 → v0.685.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 160 baseline (6074 tests, 0 failures). 提取上传包 v0.684.0 替换旧版 v0.67.0
+- 环境部署: 安装 Rust 1.98.1 + LLVM 22.1.8
+- MUV-1: 审计 prelude 中所有 Option/Result/String/Vec 方法
+- MUV-2: 编写 tests/v0/stage161/plan/stdlib_method_audit_tests.rs — 13 tests
+- MUV-3: 发现 TD-INFERRED-TYPE-METHOD-MANGLING — receiver 类型是 Infer/Error 时 method dispatch 使用 Error mangled name → linker error. 根因: mangle_ty_with_interner 将 Error 类型 mangle 为 "error". Workaround: 添加类型注解.
+- MUV-4 §3.2 全套验收通过: 898 lib + 5189 integration = 6087 tests, 0 failures, 12 ignored
+- v0.685.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 4/9):
+1. 审计已有方法不选修复推断 (§1.0 原則 9) — 推断限制是 typeck 架构问题, 需要更深层的 inference 改造
+2. 注册 TD 而非静默接受 (§1.0 原則 4) — 显式记录已知限制
+
+裁剪点: L2 任务 (0 src 变更 + 13 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 162 — TD-INFERRED-TYPE-METHOD-MANGLING (修复推断类型上下文中的 method dispatch mangled name) 或 TD-STDLIB-STRING-VEC (扩展 String/Vec 方法覆盖)

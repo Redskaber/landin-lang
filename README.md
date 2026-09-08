@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.684.0 (v0.16 Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION: 修复 typeck 验证泛型调用实参类型; 6074 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.685.0 (v0.17 Stage 161 — Stdlib method coverage audit; 6087 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 160 COMPLETE (TD-TYPECK-GENERIC-ARG-VALIDATION)**. 6074 tests (898 lib + 5176 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 160 修复 typeck 验证泛型调用实参类型 — 特化 sig.inputs 后 unify, `identity::<i64>(42i32)` 现在报 type error. |
+| **Status** | ✅ **v0.17 Stage 161 COMPLETE (Stdlib method coverage audit)**. 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 161 审计所有 Option/Result/String/Vec 方法 — 13 tests 覆盖核心方法. 发现新 TD: TD-INFERRED-TYPE-METHOD-MANGLING (推断类型上下文中 method dispatch Error mangled name). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

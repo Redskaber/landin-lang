@@ -3,13 +3,36 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.684.0 (v0.16 Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION: 修复 typeck 验证泛型调用实参类型; 6074 tests) |
+| **Current version** | v0.685.0 (v0.17 Stage 161 — Stdlib method coverage audit; 6087 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5176 integration tests = 6074 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5189 integration tests = 6087 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 160 修复 typeck 泛型实参验证); v0.16 codegen 阶段 — Stage 160 特化 sig.inputs 后 unify |
+| **Architecture** | Health 9.9/10 (stable — Stage 161 stdlib method audit); v0.17 codegen 阶段 — Stage 161 审计 Option/Result/String/Vec 方法 + 发现 TD-INFERRED-TYPE-METHOD-MANGLING |
+
+---
+
+## v0.685.0 — Stage 161 (v0.17) — Stdlib 方法覆盖审计
+
+### Overview
+
+Stage 161 审计 prelude 中所有 Option/Result/String/Vec 方法, 验证它们在类型注解下工作正确. 13 tests 覆盖核心方法. 发现新 TD: TD-INFERRED-TYPE-METHOD-MANGLING.
+
+### What was fixed
+
+1. 审计并验证 13 个 prelude 方法在有类型注解时工作正确.
+2. 发现 TD-INFERRED-TYPE-METHOD-MANGLING — 当 receiver 类型是 Infer/Error 时 method dispatch 使用 Error mangled name.
+
+### §3.2 acceptance
+
+- 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored (13 new stage161 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-INFERRED-TYPE-METHOD-MANGLING** (P3, v0.17+): 推断类型上下文中 method dispatch 使用 Error mangled name → linker error. Workaround: 添加类型注解.
 
 ---
 
