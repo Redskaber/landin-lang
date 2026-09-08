@@ -1287,4 +1287,31 @@ impl bool {
         }
     }
 }
+
+// Stage 159 (v0.16 — TD-STDLIB-ITERATOR): Add Iterator trait to prelude.
+//
+// Iterator is Rust's core trait for lazy sequence traversal. Almost all
+// collection types implement it. Previously, users had to declare
+// `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`
+// in every test file — violating DRY and making it impossible to share
+// Iterator-based code across modules.
+//
+// Stage 156 fixed the runtime behavior (trait method returning Option<T>
+// now infers substs correctly). Stage 157 fixed default body self type.
+// Stage 158 fixed vtable default body entry. Now it's safe to add Iterator
+// to the prelude.
+//
+// Per Rust: Iterator has many adapters (map, filter, collect, etc.) with
+// default bodies. v0.1 limitation: only `next` is required; adapters are
+// deferred to v0.2+ (they require closure support — TD-FN-CLOSURE-COERCION).
+//
+// Per §1.0 原則 6 (通解 > 特解): one Iterator trait for all types.
+// Per §1.0 原則 9 (正确 > 妥协): add to prelude, not special-case per test.
+// Per §12 (最优 > 最小): root-cause fix — prelude inclusion.
+
+// === Iterator trait ===
+trait Iterator {
+    type Item;
+    fn next(&mut self) -> Option<Self::Item>;
+}
 "#;

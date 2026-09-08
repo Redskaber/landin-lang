@@ -253,11 +253,6 @@ fn stage148_iterator_counter_next() {
     // because mir_body_contains_param_type falsely detected Param in
     // Aggregate type metadata (substs/field_tys from Option<T>).
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Counter { current: i64, max: i64 }
 
 impl Iterator for Counter {
@@ -295,11 +290,6 @@ fn stage148_iterator_sum_generic() {
     // NOTE: unwrap() on Option<T> returns Param type (TD-GENERIC-ENUM-MATCH-ARMS),
     // so we use is_some + count instead of unwrap + arithmetic.
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Counter { current: i64, max: i64 }
 
 impl Iterator for Counter {
@@ -328,11 +318,6 @@ fn main() {
 #[test]
 fn stage148_iterator_empty() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct EmptyIter;
 
 impl Iterator for EmptyIter {
@@ -359,11 +344,6 @@ fn main() {
 fn stage148_iterator_single_element() {
     // Stage 149 fix: Iterator once with is_some check.
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Once { value: i64, done: bool }
 
 impl Iterator for Once {

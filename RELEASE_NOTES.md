@@ -3,13 +3,37 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.682.0 (v0.16 Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY: 修复 dyn dispatch vtable 缺少 default body entry; 6056 tests) |
+| **Current version** | v0.683.0 (v0.16 Stage 159 — TD-STDLIB-ITERATOR: Iterator trait added to prelude; 6066 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5158 integration tests = 6056 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5168 integration tests = 6066 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 158 修复 dyn dispatch vtable default body entry); v0.16 codegen 阶段 — Stage 158 vtable 构建后遍历 trait items 添加 default body 方法 entry |
+| **Architecture** | Health 9.9/10 (stable — Stage 159 Iterator trait added to prelude); v0.16 codegen 阶段 — Stage 159 `src/stdlib/prelude.rs` 添加 Iterator trait |
+
+---
+
+## v0.683.0 — Stage 159 (v0.16) — TD-STDLIB-ITERATOR 完整修复
+
+### Overview
+
+Stage 159 将 Iterator trait 添加到 prelude (`src/stdlib/prelude.rs`). 用户无需每次自定义 `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`.
+
+### What was fixed
+
+1. **src/stdlib/prelude.rs**: 添加 `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`.
+2. **5 test files updated**: 移除 stage148/149/150/153/156 中的用户定义 `trait Iterator` 块.
+3. **10 new Stage 159 tests**: 覆盖正/回归/边界/负向.
+
+### §3.2 acceptance
+
+- 6066 tests (898 lib + 5168 integration), 0 failures, 12 ignored (10 new stage159 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-DYN-ITERATOR-ASSOC-TYPE** (P3, v0.17+): dyn dispatch `&mut dyn Iterator<Item = i64>` codegen 失败 — 关联类型投影 + dyn dispatch 组合问题
 
 ---
 

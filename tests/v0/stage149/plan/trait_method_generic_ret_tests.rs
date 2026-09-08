@@ -287,11 +287,6 @@ fn main() {
 #[test]
 fn stage149_iterator_counter_count() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Counter { current: i64, max: i64 }
 
 impl Iterator for Counter {
@@ -325,11 +320,6 @@ fn main() {
 #[test]
 fn stage149_iterator_empty_iter() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct EmptyIter;
 
 impl Iterator for EmptyIter {
@@ -350,11 +340,6 @@ fn main() {
 #[test]
 fn stage149_iterator_once() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Once { value: i64, done: bool }
 
 impl Iterator for Once {
@@ -382,11 +367,6 @@ fn main() {
 #[test]
 fn stage149_iterator_range() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Range { current: i64, end: i64 }
 
 impl Iterator for Range {

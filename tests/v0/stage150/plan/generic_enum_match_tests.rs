@@ -112,11 +112,6 @@ fn stage150_iterator_sum() {
     // field indices. This is tracked as TD-TRAIT-METHOD-RET-MATCH-GEP
     // (P3, v0.16+). For now, verify compilation only.
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Counter { current: i64, max: i64 }
 
 impl Iterator for Counter {

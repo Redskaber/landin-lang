@@ -101,10 +101,6 @@ fn main() -> i32 {
 #[test]
 fn stage156_iterator_sum() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
 struct Counter { current: i64, max: i64 }
 impl Iterator for Counter {
     type Item = i64;
@@ -266,10 +262,6 @@ fn main() -> i32 {
 #[test]
 fn stage156_iterator_sum_large() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
 struct Counter { current: i64, max: i64 }
 impl Iterator for Counter {
     type Item = i64;

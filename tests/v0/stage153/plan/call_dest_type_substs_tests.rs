@@ -168,11 +168,6 @@ fn main() {
 #[test]
 fn stage153_regression_iterator_sum_count() {
     let code = r#"
-trait Iterator {
-    type Item;
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
 struct Counter { current: i64, max: i64 }
 
 impl Iterator for Counter {

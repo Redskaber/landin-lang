@@ -1432,3 +1432,9 @@ mod stage157_default_body_self_type_tests;
 //                         dispatch of default body methods. ===
 #[path = "v0/stage158/plan/vtable_default_body_entry_tests.rs"]
 mod stage158_vtable_default_body_entry_tests;
+
+// === Stage 159 (v0.16): TD-STDLIB-ITERATOR — Iterator trait added to prelude.
+//                         Users no longer need to declare `trait Iterator` —
+//                         it's available globally. ===
+#[path = "v0/stage159/plan/stdlib_iterator_tests.rs"]
+mod stage159_stdlib_iterator_tests;

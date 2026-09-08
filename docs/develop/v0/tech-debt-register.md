@@ -367,7 +367,7 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-STDLIB-ITERATOR | 缺少 Iterator trait + adapters (map, filter, collect) | Prelude 不包含 Iterator | 添加 Iterator trait + 常用 adapters | P3, v0.15+ |
+| TD-STDLIB-ITERATOR | ✅ Stage 159 修复 | 缺少 Iterator trait + adapters (map, filter, collect) | Prelude 不包含 Iterator | 添加 Iterator trait 到 prelude (`src/stdlib/prelude.rs`). 用户无需每次自定义 `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`. 10 tests. 同时移除了 5 个测试文件中的用户定义 `trait Iterator` 块. Adapters (map, filter, collect) 延迟到 v0.2+ (需要闭包支持 — TD-FN-CLOSURE-COERCION). | ✅ |
 | TD-STDLIB-OPTION-METHODS | 缺少 Option/Result full method coverage (ok_or, map_err, and_then) | Prelude 只实现 MVP 方法 | 扩展 Option/Result 方法覆盖 | P3, v0.15+ |
 | TD-STDLIB-HASH | 缺少 Hash trait + HashMap/HashSet | Prelude 不包含 Hash | 添加 Hash trait + HashMap/HashSet | P4, v0.16+ |
 | TD-STDLIB-STRING-VEC | 缺少 String/Vec/Box full method coverage | Prelude 只实现 MVP 方法 | 扩展 String/Vec/Box 方法覆盖 | P3, v0.15+ |

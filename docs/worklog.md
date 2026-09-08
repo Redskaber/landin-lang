@@ -45498,3 +45498,27 @@ Work Log:
 裁剪点: L2 任务 (~50 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 159 — TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证) 或 TD-STDLIB-ITERATOR (添加 Iterator trait + adapters 到 prelude)
+
+---
+Task ID: stage159-td-stdlib-iterator-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 159 — TD-STDLIB-ITERATOR 完整修复. v0.682.0 → v0.683.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 158 baseline (6056 tests, 0 failures)
+- 根因: Iterator trait 不在 prelude 中, 用户必须每次手写 `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`
+- MUV-1: 在 `src/stdlib/prelude.rs` 末尾添加 `trait Iterator { type Item; fn next(&mut self) -> Option<Self::Item>; }`
+- MUV-2: 从 5 个测试文件 (stage148/149/150/153/156) 中移除用户定义的 `trait Iterator` 块 (用 Python 脚本批量处理)
+- MUV-3: 编写 tests/v0/stage159/plan/stdlib_iterator_tests.rs — 10 tests (4 正 + 2 回归 + 3 边界 + 1 负)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5168 integration = 6066 tests, 0 failures, 12 ignored
+- 发现新 TD: TD-DYN-ITERATOR-ASSOC-TYPE (dyn dispatch `&mut dyn Iterator<Item = i64>` codegen 失败)
+- v0.683.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 添加到 prelude 不选用户自定义 (§1.0 原則 9) — prelude 包含是 Rust 标准做法
+2. 只添加 trait 声明, 不添加 adapters (§1.0 原則 6) — adapters 需要闭包支持
+3. 移除测试中的用户定义 (§1.0 原則 10) — prelude 是唯一可信源
+
+裁剪点: L2 任务 (~30 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证) 或 TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator)
