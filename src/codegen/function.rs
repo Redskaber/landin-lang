@@ -1004,8 +1004,58 @@ fn re_resolve_trait_method_calls(
         let Operand::Constant(c) = func else {
             continue;
         };
-        let TyKind::FnDef(trait_method_def_id, _) = &c.ty.kind else {
-            continue;
+
+        // Stage 163 (TD-INFERRED-TYPE-METHOD-MANGLING): If the func operand's
+        // type is NOT FnDef (e.g., Error — happens when method resolution
+        // failed at MIR lower time because the receiver type was Infer),
+        // try to re-resolve by matching the method name against fn_name_by_def_id.
+        //
+        // This catches the case where `let r = none.or(some); r.unwrap()` —
+        // the `r` local has Infer type at MIR lower time, so `unwrap` resolves
+        // to a trait default body DefId (not the impl's DefId). The trait
+        // default body's fn_name has "error" in it (from Error-type mangling).
+        //
+        // Fix: extract the DefId from c.val (which still holds the correct
+        // method DefId), look up its fn_name, then find the matching impl
+        // method via name-based lookup in trait_method_map.
+        //
+        // Per §1.0 原則 4 (报错 > 静默): don't silently use wrong mangled name.
+        // Per §1.0 原則 6 (通解 > 特解): one name-based fallback for all methods.
+        // Per §1.0 原則 10 (唯一可信数据源): c.val holds the DefId from MIR lower.
+        let trait_method_def_id = match &c.ty.kind {
+            TyKind::FnDef(did, _) => *did,
+            _ => {
+                // Not FnDef — try extracting DefId from c.val and using
+                // name-based lookup to find the correct impl method.
+                let did = match &c.val {
+                    crate::mir::place::ConstVal::Uint(n) => {
+                        crate::hir::DefId(u32::try_from(*n).unwrap_or(0))
+                    }
+                    crate::mir::place::ConstVal::Int(n) => {
+                        crate::hir::DefId(u32::try_from(*n).unwrap_or(0))
+                    }
+                    _ => continue,
+                };
+
+                // Get the method name from fn_name_by_def_id.
+                let call_name = match fn_name_by_def_id.get(&did) {
+                    Some(name) => name.clone(),
+                    None => continue,
+                };
+
+                // Try name-based lookup in trait_method_map.
+                if let Some(impl_did) =
+                    trait_method_map.lookup_by_method_name(&call_name, fn_name_by_def_id)
+                {
+                    // Found the correct impl method! Replace the func operand.
+                    c.ty = crate::mir::ty::Ty::new(
+                        TyKind::FnDef(impl_did, Vec::new().into()),
+                        crate::session::Span::DUMMY,
+                    );
+                    c.val = crate::mir::place::ConstVal::Uint(impl_did.as_u32() as u128);
+                }
+                continue;
+            }
         };
 
         // Get the receiver type (first arg or first input local).
@@ -1023,11 +1073,11 @@ fn re_resolve_trait_method_calls(
         let impl_method_def_id = if type_name.is_empty() {
             // Static trait method (no receiver) — try DefId-only lookup,
             // then fall back to name-based matching.
-            let result = trait_method_map.lookup_by_trait_method(*trait_method_def_id);
+            let result = trait_method_map.lookup_by_trait_method(trait_method_def_id);
             if result.is_some() {
                 result
             } else {
-                let call_name = fn_name_by_def_id.get(trait_method_def_id);
+                let call_name = fn_name_by_def_id.get(&trait_method_def_id);
                 if let Some(call_name) = call_name {
                     trait_method_map.lookup_by_method_name(call_name, fn_name_by_def_id)
                 } else {
@@ -1036,7 +1086,7 @@ fn re_resolve_trait_method_calls(
             }
         } else {
             // Instance method — try (DefId, type_name) lookup first.
-            let result = trait_method_map.lookup(*trait_method_def_id, &type_name);
+            let result = trait_method_map.lookup(trait_method_def_id, &type_name);
             if result.is_some() {
                 result
             } else {
@@ -1045,12 +1095,12 @@ fn re_resolve_trait_method_calls(
                 // (e.g., Wrapper) — this happens for static trait methods
                 // where get_receiver_type returns the first arg's type.
                 // Fall back to DefId-only lookup (ignores type_name).
-                let fallback = trait_method_map.lookup_by_trait_method(*trait_method_def_id);
+                let fallback = trait_method_map.lookup_by_trait_method(trait_method_def_id);
                 if fallback.is_some() {
                     fallback
                 } else {
                     // Last resort: name-based matching.
-                    let call_name = fn_name_by_def_id.get(trait_method_def_id);
+                    let call_name = fn_name_by_def_id.get(&trait_method_def_id);
                     if let Some(call_name) = call_name {
                         trait_method_map.lookup_by_method_name(call_name, fn_name_by_def_id)
                     } else {
@@ -1064,8 +1114,47 @@ fn re_resolve_trait_method_calls(
         };
 
         // Found the concrete impl method! Replace the func operand.
+        // Stage 163 (TD-INFERRED-TYPE-METHOD-MANGLING): Also fix the
+        // FnDef substs — when the original substs contained Error (from
+        // unresolved type inference), extract the correct substs from
+        // the receiver's concrete type (after writeback resolution).
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one substs fixup for all methods.
+        // Per §1.0 原則 10 (唯一可信数据源): receiver's resolved type
+        // is the authoritative substs source.
+        let fixed_substs = if let TyKind::FnDef(_, orig_substs) = &c.ty.kind {
+            if orig_substs
+                .iter()
+                .any(|t| matches!(t.kind, TyKind::Error | TyKind::Infer(_)))
+            {
+                // Original substs contain Error/Infer — try to extract
+                // correct substs from the receiver's resolved type.
+                if let Some(recv_ty) = &receiver_ty {
+                    if let TyKind::Adt(_, adt_substs) = &recv_ty.kind {
+                        // Use the Adt's substs (which should be concrete
+                        // after writeback, e.g., [i32] not [Error]).
+                        let all_concrete = adt_substs.iter().all(|t| {
+                            !matches!(t.kind, TyKind::Error | TyKind::Infer(_) | TyKind::Param(_))
+                        });
+                        if all_concrete && !adt_substs.is_empty() {
+                            adt_substs.clone()
+                        } else {
+                            orig_substs.clone()
+                        }
+                    } else {
+                        orig_substs.clone()
+                    }
+                } else {
+                    orig_substs.clone()
+                }
+            } else {
+                orig_substs.clone()
+            }
+        } else {
+            Vec::new().into()
+        };
         c.ty = crate::mir::ty::Ty::new(
-            TyKind::FnDef(impl_method_def_id, Vec::new().into()),
+            TyKind::FnDef(impl_method_def_id, fixed_substs),
             crate::session::Span::DUMMY,
         );
         c.val = crate::mir::place::ConstVal::Uint(impl_method_def_id.as_u32() as u128);

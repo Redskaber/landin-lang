@@ -45588,3 +45588,28 @@ Work Log:
 裁剪点: L2 任务 (~80 LOC 文档变更), 单轮收敛. 跳过 §14.6 跨阶段验证 (无 src 变更).
 
 下一步 (MUV): Stage 163 — TD-INFERRED-TYPE-METHOD-MANGLING (修复推断类型上下文中的 method dispatch mangled name) 或 TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator 关联类型投影)
+
+---
+Task ID: stage163-td-inferred-type-method-mangling-partial
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 163 — TD-INFERRED-TYPE-METHOD-MANGLING 部分修复. v0.686.0 → v0.687.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 162 baseline (6087 tests, 0 failures)
+- 根因分析: `let r = none.or(some)` 无类型注解 → r 的 MIR 类型是 Adt(Option, [Error]) → FnDef substs 含 Error → mono name "Option_unwrap_error" → linker error
+- MUV-1: method_call_lower.rs Stage 163 fallback — 当 recv_ty 是 Infer/Error 时, 尝试 find_local_init_type + resolve_inherent_method
+- MUV-2: method_resolution.rs 添加 type_contains_param_pub helper
+- MUV-3: codegen/function.rs re_resolve — 添加 Error-type 分支 (name-based lookup) + substs fixup (从 receiver Adt substs 提取正确 substs)
+- MUV-4: 编写 tests/v0/stage163/plan/inferred_type_method_mangling_tests.rs — 4 tests (3 正 + 1 known limitation)
+- MUV-5 §3.2 全套验收通过: 898 lib + 5193 integration = 6091 tests, 0 failures, 12 ignored
+- 部分修复 — method_def_id 是 Some (Strategy 1 通过 Adt type name 查找), FnDef substs 仍含 Error. 完全修复需要 writeback 解析 Error substs.
+- v0.687.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 4/9/15):
+1. 部分修复 + 注册已知限制 (§1.0 原則 15) — 正确 > 妥协, 但完全修复需要 writeback 架构改造
+2. 添加 fallback 路径 (§1.0 原則 6) — 通解, 不针对单个方法
+3. 记录 workaround (§1.0 原則 4) — 显式说明类型注解 workaround
+
+裁剪点: L3 任务 (~120 LOC + 4 tests), 单轮收敛 (根因清晰但完全修复需 writeback 改造). 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 164 — TD-INFERRED-TYPE-METHOD-MANGLING 完全修复 (writeback 解析 Error substs) 或 TD-STDLIB-OPTION-METHODS (扩展 Option/Result 方法覆盖)

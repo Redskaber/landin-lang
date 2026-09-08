@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.686.0 (v0.17 Stage 162 — Process doc v8.0: TD 触发规则 + 依赖限制阻断 + 可疑代码模式审计; 6087 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.687.0 (v0.17 Stage 163 — TD-INFERRED-TYPE-METHOD-MANGLING partial fix; 6091 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.17 Stage 162 COMPLETE (Process doc v8.0)**. 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 162 重构 `docs/stage-committee-process.md` 至 v8.0 — §2.1.1 新增原则 14/15/16, §6.2 新增 §6.2.0 技术债触发时机与处理流程. |
+| **Status** | ✅ **v0.17 Stage 163 COMPLETE (TD-INFERRED-TYPE-METHOD-MANGLING partial fix)**. 6091 tests (898 lib + 5193 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 163 部分修复推断类型上下文中的 method dispatch — 添加 fallback resolution + substs fixup. 完全修复需要 writeback 解析 Error substs. Workaround: 添加类型注解. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v8.0 (11 design principles + 16 execution principles + TD trigger rules + dependency limit blocking + suspicious code pattern audit) |

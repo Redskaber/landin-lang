@@ -1451,3 +1451,13 @@ mod stage160_typeck_generic_arg_validation_tests;
 //                         with type annotations. New TDs registered. ===
 #[path = "v0/stage161/plan/stdlib_method_audit_tests.rs"]
 mod stage161_stdlib_method_audit_tests;
+
+// === Stage 162 (v0.17): Process doc v8.0 refactor — TD trigger rules +
+//                         dependency limit blocking + suspicious code pattern
+//                         audit. ===
+
+// === Stage 163 (v0.17): TD-INFERRED-TYPE-METHOD-MANGLING partial fix —
+//                         method dispatch for inferred types. Adds fallback
+//                         resolution and substs fixup in re_resolve. ===
+#[path = "v0/stage163/plan/inferred_type_method_mangling_tests.rs"]
+mod stage163_inferred_type_method_mangling_tests;

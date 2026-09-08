@@ -3,13 +3,38 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.686.0 (v0.17 Stage 162 — Process doc v8.0: TD trigger rules + dependency limit blocking; 6087 tests) |
+| **Current version** | v0.687.0 (v0.17 Stage 163 — TD-INFERRED-TYPE-METHOD-MANGLING partial fix; 6091 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5189 integration tests = 6087 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5193 integration tests = 6091 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 162 process doc v8.0); v0.17 codegen 阶段 — Stage 162 重构 stage-committee-process.md 至 v8.0 |
+| **Architecture** | Health 9.9/10 (stable — Stage 163 partial fix for inferred type method mangling); v0.17 codegen 阶段 — Stage 163 添加 fallback resolution + substs fixup |
+
+---
+
+## v0.687.0 — Stage 163 (v0.17) — TD-INFERRED-TYPE-METHOD-MANGLING 部分修复
+
+### Overview
+
+Stage 163 部分修复 TD-INFERRED-TYPE-METHOD-MANGLING — 当 receiver 类型是 Infer/Error 时, method dispatch 产生 Error mangled name → linker error. 添加 fallback resolution + substs fixup. 完全修复需要 writeback 解析 Error substs.
+
+### What was fixed
+
+1. **method_call_lower.rs**: Stage 163 fallback — 当 recv_ty 是 Infer/Error 时, 尝试 find_local_init_type + resolve_inherent_method.
+2. **method_resolution.rs**: 添加 type_contains_param_pub helper.
+3. **codegen/function.rs** re_resolve: 添加 Error-type 分支 (name-based lookup) + substs fixup (从 receiver Adt substs 提取正确 substs).
+
+### §3.2 acceptance
+
+- 6091 tests (898 lib + 5193 integration), 0 failures, 12 ignored (4 new stage163 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 已知限制
+
+- 完全修复需要 writeback 解析 Error substs in Adt types
+- Workaround: 添加类型注解 (`let r: Option<i32> = ...`)
 
 ---
 

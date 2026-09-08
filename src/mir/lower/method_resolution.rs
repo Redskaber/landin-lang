@@ -25,6 +25,27 @@ use crate::session::Span;
 
 use super::MirLowerCtxt;
 
+/// Stage 163: Check if a Ty (recursively) contains any Param.
+/// Used by method_call_lower.rs to decide whether to try MIR local
+/// type substitution for inferred method return types.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one type_contains_param function for
+/// all callers.
+pub(super) fn type_contains_param_pub(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param_pub(inner)
+        }
+        TyKind::Array(elem, _) => type_contains_param_pub(elem),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param_pub),
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param_pub),
+        TyKind::Closure(_, substs) => substs.iter().any(type_contains_param_pub),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_contains_param_pub),
+        _ => false,
+    }
+}
+
 /// Stage 18.284 (TD-INTRINSIC-OVERUSE Phase 2-A): Map a primitive `TyKind`
 /// to its source-language name as it would appear in `impl <name> { ... }`.
 ///

@@ -439,13 +439,59 @@ pub(super) fn lower_method_call_expr(
         if let HirExprKind::Path(path) = &receiver.kind {
             if let crate::hir::Res::Local(hir_id) = path.res {
                 if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                    // Stage 163 (TD-INFERRED-TYPE-METHOD-MANGLING): If the
+                    // init type contains Param (e.g., `Option<T>` from
+                    // `let r = none.or(some)` where or returns `Option<T>`),
+                    // try to substitute Param from the MIR local's type.
+                    // The MIR local may have been resolved by writeback to
+                    // a concrete type (e.g., `Option<i32>`), so we check
+                    // both the init type and the MIR local type.
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one path for all
+                    // generic types with Param — substitute from MIR local.
+                    // Per §1.0 原則 10 (唯一可信数据源): MIR local_decl.ty
+                    // is the authoritative type after writeback.
+                    let resolved_init_ty =
+                        if super::method_resolution::type_contains_param_pub(&init_ty) {
+                            // Try MIR local type first (may be concrete after writeback)
+                            let mir_ty = cx.mir.local(recv_local).ty.clone();
+                            if !super::method_resolution::type_contains_param_pub(&mir_ty)
+                                && !matches!(
+                                    mir_ty.kind,
+                                    crate::mir::ty::TyKind::Infer(_)
+                                        | crate::mir::ty::TyKind::Error
+                                )
+                            {
+                                mir_ty
+                            } else {
+                                // MIR local is also Infer/Error — try substituting
+                                // from the init expression's context. If the init
+                                // is a MethodCall, we know the method's return type
+                                // has Param, but we can try to infer the concrete
+                                // type from the receiver of the init method call.
+                                // For now, use the init_ty as-is (with Param) —
+                                // resolve_trait_method handles Param-typed receivers.
+                                init_ty.clone()
+                            }
+                        } else {
+                            init_ty.clone()
+                        };
                     if let Some(did) = resolve_trait_method(
                         hir,
                         cx.interner,
-                        &init_ty,
+                        &resolved_init_ty,
                         &method.name,
                         cx.owner_def_id,
                     ) {
+                        return Some(did);
+                    }
+                    // Stage 163: If trait method resolution failed with the
+                    // init type, also try resolve_inherent_method with the
+                    // resolved type. This catches Option::unwrap which is in
+                    // an inherent impl (not a trait impl).
+                    if let Some(did) =
+                        resolve_inherent_method(hir, cx.interner, &resolved_init_ty, &method.name)
+                    {
                         return Some(did);
                     }
                 }
@@ -705,8 +751,56 @@ pub(super) fn lower_method_call_expr(
         );
     } else {
         // Stage 33.1: Vec::push/get now in prelude impl. All intrinsic dispatch removed.
+        // Stage 163 (TD-INFERRED-TYPE-METHOD-MANGLING): When recv_ty is Infer,
+        // try one more resolution strategy using find_local_init_type.
+        // This catches `let r = none.or(some); r.unwrap()` where `r` is Infer
+        // but the init type (from or's return type) is Option<T> with Param.
+        // We substitute Param from the MIR local type if writeback resolved it,
+        // then try resolve_inherent_method with the substituted type.
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
+
+        // Stage 163: Try HIR-traced init type resolution before giving up.
+        // Check for both Infer AND Error — when writeback fails to resolve
+        // the type, it stays as Infer or becomes Error.
+        if matches!(
+            &recv_ty.kind,
+            crate::mir::ty::TyKind::Infer(_) | crate::mir::ty::TyKind::Error
+        ) {
+            if let Some(hir) = cx.hir {
+                if let HirExprKind::Path(path) = &receiver.kind {
+                    if let crate::hir::Res::Local(hir_id) = path.res {
+                        if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                            // Try resolve_inherent_method with init type.
+                            if let Some(did) =
+                                resolve_inherent_method(hir, cx.interner, &init_ty, &method.name)
+                            {
+                                // Found it! Use the real FnDef type.
+                                let method_substs = infer_method_substs(cx, did, &init_ty);
+                                cx.terminate_kind_and_goto(
+                                    TerminatorKind::Call {
+                                        func: Operand::Constant(Const {
+                                            ty: Ty::new(
+                                                TyKind::FnDef(did, method_substs.into()),
+                                                expr.span,
+                                            ),
+                                            val: ConstVal::Uint(did.as_u32() as u128),
+                                        }),
+                                        args: arg_operands,
+                                        destination: Place::local(dest, expr.span),
+                                        target: Some(cont),
+                                        dyn_trait_call: None,
+                                    },
+                                    cont,
+                                );
+                                return dest;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let is_known_unsupported = matches!(
             &recv_ty.kind,
             crate::mir::ty::TyKind::Error | crate::mir::ty::TyKind::Infer(_)
