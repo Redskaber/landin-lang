@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.681.0 (v0.16 Stage 157 — TD-DEFAULT-BODY-SELF-TYPE: 修复 trait default body 方法 `&self` 参数类型为 Error → i32 fallback → Call parameter type mismatch; 6046 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.682.0 (v0.16 Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY: 修复 dyn dispatch 调用 default body 方法时 vtable 缺少 entry; 6056 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 157 COMPLETE (TD-DEFAULT-BODY-SELF-TYPE)**. 6046 tests (898 lib + 5148 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 157 修复 trait default body 方法 `&self` 参数类型 — `resolve_default_body_self_type` 从 trait 的第一个 impl 推断 self_ty. 静态调用 default body 方法从 LLVM verification error → 正确返回值. |
+| **Status** | ✅ **v0.16 Stage 158 COMPLETE (TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY)**. 6056 tests (898 lib + 5158 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 158 修复 dyn dispatch vtable 缺少 default body entry — vtable 构建后遍历 trait items 添加 default body 方法 entry. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

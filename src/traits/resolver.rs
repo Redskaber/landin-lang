@@ -628,6 +628,76 @@ impl TraitResolver {
                             }
                         }
 
+                        // Stage 158 (TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY):
+                        // After building vtable entries from impl items,
+                        // also add entries for trait default body methods
+                        // that the impl didn't override. Without this, dyn
+                        // dispatch can't find default body methods in the
+                        // vtable → vtable is empty → direct call with wrong
+                        // arg type (fat pointer vs thin pointer).
+                        //
+                        // Per §1.0 原則 6 (通解 > 特解): one loop for all
+                        // trait default body methods.
+                        // Per §1.0 原則 9 (正确 > 妥协): add default body
+                        // entries to vtable, don't leave vtable empty.
+                        // Per §1.0 原則 10 (唯一可信数据源): HIR trait
+                        // declaration is the authoritative method list.
+                        if let Some(tn) = trait_name {
+                            // Stage 158: Clone trait_str to avoid borrow conflict
+                            // (interner.try_resolve returns &str which borrows
+                            // interner; interner.get_or_intern needs &mut).
+                            if let Some(trait_str) =
+                                interner.try_resolve(&tn).map(|s| s.to_string())
+                            {
+                                // Find the trait's DefId via trait_by_name.
+                                if let Some(&trait_def_id) = self.trait_by_name.get(&tn) {
+                                    // Look up the trait's HIR owner.
+                                    let trait_owner = hir.owners.iter().find_map(|(did, owner)| {
+                                        if *did == trait_def_id {
+                                            Some(owner)
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                    if let Some(crate::hir::OwnerNode::Item(
+                                        crate::hir::HirItem::Trait(t),
+                                    )) = trait_owner
+                                    {
+                                        for trait_item in &t.items {
+                                            if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                                                // Only add default body methods (body is Some).
+                                                if f.body.is_none() {
+                                                    continue;
+                                                }
+                                                // Check if impl already overrides this method.
+                                                let method_name = f.ident.name;
+                                                if method_names.contains(&method_name) {
+                                                    continue; // Already in vtable.
+                                                }
+                                                // Add default body method to vtable.
+                                                let method_str = interner
+                                                    .try_resolve(&method_name)
+                                                    .unwrap_or("fn");
+                                                // Default body methods use the mangled name:
+                                                // landin_{trait}_default_{method}
+                                                let default_fn_name = format!(
+                                                    "landin_{}_default_{}",
+                                                    trait_str, method_str
+                                                );
+                                                let fn_name_spur =
+                                                    interner.get_or_intern(default_fn_name);
+                                                vtable_entries.push(VtableEntry {
+                                                    method_name,
+                                                    fn_name: fn_name_spur,
+                                                });
+                                                method_names.push(method_name);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Stage 25.1 (v0.7 TD-SOLVER-WHERE-CLAUSE-MVP): Collect
                         // where clauses from the impl's generics.
                         //

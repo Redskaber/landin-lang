@@ -1426,3 +1426,9 @@ mod stage156_trait_ret_generic_enum_substs_tests;
 //                         parameter type mismatch). ===
 #[path = "v0/stage157/plan/default_body_self_type_tests.rs"]
 mod stage157_default_body_self_type_tests;
+
+// === Stage 158 (v0.16): TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY — vtable now
+//                         includes default body method entries. Fixes dyn
+//                         dispatch of default body methods. ===
+#[path = "v0/stage158/plan/vtable_default_body_entry_tests.rs"]
+mod stage158_vtable_default_body_entry_tests;

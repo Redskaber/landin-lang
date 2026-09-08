@@ -3,13 +3,37 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.681.0 (v0.16 Stage 157 — TD-DEFAULT-BODY-SELF-TYPE: 修复 trait default body 方法 `&self` 参数类型; 6046 tests) |
+| **Current version** | v0.682.0 (v0.16 Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY: 修复 dyn dispatch vtable 缺少 default body entry; 6056 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5148 integration tests = 6046 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5158 integration tests = 6056 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 157 修复 default body `&self` 类型); v0.16 codegen 阶段 — Stage 157 `resolve_default_body_self_type` 从 trait 第一个 impl 推断 self_ty |
+| **Architecture** | Health 9.9/10 (stable — Stage 158 修复 dyn dispatch vtable default body entry); v0.16 codegen 阶段 — Stage 158 vtable 构建后遍历 trait items 添加 default body 方法 entry |
+
+---
+
+## v0.682.0 — Stage 158 (v0.16) — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY 完整修复
+
+### Overview
+
+Stage 158 修复 dyn dispatch 调用 trait default body 方法时 vtable 缺少 entry 的 bug. 根因: vtable 构建只遍历 impl items, 不遍历 trait items 的 default body.
+
+### What was fixed
+
+1. **traits/resolver.rs**: vtable_entries 构建完成后, 遍历 trait items, 对有 default body 但 impl 没有覆盖的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`).
+2. 验证 TD-DEFAULT-BODY-FIELD-ACCESS 已被 Stage 157 间接修复.
+
+### §3.2 acceptance
+
+- 6056 tests (898 lib + 5158 integration), 0 failures, 12 ignored (10 new stage158 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 验证结果
+
+- dyn dispatch `use_getter(&p)` 调用 `g.get_x()` (default body): 修复前 LLVM verification error, 修复后返回 42 (正确)
+- dyn dispatch 字段访问: 返回 99 (正确)
 
 ---
 

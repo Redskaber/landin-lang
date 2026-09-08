@@ -45474,3 +45474,27 @@ Work Log:
 裁剪点: L2 任务 (~80 LOC + 8 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY (修复 dyn dispatch vtable 缺 default body entry) 或 TD-DEFAULT-BODY-FIELD-ACCESS (修复 default body 字段访问)
+
+---
+Task ID: stage158-td-vtable-default-body-missing-entry-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY 完整修复. v0.681.0 → v0.682.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 157 baseline (6046 tests, 0 failures). 环境: LLVM 22.1.8 + Rust 1.98.1. 提取上传包 v0.681.0 替换旧版 v0.67.0
+- 根因分析: `traits/resolver.rs` vtable 构建只遍历 impl items, 不遍历 trait items 的 default body. 当 impl 没有覆盖 default body 方法时, vtable 为空 → dyn dispatch 的 matched_call=None → 静态调用 → fat pointer 传入 thin pointer 参数 → Call parameter type mismatch
+- MUV-1: 在 `traits/resolver.rs` vtable_entries 构建完成后, 遍历 trait items, 对有 default body 但 impl 没有覆盖的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`)
+- MUV-2: 验证 TD-DEFAULT-BODY-FIELD-ACCESS 已被 Stage 157 间接修复 (字段访问返回正确值)
+- MUV-3: 编写 tests/v0/stage158/plan/vtable_default_body_entry_tests.rs — 10 tests (4 正 + 2 回归 + 4 边界)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5158 integration = 6056 tests, 0 failures, 12 ignored
+- 验证: dyn dispatch `use_getter(&p)` 调用 `g.get_x()` (default body) 从 LLVM verification error → 返回 42 (正确)
+- v0.682.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 遍历 trait items 添加 default body entry (§1.0 原則 9) — 不留空 vtable
+2. 使用 `landin_{trait}_default_{method}` 命名 (§1.0 原則 6) — 与 populate_trait_default_fn_sigs 一致
+3. clone trait_str 避免 borrow conflict (§1.0 原則 10)
+
+裁剪点: L2 任务 (~50 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 159 — TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证) 或 TD-STDLIB-ITERATOR (添加 Iterator trait + adapters 到 prelude)
