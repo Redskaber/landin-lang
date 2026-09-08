@@ -10,7 +10,43 @@
 
 use crate::codegen::mir_translation::layouts::adt_layout_to_emit_type;
 use crate::codegen::{mir_type_to_emit_type, EmitType};
+use crate::mir::body::AdtLayout;
 use crate::mir::ty::ConstVal;
+
+/// Stage 152 (TD-OPTION-AND-THEN-I32-MISMATCH fix): Substitute Param types
+/// in an AdtLayout with concrete substs. This handles prelude generic
+/// functions where the crate-level AdtLayout contains `Param(0)` (from
+/// `Option<T>`) but the function's concrete substs are `[i64]`.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one substitute function for both Struct
+/// and Enum layouts.
+/// Per §1.0 原則 10 (唯一可信数据源): substs from the Adt type are the
+/// authoritative source of concrete type arguments.
+fn substitute_adt_layout(layout: &AdtLayout, substs: &[crate::mir::ty::Ty]) -> AdtLayout {
+    match layout {
+        AdtLayout::Struct { field_tys } => AdtLayout::Struct {
+            field_tys: field_tys
+                .iter()
+                .map(|t| crate::mir::substitute::substitute(t, substs))
+                .collect(),
+        },
+        AdtLayout::Enum {
+            discriminant_ty,
+            variant_payloads,
+        } => AdtLayout::Enum {
+            discriminant_ty: discriminant_ty.clone(),
+            variant_payloads: variant_payloads
+                .iter()
+                .map(|payload| {
+                    payload
+                        .iter()
+                        .map(|t| crate::mir::substitute::substitute(t, substs))
+                        .collect()
+                })
+                .collect(),
+        },
+    }
+}
 
 /// Stage 145 (TD-CODEGEN-CAST-UNSIGNED): Determine whether a MIR `Ty` is a
 /// **signed** integer type.
@@ -359,8 +395,30 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
                 return adt_layout_to_emit_type(mono_layout, layouts, mono_layouts);
             }
             // Fall back to the legacy AdtLayouts map (non-generic types).
+            // Stage 152 (TD-OPTION-AND-THEN-I32-MISMATCH fix): If substs
+            // are non-empty and concrete (no Param), substitute the layout's
+            // variant_payloads/field_tys with the concrete substs before
+            // converting to EmitType. This handles prelude generic functions
+            // (e.g., Option::and_then<U>) where the function body uses the
+            // crate-level AdtLayout (with Param) but the function's substs
+            // are concrete (e.g., [i64] for Option<i64>).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one substitute path for all
+            // generic enums/structs with concrete substs.
+            // Per §1.0 原則 10 (唯一可信数据源): substs from the Adt type
+            // are the authoritative source of concrete type arguments.
             match layouts.get(def_id) {
-                Some(layout) => adt_layout_to_emit_type(layout, layouts, mono_layouts),
+                Some(layout) => {
+                    if !substs.is_empty()
+                        && substs.iter().all(|t| !matches!(t.kind, TyKind::Param(_)))
+                    {
+                        // Substitute the layout's types with concrete substs.
+                        let substituted_layout = substitute_adt_layout(layout, substs);
+                        adt_layout_to_emit_type(&substituted_layout, layouts, mono_layouts)
+                    } else {
+                        adt_layout_to_emit_type(layout, layouts, mono_layouts)
+                    }
+                }
                 None => EmitType::I32, // test-context fallback
             }
         }

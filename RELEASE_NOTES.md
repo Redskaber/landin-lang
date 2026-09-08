@@ -3,13 +3,31 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.675.0 (v0.15 Stage 151 — TD-TRAIT-METHOD-RET-MATCH-GEP: 修复泛型枚举在 if/else 中 insertvalue storage type; 6002 tests) |
+| **Current version** | v0.676.0 (v0.15 Stage 152 — TD-OPTION-AND-THEN-I32-MISMATCH: 修复泛型枚举 AdtLayout Param 替换; 6002 tests) |
 | **Date** | 2026-09-07 |
 | **Test count** | 898 lib tests + 5104 integration tests = 6002 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 151 修复泛型枚举 if/else insertvalue storage type); v0.15 codegen 阶段 — Stage 151 修复 build_adt_layout + adt_layout_to_emit_type 对泛型枚举 payload 的 Param 类型处理 |
+| **Architecture** | Health 9.9/10 (stable — Stage 152 修复泛型枚举 AdtLayout Param 替换); v0.15 codegen 阶段 — Stage 152 新增 substitute_adt_layout, 恢复 stage40 i32 测试 |
+
+---
+
+## v0.676.0 — Stage 152 (v0.15) — TD-OPTION-AND-THEN-I32-MISMATCH 完整修复
+
+### Overview
+
+Stage 152 修复 Stage 151 引入的 I64 fallback 导致 prelude 泛型方法在 i32 上类型不匹配.
+
+### What was fixed
+
+1. Revert Stage 151 I64 fallback — 恢复标准 mir_type_to_emit_type_with_layouts_and_mono
+2. 新增 `substitute_adt_layout` — 在 `mir_type_to_emit_type_with_layouts_and_mono` 中, 当 Adt substs 具体时, 替换 AdtLayout variant_payloads 的 Param → 具体类型
+3. stage40 测试恢复到原始 i32 版本
+
+### §3.2 acceptance
+
+- 6002 tests (898 lib + 5104 integration), 0 failures, 12 ignored (0 regressions)
 
 ---
 

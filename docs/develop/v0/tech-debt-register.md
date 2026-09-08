@@ -466,4 +466,10 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-OPTION-AND-THEN-I32-MISMATCH | prelude Option/Result 的 map/and_then 方法在 i32 类型上返回 {i32,i64} 但调用者期望 {i32,i32} | prelude 泛型方法 body 的 storage type 使用 I64 fallback (Stage 151) 但调用者使用 i32 类型 → 类型不匹配 | 修复 prelude 泛型方法的 typeck writeback 以正确替换 Param → 具体类型 (而非 I64 fallback) | P3, v0.16+ |
+| TD-OPTION-AND-THEN-I32-MISMATCH | ✅ Stage 152 修复 | prelude Option/Result 的 map/and_then 方法在 i32 类型上返回 {i32,i64} 但调用者期望 {i32,i32} | Revert Stage 151 I64 fallback + 新增 substitute_adt_layout 替换 AdtLayout variant_payloads 的 Param → 具体类型. stage40 测试恢复 i32. | ✅ |
+
+### P3 — v0.15+ Stage 152 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-CALL-DEST-TYPE-SUBSTS | call_dest_type 使用 fn_sigs.get(&did).output (带 Param) 而非特化后的签名 → loc 类型错误 | call_dest_type 未特化 sig.output with substs | 在 call_dest_type 中, 当函数是特化的 (有 substs) 时, 用 substitute(sig.output, substs) 替换 | P3, v0.16+ |

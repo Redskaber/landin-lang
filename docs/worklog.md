@@ -45313,3 +45313,25 @@ Work Log:
 裁剪点: L3 任务, 单轮收敛 (根因清晰: build_adt_layout + adt_layout_to_emit_type 两处缺失泛型处理)
 
 下一步 (MUV): Stage 152 — TD-STDLIB-ITERATOR (添加 Iterator trait 到 prelude) 或 TD-OPTION-AND-THEN-I32-MISMATCH (修复 prelude i32 类型不匹配)
+
+---
+Task ID: stage152-td-option-and-then-i32-mismatch-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 152 — TD-OPTION-AND-THEN-I32-MISMATCH 完整修复. v0.675.0 → v0.676.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 151 baseline (6002 tests, 0 failures)
+- 根因: Stage 151 的 I64 fallback 对 i32 payload 错误 → {i32,i64} 而非 {i32,i32}
+- MUV-1: Revert Stage 151 I64 fallback — 恢复标准 mir_type_to_emit_type_with_layouts_and_mono
+- MUV-2: 新增 substitute_adt_layout — 在 mir_type_to_emit_type_with_layouts_and_mono 中, 当 Adt substs 具体时, 替换 AdtLayout 的 variant_payloads 中的 Param
+- MUV-3: stage40 测试恢复到原始 i32 版本
+- MUV-4 §3.2 全套验收通过: 898 lib + 5104 integration = 6002 tests, 0 failures
+- v0.676.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 选 substitute_adt_layout 不选 I64 fallback — §1.0 原則 6 (通解: 正确替换)
+2. 选在 types.rs 中替换 不选在 layouts.rs 中替换 — §1.0 原則 10 (substs from Adt type)
+
+裁剪点: L3 任务, 单轮收敛
+
+下一步 (MUV): Stage 153 — TD-CALL-DEST-TYPE-SUBSTS (修复 call_dest_type 使用特化签名) 或 TD-STDLIB-ITERATOR
