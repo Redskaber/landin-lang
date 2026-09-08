@@ -839,7 +839,88 @@ fn resolve_self_param_type_for_sig(
     None
 }
 
-/// Like `compile`, but additionally validates that a `fn main()` exists.
+/// Stage 157 (TD-VTABLE-MISSING-DEFAULT-BODY): Resolve the `self` param type
+/// for a trait default body method.
+///
+/// Trait default body methods are declared in the trait (not in an impl), so
+/// `method_to_impl_index` doesn't have them. This function:
+/// 1. Finds the trait that declares the method (by matching DefId).
+/// 2. Finds the first impl of that trait.
+/// 3. Uses the impl's self_ty as the self param type (with Ref wrapping for
+///    `&self`/`&mut self`).
+///
+/// Returns `None` if the method is not a trait default body method, or if the
+/// trait has no impls.
+///
+/// Per §1.0 原則 6 (通解 > 特解): one resolution path for all trait default
+/// body methods.
+/// Per §1.0 原則 9 (正确 > 妥协): resolve from impl self_ty rather than
+/// returning Error.
+/// Per §1.0 原則 10 (唯一可信数据源): HIR is the authoritative source.
+fn resolve_default_body_self_type(
+    hir: &HirCrate,
+    method_def_id: crate::hir::DefId,
+    self_kind: Option<crate::ast::SelfKind>,
+) -> Option<crate::mir::ty::Ty> {
+    // Find the trait that declares this method.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            // Check if this trait has a method with the given DefId.
+            let has_method = t.items.iter().any(|item| {
+                if let crate::hir::HirTraitItem::Fn(f) = item {
+                    f.hir_id.owner == method_def_id && f.body.is_some()
+                } else {
+                    false
+                }
+            });
+            if !has_method {
+                continue;
+            }
+            // Found the trait — find the first impl.
+            let first_impl = hir.owners.iter().find_map(|(_, o)| {
+                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = o {
+                    if impl_block
+                        .of_trait
+                        .as_ref()
+                        .and_then(|p| p.segments.last().map(|s| s.ident.name))
+                        == Some(t.ident.name)
+                    {
+                        return Some(impl_block);
+                    }
+                }
+                None
+            });
+            // Use the first impl's self_ty.
+            if let Some(impl_block) = first_impl {
+                let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                    &impl_block.self_ty,
+                    Some(hir),
+                );
+                return match self_kind {
+                    Some(crate::ast::SelfKind::Ref(mutability)) => {
+                        let mir_mut = match mutability {
+                            crate::ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                            crate::ast::Mutability::Immutable => {
+                                crate::mir::ty::Mutability::Immutable
+                            }
+                        };
+                        Some(crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Ref(
+                                crate::mir::ty::Region::Erased,
+                                mir_mut,
+                                Box::new(adt_ty),
+                            ),
+                            crate::session::Span::DUMMY,
+                        ))
+                    }
+                    _ => Some(adt_ty),
+                };
+            }
+            return None;
+        }
+    }
+    None
+}
 /// Used by the CLI (`--compile`/`--run`/`--emit-bin`) where an entry point
 /// is mandatory. Test contexts use `compile` (no main requirement).
 ///

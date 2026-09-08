@@ -45449,3 +45449,28 @@ Work Log:
 裁剪点: L2 任务 (~70 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 157 — TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证)
+
+---
+Task ID: stage157-td-default-body-self-type-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 157 — TD-DEFAULT-BODY-SELF-TYPE 完整修复. v0.680.0 → v0.681.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 156 baseline (6038 tests, 0 failures)
+- 根因分析: `compile_inner.rs:194-218` 构建 fn_sig_table 时, 对 `&self` 参数调用 `resolve_self_param_type_for_sig`. 该函数从 `method_to_impl_index` 查找方法的 owner impl. trait default body 方法在 trait 声明中 (不在 impl 中), 所以不在 `method_to_impl_index` 中 → 返回 None → fallback 到 Error → codegen i32 fallback → Call parameter type mismatch
+- MUV-1: 在 `driver/mod.rs` 添加 `resolve_default_body_self_type` 函数: 遍历 HIR owners 查找声明该方法的 trait, 找到第一个 impl, 用 impl 的 self_ty 作为 `&self` 类型
+- MUV-2: 在 `compile_inner.rs:194-218` 的 fallback 链中添加 `.or_else(|| resolve_default_body_self_type(...))`
+- MUV-3: 编写 tests/v0/stage157/plan/default_body_self_type_tests.rs — 8 tests (4 正 + 2 回归 + 2 边界)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5148 integration = 6046 tests, 0 failures, 12 ignored
+- 验证: `e.greet()` (default body) 从 LLVM verification error → 返回 42 (正确); `e.greet() + e.name()` → 49 (42+7)
+- 发现新 TD: TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY (dyn dispatch vtable 缺 default body entry) + TD-DEFAULT-BODY-FIELD-ACCESS (default body 字段访问返回错误值)
+- v0.681.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 查找 trait 的第一个 impl (§1.0 原則 9) — 不返回 Error, 从 impl 推断正确类型
+2. 不修改 resolve_self_param_type_for_sig (§1.0 原則 6) — 保持现有逻辑, 添加 fallback 层
+3. 使用 lower_hir_ty_to_mir_ty_with_hir (§1.0 原則 10) — HIR 是类型定义权威源
+
+裁剪点: L2 任务 (~80 LOC + 8 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 158 — TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY (修复 dyn dispatch vtable 缺 default body entry) 或 TD-DEFAULT-BODY-FIELD-ACCESS (修复 default body 字段访问)

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.680.0 (v0.16 Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING: 修复 trait 方法体 enum variant 构造空 substs → Param fallback → i64 payload 截断; 6038 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.681.0 (v0.16 Stage 157 — TD-DEFAULT-BODY-SELF-TYPE: 修复 trait default body 方法 `&self` 参数类型为 Error → i32 fallback → Call parameter type mismatch; 6046 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 156 COMPLETE (TD-OPTION-NONE-GENERIC-SUBSTS-MISSING)**. 6038 tests (898 lib + 5140 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 156 修复 trait 方法体 enum variant 构造空 substs — `infer_substs_from_return_type` 从函数返回类型推断 concrete substs. Iterator sum 从 garbage value → 6 (正确). |
+| **Status** | ✅ **v0.16 Stage 157 COMPLETE (TD-DEFAULT-BODY-SELF-TYPE)**. 6046 tests (898 lib + 5148 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 157 修复 trait default body 方法 `&self` 参数类型 — `resolve_default_body_self_type` 从 trait 的第一个 impl 推断 self_ty. 静态调用 default body 方法从 LLVM verification error → 正确返回值. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

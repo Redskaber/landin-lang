@@ -3,13 +3,38 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.680.0 (v0.16 Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING: 修复 trait 方法体 enum variant 构造空 substs; 6038 tests) |
+| **Current version** | v0.681.0 (v0.16 Stage 157 — TD-DEFAULT-BODY-SELF-TYPE: 修复 trait default body 方法 `&self` 参数类型; 6046 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5140 integration tests = 6038 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5148 integration tests = 6046 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 156 修复 trait 方法体 enum variant substs); v0.16 codegen 阶段 — Stage 156 `infer_substs_from_return_type` 从函数返回类型推断 concrete substs |
+| **Architecture** | Health 9.9/10 (stable — Stage 157 修复 default body `&self` 类型); v0.16 codegen 阶段 — Stage 157 `resolve_default_body_self_type` 从 trait 第一个 impl 推断 self_ty |
+
+---
+
+## v0.681.0 — Stage 157 (v0.16) — TD-DEFAULT-BODY-SELF-TYPE 完整修复
+
+### Overview
+
+Stage 157 修复 trait default body 方法的 `&self` 参数类型解析为 `Error` 而非 impl 的 self_ty. 导致 codegen 将 `&self` 当作 `i32` → Call parameter type mismatch (`i32` vs `ptr`).
+
+### What was fixed
+
+1. **driver/mod.rs**: 添加 `resolve_default_body_self_type` 函数. 遍历 HIR owners 查找声明该方法的 trait, 找到第一个 impl, 用 impl 的 self_ty 作为 `&self` 类型.
+2. **compile_inner.rs**: 在 `resolve_self_param_type_for_sig` 返回 `None` 时, fallback 到 `resolve_default_body_self_type`.
+3. **driver_codegen_prep.rs**: `populate_trait_default_fn_sigs` 使用 `lower_hir_ty_to_mir_ty_with_hir` (with HIR context) 替代 `lower_hir_ty_to_mir_ty` (without HIR).
+
+### §3.2 acceptance
+
+- 6046 tests (898 lib + 5148 integration), 0 failures, 12 ignored (8 new stage157 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 新发现的 TD
+
+- **TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY** (P3, v0.16+): dyn dispatch 调用 default body 方法时, vtable 缺少 entry
+- **TD-DEFAULT-BODY-FIELD-ACCESS** (P3, v0.16+): default body 方法内部访问 `self.x` 等字段时返回错误值
 
 ---
 

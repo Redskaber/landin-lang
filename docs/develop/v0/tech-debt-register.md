@@ -494,3 +494,11 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
 | TD-OPTION-NONE-GENERIC-SUBSTS-MISSING | ✅ Stage 156 修复 | trait 方法体内部 `Option::None` 构造使用空 substs → Param fallback → `{i32,i32}` 而非 `{i32,i64}`. 导致 trait 方法返回 `Option<i64>` 的 None 分支 payload 类型错误. | `lower_path_expr` 添加 `infer_substs_from_return_type` helper: 当 `lower_path_generic_args` 返回空 substs 时, 从当前函数的返回类型 (`fn_sigs[owner_def_id].output`) 推断 concrete substs. 如果返回类型是 `Adt(enum_def_id, concrete_substs)` 且 def_id 匹配, 使用 concrete substs. 否则回退到空 substs (保留旧行为 — writeback 的 let-binding 路径处理). 10 tests. | ✅ |
+
+### P3 — v0.16+ Stage 157 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-DEFAULT-BODY-SELF-TYPE | ✅ Stage 157 修复 | trait default body 方法的 `&self` 参数类型解析为 `Error` (因为方法在 trait 声明中, 不在 `method_to_impl_index` 中). 导致 codegen 将 `&self` 当作 `i32` → Call parameter type mismatch (`i32` vs `ptr`). | `compile_inner.rs` 添加 `resolve_default_body_self_type` fallback: 当 `resolve_self_param_type_for_sig` 返回 `None` 时, 查找声明该方法的 trait, 找到第一个 impl, 用 impl 的 self_ty 作为 `&self` 类型. 8 tests. | ✅ |
+| TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY | dyn dispatch 调用 default body 方法时, vtable 缺少 default body 方法的 entry | vtable 构建只遍历 impl items, 不遍历 trait items 的 default body. 当 dyn dispatch 尝试调用 default body 方法时, vtable slot index 越界或指向错误方法. | 在 vtable 构建中, 遍历 trait items, 对有 default body 的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`). | P3, v0.16+ |
+| TD-DEFAULT-BODY-FIELD-ACCESS | default body 方法内部访问 `self.x` 等字段时返回错误值 (1 而非实际字段值) | default body 方法的 `self` 参数类型解析正确后, 字段访问的 GEP 仍然使用错误的 layout (可能是因为 self_ty 使用了 first impl 的类型, 但字段 layout 不匹配) | 调查 default body 方法的 self 字段访问 GEP — 可能需要从 impl 的 self_ty 构建正确的 AdtLayout. | P3, v0.16+ |

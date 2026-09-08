@@ -1419,3 +1419,10 @@ mod stage155_match_scrut_ret_copy_type_tests;
 //                         garbage value. ===
 #[path = "v0/stage156/plan/trait_ret_generic_enum_substs_tests.rs"]
 mod stage156_trait_ret_generic_enum_substs_tests;
+
+// === Stage 157 (v0.16): TD-DEFAULT-BODY-SELF-TYPE — trait default body method
+//                         `&self` parameter type now resolves from the first
+//                         impl's self_ty (was Error → i32 fallback → call
+//                         parameter type mismatch). ===
+#[path = "v0/stage157/plan/default_body_self_type_tests.rs"]
+mod stage157_default_body_self_type_tests;

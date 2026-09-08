@@ -457,8 +457,25 @@ pub(super) fn populate_trait_default_fn_sigs(
                         continue; // Already registered (e.g., overridden in an impl).
                     }
                     // Use the first impl's self_ty as the specialization type.
+                    // Stage 157 (TD-VTABLE-MISSING-DEFAULT-BODY): Use
+                    // `lower_hir_ty_to_mir_ty_with_hir` (with HIR context)
+                    // instead of `lower_hir_ty_to_mir_ty` (without HIR).
+                    // Without HIR, type paths like `English` can't be resolved
+                    // → returns `Error` → codegen treats `&self` as `i32`
+                    // (Error fallback) → Call parameter type mismatch
+                    // (`i32` vs `ptr`).
+                    //
+                    // Per §1.0 原則 6 (通解 > 特解): one HIR-aware lowering
+                    // path for all self_ty types.
+                    // Per §1.0 原則 9 (正确 > 妥协): pass HIR so types resolve
+                    // correctly, don't fallback to Error.
+                    // Per §1.0 原則 10 (唯一可信数据源): HIR is the
+                    // authoritative type definition source.
                     let self_ty_opt = impls.first().map(|impl_block| {
-                        crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty)
+                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                            &impl_block.self_ty,
+                            Some(hir),
+                        )
                     });
                     let inputs: Vec<crate::mir::ty::Ty> = f
                         .sig

@@ -199,6 +199,24 @@ pub(crate) fn compile_inner(
                             p.self_kind,
                             &method_to_impl_index,
                         )
+                        .or_else(|| {
+                            // Stage 157 (TD-VTABLE-MISSING-DEFAULT-BODY):
+                            // For trait default body methods, the method is
+                            // declared in the trait (not in an impl), so
+                            // `method_to_impl_index` doesn't have it.
+                            // `resolve_self_param_type_for_sig` returns None.
+                            //
+                            // Fallback: find the trait that declares this method,
+                            // then find the first impl of that trait, and use
+                            // the impl's self_ty. This matches the logic in
+                            // `populate_trait_default_fn_sigs`.
+                            //
+                            // Per §1.0 原則 6 (通解 > 特解): one fallback path
+                            // for all trait default body methods.
+                            // Per §1.0 原則 9 (正确 > 妥协): resolve from impl
+                            // self_ty rather than returning Error.
+                            resolve_default_body_self_type(&hir, *def_id, p.self_kind)
+                        })
                         .unwrap_or_else(|| {
                             // Fallback: if self_ty resolution fails, try p.ty
                             if let Some(ty) = &p.ty {
