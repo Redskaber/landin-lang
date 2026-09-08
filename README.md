@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.683.0 (v0.16 Stage 159 — TD-STDLIB-ITERATOR: Iterator trait added to prelude; 6066 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.684.0 (v0.16 Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION: 修复 typeck 验证泛型调用实参类型; 6074 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 159 COMPLETE (TD-STDLIB-ITERATOR)**. 6066 tests (898 lib + 5168 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 159 添加 Iterator trait 到 prelude — 用户无需每次自定义. 移除 5 个测试文件中的用户定义 trait Iterator 块. |
+| **Status** | ✅ **v0.16 Stage 160 COMPLETE (TD-TYPECK-GENERIC-ARG-VALIDATION)**. 6074 tests (898 lib + 5176 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 160 修复 typeck 验证泛型调用实参类型 — 特化 sig.inputs 后 unify, `identity::<i64>(42i32)` 现在报 type error. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |

@@ -1048,7 +1048,10 @@ impl UnificationTable {
     // ================================================================
 
     pub fn bind_ty_var(&mut self, vid: TyVid, ty: Ty) {
-        self.ty_vars[vid.0 as usize] = Some(ty);
+        // Stage 160 (TD-TYPECK-GENERIC-ARG-VALIDATION): Bounds-safe access.
+        if (vid.0 as usize) < self.ty_vars.len() {
+            self.ty_vars[vid.0 as usize] = Some(ty);
+        }
     }
 
     pub fn bind_int_var(&mut self, vid: IntVid, i: IntTy) {

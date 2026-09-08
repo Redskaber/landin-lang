@@ -3,13 +3,37 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.683.0 (v0.16 Stage 159 — TD-STDLIB-ITERATOR: Iterator trait added to prelude; 6066 tests) |
+| **Current version** | v0.684.0 (v0.16 Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION: 修复 typeck 验证泛型调用实参类型; 6074 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5168 integration tests = 6066 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5176 integration tests = 6074 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 159 Iterator trait added to prelude); v0.16 codegen 阶段 — Stage 159 `src/stdlib/prelude.rs` 添加 Iterator trait |
+| **Architecture** | Health 9.9/10 (stable — Stage 160 修复 typeck 泛型实参验证); v0.16 codegen 阶段 — Stage 160 特化 sig.inputs 后 unify |
+
+---
+
+## v0.684.0 — Stage 160 (v0.16) — TD-TYPECK-GENERIC-ARG-VALIDATION 完整修复
+
+### Overview
+
+Stage 160 修复 `identity::<i64>(42i32)` 等泛型调用的实参类型不匹配 turbofish 期望的类型时 typeck 静默接受的 bug.
+
+### What was fixed
+
+1. **typeck/check.rs**: 当 func_ty 是 `FnDef(def_id, substs)` 且 substs 非空时, 用 `substitute(sig.inputs, substs)` 特化 inputs 后再 unify.
+2. **typeck/unify.rs**: `bind_ty_var` 添加 bounds-safe access (Param index 超出 ty_vars.len 时跳过绑定而非 panic).
+
+### §3.2 acceptance
+
+- 6074 tests (898 lib + 5176 integration), 0 failures, 12 ignored (8 new stage160 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 验证结果
+
+- `identity::<i64>(42i32)`: 修复前静默接受 (exit 0), 修复后报 type error (exit 1)
+- `identity::<i64>(42i64)`: 仍返回 42 (正确)
 
 ---
 

@@ -1438,3 +1438,10 @@ mod stage158_vtable_default_body_entry_tests;
 //                         it's available globally. ===
 #[path = "v0/stage159/plan/stdlib_iterator_tests.rs"]
 mod stage159_stdlib_iterator_tests;
+
+// === Stage 160 (v0.16): TD-TYPECK-GENERIC-ARG-VALIDATION — typeck now
+//                         validates generic call args against specialized
+//                         signature. `identity::<i64>(42i32)` is now a type
+//                         error. ===
+#[path = "v0/stage160/plan/typeck_generic_arg_validation_tests.rs"]
+mod stage160_typeck_generic_arg_validation_tests;

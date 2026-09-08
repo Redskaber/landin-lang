@@ -45522,3 +45522,26 @@ Work Log:
 裁剪点: L2 任务 (~30 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证) 或 TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator)
+
+---
+Task ID: stage160-td-typeck-generic-arg-validation-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 160 — TD-TYPECK-GENERIC-ARG-VALIDATION 完整修复. v0.683.0 → v0.684.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 159 baseline (6066 tests, 0 failures)
+- 根因: `typeck/check.rs` check_terminator 用 `sig.inputs` 直接 unify (含 Param(N)), `unify(Param(0), i32)` 静默成功
+- MUV-1: `typeck/check.rs` — 当 func_ty 是 FnDef(def_id, substs) 且 substs 非空时, 用 substitute(sig.inputs, substs) 特化 inputs 后再 unify
+- MUV-2: `typeck/unify.rs` — bind_ty_var 添加 bounds-safe access (Param index 超出 ty_vars.len 时跳过绑定而非 panic)
+- MUV-3: 编写 tests/v0/stage160/plan/typeck_generic_arg_validation_tests.rs — 8 tests (3 正 + 2 负 + 3 边界)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5176 integration = 6074 tests, 0 failures, 12 ignored
+- 验证: `identity::<i64>(42i32)` 从静默接受 (exit 0) → type error (exit 1); `identity::<i64>(42i64)` 仍返回 42 (正确)
+- v0.684.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 4/9/10):
+1. 特化 inputs 后 unify (§1.0 原則 9) — 正确验证, 不依赖 Param 万能匹配
+2. bounds-safe bind_ty_var (§1.0 原則 4) — 不 panic, defer to param_check
+
+裁剪点: L2 任务 (~30 LOC + 8 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 161 — TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator 关联类型投影) 或 TD-STDLIB-STRING-VEC (扩展 String/Vec 方法覆盖)

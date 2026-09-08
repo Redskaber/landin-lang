@@ -478,7 +478,7 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-TYPECK-GENERIC-ARG-VALIDATION | `identity::<i64>(42i32)` 等泛型调用的实参类型不匹配 turbofish 期望的类型时, typeck 静默接受而非报错 | typeck 的 generic call arg type 验证缺失 — 推断的 T 来自 turbofish 但不与实参类型比对 | 在 typeck 的 call arg check 中, 当 callee 是 generic 且 turbofish 指定了 substs 时, 验证每个实参类型与特化后的 inputs 一致, 不一致则报 type error (E0308: mismatched types) | P3, v0.16+ |
+| TD-TYPECK-GENERIC-ARG-VALIDATION | ✅ Stage 160 修复 | `identity::<i64>(42i32)` 等泛型调用的实参类型不匹配 turbofish 期望的类型时, typeck 静默接受而非报错 | typeck 的 generic call arg type 验证缺失 — 推断的 T 来自 turbofish 但不与实参类型比对 | 在 typeck 的 call arg check 中, 当 callee 是 generic 且 turbofish 指定了 substs 时, 验证每个实参类型与特化后的 inputs 一致, 不一致则报 type error (E0308: mismatched types). 同时修复 `bind_ty_var` 的 bounds-safe access. 8 tests. | ✅ |
 
 ### P3 — v0.16+ Stage 154 发现
 
@@ -502,3 +502,9 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 | TD-DEFAULT-BODY-SELF-TYPE | ✅ Stage 157 修复 | trait default body 方法的 `&self` 参数类型解析为 `Error` (因为方法在 trait 声明中, 不在 `method_to_impl_index` 中). 导致 codegen 将 `&self` 当作 `i32` → Call parameter type mismatch (`i32` vs `ptr`). | `compile_inner.rs` 添加 `resolve_default_body_self_type` fallback: 当 `resolve_self_param_type_for_sig` 返回 `None` 时, 查找声明该方法的 trait, 找到第一个 impl, 用 impl 的 self_ty 作为 `&self` 类型. 8 tests. | ✅ |
 | TD-VTABLE-DEFAULT-BODY-MISSING-ENTRY | ✅ Stage 158 修复 | dyn dispatch 调用 default body 方法时, vtable 缺少 default body 方法的 entry | vtable 构建只遍历 impl items, 不遍历 trait items 的 default body. 当 dyn dispatch 尝试调用 default body 方法时, vtable slot index 越界或指向错误方法. | `traits/resolver.rs` vtable 构建后, 遍历 trait items, 对有 default body 但 impl 没有覆盖的方法添加 vtable entry (fn_name = `landin_{trait}_default_{method}`). 10 tests. | ✅ |
 | TD-DEFAULT-BODY-FIELD-ACCESS | ✅ Stage 158 验证已修复 | default body 方法内部访问 `self.x` 等字段时返回错误值 (1 而非实际字段值) | default body 方法的 `self` 参数类型解析正确后, 字段访问的 GEP 仍然使用错误的 layout (可能是因为 self_ty 使用了 first impl 的类型, 但字段 layout 不匹配) | 调查 default body 方法的 self 字段访问 GEP — 可能需要从 impl 的 self_ty 构建正确的 AdtLayout. | ✅ (Stage 157 间接修复) |
+
+### P3 — v0.17+ Stage 159 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-DYN-ITERATOR-ASSOC-TYPE | dyn dispatch `&mut dyn Iterator<Item = i64>` codegen 失败 — 关联类型投影 + dyn dispatch 组合问题 | 函数 `count_iterations(it: &mut dyn Iterator<Item = i64>)` 的 codegen 产生大量 Param warnings + linker error (undefined reference to `landin_count_iterations`) | 调查 dyn dispatch 与关联类型投影的组合 codegen — 可能需要在 codegen 中正确解析 `dyn Iterator<Item = i64>` 的关联类型绑定 | P3, v0.17+ |

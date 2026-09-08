@@ -580,14 +580,35 @@ impl TypeChecker {
                 let dest_ty_raw = self.infer_place(mir, destination);
                 let dest_ty = self.unify.resolve(&dest_ty_raw);
 
-                // G3 fix (Stage 2.4e): If func is a FnDef(def_id, _),
+                // G3 fix (Stage 2.4e): If func is a FnDef(def_id, substs),
                 // look up the fn signature from fn_sigs and verify:
                 //   1. arg count matches
                 //   2. each arg type unifies with the corresponding input
                 //   3. destination type unifies with the return type
-                if let TyKind::FnDef(def_id, _) = &func_ty.kind {
+                //
+                // Stage 160 (TD-TYPECK-GENERIC-ARG-VALIDATION): When substs
+                // are non-empty (turbofish specified), substitute Param(N) in
+                // sig.inputs with the concrete substs BEFORE unifying. This
+                // catches `identity::<i64>(42i32)` — input becomes `i64` (not
+                // `Param(0)`), so `unify(i64, i32)` reports a type error.
+                //
+                // Per §1.0 原則 4 (报错 > 静默): report type mismatch, don't
+                // silently accept.
+                // Per §1.0 原則 9 (正确 > 妥协): validate with specialized sig.
+                // Per §1.0 原則 10 (唯一可信数据源): substs from FnDef type
+                // are the authoritative call-site generic arguments.
+                if let TyKind::FnDef(def_id, substs) = &func_ty.kind {
                     if let Some(sig) = self.fn_sigs.get(def_id).cloned() {
-                        if arg_tys.len() != sig.inputs.len() {
+                        // Stage 160: Substitute sig inputs with call-site substs.
+                        let specialized_inputs: Vec<Ty> = if substs.is_empty() {
+                            sig.inputs.clone()
+                        } else {
+                            sig.inputs
+                                .iter()
+                                .map(|t| crate::mir::substitute::substitute(t, substs))
+                                .collect()
+                        };
+                        if arg_tys.len() != specialized_inputs.len() {
                             self.errors.push(TypeError::new(
                                 format!(
                                     "this function takes {} argument(s) but {} were supplied",
@@ -599,7 +620,8 @@ impl TypeChecker {
                                 term.span,
                             ));
                         } else {
-                            for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
+                            for (arg_ty, input_ty) in arg_tys.iter().zip(specialized_inputs.iter())
+                            {
                                 // Stage 18.259 (TD-UNIFY-ARG-ORDER): swap arg
                                 // order — declared sig input is "expected",
                                 // actual call arg is "found". Previously
