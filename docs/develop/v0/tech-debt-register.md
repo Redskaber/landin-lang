@@ -459,5 +459,11 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-TRAIT-METHOD-RET-MATCH-GEP | Iterator sum 的 match arm 提取值不正确 (count works, sum returns garbage) | match arm 从 trait 方法返回的 Option<Self::Item> 中提取 payload 时, GEP field index 可能不匹配 codegen 的 storage layout | 调查 codegen 对 trait 方法返回值的 enum variant payload GEP 路径 | P3, v0.16+ |
+| TD-TRAIT-METHOD-RET-MATCH-GEP | ✅ Stage 151 修复 | Iterator sum 的 match arm 提取值不正确 | build_adt_layout 使用 with_hir_and_generics + adt_layout_to_emit_type 对 Param 用 I64 fallback. | ✅ |
 | TD-OPTION-UNWRAP-OR-MATCH | unwrap_or 在 Some+None 组合时 Some 返回 0 | unwrap_or 内部的 match 对 Some 分支的 payload 提取不正确 | 调查 prelude Option::unwrap_or 的 match arm GEP | P3, v0.16+ |
+
+### P3 — v0.15+ Stage 151 发现
+
+| TD ID | 描述 | 根因 | 修复方案 | 优先级 |
+|-------|------|------|---------|--------|
+| TD-OPTION-AND-THEN-I32-MISMATCH | prelude Option/Result 的 map/and_then 方法在 i32 类型上返回 {i32,i64} 但调用者期望 {i32,i32} | prelude 泛型方法 body 的 storage type 使用 I64 fallback (Stage 151) 但调用者使用 i32 类型 → 类型不匹配 | 修复 prelude 泛型方法的 typeck writeback 以正确替换 Param → 具体类型 (而非 I64 fallback) | P3, v0.16+ |

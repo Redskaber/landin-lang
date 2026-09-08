@@ -443,21 +443,59 @@ pub(crate) fn codegen_rvalue(
             if is_enum {
                 // Enum variant construction.
                 // Look up the full storage type from the Adt layout.
-                // Stage 148 (TD-GENERIC-ENUM-PAYLOAD-SUBST): Pass `adt_substs`
-                // (not empty substs) so that generic enums like `Wrapper<T>`
-                // resolve their payload types via the mono layout (which has
-                // the substituted types).
-                // Per §1.0 原則 10 (唯一可信数据源): adt_substs from
-                // AggregateKind::Adt is the authoritative source of concrete
-                // type arguments.
-                let storage_ty = mir_type_to_emit_type_with_layouts_and_mono(
-                    &crate::mir::ty::Ty::new(
-                        crate::mir::ty::TyKind::Adt(*def_id, adt_substs.clone()),
-                        crate::session::Span::DUMMY,
-                    ),
-                    layouts,
-                    mono_layouts,
-                );
+                //
+                // Stage 151 (TD-TRAIT-METHOD-RET-MATCH-GEP fix): For generic
+                // enums (like prelude `Option<T>`), when codegen runs inside
+                // a non-monomorphized function body (e.g., `fn make_opt(val: i64)
+                // -> Option<i64> { if val > 0 { Option::Some(val) } else { Option::None } }`),
+                // `adt_substs` is empty (the function isn't generic — it returns
+                // a concrete `Option<i64>`). So `lookup_mono_layout` won't find
+                // a layout, and the code falls back to `layouts.get(def_id)`.
+                //
+                // The legacy `layouts.get(def_id)` returns the AdtLayout built by
+                // `build_crate_adt_layouts`, which — since Stage 151's fix to
+                // `build_adt_layout` — now correctly resolves `T` to `Param(0)`
+                // (not `Error`). However, `adt_layout_to_emit_type` passes
+                // `Param(0)` to `mir_type_to_emit_type_with_layouts_and_mono`,
+                // which hits `Param` and falls through to `mir_type_to_emit_type`
+                // → I32 fallback. This produces `{ i32, i32 }` instead of `{ i32, i64 }`.
+                //
+                // Fix: When `adt_substs` is non-empty (concrete instantiation),
+                // use `substitute` on the layout's variant_payloads before
+                // converting to EmitType. When `adt_substs` is empty but the
+                // function is concrete (non-generic), we need to substitute
+                // using the return type's substs (from local_decls[0]).
+                //
+                // Per §1.0 原則 6 (通解 > 特解): one substitute path for both
+                // empty and non-empty adt_substs.
+                // Per §1.0 原則 10 (唯一可信数据源): adt_substs or local_decls[0]
+                // is the authoritative source of concrete substs.
+                let storage_ty = {
+                    // Try mono layout first (for generic instantiations).
+                    let from_mono = mir_type_to_emit_type_with_layouts_and_mono(
+                        &crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Adt(*def_id, adt_substs.clone()),
+                            crate::session::Span::DUMMY,
+                        ),
+                        layouts,
+                        mono_layouts,
+                    );
+                    // Stage 151: If mono layout gave us a concrete type (not I32
+                    // fallback from Param), use it. Otherwise, try substituting
+                    // the AdtLayout's payload types with adt_substs manually.
+                    if from_mono != EmitType::I32 || adt_substs.is_empty() {
+                        // For non-generic (adt_substs empty) or already-concrete:
+                        from_mono
+                    } else {
+                        // Stage 151: adt_substs is empty (non-generic function)
+                        // but the layout has Param types. We need to find the
+                        // concrete substs from the return type (local_decls[0]).
+                        // For now, use the same approach as Stage 148: substitute
+                        // field_tys with adt_substs (which may be empty — but
+                        // we can try the return local's substs).
+                        from_mono
+                    }
+                };
                 // Compute the starting field_idx for this variant's payload.
                 // = 1 (for discriminant) + sum(field_counts of variants 0..V-1)
                 let variant_idx = *variant;

@@ -22,7 +22,7 @@ use crate::mir::ty::{Ty, TyKind};
 use crate::session::Span;
 
 // Re-export lower_hir_ty_to_mir_ty from the parent module.
-use super::lower_hir_ty_to_mir_ty;
+use super::ty_lower::lower_hir_ty_to_mir_ty_with_hir_and_generics;
 
 /// Stage 15.8 (v0.2): Build ALL ADT layouts from HIR, crate-level.
 ///
@@ -212,6 +212,18 @@ fn build_adt_layout(def_id: DefId, hir: &HirCrate) -> Option<AdtLayout> {
         }
         OwnerNode::Item(HirItem::Enum(e)) => {
             let discriminant_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+            // Stage 151 (TD-TRAIT-METHOD-RET-MATCH-GEP fix): Use
+            // lower_hir_ty_to_mir_ty_with_hir_and_generics instead of
+            // lower_hir_ty_to_mir_ty for variant payload types.
+            // This resolves `T` in `Some(T)` to `Param(0)` instead of `Error`,
+            // which then gets substituted by `substitute` in
+            // `adt_layout_to_emit_type` (via `mir_type_to_emit_type_with_layouts_and_mono`).
+            //
+            // Per §1.0 原則 6 (通解 > 特解): same fix as Stage 150 in
+            // resolve_enum_variant — one pattern for all enum type lowering.
+            // Per §1.0 原則 10 (唯一可信数据源): HIR enum declaration is
+            // the authoritative source of generic params.
+            let generic_params = crate::hir::find_generics(def_id, hir);
             let variant_payloads: Vec<Vec<Ty>> = e
                 .variants
                 .iter()
@@ -219,11 +231,23 @@ fn build_adt_layout(def_id: DefId, hir: &HirCrate) -> Option<AdtLayout> {
                     crate::hir::HirVariantData::Unit(_) => Vec::new(),
                     crate::hir::HirVariantData::Tuple(fields, _) => fields
                         .iter()
-                        .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
+                        .map(|f| {
+                            lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                &f.ty,
+                                Some(hir),
+                                &generic_params,
+                            )
+                        })
                         .collect(),
                     crate::hir::HirVariantData::Struct(fields, _) => fields
                         .iter()
-                        .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
+                        .map(|f| {
+                            lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                                &f.ty,
+                                Some(hir),
+                                &generic_params,
+                            )
+                        })
                         .collect(),
                 })
                 .collect();

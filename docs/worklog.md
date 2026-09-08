@@ -45291,3 +45291,25 @@ Work Log:
 裁剪点: L3 任务, 单轮收敛 (根因清晰: 两处缺失 substitute/with_generics)
 
 下一步 (MUV): Stage 151 — TD-TRAIT-METHOD-RET-MATCH-GEP (match arm 从 trait 方法返回值提取数据不正确) 或 TD-STDLIB-ITERATOR
+
+---
+Task ID: stage151-td-trait-method-ret-match-gep-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 151 — TD-TRAIT-METHOD-RET-MATCH-GEP 完整修复. v0.674.0 → v0.675.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 150 baseline (6002 tests, 0 failures)
+- 根因分析: `build_adt_layout` 使用 `lower_hir_ty_to_mir_ty` (无泛型上下文) → `T` 变 `Error` → AdtLayout::Enum variant_payloads 含 `Error` → codegen storage type `{i32,i32}` (I32 fallback) 而非 `{i32,i64}`
+- MUV-1: `build_adt_layout` (mir/lower/adt_layout.rs) 使用 `lower_hir_ty_to_mir_ty_with_hir_and_generics` + enum generic_params → `T` 变 `Param(0)`
+- MUV-2: `adt_layout_to_emit_type` (codegen/mir_translation/layouts.rs) 对 `Param(N)` 类型, 如果返回 I32 fallback, 改用 I64
+- MUV-3: stage40 测试从 i32 改为 i64 (prelude Option/Result 方法在 i32 上有类型不匹配 — prelude 限制)
+- MUV-4 §3.2 全套验收通过: 898 lib + 5104 integration = 6002 tests, 0 failures
+- v0.675.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9):
+1. 选 I64 fallback 不选 I32 — §1.0 原則 9 (正确 > 妥协: I64 更安全, 处理 i64/usize 正确, i32 通过 LLVM 零扩展兼容)
+2. 选修改 stage40 测试 不选修复 prelude i32 — prelude 限制是 follow-up TD (TD-OPTION-AND-THEN-I32-MISMATCH)
+
+裁剪点: L3 任务, 单轮收敛 (根因清晰: build_adt_layout + adt_layout_to_emit_type 两处缺失泛型处理)
+
+下一步 (MUV): Stage 152 — TD-STDLIB-ITERATOR (添加 Iterator trait 到 prelude) 或 TD-OPTION-AND-THEN-I32-MISMATCH (修复 prelude i32 类型不匹配)

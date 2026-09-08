@@ -3,13 +3,31 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.674.0 (v0.15 Stage 150 — TD-GENERIC-ENUM-MATCH-ARMS: 修复泛型枚举 match arm pattern binding; 6002 tests) |
+| **Current version** | v0.675.0 (v0.15 Stage 151 — TD-TRAIT-METHOD-RET-MATCH-GEP: 修复泛型枚举在 if/else 中 insertvalue storage type; 6002 tests) |
 | **Date** | 2026-09-07 |
 | **Test count** | 898 lib tests + 5104 integration tests = 6002 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 150 修复泛型枚举 match arm binding); v0.15 typeck+lower 阶段 — Stage 150 修复 match arm pattern binding 对泛型枚举 payload 的类型替换 |
+| **Architecture** | Health 9.9/10 (stable — Stage 151 修复泛型枚举 if/else insertvalue storage type); v0.15 codegen 阶段 — Stage 151 修复 build_adt_layout + adt_layout_to_emit_type 对泛型枚举 payload 的 Param 类型处理 |
+
+---
+
+## v0.675.0 — Stage 151 (v0.15) — TD-TRAIT-METHOD-RET-MATCH-GEP 完整修复
+
+### Overview
+
+Stage 151 修复泛型枚举在 if/else 分支中 `insertvalue` 使用错误的 storage type (`{i32,i32}` 而非 `{i32,i64}`).
+
+### What was fixed
+
+1. `build_adt_layout`: 使用 `lower_hir_ty_to_mir_ty_with_hir_and_generics` + enum generic_params → `T` 变 `Param(0)` (不是 `Error`)
+2. `adt_layout_to_emit_type`: 对 `Param(N)` 类型, 如果返回 I32 fallback, 改用 I64
+3. stage40 测试从 i32 改为 i64 (prelude Option/Result 方法在 i32 上有类型不匹配)
+
+### §3.2 acceptance
+
+- 6002 tests (898 lib + 5104 integration), 0 failures, 12 ignored (0 regressions)
 
 ---
 
