@@ -1412,3 +1412,10 @@ mod stage154_dyn_local_fat_ptr_coercion_tests;
 //                         writeback to resolve concrete type from Call dest. ===
 #[path = "v0/stage155/plan/match_scrut_ret_copy_type_tests.rs"]
 mod stage155_match_scrut_ret_copy_type_tests;
+
+// === Stage 156 (v0.16): TD-OPTION-NONE-GENERIC-SUBSTS-MISSING — trait method
+//                         body enum variant construction now infers substs from
+//                         function return type. Fixes Iterator sum returning
+//                         garbage value. ===
+#[path = "v0/stage156/plan/trait_ret_generic_enum_substs_tests.rs"]
+mod stage156_trait_ret_generic_enum_substs_tests;

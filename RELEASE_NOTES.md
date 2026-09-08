@@ -3,13 +3,39 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.679.0 (v0.16 Stage 155 — TD-MATCH-SCRUT-RET-COPY-TYPE: 修复函数返回泛型枚举后 match arm garbage value; 6028 tests) |
+| **Current version** | v0.680.0 (v0.16 Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING: 修复 trait 方法体 enum variant 构造空 substs; 6038 tests) |
 | **Date** | 2026-09-08 |
-| **Test count** | 898 lib tests + 5130 integration tests = 6028 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
+| **Test count** | 898 lib tests + 5140 integration tests = 6038 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 155 修复 match scrutinee 类型解析); v0.16 codegen 阶段 — Stage 155 `pattern_lower.rs:238` 用 `Param(N)` 占位符替代空 substs, 使 writeback 解析 Call dest 类型 |
+| **Architecture** | Health 9.9/10 (stable — Stage 156 修复 trait 方法体 enum variant substs); v0.16 codegen 阶段 — Stage 156 `infer_substs_from_return_type` 从函数返回类型推断 concrete substs |
+
+---
+
+## v0.680.0 — Stage 156 (v0.16) — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING 完整修复
+
+### Overview
+
+Stage 156 修复 trait 方法体内部 `Option::Some(v)`/`Option::None` 构造使用空 substs → Param fallback → i64 payload 截断为 i32 的 bug. 导致 Iterator sum 返回 garbage value.
+
+### What was fixed
+
+1. **expr_variants.rs**: 添加 `infer_substs_from_return_type` helper. 当 `lower_path_generic_args` 返回空 substs 时, 从 `fn_sigs[owner_def_id].output` 读取返回类型.
+2. 如果返回类型是 `Adt(enum_def_id, concrete_substs)` 且 def_id 匹配, 使用 concrete substs.
+3. 在 unit variant (Option::None) 和 non-unit variant (Option::Some ctor) 两处调用.
+4. 如果返回类型不匹配 (如 main 返回 ()), 回退到空 substs (保留旧行为).
+
+### §3.2 acceptance
+
+- 6038 tests (898 lib + 5140 integration), 0 failures, 12 ignored (10 new stage156 tests)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
+
+### 验证结果
+
+- Iterator sum (1+2+3=6): 修复前 garbage value (422199709209888), 修复后 6 (正确)
+- trait 方法 make() 返回 Some(42): 修复前打印 "some 0", 修复后 "some 42" (正确)
 
 ---
 

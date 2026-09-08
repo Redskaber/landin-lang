@@ -493,4 +493,4 @@ TD-PRINTLN-CODEGEN-INTERCEPT (P2)
 
 | TD ID | 描述 | 根因 | 修复方案 | 优先级 |
 |-------|------|------|---------|--------|
-| TD-OPTION-NONE-GENERIC-SUBSTS-MISSING | trait 方法体内部 `Option::None` 构造使用空 substs → Param fallback → `{i32,i32}` 而非 `{i32,i64}`. 导致 trait 方法返回 `Option<i64>` 的 None 分支 payload 类型错误. | `lower_path_expr` 对 unit variant (如 `Option::None`) 使用 `lower_path_generic_args` 读取 HIR path 的 generic args, 但 path 无 turbofish 时 substs 为空. typeck 未从期望返回类型推断 substs. | 在 typeck writeback 中, 当 unit variant 构造的 substs 为空且上下文有期望类型时, 从期望类型提取 substs. 或在 codegen 中对 Option::None 构造从函数返回类型推断 substs. | P3, v0.16+ |
+| TD-OPTION-NONE-GENERIC-SUBSTS-MISSING | ✅ Stage 156 修复 | trait 方法体内部 `Option::None` 构造使用空 substs → Param fallback → `{i32,i32}` 而非 `{i32,i64}`. 导致 trait 方法返回 `Option<i64>` 的 None 分支 payload 类型错误. | `lower_path_expr` 添加 `infer_substs_from_return_type` helper: 当 `lower_path_generic_args` 返回空 substs 时, 从当前函数的返回类型 (`fn_sigs[owner_def_id].output`) 推断 concrete substs. 如果返回类型是 `Adt(enum_def_id, concrete_substs)` 且 def_id 匹配, 使用 concrete substs. 否则回退到空 substs (保留旧行为 — writeback 的 let-binding 路径处理). 10 tests. | ✅ |

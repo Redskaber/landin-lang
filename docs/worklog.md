@@ -45421,3 +45421,31 @@ Work Log:
 裁剪点: L2 任务 (~40 LOC + 9 tests), 单轮收敛 (根因清晰: 空 substs → Param fallback). 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING (修复 trait 方法体 Option::None 构造 substs) 或 TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法)
+
+---
+Task ID: stage156-td-option-none-generic-substs-missing-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING 完整修复. v0.679.0 → v0.680.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 155 baseline (6028 tests, 0 failures). 环境: LLVM 22.1.8 + Rust 1.98.1
+- 根因分析: `lower_path_expr` 的 `lower_path_generic_args` 当 path 无 turbofish 时返回空 substs → `Adt(Option, [])` → Param fallback → `{i32,i32}` 而非 `{i32,i64}` → i64 payload 截断为 i32
+- 只在 trait 方法体显现: main 中 let 绑定类型注解触发 writeback 解析; trait 方法体返回类型未被用于推断 variant 构造 substs
+- MUV-1: 在 `expr_variants.rs` 添加 `infer_substs_from_return_type` helper:
+  * 当 `lower_path_generic_args` 返回空 substs 时, 从 `fn_sigs[owner_def_id].output` 读取返回类型
+  * 如果返回类型是 `Adt(enum_def_id, concrete_substs)` 且 def_id 匹配, 使用 concrete substs
+  * 否则回退到空 substs (保留旧行为)
+  * 在 unit variant (Option::None) 和 non-unit variant (Option::Some ctor) 两处调用
+- MUV-2: 编写 tests/v0/stage156/plan/trait_ret_generic_enum_substs_tests.rs — 10 tests (4 正 + 2 回归 + 3 边界 + 1 负)
+- MUV-3 §3.2 全套验收通过: 898 lib + 5140 integration = 6038 tests, 0 failures, 12 ignored
+- 验证: Iterator sum (1+2+3=6) 从 garbage value → 6 (正确); trait 方法 make() 返回 Some(42) 从打印 "some 0" → "some 42" (正确)
+- v0.680.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 6/9/10):
+1. 从返回类型推断不选 Param(N) 占位符 (§1.0 原則 9) — Param(N) 需 writeback 新规则, 更复杂
+2. 只处理返回类型匹配的情况 (§1.0 原則 6) — 不破坏 main 中 let 绑定的 writeback 路径
+3. 不修改 writeback 逻辑 (§1.0 原則 10) — fn_sigs.output 是权威返回类型源
+
+裁剪点: L2 任务 (~70 LOC + 10 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
+
+下一步 (MUV): Stage 157 — TD-VTABLE-MISSING-DEFAULT-BODY (修复 vtable 包含 default body 方法) 或 TD-TYPECK-GENERIC-ARG-VALIDATION (修复 typeck turbofish arg 验证)

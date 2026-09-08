@@ -86,6 +86,16 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                             // for all generic enum variants.
                             let substs =
                                 lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
+                            // Stage 156 (TD-OPTION-NONE-GENERIC-SUBSTS-MISSING):
+                            // If substs are empty (no turbofish), infer from
+                            // the function's return type or use Param(N)
+                            // placeholders. Empty substs → Param fallback →
+                            // I32 for all payload fields → i64 truncation.
+                            let substs = if substs.is_empty() {
+                                infer_substs_from_return_type(cx, def_id, expr.span)
+                            } else {
+                                substs
+                            };
                             let adt_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                             // Stage 18.159 (TD-SPAN-DUMMY-CLEANUP): use expr.span
                             // for the discriminant constant (was: Span::DUMMY).
@@ -112,6 +122,14 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                 // args from path into Adt substs (consistent with
                 // lower_hir_ty_to_mir_ty_with_regions).
                 let substs = lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
+                // Stage 156 (TD-OPTION-NONE-GENERIC-SUBSTS-MISSING):
+                // If substs are empty (no turbofish), infer from the
+                // function's return type or use Param(N) placeholders.
+                let substs = if substs.is_empty() {
+                    infer_substs_from_return_type(cx, def_id, expr.span)
+                } else {
+                    substs
+                };
                 let adt_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                 return cx.eval_rvalue_to_temp(
                     Rvalue::Use(Operand::Constant(Const {
@@ -1526,4 +1544,60 @@ fn resolve_impl_method_by_name(
     }
 
     None
+}
+
+/// Stage 156 (TD-OPTION-NONE-GENERIC-SUBSTS-MISSING): Infer substs for a
+/// generic enum variant construction from the current function's return type.
+///
+/// When `Option::None` or `Option::Some(v)` is constructed inside a function
+/// body without turbofish (e.g., `Option::None` not `Option::<i64>::None`),
+/// the path has no generic args → `lower_path_generic_args` returns empty
+/// substs → the Adt type becomes `Adt(Option, [])` → codegen uses Param
+/// fallback → I32 for all payload fields → i64 payloads truncated to i32.
+///
+/// Rust's typeck infers substs from the expected return type. Landin's typeck
+/// doesn't do this yet (TD-TYPECK-GENERIC-ARG-VALIDATION). As a workaround,
+/// this helper reads the current function's return type from `fn_sigs` (if
+/// available) and, if the return type is `Adt(enum_def_id, concrete_substs)`,
+/// returns the concrete substs.
+///
+/// If the return type is NOT the same enum (e.g., main returns `()`), return
+/// empty substs (preserves pre-Stage-156 behavior — writeback's let-binding
+/// type annotation path handles this case).
+///
+/// Per §1.0 原則 6 (通解 > 特解): one inference path for all generic enum
+/// variants (Option<T>, Result<T,E>, etc.) when return type matches.
+/// Per §1.0 原則 9 (正确 > 妥协): infer from return type rather than guessing
+/// I32. This is a partial fix — full typeck inference (TD-TYPECK-GENERIC-ARG-
+/// VALIDATION) will handle let bindings and arg positions.
+/// Per §1.0 原則 10 (唯一可信数据源): `fn_sigs[owner_def_id].output` is the
+/// authoritative return type source.
+fn infer_substs_from_return_type(
+    cx: &MirLowerCtxt,
+    enum_def_id: crate::hir::DefId,
+    _span: crate::session::Span,
+) -> crate::mir::ty::SubstsRef {
+    // Try to get the current function's return type from fn_sigs.
+    if let (Some(owner_def_id), Some(fn_sigs)) = (cx.owner_def_id, cx.fn_sigs) {
+        if let Some(sig) = fn_sigs.get(&owner_def_id) {
+            let ret_ty = &sig.output;
+            // If return type is Adt with the same def_id and non-empty substs,
+            // use those substs.
+            if let TyKind::Adt(ret_def_id, ret_substs) = &ret_ty.kind {
+                if *ret_def_id == enum_def_id && !ret_substs.is_empty() {
+                    // Check that substs are concrete (not Param).
+                    let all_concrete = ret_substs
+                        .iter()
+                        .all(|t| !matches!(t.kind, TyKind::Param(_)));
+                    if all_concrete {
+                        return ret_substs.clone();
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: return empty substs (preserves pre-Stage-156 behavior).
+    // The let-binding type annotation path in writeback will resolve the
+    // type from the let annotation (e.g., `let opt: Option<i64> = ...`).
+    Vec::new().into()
 }

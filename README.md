@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.679.0 (v0.16 Stage 155 — TD-MATCH-SCRUT-RET-COPY-TYPE: 修复函数返回泛型枚举后 match arm 读取 garbage value; 6028 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.680.0 (v0.16 Stage 156 — TD-OPTION-NONE-GENERIC-SUBSTS-MISSING: 修复 trait 方法体 enum variant 构造空 substs → Param fallback → i64 payload 截断; 6038 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.16 Stage 155 COMPLETE (TD-MATCH-SCRUT-RET-COPY-TYPE)**. 6028 tests (898 lib + 5130 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 155 修复函数返回泛型枚举后 match arm garbage value — `pattern_lower.rs:238` 用 `Param(N)` 占位符替代空 substs, 使 writeback 解析 Call dest 类型. 验证 TD-OPTION-UNWRAP-OR-MATCH + TD-TRAIT-METHOD-REMONO-LINK 已修复. |
+| **Status** | ✅ **v0.16 Stage 156 COMPLETE (TD-OPTION-NONE-GENERIC-SUBSTS-MISSING)**. 6038 tests (898 lib + 5140 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 156 修复 trait 方法体 enum variant 构造空 substs — `infer_substs_from_return_type` 从函数返回类型推断 concrete substs. Iterator sum 从 garbage value → 6 (正确). |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
 | **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
