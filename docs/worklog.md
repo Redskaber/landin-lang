@@ -45567,3 +45567,24 @@ Work Log:
 裁剪点: L2 任务 (0 src 变更 + 13 tests), 单轮收敛. 跳过 §14.6 跨阶段验证.
 
 下一步 (MUV): Stage 162 — TD-INFERRED-TYPE-METHOD-MANGLING (修复推断类型上下文中的 method dispatch mangled name) 或 TD-STDLIB-STRING-VEC (扩展 String/Vec 方法覆盖)
+
+---
+Task ID: stage162-process-doc-v8-refactor-complete
+Agent: Super Z (main) — PM-A 主协调官
+Task: Stage 162 — docs/stage-committee-process.md v8.0 重构. v0.685.0 → v0.686.0.
+
+Work Log:
+- §18 依赖审查: 上轮 Stage 161 baseline (6087 tests, 0 failures)
+- MUV-1: §2.1.1 每轮执行原则新增原则 14 (功能缺失即时同步 TD) + 15 (依赖限制阻断推进) + 16 (可疑代码模式审计)
+- MUV-2: §6.2 新增 §6.2.0 技术债触发时机与处理流程 — 3 个触发时机表格 (功能缺失/依赖限制/可疑代码模式) + 4 种可疑模式表格
+- MUV-3: 版本号升级 v7.5 → v8.0
+- MUV-4 §3.2 全套验收通过: 898 lib + 5189 integration = 6087 tests, 0 failures, 12 ignored (仅文档变更, 无 src 变更)
+- v0.686.0
+
+决策点 (§12 最优 > 最小, §1.0 原則 4/9):
+1. 补充到 §2.1.1 和 §6.2 而非新建章节 (§1.0 原則 6) — 与现有原则/流程内聚
+2. 表格化触发条件+处理流程 (§1.0 原則 3) — 显式表达, 不依赖隐式推断
+
+裁剪点: L2 任务 (~80 LOC 文档变更), 单轮收敛. 跳过 §14.6 跨阶段验证 (无 src 变更).
+
+下一步 (MUV): Stage 163 — TD-INFERRED-TYPE-METHOD-MANGLING (修复推断类型上下文中的 method dispatch mangled name) 或 TD-DYN-ITERATOR-ASSOC-TYPE (修复 dyn dispatch Iterator 关联类型投影)

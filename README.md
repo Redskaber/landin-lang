@@ -7,12 +7,12 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Version** | v0.685.0 (v0.17 Stage 161 — Stdlib method coverage audit; 6087 tests total, 0 failures — Architecture health 9.9/10) |
+| **Version** | v0.686.0 (v0.17 Stage 162 — Process doc v8.0: TD 触发规则 + 依赖限制阻断 + 可疑代码模式审计; 6087 tests total, 0 failures — Architecture health 9.9/10) |
 | **License** | MIT |
-| **Status** | ✅ **v0.17 Stage 161 COMPLETE (Stdlib method coverage audit)**. 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 161 审计所有 Option/Result/String/Vec 方法 — 13 tests 覆盖核心方法. 发现新 TD: TD-INFERRED-TYPE-METHOD-MANGLING (推断类型上下文中 method dispatch Error mangled name). |
+| **Status** | ✅ **v0.17 Stage 162 COMPLETE (Process doc v8.0)**. 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored. fmt clean, 0 clippy warnings. Stage 162 重构 `docs/stage-committee-process.md` 至 v8.0 — §2.1.1 新增原则 14/15/16, §6.2 新增 §6.2.0 技术债触发时机与处理流程. |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **Rust edition** | 2021 |
-| **Process doc** | `docs/stage-committee-process.md` v7.5 (11 design principles + 13 execution principles + Bug probability distribution + experimental exploration methodology with surgical split) |
+| **Process doc** | `docs/stage-committee-process.md` v8.0 (11 design principles + 16 execution principles + TD trigger rules + dependency limit blocking + suspicious code pattern audit) |
 
 ---
 

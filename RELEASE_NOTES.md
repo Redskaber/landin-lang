@@ -3,13 +3,32 @@
 | | |
 |---|---|
 | **Author** | redskaber |
-| **Current version** | v0.685.0 (v0.17 Stage 161 — Stdlib method coverage audit; 6087 tests) |
+| **Current version** | v0.686.0 (v0.17 Stage 162 — Process doc v8.0: TD trigger rules + dependency limit blocking; 6087 tests) |
 | **Date** | 2026-09-08 |
 | **Test count** | 898 lib tests + 5189 integration tests = 6087 total (100% pass rate single-thread with `ulimit -s unlimited`, 12 ignored) |
 | **Multi-thread** | 5/5 stable (2 threads, unlimited stack) via `scripts/run_tests.sh` |
 | **LLVM** | 22.1.8 (llvm-sys 221) |
 | **TextEmitter IR** | Validated by `llvm-as` smoke test |
-| **Architecture** | Health 9.9/10 (stable — Stage 161 stdlib method audit); v0.17 codegen 阶段 — Stage 161 审计 Option/Result/String/Vec 方法 + 发现 TD-INFERRED-TYPE-METHOD-MANGLING |
+| **Architecture** | Health 9.9/10 (stable — Stage 162 process doc v8.0); v0.17 codegen 阶段 — Stage 162 重构 stage-committee-process.md 至 v8.0 |
+
+---
+
+## v0.686.0 — Stage 162 (v0.17) — Process doc v8.0 重构
+
+### Overview
+
+Stage 162 重构 `docs/stage-committee-process.md` 至 v8.0, 补充 3 项关键内容: TD 触发规则、依赖限制阻断推进、可疑代码模式审计.
+
+### What was fixed
+
+1. **§2.1.1 每轮执行原则**: 新增原则 14 (功能缺失即时同步 TD) + 15 (依赖限制阻断推进) + 16 (可疑代码模式审计).
+2. **§6.2 缺陷分级**: 新增 §6.2.0 技术债触发时机与处理流程 — 3 个触发时机表格 (功能缺失/依赖限制/可疑代码模式) + 4 种可疑模式表格.
+
+### §3.2 acceptance
+
+- 6087 tests (898 lib + 5189 integration), 0 failures, 12 ignored (仅文档变更, 无 src 变更)
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --features llvm-backend -- -D warnings: 0 warnings
 
 ---
 
